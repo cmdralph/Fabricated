@@ -279,8 +279,9 @@ by the server runs (the colours, screens, key mappings and config screens by the
   block whose model is a Fabric model, or a multipart or weighted model with one among its parts, to Fabric's renderer
   there instead; every other block keeps Forge's path. Forge 61 to 66 also ask a block model for its particle sprite
   with Forge's model data where upstream's hooks ask Fabric's level-aware one, in places those hooks no longer reach:
-  the screen effect inside a block, a block marker (Forge 64 to 66) and a block particle, whose sprite Forge sets again
-  from the block's position. There the in-game mod asks Fabric's for such a model, and a model whose class gives its
+  the screen effect inside a block (Forge 65 draws none for any block: its patch submits it only where a listener
+  cancelled Forge's `RenderBlockScreenEffectEvent` for it), a block marker (Forge 64 to 66) and a block particle, whose
+  sprite Forge sets again from the block's position. There the in-game mod asks Fabric's for such a model, and a model whose class gives its
   own sprite for model data keeps Forge's (PART-4; the test block's model, Forge 61 to 66). On Forge 47 upstream's hooks miss Forge's chunk section compiler
   and block renderers, which call Forge's overloads taking model data and a render type: pre-flight leaves out the
   chunk section redirect and keeps the hook that prepares Indigo's terrain context, and the in-game mod has Indigo draw
