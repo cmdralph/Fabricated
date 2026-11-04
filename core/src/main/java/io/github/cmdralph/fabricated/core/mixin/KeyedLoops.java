@@ -71,14 +71,15 @@ public final class KeyedLoops {
 
 	/**
 	 * Points a {@code @Redirect} of a read of a static list ({@code GETSTATIC}) of its target that the method it names
-	 * doesn't make, nor the overload of the same name that method only calls ({@link OverloadRepairs#calledOverload}),
-	 * at the one call there to {@code keySet()} of a map field of the target that the platform's code goes over (its
-	 * result's {@code iterator()} called at once) and fills, in a constructor, with a map made from the list (the list
-	 * read and that field the next one stored): Forge 47's {@code ParticleEngine.render} and its particles' map, sorted by
-	 * vanilla's render order with Forge's types after. The handler ({@code ()} to the list's type, not static) is called
-	 * from a bridge taking the map, as a redirect of that call is ({@link #bridge}); its reads of the list, the field
-	 * itself or its {@code @Shadow}, read a field of the mixin's while the bridge calls it ({@link #seen}). Returns a
-	 * description of the move, or nothing.
+	 * doesn't make, nor the overload of the same name that method calls ({@link OverloadRepairs#calledOverload}) or the
+	 * method the platform deprecated it for ({@link OverloadRepairs#replacementOf}: Forge 47 runs vanilla's code under
+	 * its SRG names, so its overload's name isn't vanilla's method's there), at the one call there to {@code keySet()}
+	 * of a map field of the target that the platform's code goes over (its result's {@code iterator()} called at once)
+	 * and fills, in a constructor, with a map made from the list (the list read and that field the next one stored):
+	 * Forge 47's {@code ParticleEngine.render} and its particles' map, sorted by vanilla's render order with Forge's
+	 * types after. The handler ({@code ()} to the list's type, not static) is called from a bridge taking the map, as a
+	 * redirect of that call is ({@link #bridge}); its reads of the list, the field itself or its {@code @Shadow}, read
+	 * a field of the mixin's while the bridge calls it ({@link #seen}). Returns a description of the move, or nothing.
 	 */
 	static List<String> repairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx, List<MethodNode> bridges) {
 		if (!injector.desc.equals(MixinNames.REDIRECT) || (handler.access & Opcodes.ACC_STATIC) != 0 || (mixin.access & Opcodes.ACC_INTERFACE) != 0
@@ -104,6 +105,7 @@ public final class KeyedLoops {
 		MethodInsnNode keySet = keySetLoop(method, target, list);
 		if (keySet == null) {
 			method = OverloadRepairs.calledOverload(chosen, target);
+			if (method == null) method = OverloadRepairs.replacementOf(chosen, target);
 			if (method == null || (method.access & Opcodes.ACC_STATIC) != 0 || reads(method, target, list)) return List.of();
 			keySet = keySetLoop(method, target, list);
 			if (keySet == null) return List.of();

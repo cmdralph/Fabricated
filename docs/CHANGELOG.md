@@ -15,7 +15,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   `RENDER_ORDER` see the map's other keys after the list's elements, and the loop then goes over the types Iris picks.
   A pass that copies the list so keeps Forge mods' types, and a list of Iris's own leaves them out, as Iris treats a
   type added to the list on Fabric. The repair matches the shape (a static list a constructor orders a map field by,
-  that map's `keySet()` gone over in the method or the overload it calls), not Forge's names.
+  that map's `keySet()` gone over in the method or the overload it calls), not Forge's names. Forge 47's first run
+  after the sync (41807866185) still refused the hook: Forge 47 runs vanilla's code under its SRG names and its own
+  under theirs, so the overload (`render`) isn't named as vanilla's method (`m_107336_`). The repair now also takes
+  the method the platform deprecated vanilla's for (`main` #304).
 - **PLUGIN-1** (P0 for Flashback's Fabric build on Forge 64 to 66; `main` #303): MixinConstraints 1.0.8, which Flashback
   nests, calls `LoadingModList.get().getModFileById(id)` in its Forge abstraction, built for Forge 47. Forge 64 made
   `LoadingModList` an interface whose methods are static and whose `get()` is private, so the call can't link

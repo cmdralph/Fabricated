@@ -7829,6 +7829,15 @@ class MixinPreflightTest {
 		// keeps vanilla's render only to call an overload taking a frustum, whose loop goes over the keys of the particles'
 		// map instead, a map it orders by RENDER_ORDER with Forge mods' own types after. The redirect moves to that loop,
 		// and the handler's reads of the list see the map's other keys after its elements: a copy of the list keeps them.
+		// NeoForge 21.1 names its overload as vanilla's method. Forge 47 runs vanilla's code under its SRG names and its
+		// own under theirs, so there the overload, "render", is the method it deprecated vanilla's m_107336_ for.
+		keyedLoopRepair("render");
+		keyedLoopRepair("m_107336_");
+	}
+
+	/** The IRIS-1 particle engine, its vanilla method named {@code vanilla} (deprecated where not the overload's name). */
+	private void keyedLoopRepair(String vanilla) throws Exception {
+		boolean renamed = !vanilla.equals("render");
 		String engine = "net/minecraft/client/particle/Engine";
 		String list = "Ljava/util/List;";
 		String map = "Ljava/util/Map;";
@@ -7871,7 +7880,8 @@ class MixinPreflightTest {
 		mv.visitInsn(Opcodes.ARETURN);
 		mv.visitMaxs(0, 0);
 		mv.visitEnd();
-		mv = target.visitMethod(Opcodes.ACC_PUBLIC, "render", "(I)V", null, null);
+		mv = target.visitMethod(Opcodes.ACC_PUBLIC | (renamed ? Opcodes.ACC_DEPRECATED : 0), vanilla, "(I)V", null, null);
+		if (renamed) mv.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
 		mv.visitCode();
 		mv.visitVarInsn(Opcodes.ALOAD, 0);
 		mv.visitVarInsn(Opcodes.ILOAD, 1);
@@ -7929,7 +7939,7 @@ class MixinPreflightTest {
 		mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "selectParticles", "()" + list, null, null);
 		AnnotationVisitor ann = mv.visitAnnotation(REDIRECT, true);
 		AnnotationVisitor selectors = ann.visitArray("method");
-		selectors.visit(null, "render(I)V");
+		selectors.visit(null, vanilla + "(I)V");
 		selectors.visitEnd();
 		AnnotationVisitor at = ann.visitAnnotation("at", AT);
 		at.visit("value", "FIELD");
@@ -7957,7 +7967,7 @@ class MixinPreflightTest {
 				.get(phases + ".class");
 		assertNotNull(repaired, notes.toString());
 		assertTrue(notes.stream().anyMatch(n -> n.severity() == Severity.WARN && n.message().contains("@Redirect selectParticles reads net.minecraft.client.particle"
-				+ ".Engine.ORDER in render(I)V, where NeoForge goes over the keys of its map particles in render" + overload + " instead")), notes.toString());
+				+ ".Engine.ORDER in " + vanilla + "(I)V, where NeoForge goes over the keys of its map particles in render" + overload + " instead")), notes.toString());
 		mod.put(phases, repaired);
 		assertTrue(preflight(game, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
 		ClassNode mixin = new ClassNode();
@@ -8000,7 +8010,7 @@ class MixinPreflightTest {
 		@SuppressWarnings("unchecked")
 		Map<Object, Object> particles = (Map<Object, Object>) type.getField("particles").get(instance);
 		for (String held : new String[] {"terrain", "opaque", "translucent", "forge"}) particles.put(held, List.of(held + " particle"));
-		type.getMethod("render", int.class).invoke(instance, 0);
+		type.getMethod(vanilla, int.class).invoke(instance, 0);
 		assertEquals(List.of("terrain", "translucent", "forge"), type.getField("rendered").get(null),
 				"the pass goes over the types the handler kept, Forge's own among them, in order; custom holds no particles");
 		java.lang.reflect.Field keys = type.getDeclaredField(mixin.fields.stream().filter(f -> Annotations.find(f, SHADOW) == null).findFirst().orElseThrow().name);
