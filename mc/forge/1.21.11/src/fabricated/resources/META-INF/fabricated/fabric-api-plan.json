@@ -56,6 +56,11 @@
       "skipMixins": ["fabric-resource-conditions-api-v1.mixins.json:RegistryDataLoaderMixin"],
       "reason": "Forge 61 decodes each data pack registry entry through its own conditional decoder (ConditionCodec.wrap), where upstream's hook looks for vanilla's decoding of the entry, so pre-flight left that mixin out and fabric:load_conditions in registry entries were ignored: the in-game mod's FabricResourceConditions has Forge's decoder also give no entry where they fail, with upstream's evaluation. Upstream's hook on JSON data loaders (SimpleJsonResourceReloadListenerMixin) loads, its lambda hook bridged to Forge 61's lambda, which also takes the codec (LAMBDA-8)."
     },
+    "fabric-resource-loader-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-resource-loader-v1.client.mixins.json:OptionsMixin#onLoad"],
+      "reason": "Forge 61 loads the game's options before it loads mods, so upstream's hook at their load (onLoad) ran before the Fabric mods' entrypoints had registered their built-in packs and their resource condition types: it enabled no built-in pack that is enabled by default, forgot the ones it had enabled before, and logged each Fabric mod's pack with conditional overlays as unreadable (CORPUS-104). It is left out, and Fabricated's in-game mod runs upstream's processing (DefaultResourcePackStorage) once the entrypoints have run, before the game selects its packs, as on Fabric (FabricDefaultPacks)."
+    },
     "fabric-screen-api-v1": {
       "plan": "passthrough",
       "skipMixins": ["fabric-screen-api-v1.mixins.json:GameRendererMixin#onRenderScreen", "fabric-screen-api-v1.mixins.json:KeyboardHandlerMixin#invokeKeyPressedEvents", "fabric-screen-api-v1.mixins.json:KeyboardHandlerMixin#invokeKeyReleasedEvents", "fabric-screen-api-v1.mixins.json:MouseHandlerMixin#invokeMouseClickedEvents", "fabric-screen-api-v1.mixins.json:MouseHandlerMixin#invokeMousePressedEvents", "fabric-screen-api-v1.mixins.json:MouseHandlerMixin#invokeMouseDragEvents"],
