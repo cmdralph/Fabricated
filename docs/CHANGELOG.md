@@ -3,6 +3,27 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: Fabric mods' built-in packs enabled by default on Forge 47 (CORPUS-104), CORPUS-104 and PROVIDER-13 verified, CORPUS-88 closed and CORPUS-112 found (task 5)
+
+- **Verified:** CORPUS-104 on Forge 61 to 66, in extended run 41782561336 (#291). The test mod's built-in pack
+  enabled by default is selected, and the corpus clients log no unreadable pack (Artifacts', Terralith's) and reach
+  their worlds. On Forge 47, in `forge-legacy`'s extended run 41782464279 (#293), with the same check. PROVIDER-13, in
+  `forge-legacy`'s extended runs 41778812320 and 41782464279: the Forge 47 server with Forgified Fabric API gets past
+  its data packs, reaches its world and saves it. Their rows move to FINDINGS.
+- **CORPUS-104 on Forge 47** (P2; forge-legacy #293): this corrects the last entry's "Forge 47 stays open". Fabric
+  API 0.92 does its work for these packs inside its hook at the options' load, with no method of its own to call.
+  Decision: the plan leaves that hook out, and the in-game mod does the hook's work in Forge 47's names once the
+  entrypoints have run, with the same file of offered packs, so a player's choices carry over. The Forge page says
+  so on both branches (forge #294, forge-legacy #295).
+- **CORPUS-88** (closed, not Fabricated's): read in Farmer's Delight's jar and REI's sources. Farmer's Delight's
+  decomposition display has a unit stream codec holding one instance, its plugin adds another, and neither class
+  defines `equals`. So REI's sync refuses it on every platform, Fabric included.
+- **CORPUS-112** (new, P3, open): the Forge 61 corpus client's debug log has 17 banner patterns that REI's display
+  sync couldn't encode, as the registry it encodes with has no id for them. forge #294's evidence step prints the
+  first one with its stack for the next extended run.
+- **CI:** #294's evidence step: its shell was run locally under `bash -e`, with a log with the failure, one without,
+  and none.
+
 ## 2026-11-04: Fabric mods' block model loaders and language files on Forge 47 (CORPUS-92, CORPUS-100, CORPUS-102), Fabric mods' built-in packs enabled by default on Forge 61 to 66 (CORPUS-104), and CORPUS-109 verified (task 5)
 
 - **Verified:** CORPUS-92 and CORPUS-102, in `forge-legacy`'s extended run 41776560917 (#289, main synced in). The
