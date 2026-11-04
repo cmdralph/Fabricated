@@ -25,7 +25,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   (`IncompatibleClassChangeError`), and MixinConstraints' mixin plugin stopped the game as Mixin selected Flashback's
   config. Decision: translation makes a Fabric mod's call of such a method through the accessor a call of the static
   method (`PlatformStatics`), in FML's packages only, and only where the code can't link as built. A receiver kept in
-  a local is left as it is.
+  a local is left as it is. The `forge` run on #303's sync (41807861551) still stopped Flashback on Forge 64 to 66:
+  Forge's private `get()` returns its implementation (`LoadingModListImpl`), not the interface the mod's call names,
+  and the repair required the two to match. It now takes the interface's private static `()` method of that name,
+  whatever it returns (`main` #304). Tests missed it because the test's interface returned itself from `get()`, as the
+  mod's call has it; it now returns an implementation class, as Forge's does.
 - **malilib, MiniHUD, Tweakeroo and Litematica on Forge** (`main` #303): their Fabric builds reached their worlds with
   every smoke check passing on Forge 47 and 61 to 66, in two extended runs in a row on each Forge branch (41790201492
   and 41796106172, 41790205318 and 41796109577), which makes their run a gate there (CI-1). Decision: the
