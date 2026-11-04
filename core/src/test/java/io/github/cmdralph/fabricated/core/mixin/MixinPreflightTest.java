@@ -4048,6 +4048,99 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aHandlerIntoTheClientsConstructorIsSkippedWhereItThrowsBeforeTheEntrypoints() throws Exception {
+		// ENTRY-3: Sodium's @Inject into Minecraft's constructor, at the debug screen entries' construction, reads its config,
+		// which its client initializer loads. Fabric runs the entrypoints near the constructor's start; Forge loads mods part
+		// way through it, after that point. A handler into another of the client's methods runs after the entrypoints.
+		String minecraft = "net/minecraft/client/Minecraft";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, minecraft, null, "java/lang/Object", null);
+		MethodVisitor init = target.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		init.visitCode();
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKEVIRTUAL, minecraft, "debugEntries", "()V", false);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(0, 0);
+		init.visitEnd();
+		for (String name : new String[] {"debugEntries", "tick"}) {
+			MethodVisitor mv = target.visitMethod(Opcodes.ACC_PUBLIC, name, "()V", null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(minecraft, target.toByteArray())::get);
+
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Client", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(minecraft));
+		values.visitEnd();
+		m.visitEnd();
+		// {handler, method, point}
+		for (String[] handler : new String[][] {{"setFullscreen", "<init>", "INVOKE"}, {"onTick", "tick", "HEAD"}}) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler[0], "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, handler[1]);
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", handler[2]);
+			if (handler[2].equals("INVOKE")) at.visit("target", "L" + minecraft + ";debugEntries()V");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			// As Sodium's: SodiumClientMod.options(), which throws before its client initializer has run.
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "com/example/Mod", "options", "()Lcom/example/Options;", false);
+			mv.visitInsn(Opcodes.POP);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Client", cw.toByteArray()));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Client"));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Client.class");
+		assertNotNull(repaired, notes.toString());
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().severity() == PreflightFinding.Severity.INFO && notes.getFirst().message().contains("hooks into the client's constructor"),
+				notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		Map<String, MethodNode> byName = new HashMap<>();
+		node.methods.forEach(mn -> byName.put(mn.name, mn));
+		MethodNode wrapped = byName.get("setFullscreen");
+		assertEquals(1, wrapped.tryCatchBlocks.size());
+		AbstractInsnNode insn = wrapped.tryCatchBlocks.getFirst().handler;
+		while (insn.getOpcode() < 0) insn = insn.getNext();
+		assertEquals("com.example.mixin.Client.setFullscreen", ((LdcInsnNode) insn).cst);
+		insn = insn.getNext();
+		assertTrue(insn instanceof MethodInsnNode call && call.owner.equals("io/github/cmdralph/fabricated/loader/EarlyHandlers") && call.name.equals("failed"));
+		assertEquals(Opcodes.RETURN, insn.getNext().getOpcode());
+		assertTrue(byName.get("onTick").tryCatchBlocks.isEmpty(), "a handler into another of the client's methods runs after the entrypoints");
+		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				if (!name.equals("com.example.mixin.Client")) throw new ClassNotFoundException(name);
+				return defineClass(name, repaired, 0, repaired.length);
+			}
+		};
+		Class.forName("com.example.mixin.Client", true, loader);
+		mod.put("com/example/mixin/Client", repaired);
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
+	@Test
 	void anInjectionIntoAMethodNeoForgeDeprecatedIsPointedAtItsReplacement() throws Exception {
 		// DEPRECATED-1: FrozenLib hooks BoneMealItem.growCrop, which NeoForge's build deprecates for applyBonemeal, taking
 		// the player too, and keeps only to call that on a server level (a jump, so no plain overload).

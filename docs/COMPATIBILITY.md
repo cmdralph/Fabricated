@@ -413,12 +413,13 @@ events from NeoForge's entity events. All of them are server-side, as upstream.
 | `MOB_CONVERSION` | `LivingConversionEvent.Post` | NeoForge doesn't pass the conversion parameters; vanilla's usual ones are given |
 | `ServerPlayerEvents.COPY_FROM`, `AFTER_RESPAWN`, `JOIN`, `LEAVE` | `PlayerEvent.Clone`, `PlayerRespawnEvent`, `PlayerLoggedIn/OutEvent` | |
 | Level change (player and other entities) | `PlayerChangedDimensionEvent`; `EntityTravelToDimensionEvent` then the copy joining the destination | |
-| `ServerMobEffectEvents` and `FabricMobEffect` hooks | `MobEffectEvent.Applicable`, `Added`, `Remove`, `Expired` | `AFTER_REMOVE` runs as the server's next task, once the effect is gone; `isFromCommand()` is always false |
+| `ServerMobEffectEvents` and `FabricMobEffect` hooks | `MobEffectEvent.Applicable`, `Added`, `Remove`, `Expired` | `AFTER_REMOVE` runs as the server's next task, once the effect is gone. The context names the command an effect comes from, set where vanilla's command execution runs a command (upstream's hook is into Brigadier, which NeoForge loads without mixins; EFFECT-1); a command a mod runs through Brigadier's own `CommandDispatcher.execute` gives none |
 | `EntitySleepEvents.ALLOW_SLEEPING`, `STOP_SLEEPING` (players), `ALLOW_SETTING_SPAWN` | `CanPlayerSleepEvent`, `PlayerWakeUpEvent`, `PlayerSetSpawnEvent` | |
 | **Not fired**: `EntityElytraEvents`, the other sleep events | none | NeoForge has no matching hook |
 
 CI checks, on every version: damage and death events for a mob, in order; mob effect add and remove on 1.21.11 and
-26.x, and on 1.21.1, whose Fabric API (0.116) has no mob effect events, mob conversion instead.
+26.x, with an effect the effect command gives coming from that command and one from code from none (EFFECT-1), and on
+1.21.1, whose Fabric API (0.116) has no mob effect events, mob conversion instead.
 
 ### Native `fabric-object-builder-api-v1`
 

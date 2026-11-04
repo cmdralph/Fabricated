@@ -3,6 +3,83 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: The command an effect comes from in Fabric API's effect events (EFFECT-1), a Fabric hook into the client's constructor on Forge (ENTRY-3), and the difficult mods' first Forge runs (task 5)
+
+- **EFFECT-1** (P2; `main` #300, `forge` #298): Fabric API's effect events now tell their listeners which command gave
+  an effect, on NeoForge 21.11 and 26.x and on Forge 61 to 66. Upstream sets that in a hook into Brigadier, which both
+  platforms load without mixins. Decision: Fabricated sets it where vanilla's command execution runs each command,
+  which covers a player's, the console's, a function's and a command block's; a mod running a command through
+  Brigadier's own dispatcher still gets none, as `COMPATIBILITY.md` says. Verified in #300's run 41791646450 and #298's
+  run 41791151681; its row is in FINDINGS. Forge 47's Fabric API (0.92) has no effect events.
+- **The difficult mods on Forge** (`forge` #298, `forge-legacy` #299): extended runs now load the Fabric builds of
+  Sodium and Iris, malilib with MiniHUD, Tweakeroo and Litematica, Essential and Flashback on a Forge client, on
+  request. The first runs (41790201492, 41790205318): malilib's set reaches its world on all five Forge versions;
+  Essential's two launches on Forge 47; Flashback on Forge 61; Sodium on Forge 47 and 61. What stopped the others is
+  being fixed: Sodium as the Forge 64 to 66 clients start (ENTRY-3), Essential's second launch on Forge 61 to 66 (a
+  hook group pre-flight let in, GROUP-2), Flashback on Forge 64 to 66 (its mixin library, PLUGIN-1), and Iris on
+  Forge 47 (refused by pre-flight, IRIS-1). The compatibility plan still refuses them on Forge until a run gates them.
+- **ENTRY-3** (P0 for Sodium's Fabric build on Forge 64 to 66; `main` #301): Forge loads mods part way through the
+  client's constructor, where Fabric runs Fabric mods' entrypoints near its start, and Sodium's hook there read its
+  config before its initializer had loaded it. ENTRY-2's guard now also covers a Fabric mod's hook into the client's
+  constructor: one that throws before the entrypoints is skipped for that call, with a warning and a report line.
+  Sodium's first start's fullscreen default then stays as the game has it.
+- **CI:** under Sodium's renderer the Forge smoke runs check that renderer instead of Indigo's guard, and the test
+  mods' broken models throw only through that guard (Sodium's renderer has none, as on Fabric). Forge 47's run adds
+  Indium, which Fabric mods' block models need under Sodium 0.5 on Fabric too.
+
+## 2026-11-04: Fabric mods' built-in packs enabled by default on Forge 47 (CORPUS-104), CORPUS-104 and PROVIDER-13 verified, and CORPUS-88 and CORPUS-112 closed (task 5)
+
+- **Verified:** CORPUS-104 on Forge 61 to 66, in extended run 41782561336 (#291). The test mod's built-in pack
+  enabled by default is selected, and the corpus clients log no unreadable pack (Artifacts', Terralith's) and reach
+  their worlds. On Forge 47, in `forge-legacy`'s extended run 41782464279 (#293), with the same check. PROVIDER-13, in
+  `forge-legacy`'s extended runs 41778812320 and 41782464279: the Forge 47 server with Forgified Fabric API gets past
+  its data packs, reaches its world and saves it. Their rows move to FINDINGS.
+- **CORPUS-104 on Forge 47** (P2; forge-legacy #293): this corrects the last entry's "Forge 47 stays open". Fabric
+  API 0.92 does its work for these packs inside its hook at the options' load, with no method of its own to call.
+  Decision: the plan leaves that hook out, and the in-game mod does the hook's work in Forge 47's names once the
+  entrypoints have run, with the same file of offered packs, so a player's choices carry over. The Forge page says
+  so on both branches (forge #294, forge-legacy #295).
+- **CORPUS-88** (closed, not Fabricated's): read in Farmer's Delight's jar and REI's sources. Farmer's Delight's
+  decomposition display has a unit stream codec holding one instance, its plugin adds another, and neither class
+  defines `equals`. So REI's sync refuses it on every platform, Fabric included.
+- **CORPUS-112** (closed, not Fabricated's): the Forge 61 corpus client's debug log has 17 of REI's banner displays
+  that its display sync couldn't encode (extended runs 41782561336 and 41786931339). Read in the evidence step's
+  stack and REI's 1.21.11 sources: REI builds them from the client's registries, which it answers with on a client
+  even on the integrated server's thread, and the server encodes them with its own, which have no id for them.
+- **CI:** forge #294's evidence steps (their shell run locally under `bash -e`, with a log with the failure, one
+  without, and none) served CORPUS-88 and CORPUS-112 and were then removed, so forge's workflow is as it was.
+
+## 2026-11-04: Fabric mods' block model loaders and language files on Forge 47 (CORPUS-92, CORPUS-100, CORPUS-102), Fabric mods' built-in packs enabled by default on Forge 61 to 66 (CORPUS-104), and CORPUS-109 verified (task 5)
+
+- **Verified:** CORPUS-92 and CORPUS-102, in `forge-legacy`'s extended run 41776560917 (#289, main synced in). The
+  Forge 47 corpus client fails none of Supplementaries' or Create's block models. CORPUS-109, in the same run: the test
+  mod's recipe condition check passes on the corpus server and client. CORPUS-100, in extended run 41778812320 (#289
+  merged): the corpus server no longer skips owo-lib's language file, and the test mod's language check passes. Their
+  rows move to FINDINGS.
+- **CORPUS-92 and CORPUS-102** (P2; forge-legacy #289): Forge 47's own model reader looked a model's `loader` up among
+  Forge's geometry loaders only. Supplementaries' loaders (through Moonlight) and Porting Lib's hook into vanilla's
+  model reader instead, as on Fabric. Forge now reads a loader it has, and one in a Forge mod's namespace, as without
+  Fabricated, and leaves any other to the Fabric mods' hooks.
+- **CORPUS-100** (P3; forge-legacy #289): Forge 47's server read every mod's language file with its own copy of
+  vanilla's reader, which no Fabric mod hooks. owo-lib's hook lets its files hold rich text, so Forge's copy refused
+  owo's whole file. Forge's `LanguageHook` now hands each file to vanilla's reader, which does what Forge's copy did.
+- **CORPUS-104** (cause found; fix on `forge` in #291):
+  - Fabric API switches on a Fabric mod's built-in pack that is enabled by default the first time the game offers it.
+    It remembers which packs it offered, so a pack the player turns off stays off. It does this as the game's options
+    load (read in Fabric API's and Forge's sources).
+  - On Fabric the options load after the Fabric mods' entrypoints, which register those packs. Forge loads them before
+    its mod loading. So no such pack was switched on, the packs Fabric API remembered were forgotten, and it read the
+    mods' packs before their condition types were registered (the log lines on the Forge 61 and 64 corpus clients).
+  - Decision: on Forge 61 to 66 the plans leave that hook out, and the in-game mod runs Fabric API's own processing once
+    the entrypoints have run, before the game selects its packs. A test mod check covers it. This reuses upstream's
+    code, so its file of remembered packs keeps its format.
+  - Forge 47 stays open: Fabric API 0.92 does the same work inside the hook itself, so it needs another fix.
+- **CORPUS-93** (parked): Porting Lib's GUI utilities' tooltip hook reads its mixin's own field, which another of its
+  hooks sets, so LEAVE-3 can't leave it out alone. Treating such reads as stateless would be unsound. Forge's own code
+  gathers the tooltip components the module ports, and no corpus mod needs it.
+- **CORPUS-89** (open): the rule planned for it (a mod whose nested mod doesn't load is disabled with it) would disable
+  Farmer's Delight and Create through Porting Lib's GUI utilities (CORPUS-93), so it needs a narrower rule.
+
 ## 2026-11-04: Fabric API's registry entry added event on Forge's registries (CORPUS-108 and CORPUS-111), a translated mod's platform id in Fabric Loader's API (CORPUS-109), CORPUS-105, CORPUS-107 and CORPUS-110 verified, and CORPUS-106 closed (task 5)
 
 - **Verified:** CORPUS-105, CORPUS-107 and CORPUS-110, in `forge-legacy`'s extended runs 41766943119 and 41770251158
