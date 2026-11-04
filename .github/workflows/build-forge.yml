@@ -258,9 +258,8 @@ jobs:
           if-no-files-found: error
 
   # The difficult mods' Fabric builds (task 5, decision 3), each on a client with Fabric API, with "extended", beside the
-  # version's own job. The compatibility plan loads them on NeoForge and refuses them on Forge until their run here gates
-  # them (CI-1). The runs of malilib, Sodium and Essential are gates; Iris and Flashback load on request
-  # (loadUnsupported), to read what stops them, informational where no gate runs them.
+  # version's own job. The compatibility plan loads them on NeoForge and Forge, as each run here held on two extended runs
+  # in a row (CI-1): every run is a gate.
   difficult:
     name: Forge ${{ matrix.target.minecraft }}, the difficult mods' Fabric builds
     runs-on: ubuntu-latest
@@ -302,12 +301,11 @@ jobs:
       # What a run of these mods shows: the report's summary and what it left out, the mods' errors, and what stopped
       # the game, to its innermost cause.
       # A gate, as on NeoForge: every smoke check passes, with a mod whose initializer throws stopping the game, and the
-      # two load. Iris, which Forge 47 doesn't run yet, is loaded on request; its run here held twice in a row (CI-1).
+      # two load.
       - name: Sodium and Iris, with the renderer test mod (must pass)
         if: ${{ !cancelled() }}
         env:
           SMOKE_ON_ENTRYPOINT_FAILURE: ''
-          FABRICATED_MODS: '{ "iris": { "loadUnsupported": true } }'
         run: |
           dir="$RUNNER_TEMP/extra-sodium"
           mkdir -p "$dir"
@@ -365,11 +363,12 @@ jobs:
           ci/forge/difficult-summary.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" "essential|Essential" essential-container essential-loader essential
           ci/gate-mods.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" essential-container essential-loader essential || failed=1
           exit "$failed"
-      - name: Flashback
+      # A gate, as on NeoForge: every smoke check passes, with a mod whose initializer throws stopping the game, and
+      # Flashback loads.
+      - name: Flashback (must pass)
         if: ${{ !cancelled() }}
-        continue-on-error: true
         env:
-          FABRICATED_MODS: '{ "flashback": { "loadUnsupported": true } }'
+          SMOKE_ON_ENTRYPOINT_FAILURE: ''
         run: |
           dir="$RUNNER_TEMP/extra-flashback"
           mkdir -p "$dir"
@@ -379,3 +378,4 @@ jobs:
           status=0
           SMOKE_TIMEOUT=420 ci/forge/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-flashback" "$dir" > "$RUNNER_TEMP/client-flashback.out" 2>&1 || status=$?
           ci/forge/difficult-summary.sh "$RUNNER_TEMP/client-flashback" "$status" "Flashback" "flashback|Flashback" flashback
+          ci/gate-mods.sh "$RUNNER_TEMP/client-flashback" "$status" "Flashback" flashback
