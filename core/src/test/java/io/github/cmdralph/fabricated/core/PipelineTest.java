@@ -517,6 +517,8 @@ class PipelineTest {
 		assertEquals(good.translated().candidate().path(), good.translated().jar(), "26.x mods are not copied");
 
 		assertTrue(result.runtime().isModLoaded("good-mod"));
+		assertEquals("good-mod", result.runtime().getModContainer("good_mod").orElseThrow().getMetadata().getId(),
+				"a translated mod answers to its platform id too, which data packs' mod_loaded conditions name (CORPUS-109)");
 		assertTrue(result.runtime().isModLoaded("cloth_config"));
 		assertTrue(result.runtime().isModLoaded("fabric-api-base"));
 		assertFalse(result.runtime().isModLoaded("bad-mixin"));

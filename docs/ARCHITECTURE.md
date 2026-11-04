@@ -135,7 +135,7 @@ Fabricated/
 
 | Fabric field | NeoForge / Fabricated translation |
 |---|---|
-| `id` (`^[a-z][a-z0-9-_]{1,63}$`) | NeoForge id = `-` → `_` (NeoForge allows `^[a-z][a-z0-9_]{1,63}$`). The original Fabric id is kept as an **alias** so `FabricLoader.isModLoaded("cloth-config")` keeps working. An id that's invalid after normalisation is rejected with a message. |
+| `id` (`^[a-z][a-z0-9-_]{1,63}$`) | NeoForge id = `-` → `_` (NeoForge allows `^[a-z][a-z0-9_]{1,63}$`). The original Fabric id is kept as an **alias** so `FabricLoader.isModLoaded("cloth-config")` keeps working, and Fabric Loader's API answers to the NeoForge id too (`cloth_config`), which data packs' `mod_loaded` conditions name (CORPUS-109). An id that's invalid after normalisation is rejected with a message. |
 | `version` (SemVer or free-form) | `version` string unchanged. Comparison uses Fabric SemVer rules in `core`. |
 | `name`, `description`, `authors`, `contributors`, `contact`, `license`, `icon` | `displayName`, `description`, `authors`, `credits`, `displayURL`/`issueTrackerURL`, `license`, `logoFile` |
 | `environment` (`*`/`client`/`server`) | The mod is skipped (with an INFO note) when the dist doesn't match |

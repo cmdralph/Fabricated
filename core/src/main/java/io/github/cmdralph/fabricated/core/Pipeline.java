@@ -1115,6 +1115,9 @@ public final class Pipeline {
 			FabricatedConfig.ModOverride override = config.override(c.id());
 			List<String> extraIds = new ArrayList<>(c.metadata().getProvides());
 			extraIds.addAll(override.aliases());
+			// The id the platform's list of mods knows it by, which a data pack's mod_loaded condition names: Moonlight's
+			// Fabric build asks Fabric Loader for that condition's mod (CORPUS-109).
+			extraIds.add(t.neoForgeId());
 			runtime.addMod(container, extraIds);
 			Set<String> skipEntrypoints = new HashSet<>(override.skipEntrypoints());
 			for (AppliedPatch p : rounds.patches.getOrDefault(c.id(), List.of())) {
