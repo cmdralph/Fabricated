@@ -20,6 +20,7 @@
     "BuiltInRegistriesInvoker": [],
     "DefaultAttributeCopyMixin": ["fabric-object-builder-api-v1"],
     "FluidTypeMixin": [],
+    "ForgeRegistryEntryAddedMixin": ["fabric-registry-sync-v0"],
     "ForgePayloadEncodeMixin": ["fabric-networking-api-v1"],
     "GameDataFreezeMixin": [],
     "IngredientNetworkCodecMixin": [],
@@ -27,6 +28,7 @@
     "MappedRegistryPendingHoldersMixin": [],
     "NamespacedWrapperAliasMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperEarlyWriteMixin": [],
+    "NamespacedWrapperEntryAddedMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperPendingHoldersMixin": [],
     "ResourcePackLoaderKnownPackMixin": [],
     "TagFileRemoveMixin": ["fabric-tag-api-v1"]

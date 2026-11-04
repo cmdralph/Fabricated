@@ -106,7 +106,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   entries) with `fabric:load_conditions`, the server loads the ones whose conditions hold and not the others (Forge 61
   to 66, with Fabric API). Forge 61 decodes registry entries through its own conditional decoder, which the in-game mod
   hands Fabric's conditions to, and Forge 61's and 66's JSON data loaders hand the data to lambdas taking more values
-  than vanilla's, which pre-flight bridges upstream's hook into (LAMBDA-8).
+  than vanilla's, which pre-flight bridges upstream's hook into (LAMBDA-8). On Forge 47, a recipe's or an
+  advancement's own `conditions`, which Forge reads first, take a type Forge has no serializer of from Fabric API's
+  resource conditions, tested on the condition's JSON as Moonlight's bridge tests it on Fabric: Supplementaries' recipes
+  name their own condition there (CORPUS-97). Of the test mod's two recipes naming its Fabric condition, the server
+  loads the one whose condition holds, and neither fails to parse (with Fabric API).
 - **Biomes:** a feature `BiomeModifications.addFeature` adds to the plains is among their features (Forge 61 to 66, with
   Fabric API). Upstream rebuilds each generator's feature list, a field Forge retypes, which the in-game mod writes with
   Forge's type (CORPUS-33). On Forge 47 the module is native: Fabric's changes go through Forge's biome modifiers, and a
@@ -124,7 +128,10 @@ by the server runs (the colours, screens, key mappings and config screens by the
   Fabric API, client run).
 - **Commands:** a command registered through `CommandRegistrationCallback` is in the server's dispatcher (all five, with
   Fabric API, server and client). Fabric API's hook into `Commands`' constructor applies on Forge 61 to 66 at a point
-  pre-flight marks unsafe (CTOR-2), and on Forge 47, whose Mixin takes none, as a wrapper of the call (CTOR-4).
+  pre-flight marks unsafe (CTOR-2), and on Forge 47, whose Mixin takes none, at Fabricated's own injection point, which
+  finds what the hook's point finds and which Forge 47's Mixin takes anywhere after the constructor's `super()` call
+  (CORPUS-103, which replaced CTOR-4's wrapper of the call). So does a hook shifted past a construction there, as Dripstone
+  Fluid Lib's into `Minecraft`'s constructor is (the test mod's in `Commands`' sees the dispatcher just stored).
 - **Block breaking:** `PlayerBlockBreakEvents` fire as a player breaks a block, and a `BEFORE` refusal keeps the block
   (all five, with Fabric API, server and client). Forge's `destroyBlock` makes the calls upstream's hooks look for in a
   `removeBlock` of its own, so the in-game mod fires the events there (BREAK-1).
@@ -184,16 +191,38 @@ by the server runs (the colours, screens, key mappings and config screens by the
   run; CORPUS-75). Fabric API kept the alias in vanilla's registry class, whose lookups Forge's wrapper replaces:
   Waystones' world generation names its renamed waystones by their old names, and its data pack, and with it the
   server, didn't load on Forge 64 and 65.
+- **Registry entry added events:** Fabric API's `RegistryEntryAddedCallback` fires for the registries Forge manages,
+  once an entry new to one is in it, with its raw id, whether a Fabric mod registered it through vanilla's API or a Forge
+  mod through Forge's (all five, with Fabric API; server run; CORPUS-108). Upstream fires it from vanilla's registry
+  method, which Forge's wrapper of those registries replaces, so it never fired for blocks, items, entity types and the
+  rest. Architectury gives a spawn egg its entity type from a listener on that event: Artifacts' egg kept none, and EMI's,
+  JEI's and REI's listings of its creative tab failed (EMI's own plugin with them). Where Forgified Fabric API provides
+  the module, its own copy fires the event.
 - **Recipe slots on the network (Forge 61 to 66):** an empty optional ingredient, a shaped recipe's empty slot, is sent
-  as vanilla sends it, an empty item list, and read back as empty (server run; CORPUS-83). Forge's patch of vanilla's codec threw writing it, so with Fabric API, whose recipe sync sends the
-  recipes Fabric mods' clients need, a shaped recipe with an empty slot dropped the player's connection to the world
-  they joined (seen on the Forge 65 corpus client). A Fabric mod's own ingredient, a subclass of vanilla's without
+  as vanilla sends it, an empty item list, and read back as empty (server run; CORPUS-83). Forge's patch of vanilla's
+  codec threw writing it, so with Fabric API, whose recipe sync sends the recipes Fabric mods' clients need, a shaped
+  recipe with an empty slot dropped the player's connection to the world they joined (seen on the Forge 65 corpus
+  client). A Fabric mod's own ingredient, a subclass of vanilla's without
   Forge's `serializer()` (Fabric API's custom ingredients are one), goes in vanilla's form after a marker of its own,
   through the codec Fabric API wraps with its custom form, so one of Fabric API's goes as Fabric API sends it (server
   run, with Fabric API for its custom ingredients; CORPUS-85). Forge's codec threw writing it, and the Forge 65 and 66
   corpus clients waited for their player until the run's timeout. In a recipe slot, Forge's custom ingredients are
   read by Forge's codec, as Fabric API's wrapper took the -1 they start with for its own. Only the network form
   changes: a Fabric mod's subclass other than Fabric API's still can't be written as JSON (no mod seen doing it).
+- **Custom ingredients and crafting size (Forge 47):** a recipe ingredient with Fabric API's `fabric:type` is that
+  custom ingredient, as Forge reads every ingredient itself before Fabric API's hook can; inside an array it joins
+  Forge's compound ingredient, as Forge's own custom ingredients do (CORPUS-99). On the network, Forge's custom
+  ingredients, whose -1 marker Fabric API's reader took for its own, are read by Forge (NET-11). A size given to Porting
+  Lib's `ShapedRecipeUtil.setCraftingSize` is given to Forge's too, so Create's 5 by 5 mechanical crafting recipes
+  load. The test mod reads a `fabric:any` alone and in an array as a recipe reads an ingredient, and both come back from
+  the network as they went (with Fabric API, server run).
+- **Drop capture (Forge 47):** a dying entity's drops stay in Forge's capture after Forge's `LivingDropsEvent` (none
+  stay where a listener cancelled it) until every mod's hook at the return of `dropAllDeathLoot` has run, and
+  Fabricated adds what is still captured to the level after them, as Forge's method did. Porting Lib ports that
+  capture to Fabric under Forge's names, so on Forge its hook there takes them, fires its own drops event and adds them;
+  Forge's method used to take them first, and Porting Lib's hook threw as any mob died (CORPUS-105). The test mod's own
+  hook there stands in for Porting Lib's: a pig it kills at the first tick leaves it its drops, which reach the level
+  (server run).
 - **Storages:** a Fabric mod's item and fluid storages are the `ITEM_HANDLER` and `FLUID_HANDLER` capabilities of its
   block entity, and a Forge mod's `ItemStackHandler` and `FluidTank` are Fabric's storages (all five, with Fabric API,
   server and client). A Forge handler only simulates until Fabric's outermost transaction commits, so an aborted one
@@ -300,12 +329,15 @@ What else differs on Forge, for Fabric mods in general:
   from the method with its frames expanded, which Mixin counts as with its `CLASSREADER_EXPAND_FRAMES` option, and logs
   the method. Every other method, and every class no Fabric mod's mixin targets, stays as Mixin recorded it. The test
   mod takes a local so (all five, server run; Forge 47's Mixin counts it right without the repair).
-- **Fields Forge 47 retyped:** a Fabric mod's accessor of a field Forge 47 gave another type (a brewing mix's `from` and
-  `to`, holders there; the particle engine's providers, kept by id there) invokes a getter the in-game mod adds, which
-  gives vanilla's type: the holder's value, and a view by raw id of Forge's map (CORPUS-37: Porting Lib's accessors,
-  and with them its extensions and Farmer's Delight's entrypoint, failed pre-flight). The test mod reads a mix's
-  potions so on the server and the providers on the client. An accessor of another retyped field still fails
-  pre-flight.
+- **Fields Forge 47 retyped or replaced:** a Fabric mod's accessor of a field Forge 47 gave another type (a brewing
+  mix's `from` and `to`, holders there; the particle engine's providers, kept by id there) or replaced (a mob bucket's
+  entity type, a supplier there) invokes a getter the in-game mod adds, which gives vanilla's type: the holder's value,
+  a view by raw id of Forge's map, and the bucket's `getFishType` (CORPUS-37: Porting Lib's accessors, and with them its
+  extensions and Farmer's Delight's entrypoint, failed pre-flight; CORPUS-94: Supplementaries' bucket accessor stopped
+  the corpus server's data reload). A mod's own read of such a field by vanilla's type calls the getter too
+  (CORPUS-107: REI's default client plugin reads a mix's `from` itself, and failed before its later displays). The test
+  mod reads a mix's potions and the pufferfish bucket's type so on the server, the mix's `from` by the field itself
+  too, and the providers on the client. An accessor or read of another such field still fails.
 - **Forge Config API Port** on Forge 61 to 66: its Fabric build loads, with its own copies of NeoForge's config
   classes, which Forge lacks (REPL-1, PLAT-5). On Forge 47 its version for 1.20.1 copies Forge's own config system,
   packages included, so its copies were left out for Forge's and its registry failed to link (Ponder's main
@@ -367,8 +399,7 @@ instead. Unless a task is named, nothing is planned for them yet.
   per-stack attribute modifiers and `isSuitableFor`, where Forge's own per-stack hooks apply.
 - **Content registries.** On Forge 64 to 66, an `EntityFluidInteractionRegistry` behaviour: entities swim, travel,
   sprint and float a boat in a fluid as its Forge fluid type lets them, which for a Fabric fluid is Fabricated's,
-  treating it as water when it is tagged `minecraft:water` and as air otherwise. On Forge 47, the oxidizable blocks
-  registry, an interface mixin Forge 47's Mixin doesn't apply.
+  treating it as water when it is tagged `minecraft:water` and as air otherwise.
 - **Lifecycle events.** `BLOCK_ENTITY_UNLOAD` doesn't fire for a block entity a chunk drops as it reads it again (Forge
   61 to 66, server; Forge 47, client); the other block entity and chunk events fire.
 - **Object builder.** A Fabric wood type's sign and hanging sign materials (Forge 61 and 64) and its hanging sign edit
@@ -379,8 +410,10 @@ instead. Unless a task is named, nothing is planned for them yet.
   by id, which Forge does its own way; on Forge 47, upgrading a world from before 1.18 with other mods' structures.
 - **Fluid rendering.** A Fabric fluid render handler's overlay sprite on the sides of a fluid beside glass or leaves;
   Forge's own overlay drawing stays (all five).
-- **Forge 47's interface mixins.** Its Mixin (0.8.5) applies no injector in an interface mixin, so beside the recipe
-  remainder and oxidizable blocks above, `TooltipComponentCallback` (rendering-v1) is lost there.
+- **Forge 47's interface mixins.** Its Mixin (0.8.5) applies no injector in an interface mixin. Fabricated applies an
+  `@Inject` at `HEAD`, `RETURN` or `TAIL` there itself (INTERFACE-1): the oxidizable blocks registry's (the test mod's
+  pair is in vanilla's oxidation map, server run) and `TooltipComponentCallback`'s (rendering-v1, its shape in core's
+  tests). Other injectors in an interface mixin, such as the recipe remainder's above, are lost there.
 - **Sound (Forge 47).** A Fabric sound instance's own audio stream (`FabricSoundInstance.getAudioStream`).
 - **Data generation only.** Removing entries through a Fabric tag appender, Fabric's key sort orders in generated files,
   and, by version, the advancement builder's Fabric interface and vanilla's block loot provider limited to vanilla's

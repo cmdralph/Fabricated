@@ -42,7 +42,7 @@ import net.minecraft.world.item.Items;
  * and damage ({@link ForgeDamageTest}) events, storages reaching Forge's capabilities ({@link ForgeTransferTest}), and the
  * resource conditions module's load conditions in data files and registry entries ({@link ForgeConditionsTest}), the
  * biome module's feature modifications ({@link ForgeBiomeTest}), and the registry sync module's aliases
- * ({@link ForgeRegistryAliasTest}).
+ * ({@link ForgeRegistryAliasTest}) and entry added events ({@link ForgeRegistryEntryAddedTest}).
  * Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
@@ -128,6 +128,11 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 				ForgeRegistryAliasTest.register();
 			} catch (RuntimeException | LinkageError e) {
 				LOGGER.warn("FABRICATED-FORGE-TEST registry aliases not added", e);
+			}
+			try {
+				ForgeRegistryEntryAddedTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.error("FABRICATED-FORGE-TEST registry entry added events FAILED", e);
 			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
