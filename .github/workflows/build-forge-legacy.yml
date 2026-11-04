@@ -216,13 +216,29 @@ jobs:
           cp "$RUNNER_TEMP"/ffapi/*.jar "$RUNNER_TEMP/with-ffapi/" 2>/dev/null || { echo "Forgified Fabric API wasn't downloaded"; exit 0; }
           ci/forge-legacy/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-ffapi" "$RUNNER_TEMP/with-ffapi" \
               > "$RUNNER_TEMP/server-ffapi.out" 2>&1 && echo "== the server with Forgified Fabric API passed" || echo "== the server with Forgified Fabric API failed"
-          grep -E '^(PASS|FAIL|NOT SEEN):' "$RUNNER_TEMP/server-ffapi.out" | grep -v '^PASS' | head -n 60 || true
+          grep -E '^(PASS|FAIL|SKIP|NOT SEEN):' "$RUNNER_TEMP/server-ffapi.out" | grep -v '^PASS' | head -n 60 || true
           # What the test mod's checks met where they didn't pass: the provider's modules answer some differently.
           echo "== The test mod's other lines"
           grep -h 'FABRICATED-FORGE-TEST' "$RUNNER_TEMP/server-ffapi/logs/latest.log" 2>/dev/null | grep -v ' OK$\| OK (' | head -n 30 | cut -c1-600 || true
           echo "== Fabric API providers"
           sed -n '/^== Fabric API providers/,/^== /p' "$RUNNER_TEMP/server-ffapi/logs/fabric-bridge-report.txt" 2>/dev/null | head -n 40 || true
           ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/server-ffapi" "$RUNNER_TEMP/server-ffapi/server.out" "server with Forgified Fabric API" || true
+      # The client with Forgified Fabric API for 1.20.1 beside Fabricated and the test mod (task 5): it must reach its world;
+      # the test mod's checks of the modules it provides are evidence, as those modules are then its own, as on NeoForge.
+      # Informational, with "extended".
+      - name: Client with Forgified Fabric API (informational)
+        if: ${{ env.EXTENDED == 'true' && !cancelled() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls "$RUNNER_TEMP"/with-ffapi/*.jar > /dev/null 2>&1 || { echo "Forgified Fabric API wasn't downloaded"; exit 0; }
+          ci/forge-legacy/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-ffapi" "$RUNNER_TEMP/with-ffapi" \
+              > "$RUNNER_TEMP/client-ffapi.out" 2>&1 && echo "== the client with Forgified Fabric API passed" || echo "== the client with Forgified Fabric API failed"
+          grep -E '^(PASS|FAIL|SKIP|NOT SEEN):' "$RUNNER_TEMP/client-ffapi.out" | grep -v '^PASS' | head -n 60 || true
+          echo "== The test mod's other lines"
+          grep -h 'FABRICATED-FORGE-TEST' "$RUNNER_TEMP/client-ffapi/run/logs/latest.log" 2>/dev/null | grep -v ' OK$\| OK (' | head -n 30 | cut -c1-600 || true
+          ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/client-ffapi/run" "$RUNNER_TEMP/client-ffapi/client.out" "client with Forgified Fabric API" || true
       # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
       # SHA-512) with Fabric API, as build.yml runs them on NeoForge: which load on Forge, which are disabled and why.
       # Informational, with "extended" or on a release tag; a mod whose initializer throws is disabled, not fatal.

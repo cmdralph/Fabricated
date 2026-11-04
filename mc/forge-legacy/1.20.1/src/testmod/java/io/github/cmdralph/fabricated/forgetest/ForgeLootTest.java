@@ -33,8 +33,10 @@ import net.minecraft.class_79;
  * them (LAMBDA-6). Dirt's table is also named as MODIFY's builder builds it, as Porting Lib Loot names every table
  * (its MODIFY listener and its builder mixin, here {@code LootTableBuilderNamingMixin}), and must load with that name,
  * where Forge refuses a second name (CORPUS-90); where Porting Lib Loot is installed (the corpus), it names the table
- * itself. Fabric API's loot classes and the game's are named as a Fabric mod for
- * 1.20.1 names them (the stand-ins in src/testmodstubs).
+ * itself. Where another mod provides fabric-loot-api-v2 (Forgified Fabric API), the sources its events give are that
+ * mod's answer, logged as such, and the rest, fabric-loot-tables-v1 on its events included, must still hold
+ * (PROVIDER-14). Fabric API's loot classes and the game's are named as a Fabric mod for 1.20.1 names them (the
+ * stand-ins in src/testmodstubs).
  */
 public final class ForgeLootTest {
 	/** What {@code LootTableBuilderNamingMixin} adds to a loot table's builder: the name to give the table it builds. */
@@ -50,12 +52,14 @@ public final class ForgeLootTest {
 
 	/** Porting Lib Loot names every table as it is built (the corpus). */
 	private static final boolean PORTING_LIB_LOOT = FabricLoader.getInstance().isModLoaded("porting_lib_loot");
+	/** Whether another mod's loot module (Forgified Fabric API's) fires the events, in place of Fabricated's. */
+	private static final boolean PROVIDED = Fabricated.get().flatMap(api -> api.fabricApiModule("fabric-loot-api-v2"))
+			.map(loot -> loot.status() == FabricApiModule.Status.PROVIDED_BY_MOD).orElse(false);
 	/**
 	 * Whether the test mod names dirt's table as Porting Lib Loot would: not where Porting Lib Loot does, nor where another
-	 * mod's loot module fires the events (Forgified Fabric API's, whose hook names the tables it rebuilds itself).
+	 * mod's loot module fires the events (Forgified Fabric API's hook names the tables it rebuilds itself).
 	 */
-	private static final boolean NAMES_DIRT = !PORTING_LIB_LOOT && Fabricated.get().flatMap(api -> api.fabricApiModule("fabric-loot-api-v2"))
-			.map(loot -> loot.status() != FabricApiModule.Status.PROVIDED_BY_MOD).orElse(true);
+	private static final boolean NAMES_DIRT = !PORTING_LIB_LOOT && !PROVIDED;
 
 	private static int dirtPools = -1;
 	private static LootTableSource dirtReplaceSource;
@@ -125,11 +129,13 @@ public final class ForgeLootTest {
 
 	private static void check(class_60 lootManager) {
 		List<String> failed = new ArrayList<>();
+		// The sources are fabric-loot-api-v2's answer: another mod's module gives its own, kept apart from the failures.
+		List<String> sources = PROVIDED ? new ArrayList<>() : failed;
 		if (dirtReplaceSource != LootTableSource.VANILLA || dirtModifySource != LootTableSource.VANILLA) {
-			failed.add("dirt's source " + dirtReplaceSource + " in REPLACE, " + dirtModifySource + " in MODIFY");
+			sources.add("dirt's source " + dirtReplaceSource + " in REPLACE, " + dirtModifySource + " in MODIFY");
 		}
 		if (ownReplaceSource != LootTableSource.MOD || ownModifySource != LootTableSource.REPLACED) {
-			failed.add("the test mod's table's source " + ownReplaceSource + " in REPLACE, " + ownModifySource + " in MODIFY");
+			sources.add("the test mod's table's source " + ownReplaceSource + " in REPLACE, " + ownModifySource + " in MODIFY");
 		}
 		class_52 dirt = lootManager.getLootTable(DIRT);
 		if ((NAMES_DIRT || PORTING_LIB_LOOT) && !DIRT.equals(dirt.getLootTableId())) failed.add("dirt's table named " + dirt.getLootTableId());
@@ -144,10 +150,13 @@ public final class ForgeLootTest {
 		}
 		int replacedPools = ((FabricLootSupplier) lootManager.getLootTable(REPLACED)).getPools().size();
 		if (replacedPools != 0) failed.add("the replaced table's pools " + replacedPools);
-		if (failed.isEmpty()) {
+		if (!failed.isEmpty()) {
+			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST loot: not in the tables the game keeps: {}", failed);
+		} else if (sources.isEmpty()) {
 			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST loot OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST loot: not in the tables the game keeps: {}", failed);
+			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST loot sources SKIPPED: fabric-loot-api-v2 is another mod's, which answers {} as its source reads;"
+					+ " the pools and the replaced table OK (PROVIDER-14)", sources);
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-resource-conditions-api-v1")) {
 			if (conditionedLoaded) {
