@@ -52,6 +52,26 @@ final class PreflightAsm {
 		return Annotations.find(handler, MixinNames.GROUP) != null;
 	}
 
+	/**
+	 * The name of the injector group {@code handler} is in, null when it is in none. Mixin puts a {@code @Group} without
+	 * a name in the default group, {@code default} unless the mixin's config names another.
+	 */
+	static String group(MethodNode handler) {
+		AnnotationNode group = Annotations.find(handler, MixinNames.GROUP);
+		if (group == null) return null;
+		return Annotations.value(group, "name") instanceof String name && !name.isEmpty() ? name : "default";
+	}
+
+	/**
+	 * Whether {@code handler} is one of the alternatives of an injector group: another of {@code mixin}'s methods is in
+	 * its group. Mixin checks each mixin's groups on their own (per target), so a group's only member is required as an
+	 * injector alone is: Mixin needs at least one injection of every group (GROUP-2).
+	 */
+	static boolean hasAlternatives(ClassNode mixin, MethodNode handler) {
+		String name = group(handler);
+		return name != null && mixin.methods.stream().anyMatch(m -> m != handler && name.equals(group(m)));
+	}
+
 	static boolean isInjector(String desc) {
 		return desc.startsWith("Lorg/spongepowered/asm/mixin/injection/") && !desc.equals(MixinNames.AT) && !desc.equals(MixinNames.GROUP)
 				&& !desc.startsWith("Lorg/spongepowered/asm/mixin/injection/Slice") && !desc.startsWith("Lorg/spongepowered/asm/mixin/injection/Desc")

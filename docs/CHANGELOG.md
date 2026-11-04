@@ -3,6 +3,35 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: A Fabric hook into the window's creation on Forge 66 (ENTRY-4), Iris's shader hook on Forge 47 (IRIS-1, in part), Essential's key hooks on Forge 61 to 66 (GROUP-2), and ENTRY-3 verified (task 5)
+
+- **Verified:** ENTRY-3 on Forge 64 and 65, in `forge` #298's extended run 41796106172: Sodium and Iris reach their
+  worlds with the renderer test mod there and on Forge 61, under Sodium's renderer. Its row moves to FINDINGS. In the
+  same run malilib's set reaches its world on Forge 61 to 66, and Flashback on Forge 61. Essential's second launch on
+  Forge 61 to 66 (GROUP-2) and Flashback on Forge 64 to 66 (PLUGIN-1) stop as before; the step printing their evidence
+  failed on jar names with spaces, which the next `forge` change fixes.
+- **ENTRY-4** (P0 for Sodium's Fabric build on Forge 66; `main` #302): Forge 66's client creates its window in its
+  constructor before it loads mods, through 26.3's graphics backend; Fabric creates it after Fabric mods' entrypoints.
+  Sodium 0.9.3's hook there reads its config to set the window's context hints, and threw. The guard of ENTRY-2 and
+  ENTRY-3 now also covers a Fabric mod's hook into code creating the client's window, recognised by its call to GLFW's
+  or SDL's window creation, so it needs no list of the game's classes per version. Decision: Sodium's context hint is
+  then left out on that start, as Sodium itself leaves it out on a platform with an early loading screen.
+- **IRIS-1, the shader hook** (P1 for Iris's Fabric build on Forge 47; `main` #302): Forge 47 keeps `ShaderInstance`'s
+  vanilla constructor only to call one taking a `ResourceLocation`, and moves its code there. So Iris's hook at the
+  shader's JSON parse has its point in the other constructor, while its handler takes the vanilla one's parameters.
+  Decision: pre-flight points the hook at that constructor through a bridge taking its parameters, and gives the mixin
+  a field for the vanilla constructor's arguments. Fabricated's Mixin extension on Forge has the vanilla constructor
+  store them there before it calls the other one, and clear the field once that returns. The bridge calls Iris's
+  handler with them, and doesn't when the field is empty (a construction through the other constructor alone, which
+  Fabric doesn't have). No state is shared between threads or instances, and none outlives the construction. Forge's
+  half comes with the sync into `forge-legacy`; Iris's redirect in the particle engine is still open.
+- **GROUP-2** (P0 for Essential's Fabric build on Forge 61 to 66, its second launch; `main` #302): Essential's key and
+  character hooks are each the only member of a group declaring no minimum, at calls Forge's keyboard handler makes
+  inside its own hooks. Mixin needs at least one injection of every group, but pre-flight checked only groups declaring
+  a minimum, and repaired no group's member, so Mixin stopped the game. A group's only member is now required and
+  repaired as an injector alone is: these two move to the hooks' calls. Members of a group with others are still left
+  to their group, as each is the mod's alternative for code that differs.
+
 ## 2026-11-04: The command an effect comes from in Fabric API's effect events (EFFECT-1), a Fabric hook into the client's constructor on Forge (ENTRY-3), and the difficult mods' first Forge runs (task 5)
 
 - **EFFECT-1** (P2; `main` #300, `forge` #298): Fabric API's effect events now tell their listeners which command gave

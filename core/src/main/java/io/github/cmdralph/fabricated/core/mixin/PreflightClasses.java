@@ -70,6 +70,12 @@ final class PreflightClasses {
 	 */
 	final boolean seesMixinFields;
 
+	/**
+	 * Whether the platform has the constructors a translated mixin's field names hand their arguments to the one they
+	 * call, once Mixin has applied the class's mixins ({@link ConstructorHandoffs}, IRIS-1): Forge's does.
+	 */
+	final boolean handsOffConstructorArguments;
+
 	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
 	final String loader;
 
@@ -102,7 +108,8 @@ final class PreflightClasses {
 	PreflightClasses(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins, boolean readsLocalTypes,
-			boolean seesMixinFields) {
+			boolean seesMixinFields, boolean handsOffConstructorArguments) {
+		this.handsOffConstructorArguments = handsOffConstructorArguments;
 		this.enumMixins = enumMixins;
 		this.readsLocalTypes = readsLocalTypes;
 		this.seesMixinFields = seesMixinFields;
