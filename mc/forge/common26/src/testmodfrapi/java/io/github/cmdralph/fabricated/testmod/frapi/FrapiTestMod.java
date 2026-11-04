@@ -38,8 +38,9 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
  * model has a Fabric model as its part, and above them the two blocks whose Fabric models throw. Then, until the game
  * stops, it keeps a copy of the first block falling beside it (drawn as a moving block) and the first block breaking
  * (drawn with the breaking overlay). Behind the first block goes a block whose Fabric model wraps one that throws, as
- * Continuity's models wrap others; it is put back every other renewal, so its chunk section is meshed again after the
- * wrapped model threw.
+ * Continuity's models wrap others, with a second one beside it in the same chunk section: the section's first mesh
+ * calls the wrapper again after the wrapped model threw, whatever the server's tick rate. The first is also put back
+ * every other renewal, so its section is meshed again.
  *
  * <p>It also gives the joining player an item whose model is a Fabric model, held in their main hand (drawn in hand and
  * in the hotbar), and puts one in an item frame on the first block and one on the ground beside the frame, which no
@@ -98,11 +99,16 @@ public final class FrapiTestMod implements ModInitializer {
 			level.setBlockAndUpdate(nested.above(), brokenNestedBlock.defaultBlockState());
 			wrapped = front.relative(facing);
 			level.setBlockAndUpdate(wrapped, wrappedBlock.defaultBlockState());
+			// Its twin, in the same chunk section: whichever the section's mesh draws first throws, and the other is drawn
+			// by the wrapper after that in the same mesh, not only once a renewal has put the first back (on a slow server,
+			// none had before the client quit: #268's run on Forge 26.2).
+			BlockPos twin = (wrapped.getY() & 15) == 15 ? wrapped.below() : wrapped.above();
+			level.setBlockAndUpdate(twin, wrappedBlock.defaultBlockState());
 			breaking = front;
 			landing = front.relative(facing.getCounterClockWise());
 			level.setBlockAndUpdate(landing.below(), Blocks.STONE.defaultBlockState());
 			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {}, broken model blocks above them, wrapped broken model"
-					+ " block at {})", front, nested, wrapped);
+					+ " blocks at {} and {})", front, nested, wrapped, twin);
 			placeItems(level, listener.player, item, front, facing);
 			summonMinecarts(server, (ServerLevel) level, nested.relative(facing.getClockWise()));
 			if (FabricLoader.getInstance().isModLoaded("continuity")) placeGlass(level, front.above(2), facing.getClockWise());

@@ -212,7 +212,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 			}
 
 			// Fabric mixins may target the classes of Fabricated's Fabric API and of the Forge mods (an addon's mod).
-			ForgeMods.Found forgeMods = ForgeMods.of(loadedMods, !fabricJars.isEmpty(), fabricApi);
+			ForgeMods.Found forgeMods = ForgeMods.of(loadedMods, !fabricJars.isEmpty(), client, fabricApi);
 
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");

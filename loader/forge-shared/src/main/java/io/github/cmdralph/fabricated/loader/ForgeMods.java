@@ -26,6 +26,7 @@ import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
+import io.github.cmdralph.fabricated.core.mixin.NativeModMixins;
 import io.github.cmdralph.fabricated.core.resolve.NativeModules;
 import io.github.cmdralph.fabricated.core.resolve.NestedNeoForgeJars;
 import io.github.cmdralph.fabricated.core.translate.ModsTomlWriter;
@@ -46,7 +47,8 @@ final class ForgeMods {
 
 	/**
 	 * @param mods            the mods
-	 * @param classes         their jars' classes, which Fabric mixins may target
+	 * @param classes         their jars' classes, which Fabric mixins may target, with the mixins their manifests list,
+	 *                        which Forge's Mixin applies (CORPUS-87)
 	 * @param providers       the packages of each mod file and nested mod jar (only read when the mods nested in the files
 	 *                        are), with the first mod it declares: what other mods' packages Fabricated's own mustn't clash
 	 *                        with, and which native module a mod bundles (the provider policy, {@link NativeModules})
@@ -60,10 +62,11 @@ final class ForgeMods {
 	}
 
 	/**
-	 * @param nested whether to read the mods nested in the files too, and the classes of all (only Fabric mods need them)
-	 * @param first  jars whose classes come before the mods' (Fabricated's own Fabric API)
+	 * @param nested     whether to read the mods nested in the files too, and the classes of all (only Fabric mods need them)
+	 * @param clientSide whether the game is a client, for the mixins the mods' configs list for it
+	 * @param first      jars whose classes come before the mods' (Fabricated's own Fabric API)
 	 */
-	static Found of(Iterable<IModFile> files, boolean nested, List<InstalledClasses.Jar> first) {
+	static Found of(Iterable<IModFile> files, boolean nested, boolean clientSide, List<InstalledClasses.Jar> first) {
 		List<Pipeline.NeoForgeMod> mods = new ArrayList<>();
 		List<InstalledClasses.Jar> jars = new ArrayList<>(first);
 		List<NativeModules.Provider> providers = new ArrayList<>();
@@ -80,7 +83,8 @@ final class ForgeMods {
 			mods.addAll(declared);
 			if (!infos.isEmpty() && infos.stream().noneMatch(mod -> GAME.contains(mod.getModId()) || mod.getModId().equals(ModIds.FABRICATED))) {
 				SecureJar jar = file.getSecureJar();
-				jars.add(new InstalledClasses.Jar(infos.get(0).getDisplayName(), name -> contains(jar, name + ".class"), name -> read(jar, name + ".class")));
+				jars.add(new InstalledClasses.Jar(infos.get(0).getDisplayName(), name -> contains(jar, name + ".class"), name -> read(jar, name + ".class"),
+						() -> NativeModMixins.manifestMixins(entry -> readText(jar, entry), clientSide)));
 				if (nested && !declared.isEmpty()) providers.add(new NativeModules.Provider(declared.get(0), file.getFileName(), internal(jar.getPackages())));
 			}
 		}
@@ -99,7 +103,9 @@ final class ForgeMods {
 					Set<String> classes = toml.classes();
 					providers.add(new NativeModules.Provider(declared.get(0), toml.origin(), packagesOf(classes)));
 					jars.add(new InstalledClasses.Jar(declared.get(0).displayName(), classes::contains,
-							name -> NestedNeoForgeJars.readClass(path, toml.chain(), name, ArchiveLimits.DEFAULTS)));
+							name -> NestedNeoForgeJars.readClass(path, toml.chain(), name, ArchiveLimits.DEFAULTS),
+							() -> NativeModMixins.manifestMixins(entry -> NestedNeoForgeJars.readFile(path, toml.chain(), entry, ArchiveLimits.DEFAULTS),
+									clientSide)));
 				}
 			} catch (IOException | JsonException | ParsingException e) {
 				// Forge reports a broken nested jar itself; Fabric mods just don't see its mods.
@@ -131,8 +137,8 @@ final class ForgeMods {
 	private static Map<String, List<String>> provides(IModFile file, TomlParser parser) {
 		Map<String, List<String>> provides = new LinkedHashMap<>();
 		try {
-			byte[] toml = read(file.getSecureJar(), ModsTomlWriter.FORGE_PATH);
-			if (toml == null || toml.length > NestedNeoForgeJars.MAX_TEXT_BYTES) return provides;
+			byte[] toml = readText(file.getSecureJar(), ModsTomlWriter.FORGE_PATH);
+			if (toml == null) return provides;
 			if (!(parser.parse(new String(toml, StandardCharsets.UTF_8)).get("mods") instanceof List<?> declared)) return provides;
 			for (Object entry : declared) {
 				if (entry instanceof UnmodifiableConfig mod && mod.get("modId") instanceof String id) provides.put(id, strings(mod.get("provides")));
@@ -177,6 +183,16 @@ final class ForgeMods {
 		if (stream.isEmpty()) return null;
 		try (InputStream in = stream.get()) {
 			return in.readAllBytes();
+		}
+	}
+
+	/** A text file of a mod file's jar, or null when it has none or it is over {@link NestedNeoForgeJars#MAX_TEXT_BYTES}. */
+	private static byte[] readText(SecureJar jar, String path) throws IOException {
+		Optional<InputStream> stream = jar.moduleDataProvider().open(path);
+		if (stream.isEmpty()) return null;
+		try (InputStream in = stream.get()) {
+			byte[] data = in.readNBytes(NestedNeoForgeJars.MAX_TEXT_BYTES + 1);
+			return data.length > NestedNeoForgeJars.MAX_TEXT_BYTES ? null : data;
 		}
 	}
 
