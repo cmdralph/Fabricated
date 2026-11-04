@@ -152,6 +152,11 @@ public final class InterfaceInjects {
 		return null;
 	}
 
+	/** Whether the method is a handler {@link #mark} made, which Fabricated applies once Mixin has merged it. */
+	public static boolean marked(MethodNode method) {
+		return method.invisibleAnnotations != null && Annotations.find(method.invisibleAnnotations, MARKER) != null;
+	}
+
 	/**
 	 * Applies the handlers {@link #mark} made that Mixin merged into a class, once the class's mixins have applied: each
 	 * made private again and called where its injector would have Mixin call it. All the injection points are found
