@@ -41,6 +41,11 @@
       "skipMixins": ["fabric-particles-v1.client.mixins.json:TerrainParticleMixin#removeUntintableParticles"],
       "reason": "Forge 61 replaced the grass check in TerrainParticle's constructor, which upstream's block dust tint hook looks for, with its block extensions' areBreakingParticlesTinted, so pre-flight left the hook out and ParticleRenderEvents.ALLOW_BLOCK_DUST_TINT never ran: Fabricated's in-game mod asks the event where Forge decides the tint instead (PART-2)."
     },
+    "fabric-renderer-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-renderer-api-v1.mixins.json:client.block.particle.ScreenEffectRendererMixin"],
+      "reason": "Forge 61's screen effect finds the block the player's view is inside in a method of its own (getOverlayBlock), which returns its position too, and no longer calls vanilla's lookup, where upstream's hook reads the position: pre-flight left the mixin out, and the effect showed a Fabric model's particle sprite without the level. Fabricated's in-game mod gives the level-aware one for the block Forge's lookup found (PART-4). Forge 61 also sets a block's breaking particle's sprite again after upstream's hook gave it (TerrainParticle.updateSprite), from the model with its model data: the in-game mod asks Fabric's level-aware sprite there. A model whose class gives its own sprite for Forge's model data, and that neither is a Fabric model nor holds one, keeps Forge's."
+    },
     "fabric-rendering-fluids-v1": {
       "plan": "passthrough",
       "skipMixins": ["fabric-rendering-fluids-v1.mixins.json:LiquidBlockRendererMixin#modifyOverlaySprite", "fabric-rendering-fluids-v1.mixins.json:LiquidBlockRendererMixin#modifyNonOverlayCheck"],

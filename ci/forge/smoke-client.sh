@@ -262,7 +262,8 @@ fi
 # guard (seam=Fabricated: FRAPI rule 8), and a Fabric model that throws there (alone, as a multipart model's part, when
 # drawn as an entity, or inside a model wrapping it) fails alone: it is drawn from its parts, its failure is logged once
 # and listed in the report, a wrapper whose wrapped model threw isn't blamed, and the transform it left pushed never
-# reaches another block. Gates.
+# reaches another block. A Fabric block model's level-aware particle sprite reaches the screen effect inside it, its
+# block markers and its breaking particles, where Forge asks the model with its model data (PART-4). Gates.
 seen() {
 	if grep -q -- "$1" "$log" 2>/dev/null; then echo "SEEN: $2"; else echo "NOT SEEN: $2 (no '$1')"; fi
 }
@@ -294,6 +295,13 @@ elif [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
 	check "FABRICATED-TEST frapi item hand OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric item model's quads were drawn in the player's hand"
 	check "FABRICATED-TEST frapi item dropped OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric item model's quads were drawn as a dropped item"
 	check "FABRICATED-TEST frapi item frame OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric item model's quads were drawn in an item frame"
+	check "FABRICATED-TEST frapi screen effect sprite OK" "fabric-renderer-api-v1 (with Fabric API): the screen effect inside a Fabric block model showed its level-aware particle sprite (PART-4)"
+	check "FABRICATED-TEST frapi block marker sprite OK" "fabric-renderer-api-v1 (with Fabric API): a block marker of a Fabric block model took its level-aware particle sprite (PART-4)"
+	check "FABRICATED-TEST frapi block particle sprite OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric block model's breaking particles kept its level-aware particle sprite, which Forge sets again (PART-4)"
+	if [ "$mc" = 1.21.11 ]; then
+		check "FABRICATED-TEST frapi outline extraction event OK" "fabric-rendering-v1 (with Fabric API): WorldRenderEvents.AFTER_BLOCK_OUTLINE_EXTRACTION fired, from upstream's hook in a method Forge 61 gave a parameter (SIG-3)"
+		check "FABRICATED-TEST frapi end extraction event OK" "fabric-rendering-v1 (with Fabric API): WorldRenderEvents.END_EXTRACTION fired, from upstream's hooks sharing that hook's extraction context (SIG-3)"
+	fi
 	if [ "$mc" != 1.21.11 ]; then
 		check "FABRICATED-TEST model deserializer OK" "fabric-model-loading-api-v1 (with Fabric API): a model file of a Fabric type was read by its Fabric deserializer"
 	fi

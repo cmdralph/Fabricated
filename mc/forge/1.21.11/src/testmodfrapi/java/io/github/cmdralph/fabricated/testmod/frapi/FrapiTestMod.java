@@ -70,6 +70,8 @@ public final class FrapiTestMod implements ModInitializer {
 	/** How far each falling copy falls: into view, onto a support at eye level, whatever the terrain around the player. */
 	private static final int FALL_HEIGHT = 4;
 
+	/** The block whose model is the Fabric model {@link FrapiClientTestMod} checks, once registered (before the client's entrypoint runs). */
+	static @Nullable Block terrainBlock;
 	// Server thread only.
 	private static @Nullable Level level;
 	private static @Nullable BlockPos breaking;
@@ -81,6 +83,7 @@ public final class FrapiTestMod implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		Block terrainBlock = register(TERRAIN_BLOCK_ID);
+		FrapiTestMod.terrainBlock = terrainBlock;
 		Block nestedBlock = register(NESTED_BLOCK_ID);
 		Block brokenBlock = register(BROKEN_BLOCK_ID);
 		Block brokenNestedBlock = register(BROKEN_NESTED_BLOCK_ID);

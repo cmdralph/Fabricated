@@ -29,6 +29,8 @@ import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.EmptyBlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.client.RenderTypeHelper;
+import net.minecraftforge.client.extensions.IForgeBlockStateModel;
+import net.minecraftforge.client.model.data.ModelData;
 
 /**
  * Fabric's renderer API on Forge 61 (1.21.11). Upstream's hooks send every block through Fabric's renderer, as on the
@@ -43,6 +45,10 @@ import net.minecraftforge.client.RenderTypeHelper;
  * threw is drawn from the parts it gives from then on (not a class wrapping it: {@link FrapiFailures#putDown}), and a
  * transform it left pushed on the emitter is popped, so no other block gets it. A vanilla multipart or weighted model
  * with such a class among its parts draws its other parts as before.
+ *
+ * <p>Where Forge 61 asks a block model's particle sprite with its model data, and upstream's hooks asking Fabric's
+ * level-aware one don't reach (the screen effect inside a block, a block's breaking particles), Fabricated's mixins ask
+ * Fabric's for a Fabric model ({@link #levelAwareParticle}, PART-4).
  *
  * <p>The healthy path reads a {@code ClassValue} and, for a composite model, an int it keeps; it allocates nothing.
  * Called on chunk worker threads at once: the state here is immutable, or confined to one thread.
@@ -80,6 +86,22 @@ public final class FabricBlockRendering {
 			if (owner == FabricBlockStateModel.class || owner.getName().startsWith("net.minecraft.")) return FrapiFailures.ModelClass.NOT_FABRIC;
 			LOGGER.debug("Block models of class {} emit their own quads; Fabricated guards them", type.getName());
 			return new FrapiFailures.ModelClass(true, owner.getName());
+		}
+	};
+	/**
+	 * Whether a model class gives a particle sprite of its own for Forge's model data ({@code particleIcon(ModelData)}),
+	 * as a Forge mod's model may: Forge asks that where vanilla asks the model's sprite.
+	 */
+	private static final ClassValue<Boolean> FORGE_PARTICLE = new ClassValue<>() {
+		@Override
+		protected Boolean computeValue(Class<?> type) {
+			try {
+				return type.getMethod("particleIcon", ModelData.class).getDeclaringClass() != IForgeBlockStateModel.class;
+			} catch (NoSuchMethodException e) {
+				return false;
+			} catch (LinkageError e) {
+				return true; // a type its methods name is missing (MODEL_CLASSES warns of it): Forge's call, as before
+			}
 		}
 	};
 	/** Each thread's list for a broken model's parts (the failure path only). */
@@ -139,6 +161,16 @@ public final class FabricBlockRendering {
 			if (state == FrapiFailures.BROKEN) break;
 		}
 		return state;
+	}
+
+	/**
+	 * Whether a block's particle sprite is Fabric's level-aware one ({@code FabricBlockStateModel.particleSprite}) where
+	 * Forge 61 asks the model with its model data instead (PART-4): unless the model's class gives its own sprite for
+	 * model data, as a Forge mod's may, and the model neither is a Fabric model nor holds one. A model doing neither gives
+	 * the same sprite both ways. Called only where Fabric's renderer API is installed (Fabricated's mixins asking it are).
+	 */
+	public static boolean levelAwareParticle(BlockStateModel model) {
+		return !FORGE_PARTICLE.get(model.getClass()) || state(model) != FrapiFailures.NONE;
 	}
 
 	/**

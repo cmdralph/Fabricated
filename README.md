@@ -95,17 +95,16 @@ refusing a player's use or attack of an item, a block or an entity is heard, as 
   only once Fabric's transaction commits. Tank items and bags cross both ways too. A fluid carrying data doesn't cross.
 - **Fabric's renderer API:** Fabric block models are drawn in the world, as moving blocks, with the breaking overlay
   and as an entity's block, and Fabric item models wherever items are drawn; on 1.21.11 Fabricated sends the three
-  that Forge's code moved to Fabric's renderer itself. A Fabric model that throws while drawn fails alone: it is drawn
-  from its parts and named once in the log and the report (FRAPI rule 8).
+  that Forge's code moved to Fabric's renderer itself. A Fabric model's level-aware particle sprite shows in the screen
+  effect inside its block, in block markers and in block particles, where Forge asks models for theirs with its model
+  data. A Fabric model that throws while drawn fails alone: it is drawn from its parts and named once in the log and
+  the report (FRAPI rule 8).
 
 ## Not supported on Forge
 
 [`docs/FORGE.md`](/docs/FORGE.md) lists what Fabric mods can't rely on here, under *Unsupported on Forge*, with the
 task that takes each on. The main ones:
 
-- **Rendering hooks Forge's code can't take** (task 5): a Fabric model's particle sprite for the screen effect inside
-  a block and for block markers, and on 1.21.11 a GUI renderer hook and the block outline hook of
-  `fabric-rendering-v1`.
 - **Other hooks inside the HUD method:** a mixin there that wraps or redirects one of vanilla's calls, or hooks in
   anywhere but the method's start, its end or a call Forge's layers make, applies but never runs, as Forge draws the
   HUD from its layers (HUD-4).
