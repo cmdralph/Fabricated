@@ -28,6 +28,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   and 41796106172, 41790205318 and 41796109577), which makes their run a gate there (CI-1). Decision: the
   compatibility plan's refusal of malilib is lifted on Forge, so the plan no longer lists it, and the Forge branches'
   syncs of this change turn their run into a gate that loads them by default.
+- **ENTRY-4 and GROUP-2 verified** in the Forge branches' extended runs on #302's sync (`forge` 41802636538,
+  `forge-legacy` 41802640600), and moved to the fixed findings: Sodium and Iris reach their world on Forge 66, Sodium's
+  hook into the window's creation skipped with its warning, and Essential's second launch loads Essential on Forge 47
+  and 61 to 66, every smoke check passing. Iris's shader hook on Forge 47 applies there too; Iris stays refused by its
+  particle hook until the sync of #303 (IRIS-1).
 - **CORPUS-89** (P2 on every platform for a mod whose nested mod isn't loading): pre-flight disabled Magna on Forge
   47, which Modern Industrialization nests without naming it a dependency, and Modern Industrialization loaded without
   it, its entrypoint then throwing `ClassNotFoundException` for Magna's tool class its items extend. Disabling every
