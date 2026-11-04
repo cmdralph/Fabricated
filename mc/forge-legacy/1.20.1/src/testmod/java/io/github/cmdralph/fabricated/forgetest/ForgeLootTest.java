@@ -3,8 +3,6 @@ package io.github.cmdralph.fabricated.forgetest;
 import java.util.ArrayList;
 import java.util.List;
 
-import io.github.cmdralph.fabricated.api.FabricApiModule;
-import io.github.cmdralph.fabricated.api.Fabricated;
 import net.fabricmc.fabric.api.loot.v1.FabricLootPool;
 import net.fabricmc.fabric.api.loot.v1.FabricLootPoolBuilder;
 import net.fabricmc.fabric.api.loot.v1.FabricLootSupplier;
@@ -53,8 +51,7 @@ public final class ForgeLootTest {
 	/** Porting Lib Loot names every table as it is built (the corpus). */
 	private static final boolean PORTING_LIB_LOOT = FabricLoader.getInstance().isModLoaded("porting_lib_loot");
 	/** Whether another mod's loot module (Forgified Fabric API's) fires the events, in place of Fabricated's. */
-	private static final boolean PROVIDED = Fabricated.get().flatMap(api -> api.fabricApiModule("fabric-loot-api-v2"))
-			.map(loot -> loot.status() == FabricApiModule.Status.PROVIDED_BY_MOD).orElse(false);
+	private static final boolean PROVIDED = ForgeTestMod.providedByAnotherMod("fabric-loot-api-v2");
 	/**
 	 * Whether the test mod names dirt's table as Porting Lib Loot would: not where Porting Lib Loot does, nor where another
 	 * mod's loot module fires the events (Forgified Fabric API's hook names the tables it rebuilds itself).

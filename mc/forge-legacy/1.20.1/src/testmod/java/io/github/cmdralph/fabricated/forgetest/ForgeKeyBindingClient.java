@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.forgetest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -17,13 +18,16 @@ import net.minecraft.class_3675;
  * mod registers from its client entrypoint, as Fabric mods register theirs, must be in the game's options once the game
  * has started, its category sorted after the game's; registering it twice, or once Forge's key mapping event has added
  * the key bindings, must throw as upstream's does; and it must have the key CI's options file saved for it
- * (ci/forge-legacy/smoke-client.sh), which Forge reads again once mods have loaded. In Intermediary's names: {@code
- * class_304} is {@code KeyMapping}, {@code class_315} {@code Options}, {@code class_3675} {@code InputConstants}.
+ * (ci/forge-legacy/smoke-client.sh), which Forge reads again once mods have loaded. Where another mod provides the module
+ * (Forgified Fabric API), a late registration is that mod's to refuse ({@link ForgeTestMod#report}). In Intermediary's
+ * names: {@code class_304} is {@code KeyMapping}, {@code class_315} {@code Options}, {@code class_3675} {@code
+ * InputConstants}.
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeKeyBindingClient {
 	/** {@code InputConstants.KEY_J}. */
 	private static final int KEY_J = 74;
+	private static final String LATE_AS_DUPLICATE = "registering once Forge's event added the key bindings was refused as a duplicate, not as late";
 	private static class_304 key;
 	private static String failure;
 
@@ -67,12 +71,12 @@ public final class ForgeKeyBindingClient {
 		} catch (IllegalStateException expected) {
 			// As upstream.
 		} catch (IllegalArgumentException e) {
-			failed.add("registering once Forge's event added the key bindings was refused as a duplicate, not as late");
+			failed.add(LATE_AS_DUPLICATE);
 		}
 		class_3675.class_306 saved = class_3675.method_15981("key.keyboard.k");
 		class_3675.class_306 bound = KeyBindingHelper.getBoundKeyOf(key);
 		if (!saved.equals(bound)) failed.add("bound to " + bound.method_1441() + ", not the key saved for it, " + saved.method_1441());
-		if (failed.isEmpty()) ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST key binding OK");
-		else ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST key binding FAILED: {}", String.join("; ", failed));
+		ForgeTestMod.report("key binding", failed, "fabric-key-binding-api-v1", Map.of(LATE_AS_DUPLICATE,
+				"its registerKeyBinding leaves out upstream's refusal once the game's options exist, which on Forge is before mods load"));
 	}
 }

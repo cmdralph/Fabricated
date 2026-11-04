@@ -49,6 +49,8 @@ import net.minecraftforge.items.IItemHandler;
  * change the item by replacing it, as both sides' own item storages do.
  */
 public final class TransferBridge {
+	/** The Fabric API module bridged, which Fabricated passes through from Fabric API's jar. */
+	public static final String MODULE = "fabric-transfer-api-v1";
 	/** The capability provider Fabricated attaches to Fabric mods' block entities and item stacks. */
 	private static final ResourceLocation PROVIDER = new ResourceLocation("fabricated", "fabric_storages");
 	private static final FabricItemProvider.Kind<FabricItemFluidHandler> FLUIDS_IN_ITEMS =
@@ -57,7 +59,7 @@ public final class TransferBridge {
 	private TransferBridge() {
 	}
 
-	/** Called once, with Fabric API's transfer module loaded. */
+	/** Called once, with the transfer module of Fabric API's jar loaded: not where another mod provides the module, which bridges it itself. */
 	public static void register() {
 		// Last, so a Forge mod's own capability for a Fabric mod's block entity comes first.
 		MinecraftForge.EVENT_BUS.addGenericListener(BlockEntity.class, EventPriority.LOWEST, false, AttachCapabilitiesEvent.class, TransferBridge::attach);
