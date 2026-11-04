@@ -37,8 +37,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   of its own, whatever vanilla's layer checks. The test mods skip those checks with these answers where another mod
   provides the module, as for PROVIDER-10. The third, a Fabric mod's default attribute modification from its main
   initializer, doesn't apply on the client while the dedicated server with it passes (PROVIDER-18, P2, UNVERIFIED):
-  most likely the provider runs the event before a client's initializers, as PROVIDER-12's listener; the bytecode step
-  prints where it runs it.
+  most likely the provider runs the event before a client's initializers, as PROVIDER-12's listener. A listener of
+  Fabricated's, registered as it loads, notes the listeners the provider's run has; once a client's initializers have
+  run, those registered since run with the provider's own context (`ProviderAttributeModifications`), and none where
+  the provider hasn't run the event yet. The bytecode step prints where the provider runs it.
 - **PRE-19**: its row said `forge-legacy` doesn't read vanilla's code; it does, from the SRG-named game jar Forge's
   installer leaves. The Forge corpus summary now lists the injectors pre-flight moved to the method the platform calls
   in place of theirs (`ci/corpus-summary.sh`), for Puzzles Lib's in the Forge 47 extended run after the next
