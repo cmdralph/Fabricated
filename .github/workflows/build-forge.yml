@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       extended:
-        description: Also the mod corpus on a server and a client (informational), and the difficult mods' Fabric builds on a client (malilib's a gate)
+        description: Also the mod corpus on a server and a client (informational), and the difficult mods' Fabric builds on a client (gates)
         type: boolean
         default: false
 
