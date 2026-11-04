@@ -757,8 +757,8 @@ left out: a model translucent at some positions counts as translucent everywhere
 bridge, as for any added interface). On 26.1.2, where upstream's check of a mesh
 model's sprites takes the parameters of vanilla's `SimpleModelWrapper.bake` (NeoForge moved the code into its own
 overload), a mesh model using sprites from outside the block atlas is not rejected; on 26.2 and 26.3 the check
-follows the code into NeoForge's overload. On 26.1.2 and 26.2 the block overlay seen from inside a block uses the
-block's plain particle sprite.
+follows the code into NeoForge's overload. On 26.1.2, 26.2 and 26.3 the block overlay seen from inside a Fabric block
+uses the block's plain particle sprite, not its level-aware one (PART-5).
 
 A Fabric block model that throws while it is drawn (in a chunk section, as a moving block, with the breaking overlay,
 as a block an entity carries, or while its parts are made from its quads) fails alone, on every version: that block is
@@ -988,8 +988,10 @@ with Fabricated's: NeoForge's check that refuses a registry after its new-regist
 initializers, lets it through while a Fabric entrypoint runs (PROVIDER-6). A data-pack registry a Fabric mod's
 initializer makes with its `DynamicRegistries` on 1.21.1, which it hands NeoForge only in an event that fired before
 Fabric initializers run, is handed to NeoForge once they have run, with the registries it named in that event
-(PROVIDER-11). Forgified Fabric API keeps no registry attributes in `RegistryAttributeHolder`, and on 1.21.1
-has no registry aliases. In a development workspace the in-game mod's own copies can't be left out; the report says so.
+(PROVIDER-11). A command argument type a Fabric mod's initializer registers through its command API, which registers
+them only in NeoForge's registration event for argument types, is registered on a client once the initializers have run
+there, after that event, as its listener registers them (on a dedicated server they run before it; PROVIDER-12).
+Forgified Fabric API keeps no registry attributes in `RegistryAttributeHolder`, and on 1.21.1 has no registry aliases. In a development workspace the in-game mod's own copies can't be left out; the report says so.
 
 **Sinytra Connector beside Fabricated is refused**, as is a second Fabricated jar: the launch stops with an error naming
 the jars, and Fabricated loads no Fabric mod (two loaders of Fabric mods can't share them; of two Fabricated jars, the

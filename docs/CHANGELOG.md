@@ -3,6 +3,80 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: Fabric mods' command argument types on a client with Forgified Fabric API (PROVIDER-12), CORPUS-48 closed (task 5)
+
+- **PROVIDER-12** (P0 for packs with Forgified Fabric API on NeoForge 21.1, 26.1.2 and 26.2 clients with a Fabric mod
+  registering its own command argument type; was P2): read in its sources, its command API keeps the argument types
+  Fabric mods register and registers them only in NeoForge's registration event for argument types, from a listener its
+  mod adds as NeoForge builds it. Fabricated runs Fabric initializers on a client in `Minecraft`'s constructor, after
+  that event, so a Fabric mod's argument type was never registered there. Extended run 41853133188 showed what that
+  does: the 1.21.1 client with it couldn't place the player in the world ("Unrecognized argument type"), so no
+  singleplayer world could be joined; decision: P0, as PROVIDER-13. Once a client's initializers have run, with the
+  registries open, the argument types its module holds are registered as its listener registers them
+  (`ProviderArgumentTypes`). The reading also corrects the finding: its recipe API's ingredient type and its fluid
+  rendering's setup listener come from its own mod constructors (each of its modules runs its own entrypoints there),
+  so they don't depend on Fabricated's timing. `ArgumentTypeTest`: the test mod registers an argument type and a
+  command taking it, and every server and client run checks it as the server starts; it is skipped where
+  `fabric-command-api-v2` isn't loaded, since the test mod's first dependency on it disabled the test mod in the runs
+  with Fabricated alone (PR run 41853138096). The informational runs' summary now repeats the client with Forgified
+  Fabric API's renderer, whose 26.x results the job log's tail had lost. Verified in extended run 41858750959 on
+  1.21.1, 26.1.2 and 26.2. It moves to `FINDINGS.md`.
+- **CORPUS-48 closed**, not Fabricated's: extended run 41853133188's thread dump (26.3) shows a lock cycle between
+  Xaero's World Map and mc-runtime-test's stop. The integrated server's world unload waits for the world's capabilities,
+  which Xaero's map thread holds while it joins a task it gave the render thread (`Minecraft.submit`, its bytecode
+  printed in extended run 41858750959), and the render thread is joining the server thread in `MinecraftServer.halt`,
+  called from mc-runtime-test's stop. A player's quit keeps running the render thread's tasks while it waits for the
+  server (NeoForge 21.1's `waitForServer`), so it doesn't meet the cycle. Decision: nothing to change in Fabricated; the
+  client runs already stop such a hang 2 minutes after the world is reached, and the evidence step's bytecode for it
+  is gone. It moves to `FINDINGS.md`.
+- **PROVIDER-17** opened (P1, UNVERIFIED whether Fabricated's): the 26.1.2 and 26.2 clients with Forgified Fabric API
+  fail three checks, first seen in extended run 41858750959's summary: the packet context a codec reads is empty while
+  NeoForge's splitter measures a payload, and missing as the client decodes one; a Fabric mod's default attribute
+  modification from its main initializer doesn't apply (the dedicated server with it passes, so most likely the
+  provider's event fires before a client's initializers run, as PROVIDER-12's); and HUD elements attached to vanilla's
+  are drawn where vanilla's aren't. Task 5's next item, with PRE-19.
+- **PRE-19**: its row said `forge-legacy` doesn't read vanilla's code; it does, from the SRG-named game jar Forge's
+  installer leaves. The Forge corpus summary now lists the injectors pre-flight moved to the method the platform calls
+  in place of theirs (`ci/corpus-summary.sh`), for Puzzles Lib's in the Forge 47 extended run after the next
+  `forge-legacy` sync.
+
+## 2026-11-04: SIG-3 verified, Fabric models' level-aware particle sprites on Forge (PART-4), and Forgified Fabric API on Forge 47 (PROVIDER-14 to 16, task 5)
+
+- **SIG-3 verified** on Forge 61 (`forge` #310's sync): the 1.21.11 client with Fabric API logged "frapi outline
+  extraction event OK" and "frapi end extraction event OK" (run 41831625310). It moves to `FINDINGS.md`.
+- **PART-4** (P2 on Forge 61 to 66 clients with Fabric API, for Fabric block models whose particle sprite depends on
+  the level): Forge asks a block model for its particle sprite with its model data where upstream's hooks ask Fabric's
+  level-aware one, in three places those hooks don't reach: the screen effect inside a block (Forge's own lookup,
+  `getOverlayBlock`), block markers on Forge 64 to 66 (Forge's constructor) and block particles (Forge's
+  `TerrainParticle.updateSprite` sets the sprite again after upstream's hook). The Forge in-game mod asks Fabric's
+  level-aware sprite in all three; a model with its own sprite for Forge's model data that isn't a Fabric model keeps
+  Forge's call. The Forge renderer test mod checks its breaking particles, a block marker and the screen effect.
+  Decision: Forge 65's check of the screen effect is left out, since Forge 65 draws no block's screen effect at all (it
+  submits one only where a listener cancelled `RenderBlockScreenEffectEvent`). On 26.3 a block blocks the view only
+  where it suffocates, which is a tag of blocks there (`minecraft:causes_suffocation`), so the test data puts the test
+  block in it, as a real mod's full block would be. Verified in PR run 41846333237.
+- **PART-5** opened (P3 on NeoForge 26.x clients): the same screen effect asks the plain sprite on NeoForge 26.1.2 to
+  26.3, whose plans leave upstream's hook out with nothing in its place; on 26.3 NeoForge's own lookup is the reason,
+  which the plans don't name. NeoForge's `updateSprite` is level-aware already, so only the screen effect is left.
+  Decision: P3 for task 5 or 6, as the view from inside a block is the only place it shows.
+- **Forgified Fabric API on Forge 47** coexists (`forge-legacy` #311): its Forge build for 1.20.1 (0.92.6) runs beside
+  Fabricated, its modules used as they are. The server with it is a gate on every run since it passed two extended
+  runs in a row (41833110379 and 41840874477, CI-1); the client with it is informational, in extended runs, and
+  passed in 41843817779. Its builds for 1.21.1 and 26.x are NeoForge ports, so Forge 61 to 66 have none, and a jar with
+  its own copy of Fabric Loader is refused there (PROVIDER-2).
+- **PROVIDER-14** and **PROVIDER-15** (the provider's, read in its source): its loot API calls every mod's table
+  vanilla's (Forge builds mod packs as built in); its key binding API has no late refusal; its fake player is Forge's,
+  which drops every packet; its fuel registry answers through Forge's burn time event; it switches a default-enabled
+  pack on as the options load, before the entrypoints on Forge; its transfer bridge reports a millibucket's remainder
+  as 0 mB, gives Fabric mods' items no fluid capability, never updates the context for a Forge item's handler, and
+  simulates each insertion into a Forge item handler on the handler as it stands. Decision: the Forge 47 test mod takes
+  these as the provider's answers (SKIPPED, as NeoForge's does, PROVIDER-8) and checks the rest; the Forge docs list
+  them.
+- **PROVIDER-16** (P2 for packs with Forgified Fabric API on Forge 47): Fabricated's transfer bridge registered beside
+  the provider's, as the provider check reads the plan and the native and mixin modules, and the transfer module is in
+  none of them. The bridge now registers only where the transfer module is a Fabric mod Fabricated runs, on both Forge
+  branches. Verified in extended run 41843817779.
+
 ## 2026-11-04: HUD-4 verified, and a refmap's full descriptor into a method Forge gave a parameter (SIG-3, task 5)
 
 - **HUD-4 verified** on Forge 47 (`forge-legacy` #308) and Forge 61 to 66 (`forge` #307): the test mods' hooks in the

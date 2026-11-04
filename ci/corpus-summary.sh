@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # What a corpus run made of its Fabric mods, from the game's folder (a server's work folder, or a client's run/): how
 # many loaded, each disabled mod with its reason, why pre-flight disabled mods, the Fabric Loader references Fabricated
-# doesn't provide, the mods loaded without some of their mixins, a crash's description, and the log's errors as the game
-# ran (ci/log-digest.py). Informational: it never fails.
+# doesn't provide, the mods loaded without some of their mixins, the injectors pre-flight moved to the method the platform
+# calls in place of theirs, a crash's description, and the log's errors as the game ran (ci/log-digest.py).
+# Informational: it never fails.
 #
 # Usage: ci/corpus-summary.sh <game-dir> [label]
 set -uo pipefail
@@ -26,6 +27,8 @@ if [ -f "$report" ]; then
 	section 'Linkage warnings' | grep -E "missing [a-z]+ net\.fabricmc\.(loader|api)\." | head -30 | cut -c1-300
 	echo "-- loaded without some of their mixins (LEAVE-1):"
 	section 'Mixins left out' | grep -v '^  fabric' | head -40 | cut -c1-260
+	echo "-- injectors pre-flight moved to the method the platform calls in place of theirs:"
+	section 'Mixin pre-flight warnings' | grep -v '^  fabric' | grep -E 'deprecated for|reduced to a call to' | head -20 | cut -c1-400
 else
 	echo "(no Fabricated report: the game stopped before discovery finished)"
 fi
