@@ -106,7 +106,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   entries) with `fabric:load_conditions`, the server loads the ones whose conditions hold and not the others (Forge 61
   to 66, with Fabric API). Forge 61 decodes registry entries through its own conditional decoder, which the in-game mod
   hands Fabric's conditions to, and Forge 61's and 66's JSON data loaders hand the data to lambdas taking more values
-  than vanilla's, which pre-flight bridges upstream's hook into (LAMBDA-8).
+  than vanilla's, which pre-flight bridges upstream's hook into (LAMBDA-8). On Forge 47, a recipe's or an
+  advancement's own `conditions`, which Forge reads first, take a type Forge has no serializer of from Fabric API's
+  resource conditions, tested on the condition's JSON as Moonlight's bridge tests it on Fabric: Supplementaries' recipes
+  name their own condition there (CORPUS-97). Of the test mod's two recipes naming its Fabric condition, the server
+  loads the one whose condition holds, and neither fails to parse (with Fabric API).
 - **Biomes:** a feature `BiomeModifications.addFeature` adds to the plains is among their features (Forge 61 to 66, with
   Fabric API). Upstream rebuilds each generator's feature list, a field Forge retypes, which the in-game mod writes with
   Forge's type (CORPUS-33). On Forge 47 the module is native: Fabric's changes go through Forge's biome modifiers, and a

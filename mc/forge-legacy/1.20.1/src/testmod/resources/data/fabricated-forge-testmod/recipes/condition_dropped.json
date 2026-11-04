@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "conditions": [
+    {
+      "type": "forge:mod_loaded",
+      "modid": "fabric_resource_conditions_api_v1"
+    },
+    {
+      "type": "fabricated-forge-testmod:enabled",
+      "value": false
+    }
+  ],
+  "ingredients": [
+    {
+      "item": "minecraft:dirt"
+    },
+    {
+      "item": "minecraft:gravel"
+    }
+  ],
+  "result": {
+    "item": "minecraft:coarse_dirt"
+  }
+}
