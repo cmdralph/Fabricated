@@ -215,6 +215,7 @@ if [ "$mc" = "1.21.1" ]; then
 	check "FABRICATED-TEST entity events: mob conversion OK" server.out "native entity events: mob conversion"
 else
 	check "entity events seen:.*allow_add,after_add,before_remove" server.out "native entity events: mob effects"
+	check "FABRICATED-TEST effect command context OK" server.out "native entity events: an effect the effect command gives comes from that command in ALLOW_ADD's context, one from code from none (EFFECT-1)"
 fi
 check "entity events seen:.*allow_damage,after_damage" server.out "native entity events: damage"
 check "entity events seen:.*allow_death,after_death$" server.out "native entity events: death (no AFTER_DAMAGE for the killing hit)"

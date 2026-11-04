@@ -21,8 +21,8 @@ a version's own configs come in through `version_mixin_configs` in its `gradle.p
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
 | `mc/neoforge/1.21.1/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.1 | mixins 53, client 17 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
-| `mc/neoforge/1.21.11/src/main/resources/fabricated.mixins.json` | same | 1.21.11 | mixins 63, client 24 | 1 | true | same |
-| `mc/neoforge/common26/src/main/resources/fabricated.mixins.json` | same | 26.x | mixins 73, client 28 | 1 | true | same |
+| `mc/neoforge/1.21.11/src/main/resources/fabricated.mixins.json` | same | 1.21.11 | mixins 64, client 24 | 1 | true | same |
+| `mc/neoforge/common26/src/main/resources/fabricated.mixins.json` | same | 26.x | mixins 74, client 28 | 1 | true | same |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-biome.mixins.json` | `net.fabricmc.fabric.mixin.biome` | 1.21.1 | mixins 8 | 1 | true | none |
 | `mc/neoforge/1.21.11/src/main/resources/fabricated-biome.mixins.json` | same | 1.21.11 | mixins 10 | 1 | true | none |
 | `mc/neoforge/common26early/src/main/resources/fabricated-biome.mixins.json` | same | 26.1.2, 26.2 | mixins 10 | 1 | true | none |
@@ -508,6 +508,7 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · r
 | mixins | EntityDataSerializersMixin | common121 (1.21.1,1.21.11) | n.m.network.syncher.EntityDataSerializers | @Inject → fabricated$toNeoForgeRegistry (a mod's serializer goes to NeoForge's registry, CORPUS-41, SER-1) | "registerSerializer" | HEAD cancellable=true | — | default |
 | mixins | PackRepositorySourcesMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.repository.PackRepository | @Inject → fabricated$keepSourcesMutable (the sources set made mutable again before NeoForge adds a pack finder, PACK-1) | "addPackFinder" (NeoForge's) | HEAD | — | default |
 | mixins | MobEffectMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.world.effect.MobEffect | no injectors; implements FabricMobEffect | | | | |
+| mixins | ExecuteCommandEffectMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.commands.execution.tasks.ExecuteCommand | @WrapOperation → fabricated$runExecutable (an effect a command gives comes from that command in Fabric's effect events, where upstream hooks Brigadier, EFFECT-1) | "execute" | INVOKE `Lcom/mojang/brigadier/context/ContextChain;runExecutable(…)I` | — | default |
 | mixins | EntityTypeBuilderMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.EntityType$Builder | @Inject → fabricated$applyChildBuilders | "build" | RETURN | — | default |
 | mixins | BlockEntityTypeMixin | common121 (1.21.1,1.21.11) | n.m.world.level.block.entity.BlockEntityType | no injectors; implements FabricBlockEntityType; adds methods addSupportedBlock | | | | |
 | mixins | PoiTypesMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.ai.village.poi.PoiTypes | @Inject → fabricated$withoutCallbackEntries | "registerBlockStates" | HEAD | — | default |
@@ -867,6 +868,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | DefaultAttributesValidationMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.ai.attributes.DefaultAttributes | @Inject → fabricated$validateAfterMainEntrypoints | "validate" | HEAD cancellable=true | — | default |
 | mixins | PackRepositorySourcesMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.repository.PackRepository | @Inject → fabricated$keepSourcesMutable (the sources set made mutable again before NeoForge adds a pack finder, PACK-1) | "addPackFinder" (NeoForge's) | HEAD | — | default |
 | mixins | MobEffectMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.world.effect.MobEffect | no injectors; implements FabricMobEffect | | | | |
+| mixins | ExecuteCommandEffectMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.commands.execution.tasks.ExecuteCommand | @WrapOperation → fabricated$runExecutable (an effect a command gives comes from that command in Fabric's effect events, where upstream hooks Brigadier, EFFECT-1) | "execute" | INVOKE `Lcom/mojang/brigadier/context/ContextChain;runExecutable(…)I` | — | default |
 | mixins | EntityTypeBuilderMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.EntityType$Builder | @Inject → fabricated$applyChildBuilders | "build" | RETURN | — | default |
 | mixins | BlockEntityTypeMixin | common26 (26.1.2,26.2,26.3) | n.m.world.level.block.entity.BlockEntityType | no injectors; implements FabricBlockEntityType; adds methods addValidBlock | | | | |
 | mixins | PoiTypesMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.ai.village.poi.PoiTypes | @Inject → fabricated$withoutCallbackEntries | "registerBlockStates" | HEAD | — | default |

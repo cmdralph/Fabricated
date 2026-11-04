@@ -25,6 +25,7 @@
     "EntityFluidInteractionTagMixin": [],
     "EntityMixin": ["fabric-lifecycle-events-v1"],
     "EntityTypeBuilderMixin": ["fabric-object-builder-api-v1"],
+    "ExecuteCommandEffectMixin": ["fabric-entity-events-v1"],
     "FakePlayerMixin": ["fabric-events-interaction-v0"],
     "FluidTypeMixin": [],
     "GameDataFreezeMixin": [],

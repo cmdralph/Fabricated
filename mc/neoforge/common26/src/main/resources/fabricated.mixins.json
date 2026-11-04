@@ -29,6 +29,7 @@
     "DefaultAttributesValidationMixin",
     "PackRepositorySourcesMixin",
     "MobEffectMixin",
+    "ExecuteCommandEffectMixin",
     "EntityTypeBuilderMixin",
     "BlockEntityTypeMixin",
     "PoiTypesMixin",

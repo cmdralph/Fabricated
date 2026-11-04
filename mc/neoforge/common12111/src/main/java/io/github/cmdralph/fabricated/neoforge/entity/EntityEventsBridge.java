@@ -1,9 +1,17 @@
 package io.github.cmdralph.fabricated.neoforge.entity;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.IntSupplier;
+
+import org.jspecify.annotations.Nullable;
+
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.context.ParsedCommandNode;
+import com.mojang.brigadier.tree.LiteralCommandNode;
 
 import net.fabricmc.fabric.api.entity.event.v1.EntitySleepEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityCombatEvents;
@@ -60,18 +68,17 @@ public final class EntityEventsBridge {
 	private record Travel(Entity original, ServerLevel origin) {
 	}
 
-	/** Effects applied outside a command (Fabricated can't tell which command, if any, added an effect). */
-	private static final EffectEventContext CONTEXT = new EffectEventContext() {
-		@Override
-		public boolean isFromCommand() {
-			return false;
-		}
+	/** The context of an effect no command gives. */
+	private static final EffectEventContext NO_COMMAND = new EffectContext(false, null);
+	/**
+	 * The command running on each thread, for the effect events' context ({@link #runCommand}): upstream sets it in a
+	 * hook into Brigadier, a library NeoForge loads without mixins, so {@code ExecuteCommandEffectMixin} sets it where
+	 * vanilla's command execution runs a command.
+	 */
+	private static final ThreadLocal<EffectEventContext> COMMAND = ThreadLocal.withInitial(() -> NO_COMMAND);
 
-		@Override
-		public String commandName() {
-			return null;
-		}
-	};
+	private record EffectContext(boolean isFromCommand, @Nullable String commandName) implements EffectEventContext {
+	}
 
 	private EntityEventsBridge() {
 	}
@@ -215,13 +222,13 @@ public final class EntityEventsBridge {
 		bus.addListener(EventPriority.HIGH, MobEffectEvent.Applicable.class, e -> {
 			LivingEntity entity = e.getEntity();
 			if (!(entity.level() instanceof ServerLevel)) return;
-			if (!ServerMobEffectEvents.ALLOW_ADD.invoker().allowAdd(e.getEffectInstance(), entity, CONTEXT)) {
+			if (!ServerMobEffectEvents.ALLOW_ADD.invoker().allowAdd(e.getEffectInstance(), entity, COMMAND.get())) {
 				e.setResult(MobEffectEvent.Applicable.Result.DO_NOT_APPLY);
 			}
 		});
 		bus.addListener(EventPriority.LOWEST, MobEffectEvent.Applicable.class, e -> {
 			if (e.getEntity().level() instanceof ServerLevel && e.getApplicationResult()) {
-				ServerMobEffectEvents.BEFORE_ADD.invoker().beforeAdd(e.getEffectInstance(), e.getEntity(), CONTEXT);
+				ServerMobEffectEvents.BEFORE_ADD.invoker().beforeAdd(e.getEffectInstance(), e.getEntity(), COMMAND.get());
 			}
 		});
 		// Removal before the effect ends (milk, commands, mods): ALLOW_EARLY_REMOVE can keep it.
@@ -229,7 +236,7 @@ public final class EntityEventsBridge {
 			LivingEntity entity = e.getEntity();
 			MobEffectInstance instance = e.getEffectInstance();
 			if (instance != null && entity.level() instanceof ServerLevel
-					&& !ServerMobEffectEvents.ALLOW_EARLY_REMOVE.invoker().allowEarlyRemove(instance, entity, CONTEXT)) {
+					&& !ServerMobEffectEvents.ALLOW_EARLY_REMOVE.invoker().allowEarlyRemove(instance, entity, COMMAND.get())) {
 				e.setCanceled(true);
 			}
 		});
@@ -241,9 +248,29 @@ public final class EntityEventsBridge {
 		});
 	}
 
+	/**
+	 * Runs vanilla's call of a command's {@code executable} as upstream's hook does: effects given while it runs come from
+	 * that command, named by its first node, a literal (anything else runs without a context). It runs every command the
+	 * game runs (a player's, the console's, a function's, a command block's); a mod running one through Brigadier's own
+	 * {@code CommandDispatcher.execute} goes without it.
+	 *
+	 * @param run vanilla's call, answering the command's result
+	 */
+	public static int runCommand(CommandContext<?> executable, IntSupplier run) {
+		List<? extends ParsedCommandNode<?>> nodes = executable.getNodes();
+		if (nodes.isEmpty() || !(nodes.get(0).getNode() instanceof LiteralCommandNode<?> command)) return run.getAsInt();
+		EffectEventContext outer = COMMAND.get();
+		COMMAND.set(new EffectContext(true, command.getName()));
+		try {
+			return run.getAsInt();
+		} finally {
+			COMMAND.set(outer);
+		}
+	}
+
 	/** BEFORE_REMOVE; AFTER_REMOVE comes from {@link #afterEffectsRemoved} once the effect is gone. */
 	private static void removing(MobEffectInstance instance, LivingEntity entity) {
-		if (entity.level() instanceof ServerLevel) ServerMobEffectEvents.BEFORE_REMOVE.invoker().beforeRemove(instance, entity, CONTEXT);
+		if (entity.level() instanceof ServerLevel) ServerMobEffectEvents.BEFORE_REMOVE.invoker().beforeRemove(instance, entity, COMMAND.get());
 	}
 
 	/**
@@ -252,12 +279,12 @@ public final class EntityEventsBridge {
 	 * listeners call the effect's {@code FabricMobEffect} hooks.
 	 */
 	public static void afterEffectAdded(LivingEntity entity, MobEffectInstance instance) {
-		if (entity.level() instanceof ServerLevel) ServerMobEffectEvents.AFTER_ADD.invoker().afterAdd(instance, entity, CONTEXT);
+		if (entity.level() instanceof ServerLevel) ServerMobEffectEvents.AFTER_ADD.invoker().afterAdd(instance, entity, COMMAND.get());
 	}
 
 	/** Fabric's {@code AFTER_REMOVE}, from {@code LivingEntity.onEffectsRemoved} as upstream: once the effects are gone. */
 	public static void afterEffectsRemoved(LivingEntity entity, Collection<MobEffectInstance> instances) {
 		if (!(entity.level() instanceof ServerLevel)) return;
-		for (MobEffectInstance instance : instances) ServerMobEffectEvents.AFTER_REMOVE.invoker().afterRemove(instance, entity, CONTEXT);
+		for (MobEffectInstance instance : instances) ServerMobEffectEvents.AFTER_REMOVE.invoker().afterRemove(instance, entity, COMMAND.get());
 	}
 }
