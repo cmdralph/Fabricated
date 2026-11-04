@@ -173,17 +173,19 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * @param shadowsMixinFields whether the running Mixin finds a {@code @Shadow} field another mixin adds to the same
-	 *                           target, as Fabric's does (CORPUS-74); where it doesn't, repairs declare such a shadow as
-	 *                           the field the other mixin adds ({@link MixinRepairs#sharedFieldRepair}), and a shadow they
-	 *                           can't fails
+	 * @param seesMixinFields whether the running Mixin sees the fields other mixins add to the same target as it
+	 *                        prepares a mixin, as Fabric's does: it binds a {@code @Shadow} to one (CORPUS-74) and
+	 *                        renames a {@code @Unique} field of the same name (CORPUS-95); where it doesn't, repairs
+	 *                        declare such a shadow as the field the other mixin adds ({@link MixinRepairs#sharedFieldRepair}),
+	 *                        and a shadow they can't fails, and rename such a unique field
+	 *                        ({@link MixinRepairs#uniqueFieldRepair})
 	 */
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins,
-			boolean readsLocalTypes, boolean shadowsMixinFields) {
+			boolean readsLocalTypes, boolean seesMixinFields) {
 		super(new PreflightClasses(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader,
-				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, shadowsMixinFields));
+				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields));
 		this.repairer = new MixinRepairs(classes, this);
 	}
 
@@ -825,7 +827,7 @@ public final class MixinPreflight extends PreflightPart {
 			// Mixin looks for a shadowed field in the target class itself, not its supertypes.
 			if (target.fields.stream().noneMatch(f -> f.name.equals(fieldName) && f.desc.equals(desc)) && !aliasExists(shadow, target, desc, true)) {
 				InstalledClasses.AddedMember added = addedByInstalledMixin(target.name, fieldName, desc, true);
-				if (added != null && !shadowsMixinFields) {
+				if (added != null && !seesMixinFields) {
 					// Repairs declare such a shadow as the field the other mixin adds where they can (MixinRepairs.sharedFieldRepair).
 					ctx.classLevel("@Shadow field " + fieldName + " is not in " + targetDotted + "; " + addedBy(added) + " adds it, and " + loader
 									+ "'s Mixin finds a @Shadow field only among the target's own (Fabric's also among those other mixins add)",
@@ -976,7 +978,23 @@ public final class MixinPreflight extends PreflightPart {
 	 * the result then depends on that mixin, so it is recorded with its fingerprint.
 	 */
 	InstalledClasses.AddedMember addedByInstalledMixin(String target, String name, String desc, boolean field) {
-		InstalledClasses.AddedMember added = installed.addedMember(target, name, desc, field);
+		return recorded(installed.addedMember(target, name, desc, field));
+	}
+
+	/**
+	 * The first mixin of an installed jar other than {@code mixin} (internal name) that adds a field of this name and
+	 * descriptor to the target ({@link InstalledClasses#fieldAdders}), or null; recorded as {@link #addedByInstalledMixin}
+	 * records it.
+	 */
+	InstalledClasses.AddedMember fieldAddedByAnotherMixin(String target, String name, String desc, String mixin) {
+		for (InstalledClasses.AddedMember added : installed.fieldAdders(target, name, desc)) {
+			if (!added.mixin().equals(mixin)) return recorded(added);
+		}
+		return null;
+	}
+
+	/** {@code added}, its mixin's fingerprint recorded: the results depend on that mixin. */
+	private InstalledClasses.AddedMember recorded(InstalledClasses.AddedMember added) {
 		if (added != null && !installedRead.containsKey(added.mixin())) {
 			String fingerprint;
 			try {

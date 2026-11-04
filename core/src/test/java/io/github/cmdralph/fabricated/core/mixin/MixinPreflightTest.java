@@ -232,9 +232,9 @@ class MixinPreflightTest {
 			return cw.toByteArray();
 		};
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Culling"));
-		BiFunction<Map<String, byte[]>, Boolean, MixinPreflight> preflight = (mod, shadowsMixinFields) -> new MixinPreflight(game, installed,
+		BiFunction<Map<String, byte[]>, Boolean, MixinPreflight> preflight = (mod, seesMixinFields) -> new MixinPreflight(game, installed,
 				mod::get, ClassBytesSource.EMPTY, true, true, ClassBytesSource.EMPTY, "Forge", true, MixinPreflight.ConstructorInjects.UNSAFE_POINTS,
-				false, false, false, true, shadowsMixinFields);
+				false, false, false, true, seesMixinFields);
 
 		// Forge: declared as Fabric API's field, its use left as it was; nothing left to judge.
 		Map<String, byte[]> forge = new HashMap<>(Map.of("com/example/mixin/Culling", culling.apply("mesh")));
@@ -464,6 +464,150 @@ class MixinPreflightTest {
 		MixinPreflight vanilla = preflight.apply(null, setter);
 		assertTrue(vanilla.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
 		assertTrue(vanilla.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	/**
+	 * CORPUS-95: Fabric API's screen mixin and SpruceUI's both add {@code @Unique private Screen tickingScreen} to
+	 * {@code Minecraft}. Fabric's Mixin renames the later one, as an earlier mixin adds the name; Forge's (SpongePowered's)
+	 * prepares both before it adds either field, renames neither, and the two mixins shared one field: SpruceUI's hook
+	 * cleared it before Fabric API's read it, and the Forge 26.1.2 corpus client stopped. Where the running Mixin doesn't
+	 * see other mixins' fields, the mixin's field is renamed, with its code's uses and those of the nested class Mixin
+	 * copies with it; a field no other mixin adds is left as it is. Nothing changes on Fabric's Mixin (NeoForge), where
+	 * only the mod's own mixin adds the field, where the target declares it (Mixin renames it then), for a public unique
+	 * field (Mixin discards it on either, as on Fabric), or for one whose {@code @Unique} Mixin doesn't read (not visible).
+	 */
+	@Test
+	void aUniqueFieldAnotherModsMixinAddsTooIsRenamedWhereMixinSeesOnlyTheTargetsOwnFields() throws Exception {
+		String target = "net/minecraft/client/Minecraft";
+		String screen = "Lnet/minecraft/client/gui/screens/Screen;";
+		Function<Boolean, byte[]> minecraft = declares -> {
+			ClassWriter tw = new ClassWriter(0);
+			tw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, target, null, "java/lang/Object", null);
+			tw.visitField(Opcodes.ACC_PUBLIC, "screen", screen, null, null).visitEnd();
+			if (declares) tw.visitField(Opcodes.ACC_PRIVATE, "tickingScreen", screen, null, null).visitEnd();
+			tw.visitEnd();
+			return tw.toByteArray();
+		};
+		// A mixin into Minecraft adding tickingScreen (with the access and @Unique given); SpruceUI's also adds a field of
+		// its own, uses both, and has an anonymous class reading tickingScreen and a nested class that doesn't.
+		String fabricApi = "net/fabricmc/fabric/mixin/screen/MinecraftMixin";
+		String spruce = "dev/lambdaurora/spruceui/mixin/MinecraftClientMixin";
+		String anonymous = spruce + "$1";
+		String holder = spruce + "$Holder";
+		BiFunction<String, Integer, byte[]> mixin = (name, unique) -> {
+			ClassWriter cw = new ClassWriter(0);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null);
+			AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+			AnnotationVisitor values = m.visitArray("value");
+			values.visit(null, Type.getObjectType(target));
+			values.visitEnd();
+			m.visitEnd();
+			boolean visible = unique >= 0;
+			FieldVisitor ticking = cw.visitField(visible ? unique : Opcodes.ACC_PRIVATE, "tickingScreen", screen, null, null);
+			ticking.visitAnnotation("Lorg/spongepowered/asm/mixin/Unique;", visible).visitEnd();
+			ticking.visitEnd();
+			if (!name.equals(spruce)) {
+				cw.visitEnd();
+				return cw.toByteArray();
+			}
+			FieldVisitor own = cw.visitField(Opcodes.ACC_PRIVATE, "spruceui$frames", "I", null, null);
+			own.visitAnnotation("Lorg/spongepowered/asm/mixin/Unique;", true).visitEnd();
+			own.visitEnd();
+			cw.visitInnerClass(anonymous, null, null, 0);
+			cw.visitInnerClass(holder, spruce, "Holder", Opcodes.ACC_STATIC);
+			MethodVisitor after = cw.visitMethod(Opcodes.ACC_PRIVATE, "spruceui$onAfterLoadingScreenTick", "()V", null, null);
+			after.visitCode();
+			after.visitVarInsn(Opcodes.ALOAD, 0);
+			after.visitFieldInsn(Opcodes.GETFIELD, spruce, "tickingScreen", screen);
+			after.visitInsn(Opcodes.POP);
+			after.visitVarInsn(Opcodes.ALOAD, 0);
+			after.visitInsn(Opcodes.ACONST_NULL);
+			after.visitFieldInsn(Opcodes.PUTFIELD, spruce, "tickingScreen", screen);
+			after.visitVarInsn(Opcodes.ALOAD, 0);
+			after.visitInsn(Opcodes.ICONST_1);
+			after.visitFieldInsn(Opcodes.PUTFIELD, spruce, "spruceui$frames", "I");
+			after.visitInsn(Opcodes.RETURN);
+			after.visitMaxs(2, 1);
+			after.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		ClassWriter aw = new ClassWriter(0);
+		aw.visit(Opcodes.V21, Opcodes.ACC_FINAL | Opcodes.ACC_SUPER, anonymous, null, "java/lang/Object", null);
+		aw.visitInnerClass(anonymous, null, null, 0);
+		aw.visitField(Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "this$0", "L" + spruce + ";", null, null).visitEnd();
+		MethodVisitor read = aw.visitMethod(Opcodes.ACC_PUBLIC, "get", "()" + screen, null, null);
+		read.visitCode();
+		read.visitVarInsn(Opcodes.ALOAD, 0);
+		read.visitFieldInsn(Opcodes.GETFIELD, anonymous, "this$0", "L" + spruce + ";");
+		read.visitFieldInsn(Opcodes.GETFIELD, spruce, "tickingScreen", screen);
+		read.visitInsn(Opcodes.ARETURN);
+		read.visitMaxs(1, 1);
+		read.visitEnd();
+		aw.visitEnd();
+		ClassWriter hw = new ClassWriter(0);
+		hw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, holder, null, "java/lang/Object", null);
+		hw.visitInnerClass(holder, spruce, "Holder", Opcodes.ACC_STATIC);
+		hw.visitEnd();
+		Map<String, byte[]> nested = Map.of(anonymous, aw.toByteArray(), holder, hw.toByteArray());
+		MixinConfigFile config = MixinConfigFile.parse("{\"required\":true,\"package\":\"dev.lambdaurora.spruceui.mixin\",\"mixins\":[\"MinecraftClientMixin\"]}");
+		// The installed jars: SpruceUI's own, and Fabric API's with its mixin of the given access.
+		Function<Integer, InstalledClasses> installed = fabricAccess -> {
+			List<InstalledClasses.Jar> jars = new ArrayList<>();
+			byte[] own = mixin.apply(spruce, Opcodes.ACC_PRIVATE);
+			jars.add(new InstalledClasses.Jar("SpruceUI", spruce::equals, name -> name.equals(spruce) ? own : null, () -> List.of(spruce), true));
+			if (fabricAccess != null) {
+				byte[] theirs = mixin.apply(fabricApi, fabricAccess);
+				jars.add(new InstalledClasses.Jar("Fabric API", fabricApi::equals, name -> name.equals(fabricApi) ? theirs : null, () -> List.of(fabricApi)));
+			}
+			return new InstalledClasses(jars);
+		};
+		record Run(boolean declares, Integer fabricAccess, byte[] mod, boolean seesMixinFields) {
+		}
+		Function<Run, MixinPreflight> preflight = run -> {
+			Map<String, byte[]> classes = new HashMap<>(nested);
+			classes.put(spruce, run.mod());
+			return new MixinPreflight(new ClassIndex(Map.of(target, minecraft.apply(run.declares()))::get), installed.apply(run.fabricAccess()),
+					classes::get, ClassBytesSource.EMPTY, true, true, ClassBytesSource.EMPTY, "Forge", true,
+					MixinPreflight.ConstructorInjects.UNSAFE_POINTS, false, false, false, true, run.seesMixinFields());
+		};
+
+		// Forge: renamed, in the mixin's code and its anonymous class's; its own field and the nested class left alone.
+		byte[] spruceMixin = mixin.apply(spruce, Opcodes.ACC_PRIVATE);
+		String renamed = "fabricated$dev_lambdaurora_spruceui_mixin_MinecraftClientMixin$tickingScreen";
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight.apply(new Run(false, Opcodes.ACC_PRIVATE, spruceMixin, false))
+				.repairs("spruceui.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(Set.of(spruce + ".class", anonymous + ".class"), repaired.keySet(), notes.toString());
+		assertEquals(1, notes.size(), notes.toString());
+		assertEquals(Severity.INFO, notes.getFirst().severity());
+		assertTrue(notes.getFirst().message().contains("@Unique field tickingScreen is also one Fabric API's mixin " + fabricApi.replace('/', '.')
+				+ " adds to " + target.replace('/', '.')), notes.getFirst().message());
+		assertTrue(notes.getFirst().message().contains("renamed " + renamed), notes.getFirst().message());
+		assertTrue(notes.getFirst().message().contains("(CORPUS-95)"), notes.getFirst().message());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get(spruce + ".class")).accept(node, 0);
+		assertEquals(List.of(renamed, "spruceui$frames"), node.fields.stream().map(f -> f.name).toList());
+		assertNotNull(Annotations.find(node.fields.getFirst(), "Lorg/spongepowered/asm/mixin/Unique;"), "still unique");
+		assertEquals(List.of(renamed, renamed, "spruceui$frames"), java.util.Arrays.stream(node.methods.getFirst().instructions.toArray())
+				.filter(i -> i instanceof FieldInsnNode).map(i -> ((FieldInsnNode) i).name).toList());
+		ClassNode copied = new ClassNode();
+		new ClassReader(repaired.get(anonymous + ".class")).accept(copied, 0);
+		assertEquals(List.of("this$0", renamed), java.util.Arrays.stream(copied.methods.getFirst().instructions.toArray())
+				.filter(i -> i instanceof FieldInsnNode).map(i -> ((FieldInsnNode) i).name).toList());
+		assertTrue(preflight.apply(new Run(false, Opcodes.ACC_PRIVATE, repaired.get(spruce + ".class"), false))
+				.check("spruceui.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// Fabric's Mixin; only the mod's own mixin adding it; the target declaring it; a public unique field; a @Unique
+		// Mixin doesn't read: left as it is, and nothing to judge.
+		List<Run> unchanged = List.of(new Run(false, Opcodes.ACC_PRIVATE, spruceMixin, true), new Run(false, null, spruceMixin, false),
+				new Run(true, Opcodes.ACC_PRIVATE, spruceMixin, false), new Run(false, Opcodes.ACC_PRIVATE, mixin.apply(spruce, Opcodes.ACC_PUBLIC), false),
+				new Run(false, Opcodes.ACC_PRIVATE, mixin.apply(spruce, -1), false));
+		for (Run run : unchanged) {
+			List<PreflightFinding> none = new ArrayList<>();
+			assertTrue(preflight.apply(run).repairs("spruceui.mixins.json", config, Refmap.EMPTY, Set.of(), none).isEmpty(), run + ": " + none);
+			assertTrue(preflight.apply(run).check("spruceui.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty(), run.toString());
+		}
 	}
 
 	/**

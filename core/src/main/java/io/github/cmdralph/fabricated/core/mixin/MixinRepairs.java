@@ -178,6 +178,8 @@ final class MixinRepairs extends PreflightPart {
 							+ " what vanilla's field holds, as vanilla's type (CORPUS-37, CORPUS-94)", ""));
 				}
 			}
+			// The unique fields renamed, keyed name:desc as the mixin had them, for its nested classes' uses (CORPUS-95).
+			Map<String, String> uniqueRenames = new TreeMap<>();
 			for (FieldNode field : node.fields) {
 				String captured = capturedShadowRepair(node, field, targets, ctx);
 				if (captured != null) {
@@ -195,6 +197,17 @@ final class MixinRepairs extends PreflightPart {
 							+ "it into one field, as Fabric's Mixin binds the shadow to it (CORPUS-74)", ""));
 					continue;
 				}
+				String unique = field.name;
+				InstalledClasses.AddedMember other = uniqueFieldRepair(node, field, targets);
+				if (other != null) {
+					changed = true;
+					uniqueRenames.put(unique + ":" + field.desc, field.name);
+					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Unique field " + unique + " is also one "
+							+ MixinPreflight.addedBy(other) + " adds to " + targets.get(0).name.replace('/', '.') + ", and " + loader + "'s Mixin "
+							+ "would merge the two into one field the mixins share; it is renamed " + field.name + ", so it stays the mixin's own, "
+							+ "as Fabric's Mixin renames it (CORPUS-95)", ""));
+					continue;
+				}
 				if (!platformFinalFieldRepair(node, field, targets)) continue;
 				changed = true;
 				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "Field " + field.name + " is the mixin's own, and "
@@ -202,6 +215,7 @@ final class MixinRepairs extends PreflightPart {
 						+ "Mixin merges the two, and the mixin's writes of the final field outside a constructor would fail; it is declared "
 						+ "@Shadow @Final @Mutable, so Mixin makes the field writable, as the mixin's own is on Fabric (CORPUS-101)", ""));
 			}
+			if (!uniqueRenames.isEmpty()) repaired.putAll(nestedFieldRenames(node, config, uniqueRenames));
 			node.methods.removeAll(kept);
 			node.methods.addAll(bridges);
 			if ((node.access & Opcodes.ACC_INTERFACE) != 0 && !interfaceInjectors) {
@@ -682,15 +696,23 @@ final class MixinRepairs extends PreflightPart {
 			renamed = only;
 		}
 		if (renamed == null) return null;
-		for (MethodNode method : mixin.methods) {
+		renameFieldUses(mixin, mixin.name, name, field.desc, renamed);
+		field.name = renamed;
+		return name;
+	}
+
+	/** Points the uses of the field {@code owner.name} of {@code desc} in {@code node}'s code at {@code renamed}; returns whether there were any. */
+	private static boolean renameFieldUses(ClassNode node, String owner, String name, String desc, String renamed) {
+		boolean used = false;
+		for (MethodNode method : node.methods) {
 			for (AbstractInsnNode insn : method.instructions) {
-				if (insn instanceof FieldInsnNode use && use.owner.equals(mixin.name) && use.name.equals(name) && use.desc.equals(field.desc)) {
+				if (insn instanceof FieldInsnNode use && use.owner.equals(owner) && use.name.equals(name) && use.desc.equals(desc)) {
 					use.name = renamed;
+					used = true;
 				}
 			}
 		}
-		field.name = renamed;
-		return name;
+		return used;
 	}
 
 	/**
@@ -708,7 +730,7 @@ final class MixinRepairs extends PreflightPart {
 	 * nothing.
 	 */
 	InstalledClasses.AddedMember sharedFieldRepair(FieldNode field, List<ClassNode> targets, Context ctx) {
-		if (shadowsMixinFields) return null;
+		if (seesMixinFields) return null;
 		AnnotationNode shadow = Annotations.find(field, MixinNames.SHADOW);
 		if (shadow == null || targets.isEmpty()) return null;
 		if (Annotations.value(shadow, "aliases") instanceof List<?> aliases && !aliases.isEmpty()) return null;
@@ -735,6 +757,62 @@ final class MixinRepairs extends PreflightPart {
 		field.access = declared.access;
 		field.signature = declared.signature;
 		return first;
+	}
+
+	/**
+	 * Renames a mixin's {@code @Unique} field that isn't public where another installed mixin adds a field of the same
+	 * name and descriptor to one of its targets, and the running Mixin doesn't see the fields other mixins add as it
+	 * prepares a mixin (CORPUS-95). Mixin renames such a unique field where its target declares one of the name
+	 * ({@code MixinPreProcessorStandard.attachFields}; SpongePowered's only a private or protected one, and a field the
+	 * target declares is left to it), and Fabric's also where a mixin it prepared before adds one (its
+	 * {@code mixinFields}). SpongePowered's, which Forge runs, prepares every mixin of a target before it adds any of
+	 * their fields, so it renames neither and adds the first mixin's field alone
+	 * ({@code MixinApplicatorStandard.mergeNewFields}): both mixins' code then uses that one. Fabric API's screen mixin
+	 * and SpruceUI's (in LambDynamicLights) each keep the loading screen they tick in a {@code tickingScreen} of their own
+	 * on {@code Minecraft}; sharing one, SpruceUI's hook cleared it before Fabric API's read it, and the Forge 26.1.2
+	 * corpus client stopped as it created its world. Renamed, the field is the mixin's own, as on Fabric, where Mixin
+	 * renames the later of the two; where both are Fabric mods' mixins, both are renamed, which changes nothing else, as
+	 * only its own mixin names a unique field it keeps private. The mixin's code uses the new name, and its nested
+	 * classes' code is pointed at it after ({@link #nestedFieldRenames}). Returns the other mixin, or {@code null} and
+	 * changes nothing.
+	 */
+	InstalledClasses.AddedMember uniqueFieldRepair(ClassNode mixin, FieldNode field, List<ClassNode> targets) {
+		if (seesMixinFields || (field.access & Opcodes.ACC_PUBLIC) != 0 || targets.isEmpty()) return null;
+		// Mixin reads its own annotations among the visible ones only.
+		if (Annotations.find(field.visibleAnnotations, MixinNames.UNIQUE) == null || Annotations.find(field, MixinNames.SHADOW) != null) return null;
+		InstalledClasses.AddedMember other = null;
+		for (ClassNode target : targets) {
+			// A field the target declares is left to Mixin, which renames a private or protected one.
+			if (target.fields.stream().anyMatch(f -> f.name.equals(field.name) && f.desc.equals(field.desc))) continue;
+			other = checker.fieldAddedByAnotherMixin(target.name, field.name, field.desc, mixin.name);
+			if (other != null) break;
+		}
+		if (other == null) return null;
+		String renamed = "fabricated$" + mixin.name.replace('/', '_') + "$" + field.name;
+		renameFieldUses(mixin, mixin.name, field.name, field.desc, renamed);
+		field.name = renamed;
+		return other;
+	}
+
+	/**
+	 * The mixin's nested classes whose code uses a field of it {@link #uniqueFieldRepair} renamed, pointed at the new
+	 * names, by class file name: Mixin copies an anonymous class into the target, and its copy finds the mixin's members
+	 * by the names the nested class gives them, matched against the mixin's. {@code renames}: the new names, keyed
+	 * {@code name:desc} as the mixin had them.
+	 */
+	private Map<String, byte[]> nestedFieldRenames(ClassNode mixin, MixinConfigFile config, Map<String, String> renames) {
+		Map<String, byte[]> rewritten = new TreeMap<>();
+		for (String name : nestedClasses(mixin, config)) {
+			ClassNode nested = modClasses.readNode(name, 0);
+			if (nested == null) continue;
+			boolean used = false;
+			for (Map.Entry<String, String> rename : renames.entrySet()) {
+				int colon = rename.getKey().indexOf(':');
+				used |= renameFieldUses(nested, mixin.name, rename.getKey().substring(0, colon), rename.getKey().substring(colon + 1), rename.getValue());
+			}
+			if (used) rewritten.put(name + ".class", write(nested));
+		}
+		return rewritten;
 	}
 
 	/**
@@ -921,13 +999,8 @@ final class MixinRepairs extends PreflightPart {
 	 * as it is too.
 	 */
 	private boolean copiesInnerClasses(ClassNode mixin, MixinConfigFile config) {
-		Set<String> mixins = new HashSet<>();
-		for (String name : config.allMixins()) mixins.add(config.internalName(name));
-		for (InnerClassNode inner : mixin.innerClasses) {
-			// The inner classes Mixin reads: its own, or one named as nested in it.
-			if (inner.name.equals(mixin.name) || !mixin.name.equals(inner.outerName) && !inner.name.startsWith(mixin.name + "$")) continue;
-			if (mixins.contains(inner.name)) continue;
-			ClassNode node = modClasses.readNode(inner.name, ClassReader.SKIP_CODE);
+		for (String name : nestedClasses(mixin, config)) {
+			ClassNode node = modClasses.readNode(name, ClassReader.SKIP_CODE);
 			if (node == null) return true;
 			int access = node.access;
 			for (InnerClassNode own : node.innerClasses) {
@@ -937,6 +1010,19 @@ final class MixinRepairs extends PreflightPart {
 			if (!probablyStatic || (access & Opcodes.ACC_SYNTHETIC) == 0) return true;
 		}
 		return false;
+	}
+
+	/** The classes named as nested in the mixin, which Mixin reads with it, bar the config's mixins, by internal name. */
+	private static List<String> nestedClasses(ClassNode mixin, MixinConfigFile config) {
+		Set<String> mixins = new HashSet<>();
+		for (String name : config.allMixins()) mixins.add(config.internalName(name));
+		List<String> nested = new ArrayList<>();
+		for (InnerClassNode inner : mixin.innerClasses) {
+			// The inner classes Mixin reads: its own, or one named as nested in it.
+			if (inner.name.equals(mixin.name) || !mixin.name.equals(inner.outerName) && !inner.name.startsWith(mixin.name + "$")) continue;
+			if (!mixins.contains(inner.name)) nested.add(inner.name);
+		}
+		return nested;
 	}
 
 	/**
