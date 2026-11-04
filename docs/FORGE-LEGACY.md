@@ -106,7 +106,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   entries) with `fabric:load_conditions`, the server loads the ones whose conditions hold and not the others (Forge 61
   to 66, with Fabric API). Forge 61 decodes registry entries through its own conditional decoder, which the in-game mod
   hands Fabric's conditions to, and Forge 61's and 66's JSON data loaders hand the data to lambdas taking more values
-  than vanilla's, which pre-flight bridges upstream's hook into (LAMBDA-8).
+  than vanilla's, which pre-flight bridges upstream's hook into (LAMBDA-8). On Forge 47, a recipe's or an
+  advancement's own `conditions`, which Forge reads first, take a type Forge has no serializer of from Fabric API's
+  resource conditions, tested on the condition's JSON as Moonlight's bridge tests it on Fabric: Supplementaries' recipes
+  name their own condition there (CORPUS-97). Of the test mod's two recipes naming its Fabric condition, the server
+  loads the one whose condition holds, and neither fails to parse (with Fabric API).
 - **Biomes:** a feature `BiomeModifications.addFeature` adds to the plains is among their features (Forge 61 to 66, with
   Fabric API). Upstream rebuilds each generator's feature list, a field Forge retypes, which the in-game mod writes with
   Forge's type (CORPUS-33). On Forge 47 the module is native: Fabric's changes go through Forge's biome modifiers, and a
@@ -279,6 +283,12 @@ What else differs on Forge, for Fabric mods in general:
   declared as the other mixin declares the field, and Mixin merges the two into one field, as on Fabric (CORPUS-74:
   the test mod's tick counter, all five, server run); one that can't be (a static shadow of an instance field, a
   writable one of a final field) disables its mod, or leaves its mixin out where it can.
+- **Two mixins' unique fields of one name:** for the same reason, Forge's Mixin renames a private `@Unique` field only
+  when its class declares one of that name, not when another mixin adds it, and two mixins' fields became one, where
+  Fabric's Mixin keeps a field each: Fabric API's screen mixin and SpruceUI's both keep `tickingScreen` in `Minecraft`,
+  and the Forge 64 corpus client stopped as it created its world (CORPUS-95). Pre-flight renames a Fabric mod's such
+  field, below public, when another mixin adds one of its name and type (the test mod's two counters, all five, server
+  run).
 - **Locals where Mixin miscounts them:** Forge 61 to 66's Mixin 0.8.7 works out the locals at an injection point from
   the frames it recorded from the class's bytes, which Forge's ModLauncher hands it with their frames compressed
   (Forge 47's Mixin 0.8.5 reads a class's frames expanded): each frame then states only its change, and Mixin can count

@@ -18,6 +18,7 @@ import io.github.cmdralph.fabricated.forgetest.ForgeDimensionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFluidTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFuelTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeMobBucketTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeRecipeConditionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeRegistryAliasTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeSleepTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeTransferTest;
@@ -27,6 +28,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.class_1792;
 import net.minecraft.class_1799;
 import net.minecraft.class_1802;
+import net.minecraft.class_1863;
 import net.minecraft.class_1937;
 import net.minecraft.class_2170;
 import net.minecraft.class_2378;
@@ -52,8 +54,10 @@ import net.minecraft.server.MinecraftServer;
  * API Port's registry, whether Fabric's block break events fire as a player breaks
  * blocks, whether Fabric's use and attack callbacks are asked as a player uses and attacks things (finishing at a later
  * tick), whether a block Fabric's sleep events admit as a bed survives being slept on, whether the furnace takes the
- * test item Fabric's fuel registry made a fuel, whether a brewing recipe Fabric's brewing registry added brews, and whether
- * the defaults of the interfaces the test mod's mixins add to entities beside Forge's run (default bridges).
+ * test item Fabric's fuel registry made a fuel, whether a brewing recipe Fabric's brewing registry added brews, whether
+ * the recipes naming a Fabric resource condition in Forge's {@code conditions} loaded as it answered ({@code method_3772}
+ * is {@code getRecipeManager()}), and whether the defaults of the interfaces the test mod's mixins add to entities beside
+ * Forge's run (default bridges).
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -71,6 +75,9 @@ public abstract class MinecraftServerMixin {
 
 	@Shadow
 	public abstract class_2170 method_3734();
+
+	@Shadow
+	public abstract class_1863 method_3772();
 
 	@Inject(method = "method_3748", at = @At("TAIL"))
 	private void fabricatedForgeTest$afterTick(CallbackInfo ci) {
@@ -111,6 +118,7 @@ public abstract class MinecraftServerMixin {
 			ForgeTransferTest.check(method_30002());
 			ForgeBrewingMixTest.check();
 			ForgeMobBucketTest.check();
+			ForgeRecipeConditionTest.check(method_3772());
 			if (ForgeTestMod.testItem != null && FabricLoader.getInstance().isModLoaded("fabric-content-registries-v0")) {
 				ForgeFuelTest.check();
 				ForgeBrewingTest.check();

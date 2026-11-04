@@ -15,6 +15,7 @@
     "BuiltInRegistriesInvoker",
     "BuiltInRegistriesValidateMixin",
     "GameDataFreezeMixin",
+    "CraftingHelperFabricConditionsMixin",
     "TagFileRemoveMixin",
     "BucketItemEarlyFluidMixin",
     "BlockItemEarlyBlockMixin",

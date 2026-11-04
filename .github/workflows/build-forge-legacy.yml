@@ -283,30 +283,29 @@ jobs:
           name: fabricated-forge-${{ matrix.target.minecraft }}
           path: build/libs/fabricated-forge-*+mc${{ matrix.target.minecraft }}.jar
           if-no-files-found: error
-      # The bytecode and data task 5's open findings turn on, for reading (informational, with "extended"; last, and capped,
-      # as the job's log can only be read from its end): Moonlight's and Supplementaries' recipe conditions, which Forge's
-      # condition check doesn't know (CORPUS-97); Farmer's Delight's global loot modifier list, which Forge's and Porting
-      # Lib's managers can't read (CORPUS-98); the recipes failing on custom ingredients in arrays or oversized patterns
-      # (CORPUS-99); and Forge's GuiGraphics.renderTooltip, where Porting Lib's GUI utilities expect a call (CORPUS-93).
+      # The data task 5's open findings turn on, for reading (informational, with "extended"; last, and capped, as the
+      # job's log can only be read from its end): the condition types Forge still doesn't know in recipes and advancements
+      # (CORPUS-97); the recipes failing on custom ingredients in arrays or oversized patterns, and their files (CORPUS-99);
+      # and the client's report of other mods' mixins into Fabric mods (CORPUS-87).
       - name: Bytecode for task 5's findings (informational)
         if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
         run: |
           if [ -d "$RUNNER_TEMP/server-corpus" ]; then
-            python3 -I ci/javap-dump.py "$RUNNER_TEMP/server-corpus" 'mod:*ResourceConditionsBridge' 'mod:*FlagCondition' \
-              'refs:net/fabricmc/fabric/api/resource/conditions/v1/ResourceConditions' \
-              'file:data/forge/loot_modifiers/global_loot_modifiers.json' \
-              | cut -c1-320 | head -n 900 || true
-            # The recipes failing on a custom ingredient in an array or an oversized pattern, and their files (CORPUS-99).
-            failing=$(grep -h -A1 'Parsing error loading recipe' "$RUNNER_TEMP/server-corpus/logs/latest.log" 2>/dev/null \
-              | grep -B1 -E 'array ingredient|too many (rows|columns)' | grep -oE 'loading recipe [a-z0-9_.-]+:[a-z0-9_./-]+' \
-              | sed 's/^loading recipe //' | sort -u | head -n 20 || true)
+            log="$RUNNER_TEMP/server-corpus/logs/latest.log"
+            echo "-- unknown condition types (CORPUS-97): $(grep -c 'Unknown condition type' "$log" 2>/dev/null || true)"
+            grep -oE 'Unknown condition type: [a-z0-9_.-]+:[a-z0-9_./-]+' "$log" 2>/dev/null | sort | uniq -c | sort -rn | head -n 10 || true
+            # Each recipe whose parsing error, the exception on the line after it, is a custom ingredient in an array or
+            # an oversized pattern (CORPUS-99).
+            failing=$(awk '/Parsing error loading recipe/ { id = $0; sub(/.*loading recipe /, "", id); sub(/[^a-z0-9_.:\/-].*/, "", id)
+              if ((getline next_line) > 0 && next_line ~ /array ingredient|too many (rows|columns)/) print id }' "$log" 2>/dev/null \
+              | sort -u | head -n 20 || true)
             echo "-- recipes failing on a custom ingredient in an array or an oversized pattern (CORPUS-99): ${failing:-none}"
             specs=()
             for id in $failing; do specs+=("file:data/${id%%:*}/recipes/${id#*:}.json"); done
             [ ${#specs[@]} -eq 0 ] || python3 -I ci/javap-dump.py "$RUNNER_TEMP/server-corpus" "${specs[@]}" | cut -c1-320 | head -n 500 || true
           fi
           if [ -d "$RUNNER_TEMP/client-corpus" ]; then
-            python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'game:net.minecraft.client.gui.GuiGraphics#m_280666_' \
-              | cut -c1-320 | head -n 300 || true
+            awk -v heading="== Other mods' mixins into Fabric mods ==" '$0 == heading { show = 1; print; next } /^== / { show = 0 } show' \
+              "$RUNNER_TEMP/client-corpus/run/logs/fabric-bridge-report.txt" 2>/dev/null | cut -c1-320 | head -n 60 || true
           fi

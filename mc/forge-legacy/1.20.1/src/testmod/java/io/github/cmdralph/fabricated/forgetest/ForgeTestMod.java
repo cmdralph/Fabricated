@@ -93,6 +93,11 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			LOGGER.error("FABRICATED-FORGE-TEST loot table events failed", e);
 		}
 		try {
+			ForgeRecipeConditionTest.register();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.error("FABRICATED-FORGE-TEST recipe condition registration failed", e);
+		}
+		try {
 			ForgeFluidTest.register();
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.error("FABRICATED-FORGE-TEST fluid registration failed", e);

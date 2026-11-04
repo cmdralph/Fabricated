@@ -13,6 +13,7 @@
     "BuiltInRegistriesFreezeMixin": [],
     "BuiltInRegistriesInvoker": [],
     "BuiltInRegistriesValidateMixin": [],
+    "CraftingHelperFabricConditionsMixin": [],
     "FluidTypeMixin": [],
     "GameDataFreezeMixin": [],
     "LiquidBlockEarlyFluidMixin": [],
