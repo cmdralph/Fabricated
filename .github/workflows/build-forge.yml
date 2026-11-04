@@ -362,3 +362,70 @@ jobs:
           status=0
           SMOKE_TIMEOUT=420 ci/forge/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-flashback" "$dir" > "$RUNNER_TEMP/client-flashback.out" 2>&1 || status=$?
           ci/forge/difficult-summary.sh "$RUNNER_TEMP/client-flashback" "$status" "Flashback" "flashback|Flashback" flashback
+      # Evidence for task 5's findings, read once and then removed: Essential's key hook group (Mixin_GuiKeyTypedEvent),
+      # which Mixin failed on Forge 61 to 66 after pre-flight let it in, beside Forge's KeyboardHandler, and what
+      # Flashback's mixin library (MixinConstraints) threw on Forge 64 to 66, beside Forge's loading mod list.
+      - name: Evidence for task 5's findings
+        if: ${{ !cancelled() }}
+        run: |
+          # A class's members, annotations and code, without its constant pool, line numbers or frames.
+          dump() { javap -p -c -v "$1" | sed -n '/^{/,$p' | grep -v -E '^\s+(line [0-9]+: [0-9]+|frame_type|offset_delta|locals = |stack = )' | head -n "${2:-400}"; }
+          t=$(mktemp -d)
+          w="$RUNNER_TEMP/client-essential"
+          if [ -d "$w/run" ]; then
+            echo "::group::Essential's Mixin_GuiKeyTypedEvent as Fabricated translated it, and its refmap entries"
+            for j in $(find "$w/run/.fabricated" "$w/run/essential" -name '*.jar' 2>/dev/null); do
+              c=$(unzip -Z1 "$j" 2>/dev/null | grep '/Mixin_GuiKeyTypedEvent\.class$' | head -1)
+              [ -n "$c" ] || continue
+              echo "== $j: $c"
+              rm -rf "$t/e" && mkdir -p "$t/e" && (cd "$t/e" && unzip -q -o "$j" "$c")
+              dump "$t/e/$c"
+              for r in $(unzip -Z1 "$j" 2>/dev/null | grep 'refmap.*\.json$'); do
+                unzip -p "$j" "$r" | python3 -I -c 'import json, sys
+          m = json.load(sys.stdin)
+          for ns in [m.get("mappings", {})] + list(m.get("data", {}).values()):
+              for k, v in ns.items():
+                  if k.endswith("Mixin_GuiKeyTypedEvent"): print(sys.argv[1], k, json.dumps(v, indent=1))' "$r" || true
+              done
+            done
+            echo "::endgroup::"
+            echo "::group::What pre-flight and Mixin said of it"
+            grep -n "GuiKeyTypedEvent" "$w/run/logs/fabric-bridge-report.txt" "$w/run/logs/debug.log" 2>/dev/null | cut -c1-700 | head -n 40
+            echo "::endgroup::"
+            fj=$(find "$w" -name 'forge-*-client.jar' | head -n 1)
+            if [ -n "$fj" ]; then
+              echo "::group::Forge's KeyboardHandler ($fj)"
+              rm -rf "$t/k" && mkdir -p "$t/k" && (cd "$t/k" && unzip -q -o "$fj" net/minecraft/client/KeyboardHandler.class)
+              javap -p "$t/k/net/minecraft/client/KeyboardHandler.class"
+              javap -p -c "$t/k/net/minecraft/client/KeyboardHandler.class" | grep -E '^  [a-z].*\(|invoke' | head -n 300
+              echo "::endgroup::"
+            fi
+          fi
+          w="$RUNNER_TEMP/client-flashback"
+          if [ -f "$w/client.out" ]; then
+            echo "::group::What Flashback's client threw: each exception's first line, and the last cause's frames"
+            grep -n -E 'Exception in|Caused by|^[A-Za-z_$.]+(Exception|Error)\b' "$w/client.out" | cut -c1-500 | head -n 30
+            n=$(grep -n 'Caused by' "$w/client.out" | tail -n 1 | cut -d: -f1)
+            [ -n "$n" ] && sed -n "${n},$((n + 15))p" "$w/client.out"
+            echo "::endgroup::"
+            fb=$(ls "$RUNNER_TEMP/extra-flashback"/*.jar 2>/dev/null | grep -i flashback | head -n 1)
+            rm -rf "$t/f" && mkdir -p "$t/f" && (cd "$t/f" && unzip -q -o "$fb" 'META-INF/jars/*' 2>/dev/null) || true
+            mcj=$(ls "$t"/f/META-INF/jars/*mixinconstraints*.jar 2>/dev/null | head -n 1)
+            if [ -n "$mcj" ]; then
+              echo "::group::MixinConstraints' Forge abstraction ($mcj)"
+              (cd "$t/f" && unzip -q -o "$mcj" 'com/moulberry/mixinconstraints/*.class' 'com/moulberry/mixinconstraints/util/*.class' 'com/moulberry/mixinconstraints/checker/*.class')
+              javap -p -c "$t/f/com/moulberry/mixinconstraints/ForgeAbstractionsImpl.class" | grep -E '^  [a-z].*\(|invoke|getstatic'
+              javap -p -c "$t/f/com/moulberry/mixinconstraints/util/Abstractions.class" | grep -E '^  [a-z].*\(|invoke|ldc'
+              echo "::endgroup::"
+            fi
+            fl=$(find "$w" -name 'fmlloader-*.jar' | head -n 1)
+            if [ -n "$fl" ]; then
+              echo "::group::Forge's LoadingModList and FMLLoader ($fl)"
+              rm -rf "$t/l" && mkdir -p "$t/l" && (cd "$t/l" && unzip -q -o "$fl" net/minecraftforge/fml/loading/LoadingModList.class net/minecraftforge/fml/loading/FMLLoader.class)
+              javap -p "$t/l/net/minecraftforge/fml/loading/LoadingModList.class" "$t/l/net/minecraftforge/fml/loading/FMLLoader.class"
+              for j in $(find "$w" -name '*.jar' -path '*libraries*'); do
+                unzip -Z1 "$j" 2>/dev/null | grep -q '^net/minecraftforge/forgespi/language/IModFileInfo\.class$' && echo "IModFileInfo is in $j"
+              done
+              echo "::endgroup::"
+            fi
+          fi
