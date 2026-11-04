@@ -26,10 +26,11 @@ import net.minecraft.world.level.block.state.BlockState;
  * and a block marker of it, and shows the screen effect inside it: the block is put at the player's eye on this client
  * only, at the end of each client tick until the effect asked, and taken away at the start of the next, before the
  * player moves (a block there would push them out), so only the frames drawn between have it. Where the effect never
- * asked, what the check met is logged as the game stops: how often the block was put there, and whether the effect asked
- * the model's sprite without the level (the game's own call, past Fabricated's).
+ * asked, what the check met is logged as the game stops: how often the block was put there, whether the effect asked
+ * the model's sprite without the level (the game's own call, past Fabricated's), and on Forge 66 what its extraction
+ * met ({@code mixin/OverlayProbeMixin}).
  */
-final class ParticleSpriteCheck {
+public final class ParticleSpriteCheck {
 	/** Client ticks the screen effect is tried for: 20 seconds. */
 	private static final int SCREEN_TICKS = 400;
 	private static final String SCREEN = "screen effect";
@@ -45,6 +46,11 @@ final class ParticleSpriteCheck {
 	private static int firstPut = -1;
 	private static @Nullable BlockPos placed;
 	private static @Nullable BlockState replaced;
+	/** Forge 66's extractions of the player's state, those with the block at the eye, and what its lookup found ({@code mixin/OverlayProbeMixin}). */
+	private static int extractions;
+	private static int extractionsWithBlock;
+	private static int overlaysFound;
+	private static @Nullable String firstOverlay;
 
 	private ParticleSpriteCheck() {
 	}
@@ -55,7 +61,9 @@ final class ParticleSpriteCheck {
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
 			if (!LOGGED.get(SCREEN).get()) {
 				FrapiTestMod.LOGGER.warn("FABRICATED-TEST frapi screen effect not asked: the block put at the player's eye {} time(s) in {} tick(s) tried,"
-						+ " first at tick {}, its sprite asked without the level {}", puts, screenTicks, firstPut, SCREEN_WITHOUT_LEVEL.get());
+						+ " first at tick {}, its sprite asked without the level {}; the player's state extracted {} time(s), {} with the block there,"
+						+ " Forge's lookup finding a block {} time(s) (first {})", puts, screenTicks, firstPut, SCREEN_WITHOUT_LEVEL.get(), extractions,
+						extractionsWithBlock, overlaysFound, firstOverlay);
 			}
 		});
 	}
@@ -75,6 +83,20 @@ final class ParticleSpriteCheck {
 	private static List<String> callers() {
 		return StackWalker.getInstance().walk(frames -> frames.filter(frame -> !frame.getClassName().equals(ParticleSpriteCheck.class.getName())).limit(8)
 				.map(frame -> frame.getClassName() + "." + frame.getMethodName()).toList());
+	}
+
+	/** Forge 66's extraction of the player's state begins (render thread). */
+	public static void extracting() {
+		extractions++;
+		ClientLevel level = Minecraft.getInstance().level;
+		BlockPos pos = placed;
+		if (level != null && pos != null && FrapiTestMod.terrainBlock != null && level.getBlockState(pos).is(FrapiTestMod.terrainBlock)) extractionsWithBlock++;
+	}
+
+	/** What Forge 66's lookup of the block the camera is in returned: null, or the block and its position (render thread). */
+	public static void overlayFound(@Nullable Object overlay) {
+		if (overlay == null) return;
+		if (overlaysFound++ == 0) firstOverlay = overlay.toString();
 	}
 
 	/** Called by the terrain block's model as it gives its particle material without the level. */
