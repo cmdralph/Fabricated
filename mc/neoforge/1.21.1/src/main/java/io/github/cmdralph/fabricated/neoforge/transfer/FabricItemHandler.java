@@ -1,5 +1,7 @@
 package io.github.cmdralph.fabricated.neoforge.transfer;
 
+import java.util.function.BooleanSupplier;
+
 import org.jspecify.annotations.Nullable;
 
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant;
@@ -15,9 +17,16 @@ import net.neoforged.neoforge.items.IItemHandler;
  */
 final class FabricItemHandler implements IItemHandler {
 	final Storage<ItemVariant> storage;
+	/** Whether what a call moved may stand, asked before it commits: always, but for a storage in an item. */
+	private final BooleanSupplier stands;
 
 	FabricItemHandler(Storage<ItemVariant> storage) {
+		this(storage, FabricTransactions.ALWAYS);
+	}
+
+	FabricItemHandler(Storage<ItemVariant> storage, BooleanSupplier stands) {
 		this.storage = storage;
+		this.stands = stands;
 	}
 
 	@Override
@@ -56,7 +65,7 @@ final class FabricItemHandler implements IItemHandler {
 		Storage<ItemVariant> target = target(slot);
 		if (target == null) return stack;
 		ItemVariant variant = ItemVariant.of(stack);
-		long inserted = FabricTransactions.run(simulate, transaction -> target.insert(variant, stack.getCount(), transaction));
+		long inserted = FabricTransactions.run(simulate, transaction -> target.insert(variant, stack.getCount(), transaction), stands);
 		if (inserted == 0) return stack;
 		return inserted >= stack.getCount() ? ItemStack.EMPTY : stack.copyWithCount(stack.getCount() - (int) inserted);
 	}
@@ -69,7 +78,7 @@ final class FabricItemHandler implements IItemHandler {
 		if (view == null || view.isResourceBlank()) return ItemStack.EMPTY;
 		ItemVariant variant = view.getResource();
 		int max = Math.min(amount, variant.toStack(1).getMaxStackSize());
-		long extracted = FabricTransactions.run(simulate, transaction -> view.extract(variant, max, transaction));
+		long extracted = FabricTransactions.run(simulate, transaction -> view.extract(variant, max, transaction), stands);
 		return extracted == 0 ? ItemStack.EMPTY : variant.toStack((int) extracted);
 	}
 

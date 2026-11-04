@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.testmod;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -16,8 +18,11 @@ import net.fabricmc.fabric.api.transfer.v1.item.ItemStorage;
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant;
 import net.fabricmc.fabric.api.transfer.v1.item.base.SingleStackStorage;
 import net.fabricmc.fabric.api.transfer.v1.storage.Storage;
+import net.fabricmc.fabric.api.transfer.v1.storage.StorageView;
+import net.fabricmc.fabric.api.transfer.v1.storage.base.SingleVariantItemStorage;
 import net.fabricmc.fabric.api.transfer.v1.storage.base.SingleVariantStorage;
 import net.fabricmc.fabric.api.transfer.v1.transaction.Transaction;
+import net.fabricmc.fabric.api.transfer.v1.transaction.TransactionContext;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
@@ -46,7 +51,9 @@ import net.neoforged.neoforge.items.ItemStackHandler;
  * Fabric storages over a vanilla chest and a water cauldron, with aborted transactions leaving them unchanged and
  * committed ones applying; and the bridge to NeoForge 21.1's handler capabilities, both ways, on blocks and in items (a
  * Fabric mod's fluid cell filled by NeoForge code, a NeoForge mod's by Fabric code: each item's storage changes the item
- * through the other side).
+ * through the other side; a Fabric mod's bag filled and emptied by NeoForge code, its own stack showing the change, and a
+ * NeoForge mod's pouch by Fabric code, while a Fabric mod's sack, which would take a stone by becoming another item, is
+ * refused one by NeoForge code holding it).
  */
 public final class TransferTest implements ModInitializer {
 	private static final BlockPos CHEST = new BlockPos(8, 250, 8);
@@ -61,7 +68,11 @@ public final class TransferTest implements ModInitializer {
 	}
 
 	private static Item item(String namespace, String name) {
-		return Registry.register(BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(namespace, name), new Item(new Item.Properties()));
+		return item(namespace, name, new Item.Properties());
+	}
+
+	private static Item item(String namespace, String name, Item.Properties properties) {
+		return Registry.register(BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(namespace, name), new Item(properties));
 	}
 
 	@Override
@@ -73,6 +84,12 @@ public final class TransferTest implements ModInitializer {
 		Item fabricWaterCell = item("fabricated_testmod", "fabric_water_cell");
 		Item neoCell = item(TestMod.NEOFORGE_NAMESPACE, "neo_cell");
 		Item neoWaterCell = item(TestMod.NEOFORGE_NAMESPACE, "neo_water_cell");
+		// A Fabric mod's bag and sack, and a NeoForge mod's pouch: items holding items.
+		Item fabricBag = item("fabricated_testmod", "fabric_bag", new Item.Properties().durability(100));
+		Item fabricSack = item("fabricated_testmod", "fabric_sack");
+		Item neoPouch = item(TestMod.NEOFORGE_NAMESPACE, "neo_pouch", new Item.Properties().durability(100));
+		ItemStorage.ITEM.registerForItems((stack, context) -> new BagStorage(context), fabricBag);
+		ItemStorage.ITEM.registerForItems((stack, context) -> new SackStorage(context, fabricCell), fabricSack);
 		FluidStorage.combinedItemApiProvider(fabricCell).register(context ->
 				new EmptyItemFluidStorage(context, fabricWaterCell, Fluids.WATER, FluidConstants.BUCKET));
 		FluidStorage.combinedItemApiProvider(fabricWaterCell).register(context ->
@@ -107,6 +124,7 @@ public final class TransferTest implements ModInitializer {
 				bus.addListener(RegisterCapabilitiesEvent.class, event -> {
 					event.registerBlock(Capabilities.ItemHandler.BLOCK, (level, pos, state, blockEntity, side) -> neoItems, neoBlock);
 					event.registerItem(Capabilities.FluidHandler.ITEM, (stack, context) -> new NeoCell(stack, neoCell, neoWaterCell), neoCell, neoWaterCell);
+					event.registerItem(Capabilities.ItemHandler.ITEM, (stack, context) -> new NeoPouch(stack), neoPouch);
 				}));
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
@@ -171,18 +189,7 @@ public final class TransferTest implements ModInitializer {
 
 			// Fabric code filling a NeoForge mod's cell in a slot: the cell's NeoForge handler swaps the item through
 			// the Fabric context, inside the Fabric transaction.
-			ItemStack[] neoCellStack = {new ItemStack(neoCell)};
-			SingleStackStorage neoCellSlot = new SingleStackStorage() {
-				@Override
-				protected ItemStack getStack() {
-					return neoCellStack[0];
-				}
-
-				@Override
-				protected void setStack(ItemStack stack) {
-					neoCellStack[0] = stack;
-				}
-			};
+			StackSlot neoCellSlot = new StackSlot(new ItemStack(neoCell));
 			Storage<FluidVariant> neoCellAsFabric = ContainerItemContext.ofSingleSlot(neoCellSlot).find(FluidStorage.ITEM);
 			if (neoCellAsFabric == null) {
 				failed.add("fabric_sees_neo_item");
@@ -192,7 +199,7 @@ public final class TransferTest implements ModInitializer {
 						failed.add("fabric_item_insert");
 					}
 				}
-				if (!neoCellStack[0].is(neoCell)) failed.add("fabric_item_abort");
+				if (!neoCellSlot.stack.is(neoCell)) failed.add("fabric_item_abort");
 				try (Transaction tx = Transaction.openOuter()) {
 					try (Transaction inner = tx.openNested()) {
 						neoCellAsFabric.insert(FluidVariant.of(Fluids.WATER), FluidConstants.BUCKET, inner);
@@ -200,7 +207,60 @@ public final class TransferTest implements ModInitializer {
 					}
 					tx.commit();
 				}
-				if (!neoCellStack[0].is(neoWaterCell)) failed.add("fabric_item_commit");
+				if (!neoCellSlot.stack.is(neoWaterCell)) failed.add("fabric_item_commit");
+			}
+
+			// NeoForge code filling and emptying a Fabric mod's bag, which keeps its stone as damage: the bag's own stack
+			// shows each change.
+			ItemStack bagStack = new ItemStack(fabricBag);
+			IItemHandler bagAsNeo = bagStack.getCapability(Capabilities.ItemHandler.ITEM);
+			if (bagAsNeo == null) {
+				failed.add("neo_sees_fabric_bag");
+			} else {
+				if (!bagAsNeo.insertItem(0, new ItemStack(Items.STONE, 10), true).isEmpty() || bagStack.getDamageValue() != 0) failed.add("neo_bag_simulate");
+				if (!bagAsNeo.insertItem(0, new ItemStack(Items.STONE, 60), false).isEmpty() || bagStack.getDamageValue() != 60) failed.add("neo_bag_insert");
+				if (bagAsNeo.insertItem(0, new ItemStack(Items.STONE, 10), false).getCount() != 6 || bagStack.getDamageValue() != 64) failed.add("neo_bag_capacity");
+				if (bagAsNeo.insertItem(0, new ItemStack(Items.DIRT), false).getCount() != 1) failed.add("neo_bag_wrong_item");
+				ItemStack taken = bagAsNeo.extractItem(0, 20, false);
+				if (!taken.is(Items.STONE) || taken.getCount() != 20 || bagStack.getDamageValue() != 44) failed.add("neo_bag_extract");
+			}
+			// A Fabric mod's sack takes a stone by becoming another item, which NeoForge's caller, holding the sack, would
+			// never see: an item handler can't hand it another stack.
+			ItemStack sackStack = new ItemStack(fabricSack);
+			IItemHandler sackAsNeo = sackStack.getCapability(Capabilities.ItemHandler.ITEM);
+			if (sackAsNeo == null) {
+				failed.add("neo_sees_fabric_sack");
+			} else if (sackAsNeo.insertItem(0, new ItemStack(Items.STONE), false).getCount() != 1 || !sackStack.is(fabricSack)) {
+				failed.add("neo_sack_in_place");
+			}
+
+			// Fabric code filling and emptying a NeoForge mod's pouch in a slot, in the Fabric transaction.
+			StackSlot pouchSlot = new StackSlot(new ItemStack(neoPouch));
+			Storage<ItemVariant> pouchAsFabric = ContainerItemContext.ofSingleSlot(pouchSlot).find(ItemStorage.ITEM);
+			if (pouchAsFabric == null) {
+				failed.add("fabric_sees_neo_pouch");
+			} else {
+				ItemVariant stone = ItemVariant.of(Items.STONE);
+				try (Transaction tx = Transaction.openOuter()) {
+					if (pouchAsFabric.insert(stone, 10, tx) != 10 || pouchSlot.stack.getDamageValue() != 10) failed.add("fabric_pouch_insert");
+				}
+				if (pouchSlot.stack.getDamageValue() != 0) failed.add("fabric_pouch_abort");
+				try (Transaction tx = Transaction.openOuter()) {
+					if (pouchAsFabric.insert(stone, 100, tx) != 64) failed.add("fabric_pouch_capacity");
+					if (pouchAsFabric.insert(ItemVariant.of(Items.DIRT), 1, tx) != 0) failed.add("fabric_pouch_wrong_item");
+					tx.commit();
+				}
+				if (!pouchSlot.stack.is(neoPouch) || pouchSlot.stack.getDamageValue() != 64) failed.add("fabric_pouch_commit");
+				long viewed = 0;
+				for (StorageView<ItemVariant> view : pouchAsFabric) {
+					if (view.getResource().equals(stone)) viewed += view.getAmount();
+				}
+				if (viewed != 64) failed.add("fabric_pouch_views");
+				try (Transaction tx = Transaction.openOuter()) {
+					if (pouchAsFabric.extract(stone, 20, tx) != 20) failed.add("fabric_pouch_extract");
+					tx.commit();
+				}
+				if (pouchSlot.stack.getDamageValue() != 44) failed.add("fabric_pouch_extract_commit");
 			}
 
 			level.setBlockAndUpdate(CHEST, Blocks.CHEST.defaultBlockState());
@@ -244,8 +304,143 @@ public final class TransferTest implements ModInitializer {
 					"neo_sees_fabric_fluid", "Forgified Fabric API gives a Fabric fluid storage a NeoForge fluid handler on block entities only",
 					"fabric_sees_neo", "Forgified Fabric API's Fabric view of a NeoForge item handler needs a block entity",
 					"neo_sees_fabric_item", "Forgified Fabric API gives Fabric items no NeoForge fluid handler (left out in its source as broken)",
-					"fabric_item_commit", "Forgified Fabric API's Fabric view of a NeoForge item's fluid handler fills the handler's own item, not the slot's"));
+					"fabric_item_commit", "Forgified Fabric API's Fabric view of a NeoForge item's fluid handler fills the handler's own item, not the slot's",
+					"neo_sees_fabric_bag", "Forgified Fabric API gives a Fabric item storage in an item (ItemStorage.ITEM) no NeoForge item handler",
+					"neo_sees_fabric_sack", "Forgified Fabric API gives a Fabric item storage in an item (ItemStorage.ITEM) no NeoForge item handler",
+					"fabric_sees_neo_pouch", "Forgified Fabric API gives a NeoForge item handler of a stack no Fabric storage (ItemStorage.ITEM)"));
 		});
+	}
+
+	/** A Fabric mod's machine slot, holding a stack. */
+	private static final class StackSlot extends SingleStackStorage {
+		ItemStack stack;
+
+		StackSlot(ItemStack stack) {
+			this.stack = stack;
+		}
+
+		@Override
+		protected ItemStack getStack() {
+			return stack;
+		}
+
+		@Override
+		protected void setStack(ItemStack stack) {
+			this.stack = stack;
+		}
+	}
+
+	/** A Fabric mod's bag storage: up to 64 stone, one for each point of the item's damage. */
+	private static final class BagStorage extends SingleVariantItemStorage<ItemVariant> {
+		BagStorage(ContainerItemContext context) {
+			super(context);
+		}
+
+		@Override
+		protected ItemVariant getBlankResource() {
+			return ItemVariant.blank();
+		}
+
+		@Override
+		protected ItemVariant getResource(ItemVariant item) {
+			return item.toStack().getDamageValue() > 0 ? ItemVariant.of(Items.STONE) : ItemVariant.blank();
+		}
+
+		@Override
+		protected long getAmount(ItemVariant item) {
+			return item.toStack().getDamageValue();
+		}
+
+		@Override
+		protected long getCapacity(ItemVariant variant) {
+			return 64;
+		}
+
+		@Override
+		protected ItemVariant getUpdatedVariant(ItemVariant item, ItemVariant resource, long amount) {
+			ItemStack stack = item.toStack();
+			stack.setDamageValue((int) amount);
+			return ItemVariant.of(stack);
+		}
+
+		@Override
+		protected boolean canInsert(ItemVariant resource) {
+			return resource.isOf(Items.STONE) && !resource.hasComponents();
+		}
+	}
+
+	/** A Fabric mod's sack storage, which takes a stone by becoming another item: one no NeoForge item handler can be. */
+	private static final class SackStorage implements Storage<ItemVariant> {
+		private final ContainerItemContext context;
+		private final Item filled;
+
+		SackStorage(ContainerItemContext context, Item filled) {
+			this.context = context;
+			this.filled = filled;
+		}
+
+		@Override
+		public long insert(ItemVariant resource, long maxAmount, TransactionContext transaction) {
+			if (maxAmount < 1 || !resource.equals(ItemVariant.of(Items.STONE))) return 0;
+			return context.exchange(ItemVariant.of(filled), 1, transaction);
+		}
+
+		@Override
+		public long extract(ItemVariant resource, long maxAmount, TransactionContext transaction) {
+			return 0;
+		}
+
+		@Override
+		public Iterator<StorageView<ItemVariant>> iterator() {
+			return Collections.emptyIterator();
+		}
+	}
+
+	/** A NeoForge mod's pouch handler: up to 64 stone in one slot, one for each point of the item's damage. */
+	private static final class NeoPouch implements IItemHandler {
+		private final ItemStack container;
+
+		NeoPouch(ItemStack container) {
+			this.container = container;
+		}
+
+		@Override
+		public int getSlots() {
+			return 1;
+		}
+
+		@Override
+		public ItemStack getStackInSlot(int slot) {
+			int held = container.getDamageValue();
+			return slot == 0 && held > 0 ? new ItemStack(Items.STONE, held) : ItemStack.EMPTY;
+		}
+
+		@Override
+		public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+			if (slot != 0 || !stack.is(Items.STONE)) return stack;
+			int moved = Math.min(stack.getCount(), 64 - container.getDamageValue());
+			if (moved <= 0) return stack;
+			if (!simulate) container.setDamageValue(container.getDamageValue() + moved);
+			return moved == stack.getCount() ? ItemStack.EMPTY : stack.copyWithCount(stack.getCount() - moved);
+		}
+
+		@Override
+		public ItemStack extractItem(int slot, int amount, boolean simulate) {
+			int moved = slot == 0 ? Math.min(amount, container.getDamageValue()) : 0;
+			if (moved <= 0) return ItemStack.EMPTY;
+			if (!simulate) container.setDamageValue(container.getDamageValue() - moved);
+			return new ItemStack(Items.STONE, moved);
+		}
+
+		@Override
+		public int getSlotLimit(int slot) {
+			return 64;
+		}
+
+		@Override
+		public boolean isItemValid(int slot, ItemStack stack) {
+			return slot == 0 && stack.is(Items.STONE);
+		}
 	}
 
 	/** A NeoForge mod's fluid cell: empty, or holding a bucket of water, as its item says; filling swaps the container. */

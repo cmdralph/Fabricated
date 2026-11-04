@@ -91,9 +91,8 @@ starts.
 - **Fabric API modules that NeoForge conflicts with**, until Fabricated implements them natively (see above).
 - **A few Fabric builds Fabricated refuses**: WTHIT's (it refuses NeoForge itself) and the mixed renderer pairs
      (Iris's Fabric build with Sodium for NeoForge, and the reverse). The Fabric builds of Sodium, Iris, Essential,
-     malilib and Flashback load on NeoForge, and Sodium's, Essential's and malilib's on Forge, each checked in CI on
-     every version (Iris's but on 1.21.1), with the gaps
-     [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) lists (Sodium's Fabric build meshes NeoForge's fluids and models
+     malilib and Flashback load on NeoForge and Forge, each checked in CI on every version Modrinth has them for, with
+     the gaps [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) lists (Sodium's Fabric build meshes NeoForge's fluids and models
      the Fabric way; prefer Sodium for NeoForge where it exists). `loadUnsupported` loads a refused build for testing.
 
 - **Mods that use Fabric Loader internals** (`net.fabricmc.loader.impl.*`). Only the public Fabric Loader
@@ -183,7 +182,7 @@ warning in the report, so a bad config never crashes the game.
 | `mods.<id>.aliases` | Extra ids this mod satisfies as a dependency. |
 | `mods.<id>.ignorePreflight` | Load the mod even if mixin pre-flight fails. It may crash. Use for testing only. |
 | `mods.<id>.ignoreHints` | Ignore the mod's own `custom.fabricated` hints (see [docs/API.md](docs/API.md)). |
-| `mods.<id>.loadUnsupported` | Load a mod whose Fabric build Fabricated refuses (WTHIT's, a mixed renderer pair, and on Forge the Fabric builds of Iris and Flashback) anyway. Expect it to misbehave; this exists for testing support for it. |
+| `mods.<id>.loadUnsupported` | Load a mod whose Fabric build Fabricated refuses (WTHIT's) anyway; a mixed renderer pair stays refused. Expect it to misbehave; this exists for testing support for it. |
 | `mojangMappingsPath` | 1.21.1 and 1.21.11 only: path to Mojang's mapping file if NeoForge's installer didn't leave one. |
 
 ## Known limitations

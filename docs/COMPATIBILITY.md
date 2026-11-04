@@ -125,8 +125,11 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
 
 - **Storages and energy**: NeoForge 21.1 has the item, fluid and energy handler capabilities of before its transfer
   API, so the bridge is the Forge one, ported (`ItemHandler`, `FluidHandler` and `EnergyStorage` capabilities, both
-  ways on blocks, fluid and energy storages in items both ways). Fluid data components cross. Items in items
-  (`ItemStorage.ITEM`) aren't bridged on this version, as on Forge.
+  ways on blocks and in items: a NeoForge mod's code puts items in a Fabric mod's bag through `ItemHandler.ITEM`, and
+  a Fabric mod's code in a NeoForge mod's through `ItemStorage.ITEM`). Fluid data components cross. NeoForge's item
+  handler of a stack can't hand back another stack, as a fluid handler's container can, so a move a Fabric storage in
+  an item would make by leaving another item, or a different count of it, in the item's place doesn't happen through
+  it: NeoForge's caller, holding the item, would lose what moved.
 - **Fuel**: `FuelRegistry.INSTANCE` (0.116 has no fuel events) answers through NeoForge's furnace fuel data map and
   its burn time event; tags first, then items, and vanilla's non-flammable wood exclusion applies.
 - **Biomes**: NeoForge 21.1's biome info holds the special effects, so its own check sends a biome a Fabric
@@ -637,7 +640,10 @@ CI checks, on every version: a chest found through `ItemStorage.SIDED` keeps its
 aborted and changes when one commits; a full water cauldron empties when a bucket of water is extracted; a Fabric
 storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
 nested commits and commits; fluids move in whole millibuckets only; NeoForge code fills a Fabric mod's fluid cell
-in a slot, and Fabric code a NeoForge mod's, each item swapped only when the transaction commits. With Team Reborn's library
+in a slot, and Fabric code a NeoForge mod's, each item swapped only when the transaction commits. On 1.21.1, NeoForge
+code fills and empties a Fabric mod's bag, the bag's own stack showing each change, and Fabric code a NeoForge mod's
+pouch in a slot, an aborted transaction leaving it unchanged; a Fabric mod's sack that takes an item by becoming
+another is refused it by NeoForge code. With Team Reborn's library
 (fetched for the server run with Fabric API where Modrinth has a build, of its own or nested in Tech Reborn's or
 Modern Industrialization's jar): NeoForge code charges a Fabric mod's energy block and Fabric code a NeoForge mod's,
 an aborted transaction leaving each unchanged; the Fabric block's energy comes from a lookup fallback, as Tech
@@ -836,14 +842,13 @@ own hooks stay off then), and Sodium draws a Fabric block model from the parts F
 CI's informational 1.21.11 run with Sodium for NeoForge saw the test model and the multipart part with it meshed in
 Sodium's own section level (run 374; run 372, without the fallback, had no parts).
 
-**Their Fabric builds** (NeoForge, every version; on Forge Sodium's, every version, and Iris's refused until a Forge
-run gates it, `docs/FORGE.md`).
-Sodium's Fabric build loads by default, and Iris's with it on 1.21.11 and 26.x. CI runs them with Fabric API and the
-renderer test mod on every version Modrinth has them for, as a gate: the client reaches a world, every renderer check
-passes under them, and Sodium's renderer draws the Fabric block models. The same client with CI's minimal shader pack
-is informational. On 1.21.1 Iris's Fabric build is disabled before it runs, with the reason: pre-flight finds that
-its particle hook, a `@Redirect` of a read of `ParticleEngine.RENDER_ORDER`, has nothing to redirect in NeoForge
-21.1's `render`.
+**Their Fabric builds** (NeoForge and Forge, every version; on Forge, `docs/FORGE.md`).
+Sodium's Fabric build loads by default, and Iris's with it. CI runs them with Fabric API and the renderer test mod on
+every version Modrinth has them for, as a gate: the client reaches a world, every renderer check passes under them,
+and Sodium's renderer draws the Fabric block models. The same client with CI's minimal shader pack is informational.
+On 1.21.1 Iris's particle hook, a `@Redirect` of a read of `ParticleEngine.RENDER_ORDER` in `render`, would have
+nothing to redirect: NeoForge 21.1's `render` goes over the keys of its particles' map instead, as Forge 47's does, so
+pre-flight points the hook at that loop (IRIS-1).
 What Fabricated changed for them: pre-flight moves Sodium's quad hook to the constructor NeoForge 21.1's baking calls
 (CTOR-5), keeps Fabric API's fluid sprite hook where a sibling hook fails (STATE-1, which Sodium's water needs), pins
 Sodium's hook to the overload it takes beside Indigo's overwrite (OVERLOAD-2), maps Iris's access widener entries for
@@ -895,15 +900,14 @@ uses, and find each value where those mods look.
 Some mods' Fabric builds are refused on a loader where they can't run, or aren't verified yet; these facts are data
 (core's `compat-plan.json`). Such a build is disabled with the reason and what to do instead, and the mods that need it
 with it; `loadUnsupported` loads it anyway, for testing. A refusal is lifted on a loader once CI's run of that mod is a
-gate there (the owner's decision 3 of the beta pass): on NeoForge it is lifted for Sodium, Iris, Essential, malilib and
-Flashback, and on Forge for Sodium, Essential and malilib; on Forge Iris and Flashback stay refused, with "isn't
-supported on Forge" in the report.
+gate there (the owner's decision 3 of the beta pass): it is lifted for Sodium, Iris, Essential, malilib and Flashback,
+on NeoForge and Forge.
 
 A build for another Minecraft version that Fabricated can tell can't run is disabled too, with the build to install:
 on 26.x, one whose mixins name intermediary classes (`net.minecraft.class_1234`), the names obfuscated versions (1.21.11
 and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists some 1.21.11 builds for 26.x too).
 
-- **Sodium and Iris**: loaded on NeoForge, and Sodium on Forge too, with the gaps in *Renderer mods* above.
+- **Sodium and Iris**: loaded on NeoForge and Forge, with the gaps in *Renderer mods* above.
 - **Essential** (`essential-container`, and `essential-loader`, which partner mods nest): its Fabric build is a loader.
   As the game starts it downloads Essential into the game directory's `essential` folder and adds it to Fabric
   Loader's internal mod list, class loader and Mixin's processor (read in Essential Loader's source), none of which
@@ -921,7 +925,8 @@ and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists 
 - **Flashback**: its mixin into `MappedRegistry.freeze` starts Flashback on the first registry freeze, and its start-up
   registers a key binding through the client. NeoForge freezes the registries at bootstrap and again before the client
   exists, where Fabric API delays the freeze until after the initializers; Fabricated holds a Fabric mod's freeze
-  handlers in every freeze before the main entrypoints (REG-8). Loaded on NeoForge, gated on every version.
+  handlers in every freeze before the main entrypoints (REG-8). Loaded on NeoForge and Forge (Forge 61 to 66: Modrinth
+  has no Fabric build for 1.20.1), gated on every version.
 
 ### Mods that bring Fabric API or Fabric Loader
 
@@ -1254,13 +1259,11 @@ tracked:
 |---|---|---|---|
 | Fabric's game tests (`fabric-gametest-api-v1`, `client-gametest`) | all | deliberately not loaded: they are development-time tools, not used by mods at runtime | — |
 | Data generation's tag appenders (and on 26.3 its loot sub-providers) | all | pre-flight leaves those hooks out where NeoForge's data providers differ; the module's classes load for mods' runtime code (DATAGEN-1), and nothing is generated unless `fabric-api.datagen` is set | — |
-| Fabric storages in items (`ItemStorage.ITEM`) across to NeoForge's item handlers | 1.21.1 | NeoForge 21.1's item handler capability on stacks predates its transfer API, as Forge's | task 5 |
 | A Fabric mod's accessor to a field NeoForge retyped (`KeyMapping.MAP`) | all | NeoForge's field has another type, so the accessor is left out and its callers throw `NoSuchMethodError` | KEYMAP-1, task 5 |
 | A mixin adding interfaces to a library class NeoForge loads without mixin support, beyond LIB-1's and LIB-2's | all | Mixin can't reach such a class; one with state of its own, or injectors, disables its mod, or loads without the mixin by `skipMixins`. Where an adapter serves one (LIB-2), only the mod's own casts wrap the object: another mod's check against the interface doesn't see it | LEAVE-1, LIB-2 (above) |
 | A failed mod's other entrypoints, with `"onEntrypointFailure": "disable"` | all | skipped, as the setting says: a server configuration task the failed mod registered can then leave a player waiting to join, its client side never registered | ENTRY-1 (decided) |
 | Login queries (`ServerLoginNetworking`, `ClientLoginNetworking`) | all | NeoForge has no hook in the login phase; their receivers are never called (*Networking*) | decided, task 5 |
 | WTHIT's Fabric build, and the mixed renderer pairs | all | as listed in *Fabric builds Fabricated refuses* | — |
-| Iris's Fabric build | 1.21.1 | its particle hook needs a field read NeoForge 21.1's particle engine doesn't make | — |
 | What Sodium's Fabric build meshes the Fabric way: NeoForge's fluid renderers, section geometry from NeoForge mods, model data, position-aware light and culling | all | *Renderer mods* above; the owner chose to list the gaps rather than patch one mod | rendering-pipeline track |
 | Essential's automatic updates (its Fabric build) | all | Essential loads from the launch after its loader's download, as a regular mod | DOWNLOAD-1 |
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
