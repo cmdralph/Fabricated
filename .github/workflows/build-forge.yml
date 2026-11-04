@@ -235,14 +235,19 @@ jobs:
           ci/forge/corpus-causes.sh "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/server-corpus/server.out" "server with the corpus"
           ci/forge/corpus-causes.sh "$RUNNER_TEMP/client-corpus/run" "$RUNNER_TEMP/client-corpus/client.out" "client with the corpus"
       # The data task 5's open findings turn on, for reading (informational, with "extended"; capped, as the job's log
-      # can only be read from its end): Farmer's Delight's REI decomposition display, whose sync REI's server refused on
-      # Forge 65 and 66 (CORPUS-88), as its jar has it, and the methods that name it (its plugins).
+      # can only be read from its end): where the corpus client's REI display sync met a banner pattern that the registry
+      # it encodes with has no id for (CORPUS-112, seen on Forge 61), with the lines before the first one and its stack.
       - name: Evidence for task 5's findings (informational)
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
         run: |
-          python3 ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'mod:*DecompositionDisplay' \
-              'refs:vectorwing/farmersdelight/integration/rei/display/DecompositionDisplay' 2>&1 | head -n 400 || true
+          log="$RUNNER_TEMP/client-corpus/run/logs/debug.log"
+          pattern="Can't find id for 'Reference{ResourceKey\[minecraft:banner_pattern"
+          echo "-- banner patterns without an id in the client's debug.log (CORPUS-112): $(grep -c "$pattern" "$log" 2>/dev/null)"
+          first=$(grep -n -m1 "$pattern" "$log" 2>/dev/null | cut -d: -f1)
+          if [ -n "$first" ]; then
+            sed -n "$(( first > 8 ? first - 8 : 1 )),$(( first + 60 ))p" "$log" | cut -c1-400
+          fi
       - name: Upload mod corpus logs and reports
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         uses: actions/upload-artifact@v4
