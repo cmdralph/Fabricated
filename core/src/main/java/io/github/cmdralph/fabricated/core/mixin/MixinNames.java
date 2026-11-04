@@ -109,6 +109,15 @@ final class MixinNames {
 	static final String BRIDGE_GETTER = "fabricated$get$";
 	static final String BRIDGE_SETTER = "fabricated$set$";
 
+	/**
+	 * The prefixes of a seam Fabricated's in-game mod adds to a game class for a method of it the platform never calls
+	 * (Forge 47's GUI overrides vanilla's HUD method), followed by that method's name, with its descriptor: Fabricated's
+	 * code calls the start seam where the platform's override starts and the end seam where it returns, and Fabric mods'
+	 * hooks at the method's start and end are pointed at them ({@code SkippedCode.seamRepairs}, HUD-4).
+	 */
+	static final String SEAM_START = "fabricated$start$";
+	static final String SEAM_END = "fabricated$end$";
+
 	/** javac's name for a lambda body: the enclosing method's name and the lambda's index in the class. */
 	static final Pattern LAMBDA = Pattern.compile("lambda\\$(.+)\\$\\d+");
 

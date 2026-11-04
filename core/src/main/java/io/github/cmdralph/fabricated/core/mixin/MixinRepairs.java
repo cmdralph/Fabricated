@@ -50,9 +50,10 @@ import org.objectweb.asm.tree.VarInsnNode;
  * Mixins that Mixin would reject but that can be pointed at what the game really has, before pre-flight checks them
  * ({@link MixinPreflight#repairs}). The injector repairs run in one order ({@link #injectorRepairs}), each from its
  * family's class: lambdas ({@link LambdaRepairs}), overloads ({@link OverloadRepairs}), calls ({@link CallRepairs}),
- * constructors ({@link ConstructorRepairs}), locals and arguments ({@link LocalRepairs}); the class-level and member
- * repairs (injection points made single, anonymous classes, accessors and shadows of captured variables, accessors of
- * methods the game declares) are here, and the guard of a registry freeze handler ({@link #earlyFreezeGuard}).
+ * constructors ({@link ConstructorRepairs}), locals and arguments ({@link LocalRepairs}), code the platform never runs
+ * ({@link SkippedCode}); the class-level and member repairs (injection points made single, anonymous classes, accessors
+ * and shadows of captured variables, accessors of methods the game declares) are here, and the guard of a registry
+ * freeze handler ({@link #earlyFreezeGuard}).
  */
 final class MixinRepairs extends PreflightPart {
 	private final MixinPreflight checker;
@@ -61,6 +62,7 @@ final class MixinRepairs extends PreflightPart {
 	private final OverloadRepairs overloads = new OverloadRepairs(classes, calls);
 	private final ConstructorRepairs constructors = new ConstructorRepairs(classes);
 	private final LocalRepairs locals = new LocalRepairs(classes);
+	private final SkippedCode skipped = new SkippedCode(classes);
 
 	/** @param checker the run's checker, which judges whether a mixin fits a target */
 	MixinRepairs(PreflightClasses classes, MixinPreflight checker) {
@@ -383,6 +385,13 @@ final class MixinRepairs extends PreflightPart {
 					(s, moved) -> s.named() + " expects " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.movedCallRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, moved) -> s.named() + " expects " + moved),
+			// Code the platform never runs (HUD-4): the injector's method or points move, so before what reads them.
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> skipped.endRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, end) -> s.named() + " injects at " + end),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> skipped.callRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, moved) -> s.named() + " expects " + moved),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> SkippedCode.seamRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, seam) -> s.named() + " injects at " + seam),
 			RepairStep.stopIfMoved(),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> locals.vanillaLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, local) -> s.named() + " captures " + local),
