@@ -16,6 +16,8 @@ import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -28,13 +30,11 @@ import net.minecraft.world.phys.AABB;
  * this client makes the block's breaking particles (whose sprite Forge sets again in {@code TerrainParticle.updateSprite})
  * and a block marker of it, and shows the screen effect inside it: the block is put at the player's eye on this client
  * only, at the end of each client tick until the effect asked, and taken away at the start of the next, before the
- * player moves (a block there would push them out), so only the frames drawn between have it. Meanwhile the player's
- * view is turned off the axis it looks along: Forge 66's lookup tests the block within the bounds of the camera's
- * near plane (26.3's lookup), which have no depth for a view straight along an axis, as the test player's is, and
- * the game then finds no block (PR run 41842832133). Where the effect never
- * asked, what the check met is logged as the game stops: how often the block was put there, whether the effect asked
- * the model's sprite without the level (the game's own call, past Fabricated's), and on Forge 66 what its extraction
- * met ({@code mixin/OverlayProbeMixin}).
+ * player moves (a block there would push them out), so only the frames drawn between have it. On 26.3 a block blocks
+ * the view only where it suffocates, which a tag of blocks says (BlockTags.CAUSES_SUFFOCATION), so the test mod's
+ * data puts the block in it. Where the effect never asked, what the check met is logged as the game stops: how often
+ * the block was put there, whether the effect asked the model's sprite without the level (the game's own call, past
+ * Fabricated's), and on Forge 66 what its extraction met ({@code mixin/OverlayProbeMixin}).
  */
 public final class ParticleSpriteCheck {
 	/** Client ticks the screen effect is tried for: 20 seconds. */
@@ -52,9 +52,6 @@ public final class ParticleSpriteCheck {
 	private static int firstPut = -1;
 	private static @Nullable BlockPos placed;
 	private static @Nullable BlockState replaced;
-	/** The player's view before the block was put at the eye. */
-	private static float viewYRot;
-	private static float viewXRot;
 	/** Forge 66's extractions of the player's state, those with the block at the eye, and what its lookup found ({@code mixin/OverlayProbeMixin}). */
 	private static int extractions;
 	private static int extractionsWithBlock;
@@ -68,7 +65,7 @@ public final class ParticleSpriteCheck {
 	}
 
 	static void register() {
-		ClientTickEvents.START_CLIENT_TICK.register(ParticleSpriteCheck::takeAway);
+		ClientTickEvents.START_CLIENT_TICK.register(client -> takeAway(client.level));
 		ClientTickEvents.END_CLIENT_TICK.register(ParticleSpriteCheck::put);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
 			if (!LOGGED.get(SCREEN).get()) {
@@ -107,9 +104,9 @@ public final class ParticleSpriteCheck {
 
 	/**
 	 * Forge 66's lookup of the block the camera is in begins (render thread): the first time the block is at the eye,
-	 * what the lookup tests there, logged once: its bounds, and whether the block blocks the view within them and within
-	 * the same bounds without depth. Its methods taking those bounds are 26.3's, reached reflectively as this class builds
-	 * on Forge 64 and 65 too: test code only.
+	 * what the lookup tests there, logged once: its bounds, whether the block blocks the view within them, and whether
+	 * it suffocates. The methods and the tag are 26.3's, reached reflectively as this class builds on Forge 64 and 65
+	 * too: test code only.
 	 */
 	public static void lookingUp(LocalPlayer player, Frustum frustum) {
 		lookups++;
@@ -120,16 +117,24 @@ public final class ParticleSpriteCheck {
 		String blocking;
 		try {
 			AABB near = ((AABB) Frustum.class.getMethod("getNearPlaneBounds").invoke(frustum)).move(player.getEyePosition());
-			AABB flat = new AABB(near.minX, near.minY, near.minZ, near.maxX, near.maxY, near.minZ);
-			var isViewBlocking = BlockState.class.getMethod("isViewBlocking", BlockGetter.class, BlockPos.class, AABB.class);
 			bounds = near.toString();
-			blocking = isViewBlocking.invoke(state, player.level(), pos, near) + " (without depth " + isViewBlocking.invoke(state, player.level(), pos, flat) + ")";
+			blocking = String.valueOf(BlockState.class.getMethod("isViewBlocking", BlockGetter.class, BlockPos.class, AABB.class).invoke(state, player.level(), pos, near));
 		} catch (ReflectiveOperationException | ClassCastException e) {
 			bounds = e.toString();
 			blocking = "unknown";
 		}
+		// 26.3 asks whether a block suffocates by a tag of its blocks (BlockTags.CAUSES_SUFFOCATION), which the test mod's
+		// data puts the block in; whether it blocks the view follows, unless the block says otherwise.
+		String suffocating;
+		try {
+			Object tag = BlockTags.class.getField("CAUSES_SUFFOCATION").get(null);
+			suffocating = "in " + tag + " " + BlockState.class.getMethod("is", TagKey.class).invoke(state, tag) + ", suffocating "
+					+ BlockState.class.getMethod("isSuffocating", BlockGetter.class, BlockPos.class).invoke(state, player.level(), pos);
+		} catch (ReflectiveOperationException e) {
+			suffocating = e.toString();
+		}
 		lookupMet = "player without physics " + player.noPhysics + ", eye " + player.getEyePosition() + ", near plane " + bounds + "; at " + pos + " " + state
-				+ ", render shape " + state.getRenderShape() + ", view blocking there " + blocking;
+				+ ", render shape " + state.getRenderShape() + ", view blocking there " + blocking + "; " + suffocating;
 		FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi screen effect: Forge's lookup at the block put at the eye met {}", lookupMet);
 	}
 
@@ -178,27 +183,13 @@ public final class ParticleSpriteCheck {
 		if (puts++ == 0) firstPut = screenTicks;
 		placed = eye;
 		replaced = there;
-		viewYRot = player.getYRot();
-		viewXRot = player.getXRot();
-		look(player, viewYRot + 30, Math.max(-90, Math.min(90, viewXRot + 20)));
 	}
 
-	private static void takeAway(Minecraft client) {
-		ClientLevel level = client.level;
+	private static void takeAway(@Nullable ClientLevel level) {
 		BlockPos pos = placed;
 		BlockState state = replaced;
 		placed = null;
 		replaced = null;
-		if (pos == null) return;
-		if (client.player != null) look(client.player, viewYRot, viewXRot);
-		if (level != null && state != null) level.setBlockAndUpdate(pos, state);
-	}
-
-	/** Sets the player's view, for the frames drawn before the next tick too. */
-	private static void look(LocalPlayer player, float yRot, float xRot) {
-		player.setYRot(yRot);
-		player.setXRot(xRot);
-		player.yRotO = yRot;
-		player.xRotO = xRot;
+		if (level != null && pos != null && state != null) level.setBlockAndUpdate(pos, state);
 	}
 }
