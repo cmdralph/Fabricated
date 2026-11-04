@@ -976,7 +976,12 @@ block result and a vibration frequency do the same; its transfer bridge gives a 
 handler on block entities only, its combined item providers answer nothing while NeoForge asks an item for its fluid
 handler (its own lock against recursion), and its view of a NeoForge item's fluid handler answers an insert in
 NeoForge's millibuckets, not Fabric's droplets; and a Fabric biome modification changes the biome on the server but
-leaves it marked as the known pack's, so clients read their own copy without the change (a sky colour, say). Of the bridges to NeoForge Fabricated's own modules make, it has fewer: NeoForge's
+leaves it marked as the known pack's, so clients read their own copy without the change (a sky colour, say). On 26.1.2 and 26.2
+too (PROVIDER-17), its packet context holds nothing for a codec that reads it, as Polymer's do (its keys are null once
+its context class is initialized first, the class initialization cycle NET-7 found in upstream's code), and none is
+bound as NeoForge's splitter decodes a payload it reassembled; and its HUD registry draws an element a Fabric mod
+attaches to a vanilla one as a layer of its own, whatever vanilla's layer checks inside (after chat with the GUI
+hidden, after the experience level without experience to show). Of the bridges to NeoForge Fabricated's own modules make, it has fewer: NeoForge's
 `supportsEnchantment` doesn't ask Fabric's enchanting event (the enchanting table, anvil, `/enchant` and loot do, as
 upstream), NeoForge's `getCreatorModId` isn't answered from Fabric's `getCreatorNamespace`, and its transfer bridge
 connects Fabric's and NeoForge's storages on block entities only, not a Fabric item's fluid storage to NeoForge, and
@@ -991,6 +996,9 @@ Fabric initializers run, is handed to NeoForge once they have run, with the regi
 (PROVIDER-11). A command argument type a Fabric mod's initializer registers through its command API, which registers
 them only in NeoForge's registration event for argument types, is registered on a client once the initializers have run
 there, after that event, as its listener registers them (on a dedicated server they run before it; PROVIDER-12).
+Likewise a default attribute modification a Fabric mod's initializer registers (`FabricDefaultAttributeRegistry.MODIFY`),
+which its object builder applies once, in NeoForge's attribute modification event before a client's initializers run,
+is applied on a client once they have run, with its own context (PROVIDER-18).
 Forgified Fabric API keeps no registry attributes in `RegistryAttributeHolder`, and on 1.21.1 has no registry aliases. In a development workspace the in-game mod's own copies can't be left out; the report says so.
 
 **Sinytra Connector beside Fabricated is refused**, as is a second Fabricated jar: the launch stops with an error naming
@@ -1270,7 +1278,7 @@ tracked:
 | Essential's automatic updates (its Fabric build) | all | Essential loads from the launch after its loader's download, as a regular mod | DOWNLOAD-1 |
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
 | A NeoForge model naming its loader in NeoForge's object form (`"loader": {"id": ...}`), with Moonlight's Fabric build installed | 1.21.1 | Moonlight's hook into vanilla's model deserializer, which NeoForge's runs first, reads `loader` as a string only and fails the model; not seen in the corpus | CORPUS-62 |
-| What Forgified Fabric API's modules do differently from upstream, where it provides them | read on 1.21.1, 26.1.2 and 26.2 | a provider's module is used as it is; on 1.21.1 its trapdoor tag, attack block result, sculk frequencies and default-enabled packs don't take effect (on 26.1.2 and 26.2 the first three too, and a biome modification doesn't reach clients, PROVIDER-10), and it makes fewer bridges to NeoForge (enchanting, creator mod, transfer), as listed in *Mods that bring Fabric API or Fabric Loader* above; the test mod skips those checks with it | PROVIDER-8, PROVIDER-10 |
+| What Forgified Fabric API's modules do differently from upstream, where it provides them | read on 1.21.1, 26.1.2 and 26.2 | a provider's module is used as it is; on 1.21.1 its trapdoor tag, attack block result, sculk frequencies and default-enabled packs don't take effect (on 26.1.2 and 26.2 the first three too, and a biome modification doesn't reach clients, PROVIDER-10; there its packet context holds nothing for codecs, and its HUD elements attached to vanilla ones ignore vanilla's layer checks, PROVIDER-17), and it makes fewer bridges to NeoForge (enchanting, creator mod, transfer), as listed in *Mods that bring Fabric API or Fabric Loader* above; the test mods skip those checks with it | PROVIDER-8, PROVIDER-10, PROVIDER-17 |
 | Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 
 ### Planned work, in order of impact

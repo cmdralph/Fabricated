@@ -21,9 +21,10 @@ import net.neoforged.fml.ModList;
 /**
  * Fabric's default attribute modification event ({@code FabricDefaultAttributeRegistry.MODIFY}) where another mod
  * provides {@code fabric-object-builder-api-v1} (Forgified Fabric API's 26.1.2 and 26.2 builds, PROVIDER-18). The
- * provider runs the event once, as upstream does just before the registries freeze; on a client that is before Fabric
- * initializers run in {@code Minecraft}'s constructor (CORPUS-16), so the listeners they register never ran there,
- * where a dedicated server's run them (its initializers run in a registration event before the provider's run).
+ * provider runs the event once, in NeoForge's {@code EntityAttributeModificationEvent} (upstream runs it as the
+ * built-in registries freeze); on a client that is before Fabric initializers run in {@code Minecraft}'s constructor
+ * (CORPUS-16), so the listeners they register never ran there, where a dedicated server's run them (its initializers
+ * run in a registration event before the provider's run).
  *
  * <p>A listener of Fabricated's, registered as it loads, notes which listeners the provider's run has. Once the
  * initializers have run, those registered since run, in the event's order, with the provider's own context, as they
