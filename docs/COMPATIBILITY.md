@@ -1141,6 +1141,17 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   field, and Mixin merges the two into one field, which both mods' code uses, as on Fabric (CORPUS-74). One that can't
   be declared so (a static shadow of an instance field, or a writable shadow of a final one) disables its mod, or leaves
   the mixin out where it can.
+- Two mixins that each add a `@Unique` field of the same name and type to one class keep a field each on Fabric, whose
+  Mixin renames the later one. SpongePowered's Mixin, which Forge runs, merged the two into one field that both mixins'
+  code used: SpruceUI's loading screen hook (in LambDynamicLights) cleared the screen Fabric API's hook was about to
+  read, and the Forge 26.1.2 client stopped creating its world. There such a field (one that isn't public) is renamed in
+  its mixin and the mixin's nested classes, so each mixin keeps its own, as on Fabric (CORPUS-95).
+- A mixin's own field that its target class already declares is the target's once Mixin merges the mixin: Mixin adds
+  a field only where the class has none of that name and type. Where the platform declares it final, the mixin's
+  writes of it fail: Porting Lib adds `ItemTransform.rightRotation`, the field it ports from Forge, and its setter stopped
+  the Forge 47 client loading its models, as Forge 47 declares the field final. Where the mixin writes the field outside
+  its constructors, the field is declared as a writable shadow of the platform's, so Mixin makes that field writable and
+  the mod's code works as on Fabric (CORPUS-101).
 - Mixin finds a `@Shadow` method only among its target class's own methods, on every platform, and rejects the mixin
   otherwise. Where the platform moves a method vanilla declares into a supertype, a mixin's shadow of it is dropped and
   the mixin's calls of it reach the inherited method: Forge 47 moves `MultiPartBakedModel`'s `getQuads` into the default
