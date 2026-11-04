@@ -81,7 +81,7 @@ How to read it: as the NeoForge table, and
 | fabric-rendering-v0 | — | — | — | — | loads |
 | fabric-rendering-v1 | loads, part | loads | loads | loads | loads, part |
 | fabric-resource-conditions-api-v1 | loads, part | loads | loads | loads | loads, part |
-| fabric-resource-loader-v0 | loads | loads | loads | loads | loads |
+| fabric-resource-loader-v0 | loads | loads | loads | loads | loads, part |
 | fabric-resource-loader-v1 | loads, part | loads, part | loads, part | loads, part | — |
 | fabric-screen-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
 | fabric-screen-handler-api-v1 | loads | — | — | — | loads |
@@ -102,6 +102,12 @@ by the server runs (the colours, screens, key mappings and config screens by the
 - **Registry data:** a Fabric mod's own pack takes Fabric API's known-pack identity, so its registry entries (worldgen,
   damage types) are stable, as on Fabric, and a world holding them opens without asking to confirm experimental
   settings (Forge 61 to 66, server and client; PACK-5). Forge gives mods' packs none, and Forge mods' packs keep that.
+- **Built-in packs:** a built-in pack a Fabric mod's client entrypoint registers as enabled by default is switched on
+  the first time the game offers it (all five, with Fabric API, client run). Fabric API keeps its file of the packs it
+  offered, so a pack the player turns off stays off, as on Fabric. Upstream does this as the game's options load,
+  which on Fabric is after the Fabric mods' entrypoints and on Forge before them. So the plans leave that hook out,
+  and the in-game mod does its work once the entrypoints have run, before the game selects its packs from the
+  options (CORPUS-104).
 - **Load conditions:** of two advancements (a JSON data loader's files) and two damage types (a data pack registry's
   entries) with `fabric:load_conditions`, the server loads the ones whose conditions hold and not the others (Forge 61
   to 66, with Fabric API). Forge 61 decodes registry entries through its own conditional decoder, which the in-game mod
