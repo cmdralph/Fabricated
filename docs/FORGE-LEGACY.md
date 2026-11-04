@@ -277,7 +277,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   every block through Fabric's renderer, as on Fabric. Forge 61 moved the code three of them hook into, so pre-flight
   leaves out those for moving blocks, the breaking overlay and blocks drawn as entities, and the in-game mod sends a
   block whose model is a Fabric model, or a multipart or weighted model with one among its parts, to Fabric's renderer
-  there instead; every other block keeps Forge's path. On Forge 47 upstream's hooks miss Forge's chunk section compiler
+  there instead; every other block keeps Forge's path. Forge 61 to 66 also ask a block model for its particle sprite
+  with Forge's model data where upstream's hooks ask Fabric's level-aware one, in places those hooks no longer reach:
+  the screen effect inside a block, a block marker (Forge 64 to 66) and a block particle, whose sprite Forge sets again
+  from the block's position. There the in-game mod asks Fabric's for such a model, and a model whose class gives its
+  own sprite for model data keeps Forge's (PART-4; the test block's model, Forge 61 to 66). On Forge 47 upstream's hooks miss Forge's chunk section compiler
   and block renderers, which call Forge's overloads taking model data and a render type: pre-flight leaves out the
   chunk section redirect and keeps the hook that prepares Indigo's terrain context, and the in-game mod has Indigo draw
   such a block, once (at its first render type), in chunk sections, as a falling block, as a block a piston moves, with
@@ -401,10 +405,6 @@ instead. Unless a task is named, nothing is planned for them yet.
 
 **Taken on by a later task:**
 
-- **Rendering hooks outside the renderer test mod (task 5).** A Fabric model's particle sprite for the screen effect
-  inside a block (`ScreenEffectRenderer`, on Forge 66 `LevelExtractor`; Forge 61 to 66) and for block markers
-  (`BlockMarker`, Forge 64 to 66), one of rendering-v1's GUI renderer hooks (`GuiRenderer.executeDraw`) and its block
-  outline hook (`LevelRenderer`) on Forge 61.
 - **Forgified Fabric API (task 5).** Its 1.20.1 build nests Forgified Fabric Loader, whose packages are Fabric Loader's
   API, as Fabricated's own copy's are. Fabricated's in-game mod nests an empty jar under that loader's jar-in-jar
   identifier (`dev.su5ed.sinytra:fabric-loader`) at version 999.999.999, as Sinytra Connector does: Forge's jar-in-jar
