@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.forgetest;
 
 import net.fabricmc.fabric.api.resource.conditions.v1.ResourceConditions;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.class_1863;
 import net.minecraft.class_2960;
 
 /**
@@ -11,7 +12,7 @@ import net.minecraft.class_2960;
  * (its {@code value}) as a Fabric resource condition, and ships two recipes whose {@code conditions} name it after
  * {@code forge:mod_loaded} of the module (so that without Fabric API Forge reads no further): {@code condition_kept},
  * true, must load, and {@code condition_dropped}, false, must not, with no parsing error. The condition logs each answer
- * it gives.
+ * it gives, and the first server tick looks both recipes up in the recipe manager ({@link #check}).
  */
 public final class ForgeRecipeConditionTest {
 	private ForgeRecipeConditionTest() {
@@ -20,6 +21,21 @@ public final class ForgeRecipeConditionTest {
 	/** From the main entrypoint, as a Fabric mod registers its resource conditions. */
 	public static void register() {
 		if (FabricLoader.getInstance().isModLoaded("fabric-resource-conditions-api-v1")) Upstream.register();
+	}
+
+	/**
+	 * At the first server tick, with Fabric API: the true condition's recipe is in the recipe manager, the false one's
+	 * isn't ({@code method_8130} is {@code byKey}).
+	 */
+	public static void check(class_1863 recipes) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-resource-conditions-api-v1")) return;
+		boolean kept = recipes.method_8130(new class_2960(ForgeTestMod.MOD_ID, "condition_kept")).isPresent();
+		boolean dropped = recipes.method_8130(new class_2960(ForgeTestMod.MOD_ID, "condition_dropped")).isPresent();
+		if (kept && !dropped) {
+			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST recipe conditions OK");
+		} else {
+			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST recipe conditions: the true condition's recipe loaded {}, the false one's {}", kept, dropped);
+		}
 	}
 
 	/** Everything that names Fabric's resource conditions module: loaded only where it is installed. */
