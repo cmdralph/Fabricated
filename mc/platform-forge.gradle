@@ -43,10 +43,11 @@ ext.gameDependencies = { SourceSet sourceSet ->
 
 // Stand-ins for the Fabric API modules Fabricated passes through on Forge that the test mod uses (the shared sources'
 // src/testmodstubs, 26.x's object builder module), next to mc/shared's: compiled against, never packaged. They name
-// the vendored fabric-api-base's types, in the in-game mod.
+// the vendored fabric-api-base's types, in the in-game mod, and Fabric Loader's (a mod's container).
 sharedSources.each { sourceSets.testmodstubs.java.srcDir rootProject.file("$it/src/testmodstubs/java") }
 dependencies {
     testmodstubsCompileOnly sourceSets.main.output
+    testmodstubsCompileOnly project(':fabric-loader-api')
 }
 
 // Pass-through Fabric API modules the in-game mod and the test mod call (mc.gradle compiles 26.x against their jars,
