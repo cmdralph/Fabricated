@@ -3,6 +3,43 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: SIG-3 verified, Fabric models' level-aware particle sprites on Forge (PART-4), and Forgified Fabric API on Forge 47 (PROVIDER-14 to 16, task 5)
+
+- **SIG-3 verified** on Forge 61 (`forge` #310's sync): the 1.21.11 client with Fabric API logged "frapi outline
+  extraction event OK" and "frapi end extraction event OK" (run 41831625310). It moves to `FINDINGS.md`.
+- **PART-4** (P2 on Forge 61 to 66 clients with Fabric API, for Fabric block models whose particle sprite depends on
+  the level): Forge asks a block model for its particle sprite with its model data where upstream's hooks ask Fabric's
+  level-aware one, in three places those hooks don't reach: the screen effect inside a block (Forge's own lookup,
+  `getOverlayBlock`), block markers on Forge 64 to 66 (Forge's constructor) and block particles (Forge's
+  `TerrainParticle.updateSprite` sets the sprite again after upstream's hook). The Forge in-game mod asks Fabric's
+  level-aware sprite in all three; a model with its own sprite for Forge's model data that isn't a Fabric model keeps
+  Forge's call. The Forge renderer test mod checks its breaking particles, a block marker and the screen effect.
+  Decision: Forge 65's check of the screen effect is left out, since Forge 65 draws no block's screen effect at all (it
+  submits one only where a listener cancelled `RenderBlockScreenEffectEvent`). On 26.3 a block blocks the view only
+  where it suffocates, which is a tag of blocks there (`minecraft:causes_suffocation`), so the test data puts the test
+  block in it, as a real mod's full block would be. Verified in PR run 41846333237.
+- **PART-5** opened (P3 on NeoForge 26.x clients): the same screen effect asks the plain sprite on NeoForge 26.1.2 to
+  26.3, whose plans leave upstream's hook out with nothing in its place; on 26.3 NeoForge's own lookup is the reason,
+  which the plans don't name. NeoForge's `updateSprite` is level-aware already, so only the screen effect is left.
+  Decision: P3 for task 5 or 6, as the view from inside a block is the only place it shows.
+- **Forgified Fabric API on Forge 47** coexists (`forge-legacy` #311): its Forge build for 1.20.1 (0.92.6) runs beside
+  Fabricated, its modules used as they are. The server with it is a gate on every run since it passed two extended
+  runs in a row (41833110379 and 41840874477, CI-1); the client with it is informational, in extended runs, and
+  passed in 41843817779. Its builds for 1.21.1 and 26.x are NeoForge ports, so Forge 61 to 66 have none, and a jar with
+  its own copy of Fabric Loader is refused there (PROVIDER-2).
+- **PROVIDER-14** and **PROVIDER-15** (the provider's, read in its source): its loot API calls every mod's table
+  vanilla's (Forge builds mod packs as built in); its key binding API has no late refusal; its fake player is Forge's,
+  which drops every packet; its fuel registry answers through Forge's burn time event; it switches a default-enabled
+  pack on as the options load, before the entrypoints on Forge; its transfer bridge reports a millibucket's remainder
+  as 0 mB, gives Fabric mods' items no fluid capability, never updates the context for a Forge item's handler, and
+  simulates each insertion into a Forge item handler on the handler as it stands. Decision: the Forge 47 test mod takes
+  these as the provider's answers (SKIPPED, as NeoForge's does, PROVIDER-8) and checks the rest; the Forge docs list
+  them.
+- **PROVIDER-16** (P2 for packs with Forgified Fabric API on Forge 47): Fabricated's transfer bridge registered beside
+  the provider's, as the provider check reads the plan and the native and mixin modules, and the transfer module is in
+  none of them. The bridge now registers only where the transfer module is a Fabric mod Fabricated runs, on both Forge
+  branches. Verified in extended run 41843817779.
+
 ## 2026-11-04: HUD-4 verified, and a refmap's full descriptor into a method Forge gave a parameter (SIG-3, task 5)
 
 - **HUD-4 verified** on Forge 47 (`forge-legacy` #308) and Forge 61 to 66 (`forge` #307): the test mods' hooks in the
