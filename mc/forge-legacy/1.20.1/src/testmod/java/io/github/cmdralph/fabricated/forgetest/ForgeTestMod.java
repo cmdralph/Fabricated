@@ -260,6 +260,16 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		}
 	}
 
+	/** On a client, whether the test mod's built-in pack enabled by default was switched on ({@link ForgeDefaultPackTest}, CORPUS-104). */
+	public static void checkDefaultPack() {
+		if (FabricLoader.getInstance().getEnvironmentType() != EnvType.CLIENT) return;
+		try {
+			ForgeDefaultPackTest.check();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST builtin resource pack check failed", e);
+		}
+	}
+
 	/** Reserved for the client: Fabric's environment stripping takes it out of the class on a dedicated server. */
 	@Environment(EnvType.CLIENT)
 	static void clientOnly() {
