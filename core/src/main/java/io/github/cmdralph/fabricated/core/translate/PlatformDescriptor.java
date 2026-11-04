@@ -30,12 +30,21 @@ public interface PlatformDescriptor {
 		}
 	};
 
+	/** Forge's, 47 to 66 ({@link Forge}). */
+	PlatformDescriptor FORGE = new Forge();
+
 	/**
 	 * Forge's, 47 to 66: {@code META-INF/mods.toml} in Forge's dialect ({@link ModsTomlWriter#writeForge}), the mixin
 	 * configs in the manifest's {@code MixinConfigs}, where Mixin's default platform agent reads them (comma-separated),
-	 * and no enum extension files.
+	 * and no enum extension files. A Forge version's own descriptor extends it, so that it answers Forge's for all it
+	 * doesn't change, methods added here later among them: Forge 47's wrapped Forge's method by method and answered
+	 * NeoForge's defaults for the two added after it was written (PLAT-6).
 	 */
-	PlatformDescriptor FORGE = new PlatformDescriptor() {
+	class Forge implements PlatformDescriptor {
+		/** For a Forge version's own descriptor; {@link #FORGE} otherwise. */
+		protected Forge() {
+		}
+
 		@Override
 		public String loaderName() {
 			return "Forge";
@@ -59,6 +68,17 @@ public interface PlatformDescriptor {
 
 		@Override
 		public boolean enumExtensions() {
+			return false;
+		}
+
+		/**
+		 * No: Forge 47 to 66 read the lists in {@code forge}'s namespace, decode only the modifiers a list names, and read
+		 * no {@code neoforge:conditions} (their {@code LootModifierManager}). The stubs only broke the {@code forge} lists,
+		 * which Porting Lib reads on Fabric for 1.20.1 mods: Farmer's Delight's and Supplementaries' lost their
+		 * {@code replace}, and neither Forge 47's manager nor Porting Lib's read them (CORPUS-98).
+		 */
+		@Override
+		public boolean readsNeoForgeLootModifiers() {
 			return false;
 		}
 
@@ -110,7 +130,7 @@ public interface PlatformDescriptor {
 			pack.put("max_format", 2048);
 			return (Json.write(Map.of("pack", pack), true) + "\n").getBytes(StandardCharsets.UTF_8);
 		}
-	};
+	}
 
 	/**
 	 * Fabric mods Fabricated leaves out on this platform, by id, each with the report's line: their jar isn't loaded, and
@@ -151,6 +171,15 @@ public interface PlatformDescriptor {
 
 	/** Whether the platform's loader adds enum constants from the file a descriptor names (ENUM-1). */
 	default boolean enumExtensions() {
+		return true;
+	}
+
+	/**
+	 * Whether the platform reads global loot modifiers as NeoForge does: the list in {@code neoforge}'s namespace from
+	 * every jar, and each file through its {@code neoforge:conditions}. Translation then turns off those a Fabric jar
+	 * carries for its NeoForge build, which Fabric doesn't read (CORPUS-23). NeoForge's by default.
+	 */
+	default boolean readsNeoForgeLootModifiers() {
 		return true;
 	}
 

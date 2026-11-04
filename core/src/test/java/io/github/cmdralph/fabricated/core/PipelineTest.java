@@ -1985,6 +1985,34 @@ class PipelineTest {
 		}
 	}
 
+	/**
+	 * CORPUS-98: Forge reads only the lists in {@code forge}'s namespace, decodes only the modifiers they name, and reads no
+	 * {@code neoforge:conditions}; Porting Lib reads those lists on Fabric for 1.20.1 mods, which may not name it as a
+	 * dependency (Farmer's Delight's Fabric jar lists its modifiers there). On Forge a Fabric jar's lists and modifiers are
+	 * its own, where the stubs left Forge 47's manager and Porting Lib's a list without {@code replace}.
+	 */
+	@Test
+	void onForgeAFabricJarsLootModifiersAreItsOwn(@TempDir Path game) throws Exception {
+		String modifier = "data/farmersdelight/loot_modifiers/a_modifier.json";
+		String forgeList = "data/forge/loot_modifiers/global_loot_modifiers.json";
+		String neoForgeList = "data/neoforge/loot_modifiers/global_loot_modifiers.json";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path farmersDelight = TestJars.create().fabricModJson(TestJars.modJson("farmersdelight", "1.0", ""))
+				.text(modifier, "{\"type\": \"farmersdelight:a_type\", \"conditions\": []}")
+				.text(forgeList, "{\"replace\": false, \"entries\": [\"farmersdelight:a_modifier\"]}")
+				.text(neoForgeList, "{\"replace\": false, \"entries\": [\"farmersdelight:a_modifier\"]}")
+				.write(mods.resolve("farmersdelight.jar"));
+
+		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, List.of(farmersDelight), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null),
+				PlatformDescriptor.FORGE));
+
+		Pipeline.LoadedMod translated = result.mods().stream().filter(m -> m.translated().candidate().id().equals("farmersdelight")).findFirst().orElseThrow();
+		try (SafeArchive overlay = SafeArchive.open(translated.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			for (String name : List.of(modifier, forgeList, neoForgeList)) assertNull(overlay.read(name), name + " is the jar's own");
+		}
+		assertTrue(translated.translated().notes().stream().noneMatch(n -> n.contains("global loot modifier")), translated.translated().notes().toString());
+	}
+
 	@Test
 	void aModNeedingANewerMixinExtrasIsDisabledUnlessTheReleasesSinceOnlyFixedBugs(@TempDir Path game) throws Exception {
 		// MIXEXT-1: Freecam's 1.21.11 build asks for MixinExtras 0.5.5, NeoForge 21.11 ships 0.5.3 (the test input's), and
