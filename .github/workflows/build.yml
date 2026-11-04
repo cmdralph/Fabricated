@@ -1300,8 +1300,8 @@ jobs:
                   | grep -E "^[[:space:]]+(at |- )|java\.lang\.Thread\.State" | head -20
               done
               grep -q -E '^"(Render|Server) thread"' "$dump" || head -n 5 "$dump"
-              # The thread holding a monitor one of them waits for (CORPUS-48: Xaero's World Map's server world unload waits
-              # inside its synchronized block, line 106), with its state and top frames.
+              # The thread holding a monitor one of them waits for, with its state and top frames (how CORPUS-48's lock
+              # cycle was read).
               for lock in $(awk 'BEGIN { RS = "" } /^"(Render|Server) thread"/' "$dump" | grep -o -E 'waiting to lock <0x[0-9a-f]+>' \
                   | grep -o -E '0x[0-9a-f]+' | sort -u | head -3); do
                 echo "-- the thread holding <$lock>:"
@@ -1346,7 +1346,7 @@ jobs:
       # Polydium's mixin plugin and its font mixin (whose handler, typed with the mixin class, stops 1.21.1 and 1.21.11
       # as Mixin applies it); Architectury's keyboard hook into a lambda of KeyboardHandler.charTyped, which Mixin finds
       # no target for on 1.21.1 (the corpus); malilib's tooltip hooks; how the Sodium and Iris gate's clients leave their
-      # world; Sodium's and Iris's Fabric builds' quad and access findings; Xaero's World Map's world unload (CORPUS-48).
+      # world; Sodium's and Iris's Fabric builds' quad and access findings.
       # Members only, and a class that is the same as one printed (a translation in several cache jars) once.
       - name: Bytecode for task 5's findings (informational)
         if: ${{ (matrix.part == 'mods' || matrix.part == 'corpus') && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
@@ -1411,10 +1411,6 @@ jobs:
               fi
             done
           fi
-          # CORPUS-48: where the future Xaero's World Map's map thread joins, holding the world's capabilities that the
-          # server thread's world unload waits to lock, comes from, while mc-runtime-test's stop joins the server thread
-          # from the render thread.
-          dump client-corpus 'mod:xaero.map.cache.BlockStateShortShapeCache#scheduleAndGet' 'mod:xaero.map.cache.BlockStateShortShapeCache#lambda$*'
           # LAMBDA-9: Litematica's schematic hooks into LevelRenderer.addMainPass's lambda, which NeoForge 26.2 gives one more
           # value: what pre-flight now reports of them, and addMainPass as NeoForge's and vanilla's code declare it.
           if [ "${{ matrix.target.minecraft }}" = "26.2" ]; then
