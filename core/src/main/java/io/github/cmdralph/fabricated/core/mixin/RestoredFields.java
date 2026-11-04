@@ -33,7 +33,9 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * field of one of Fabricated's mixins counts when it is neither shadowed nor unique (named for Fabricated alone). So do
  * the methods they add for a field the platform gave another type or replaced ({@link MixinNames#BRIDGE_GETTER}),
  * which a Fabric mod's accessor of the field invokes (CORPUS-37, CORPUS-94), and its own reads of the field call
- * (CORPUS-107); pre-flight reads their declarations, not their code.
+ * (CORPUS-107), and the seams they add for a method the platform never calls ({@link MixinNames#SEAM_START},
+ * {@link MixinNames#SEAM_END}), which Fabric mods' hooks into that method are pointed at (HUD-4); pre-flight reads their
+ * declarations, not their code.
  */
 public final class RestoredFields {
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
@@ -183,7 +185,8 @@ public final class RestoredFields {
 			}
 			List<MethodNode> methods = new ArrayList<>();
 			for (MethodNode method : node.methods) {
-				boolean bridge = method.name.startsWith(MixinNames.BRIDGE_GETTER) || method.name.startsWith(MixinNames.BRIDGE_SETTER);
+				boolean bridge = method.name.startsWith(MixinNames.BRIDGE_GETTER) || method.name.startsWith(MixinNames.BRIDGE_SETTER)
+						|| method.name.startsWith(MixinNames.SEAM_START) || method.name.startsWith(MixinNames.SEAM_END);
 				if (bridge && (method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC)) == 0 && (method.access & Opcodes.ACC_PUBLIC) != 0
 						&& Annotations.find(method, SHADOW) == null) {
 					methods.add(method);

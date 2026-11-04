@@ -52,6 +52,8 @@ class RestoredFieldsTest {
 		shadow.visibleAnnotations = new ArrayList<>(List.of(new AnnotationNode("Lorg/spongepowered/asm/mixin/Shadow;")));
 		mixin.fields.add(shadow);
 		mixin.methods.add(method(Opcodes.ACC_PUBLIC, "fabricated$get$f_43532_", "()Ljava/lang/Object;"));
+		// A seam for a method the platform never calls, which Fabric mods' hooks into the method are pointed at (HUD-4).
+		mixin.methods.add(method(Opcodes.ACC_PUBLIC, "fabricated$end$m_43535_", "()Ljava/lang/Object;"));
 		// Not a bridge: a mixin's own helper, which a mod has no use for.
 		mixin.methods.add(method(Opcodes.ACC_PUBLIC, "fabricated$holder", "()" + HOLDER));
 		Files.createDirectories(dir.resolve("fabricated/mixin"));
@@ -76,6 +78,8 @@ class RestoredFieldsTest {
 		new ClassReader(restored.over(game).read(MIX)).accept(seen, 0);
 		// Pre-flight sees the bridge declared on the game's class, which an accessor of the field invokes (CORPUS-37).
 		assertTrue(seen.methods.stream().anyMatch(m -> m.name.equals("fabricated$get$f_43532_") && m.desc.equals("()Ljava/lang/Object;")));
+		assertTrue(seen.methods.stream().anyMatch(m -> m.name.equals("fabricated$end$m_43535_")), "the seam is the game class's too");
+		assertTrue(seen.methods.stream().noneMatch(m -> m.name.equals("fabricated$holder")));
 		assertEquals(1, seen.fields.size(), "the shadowed field is the game's own");
 	}
 
