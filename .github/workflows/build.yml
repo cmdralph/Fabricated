@@ -1211,8 +1211,9 @@ jobs:
               awk '/^== Mixins left out/ { show = 1; next } /^$/ { show = 0 } show' "$report" | cut -c1-260 | head -40
               digest "$log"
             fi
-            # The addons run: which Fabric mods loaded (the step's own listing of the jars is far up the log).
-            if [ "$run" = client-sodium-addons ] && [ -f "$report" ]; then
+            # The addons run and the Fabric builds of Sodium and Iris: which Fabric mods loaded (the step's own listing
+            # of the jars is far up the log; on 1.21.1, whether Iris loads now that its particle hook is repaired, IRIS-1).
+            if { [ "$run" = client-sodium-addons ] || [ "$run" = client-sodium-fabric ]; } && [ -f "$report" ]; then
               echo "-- loaded Fabric mods, without Fabric API's modules:"
               awk '/^== Loaded Fabric mods/ { show = 1; next } /^(==|$)/ { show = 0 } show && /^  [^ ]/ && $1 !~ /^fabric/ { print "  " $1 " " $2 }' "$report" | head -20
             fi

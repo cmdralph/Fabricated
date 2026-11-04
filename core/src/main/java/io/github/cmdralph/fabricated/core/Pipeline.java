@@ -950,8 +950,11 @@ public final class Pipeline {
 				}
 				String unloadedUse = issues.stream().filter(LinkageAnalysis::isUnloadedUse).findFirst().orElse(null);
 				if (unloadedUse != null) {
-					// Mixin would stop the game applying it, whatever strictLinkage says.
-					this.dropped.put(t.candidate().id(), new Drop("a mixin uses a mod that isn't loading: " + unloadedUse,
+					// Mixin would stop the game applying it, whatever strictLinkage says; a class extending a nested mod's
+					// would throw as the mod first uses it, where on Fabric the nested mod is always there (CORPUS-89).
+					String what = LinkageAnalysis.isNestedUse(unloadedUse) ? "a class of it needs a mod it nests, which isn't loading: "
+							: "a mixin uses a mod that isn't loading: ";
+					this.dropped.put(t.candidate().id(), new Drop(what + unloadedUse,
 							"See why that mod isn't loading in this report; this one can load once it does.", t.candidate()));
 					dropped = true;
 					continue;
