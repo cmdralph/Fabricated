@@ -222,6 +222,8 @@ if [ "$mc" = 1.21.11 ]; then keys="key binding" keys_module=fabric-key-binding-a
 check "FABRICATED-FORGE-TEST $keys OK" "native $keys_module: a $keys a Fabric mod registers from its client entrypoint is in the game's options, sorted after the game's, refused twice and once Forge's event added it, as upstream, and has the key the options file saved for it (KEYMAP-3)"
 check "FABRICATED-FORGE-TEST content built at bootstrap registered OK" "content built during vanilla's bootstrap is registered by the main initializer (CORPUS-31)"
 check "FABRICATED-FORGE-TEST built-in registries frozen after the main initializers OK" "the built-in registries' freeze runs after the main initializers (CORPUS-32)"
+check "FABRICATED-FORGE-TEST hud method end hook OK" "a Fabric mod's hook at the end of vanilla's HUD method ran after Forge's layers, outside the loading screen, pointed at the method's returns (HUD-4)"
+check "FABRICATED-FORGE-TEST hud method call hook OK" "a Fabric mod's hook at the HUD method's crosshair call, which Forge's crosshair layer makes, ran, pointed at the called method's start (HUD-4)"
 if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST networking round trip OK" "fabric-networking-api-v1 (with Fabric API): a payload the client sends as it joins comes back from the integrated server with the server's answer"
 	check "FABRICATED-FORGE-TEST Fabric command registered OK" "fabric-command-api-v2 (with Fabric API): a command registered through CommandRegistrationCallback is in the integrated server's dispatcher (CTOR-2)"
@@ -352,6 +354,6 @@ if [ -n "$extra" ] && [ "$mc" = 1.21.11 ]; then
 	check "FABRICATED-FORGE-TEST block dust tint event OK" "fabric-particles-v1 (with Fabric API, 1.21.11): a stone particle made as the client joins asks ParticleRenderEvents.ALLOW_BLOCK_DUST_TINT, where Forge decides the tint (PART-2)"
 	check "FABRICATED-FORGE-TEST hud element after chat OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): a Fabric HUD element attached after chat was drawn, from Forge's HUD layers (HUD-2)"
 	check "FABRICATED-FORGE-TEST hud element before the hotbar OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): a Fabric HUD element attached before the hotbar was drawn, from Forge's hotbar layers (HUD-2)"
-	check "FABRICATED-FORGE-TEST hud render callback OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): HudRenderCallback fired after Forge's HUD layers, outside the loading screen (HUD-2)"
+	check "FABRICATED-FORGE-TEST hud render callback OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): HudRenderCallback fired from upstream's hook at the HUD method's end, after Forge's HUD layers, outside the loading screen (HUD-2, HUD-4)"
 fi
 exit "$fail"
