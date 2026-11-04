@@ -191,11 +191,24 @@ by the server runs (the colours, screens, key mappings and config screens by the
   run; CORPUS-75). Fabric API kept the alias in vanilla's registry class, whose lookups Forge's wrapper replaces:
   Waystones' world generation names its renamed waystones by their old names, and its data pack, and with it the
   server, didn't load on Forge 64 and 65.
+- **Registry entry added events:** Fabric API's `RegistryEntryAddedCallback` fires for the registries Forge manages,
+  once an entry new to one is in it, with its raw id, whether a Fabric mod registered it through vanilla's API or a Forge
+  mod through Forge's (all five, with Fabric API; server run; CORPUS-108). Upstream fires it from vanilla's registry
+  method, which Forge's wrapper of those registries replaces, so it never fired for blocks, items, entity types and the
+  rest. Architectury gives a spawn egg its entity type from a listener on that event: Artifacts' egg kept none, and EMI's,
+  JEI's and REI's listings of its creative tab failed (EMI's own plugin with them). Where Forgified Fabric API provides
+  the module, its own copy fires the event.
 - **Recipe slots on the network (Forge 61 to 66):** an empty optional ingredient, a shaped recipe's empty slot, is sent
-  as vanilla sends it, an empty item list, and read back as empty; every other ingredient is Forge's to send (server
-  run; CORPUS-83). Forge's patch of vanilla's codec threw writing it, so with Fabric API, whose recipe sync sends the
-  recipes Fabric mods' clients need, a shaped recipe with an empty slot dropped the player's connection to the world
-  they joined (seen on the Forge 65 corpus client).
+  as vanilla sends it, an empty item list, and read back as empty (server run; CORPUS-83). Forge's patch of vanilla's
+  codec threw writing it, so with Fabric API, whose recipe sync sends the recipes Fabric mods' clients need, a shaped
+  recipe with an empty slot dropped the player's connection to the world they joined (seen on the Forge 65 corpus
+  client). A Fabric mod's own ingredient, a subclass of vanilla's without
+  Forge's `serializer()` (Fabric API's custom ingredients are one), goes in vanilla's form after a marker of its own,
+  through the codec Fabric API wraps with its custom form, so one of Fabric API's goes as Fabric API sends it (server
+  run, with Fabric API for its custom ingredients; CORPUS-85). Forge's codec threw writing it, and the Forge 65 and 66
+  corpus clients waited for their player until the run's timeout. In a recipe slot, Forge's custom ingredients are
+  read by Forge's codec, as Fabric API's wrapper took the -1 they start with for its own. Only the network form
+  changes: a Fabric mod's subclass other than Fabric API's still can't be written as JSON (no mod seen doing it).
 - **Custom ingredients and crafting size (Forge 47):** a recipe ingredient with Fabric API's `fabric:type` is that
   custom ingredient, as Forge reads every ingredient itself before Fabric API's hook can; inside an array it joins
   Forge's compound ingredient, as Forge's own custom ingredients do (CORPUS-99). On the network, Forge's custom

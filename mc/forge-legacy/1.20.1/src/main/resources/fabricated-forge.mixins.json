@@ -12,6 +12,8 @@
     "MappedRegistryPendingHoldersMixin",
     "NamespacedWrapperPendingHoldersMixin",
     "NamespacedWrapperAliasMixin",
+    "NamespacedWrapperEntryAddedMixin",
+    "ForgeRegistryEntryAddedMixin",
     "BuiltInRegistriesFreezeMixin",
     "BuiltInRegistriesInvoker",
     "BuiltInRegistriesValidateMixin",

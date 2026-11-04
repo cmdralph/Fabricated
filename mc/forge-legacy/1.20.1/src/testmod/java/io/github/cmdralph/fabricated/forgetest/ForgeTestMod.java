@@ -104,6 +104,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		}
 		ForgeRegistrationOrderTest.register();
 		ForgeRegistryAliasTest.register();
+		ForgeRegistryEntryAddedTest.register();
 		ForgeConfigPortTest.register();
 		try {
 			ForgeCommandTest.register();
