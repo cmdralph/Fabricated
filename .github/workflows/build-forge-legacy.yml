@@ -195,34 +195,40 @@ jobs:
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-client/"
           cp mc/forge-legacy/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-client/"
           ci/forge-legacy/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra-client"
-      # Coexisting with Forgified Fabric API (task 5, PROVIDER-2): what its newest 1.20.1 build nests, and which of
-      # Fabric Loader's classes outside its API its modules use, read off the jar. Informational, with "extended".
-      - name: What Forgified Fabric API for 1.20.1 nests and uses of Fabric Loader
-        if: ${{ env.EXTENDED == 'true' && !cancelled() }}
-        continue-on-error: true
+      # Forgified Fabric API for 1.20.1, its newest build from Modrinth (downloaded here in CI), beside Fabricated and the
+      # test mods (task 5, PROVIDER-2): Forge's jar-in-jar must leave its Fabric Loader out for the in-game mod's empty
+      # jar, its modules provide Fabric API's (Fabricated's copies standing down), and the server must start, the test
+      # mod's checks of those modules taking the provider's answers its source reads as its own (PROVIDER-14). A gate
+      # since it passed on two extended runs in a row (41833110379 and 41840874477, CI-1), as on NeoForge.
+      - name: Server with Forgified Fabric API (must pass)
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
         run: |
           python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/ffapi" forge forgified-fabric-api || true
-          for jar in "$RUNNER_TEMP"/ffapi/*.jar; do
-            [ -f "$jar" ] && { python3 -I ci/forge-legacy/ffapi-anatomy.py "$jar" | head -n 220 || true; }
-          done
-      # Forgified Fabric API for 1.20.1 beside Fabricated and the test mods (task 5, PROVIDER-2): Forge's jar-in-jar must
-      # leave its Fabric Loader out for the in-game mod's empty jar, its modules provide Fabric API's (Fabricated's copies
-      # standing down), and the server must start. Informational, with "extended", until it has passed.
-      - name: Server with Forgified Fabric API
-        if: ${{ env.EXTENDED == 'true' && !cancelled() }}
-        continue-on-error: true
-        run: |
           mkdir -p "$RUNNER_TEMP/with-ffapi"
           cp "$RUNNER_TEMP"/ffapi/*.jar "$RUNNER_TEMP/with-ffapi/" 2>/dev/null || { echo "Forgified Fabric API wasn't downloaded"; exit 0; }
+          status=0
           ci/forge-legacy/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-ffapi" "$RUNNER_TEMP/with-ffapi" \
-              > "$RUNNER_TEMP/server-ffapi.out" 2>&1 && echo "== the server with Forgified Fabric API passed" || echo "== the server with Forgified Fabric API failed"
+              > "$RUNNER_TEMP/server-ffapi.out" 2>&1 || status=$?
+          [ "$status" = 0 ] && echo "== the server with Forgified Fabric API passed" || echo "== the server with Forgified Fabric API failed"
           grep -E '^(PASS|FAIL|SKIP|NOT SEEN):' "$RUNNER_TEMP/server-ffapi.out" | grep -v '^PASS' | head -n 60 || true
           # What the test mod's checks met where they didn't pass: the provider's modules answer some differently.
           echo "== The test mod's other lines"
           grep -h 'FABRICATED-FORGE-TEST' "$RUNNER_TEMP/server-ffapi/logs/latest.log" 2>/dev/null | grep -v ' OK$\| OK (' | head -n 30 | cut -c1-600 || true
           echo "== Fabric API providers"
           sed -n '/^== Fabric API providers/,/^== /p' "$RUNNER_TEMP/server-ffapi/logs/fabric-bridge-report.txt" 2>/dev/null | head -n 40 || true
-          ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/server-ffapi" "$RUNNER_TEMP/server-ffapi/server.out" "server with Forgified Fabric API" || true
+          if [ "$status" != 0 ]; then
+            ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/server-ffapi" "$RUNNER_TEMP/server-ffapi/server.out" "server with Forgified Fabric API" || true
+            exit 1
+          fi
+      # What Forgified Fabric API's build nests, and which of Fabric Loader's classes outside its API its modules use,
+      # read off the jar. Informational, with "extended".
+      - name: What Forgified Fabric API for 1.20.1 nests and uses of Fabric Loader
+        if: ${{ env.EXTENDED == 'true' && !cancelled() }}
+        continue-on-error: true
+        run: |
+          for jar in "$RUNNER_TEMP"/ffapi/*.jar; do
+            [ -f "$jar" ] && { python3 -I ci/forge-legacy/ffapi-anatomy.py "$jar" | head -n 220 || true; }
+          done
       # The client with Forgified Fabric API for 1.20.1 beside Fabricated and the test mod (task 5): it must reach its world;
       # the test mod's checks of the modules it provides are evidence, as those modules are then its own, as on NeoForge.
       # Informational, with "extended".

@@ -75,6 +75,9 @@ public final class ForgeTransferTest {
 			"filling the last part of a millibucket filled 0 mB, 81040 droplets",
 			"its Forge handler of a Fabric storage fills the droplets of a millibucket the storage has room for and reports 0 mB (FluidStorageFluidHandler.fill)",
 			"draining 500 mB gave 500 mB, leaving 40540 droplets", "the 40 droplets that fill left stay",
+			"two insertions of 100 took 100 and 100 of the 128 two slots hold",
+			"its Fabric storage of a Forge item handler (ForgeItemStorage) simulates each insertion on the handler as it stands and inserts once the"
+					+ " transaction commits, so a second insertion in the same transaction doesn't see the first",
 			"no fluid handler capability for the Fabric mod's cell", "it gives Fabric mods' items no Forge fluid handler (onAttachItemStackCapabilities is empty)",
 			"no fluid handler capability for the Fabric mod's gauge", "it gives Fabric mods' items no Forge fluid handler (onAttachItemStackCapabilities is empty)",
 			"filling the Forge mod's cell took 81000 droplets and made it handler_cell",

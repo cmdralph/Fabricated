@@ -315,7 +315,29 @@ What else differs on Forge, for Fabric mods in general:
   is that mod's, and Fabricated's copy, its mixins and its Forge hooks stand down, as on NeoForge (all five, server run
   with stand-ins; PROVIDER-1). Sinytra Connector and a second Fabricated jar are refused, the launch stopping with
   Fabricated's reason (DUP-1), and so, at once, is a Forge jar with its own copy of Fabric Loader, beside which Forge
-  can't even build its error screen (all five; PROVIDER-2). Not Forgified Fabric API's on Forge 47 (below).
+  can't even build its error screen (all five; PROVIDER-2). Not Forgified Fabric API's on Forge 47 (next item).
+- **Forgified Fabric API (Forge 47):** its 1.20.1 build nests Forgified Fabric Loader, whose packages are Fabric
+  Loader's API, as Fabricated's own copy's are. Fabricated's in-game mod nests an empty jar under that loader's
+  jar-in-jar identifier (`dev.su5ed.sinytra:fabric-loader`) at version 999.999.999, as Sinytra Connector does: Forge's
+  jar-in-jar adds the newest version every range admits, so it adds the empty jar and leaves the copy out, and the mod
+  locator lets the jar load (PROVIDER-2). Its modules are Forge mods whose `@Mod` classes start them and which use
+  Fabric Loader's public API only (read off its jar), so Fabricated's copy serves them. Fabricated's own Fabric API
+  modules stand down for theirs, with the parts of the in-game mod serving those modules and its transfer bridge
+  (PROVIDER-1, PROVIDER-13, PROVIDER-16). The in-game mod is then loaded even without Fabric mods, as only it nests the
+  empty jar. A copy under another identifier, in a jar's own entries, or with a range the empty jar's version doesn't
+  satisfy is still refused. A provider's module is used as it is, and what it does differently from upstream is its
+  own. Read in Forgified Fabric API's source (0.92.6): a mod's own loot table reports its source as vanilla, as Forge
+  builds every mod's pack as built in (PROVIDER-14); a key binding registered once the game's options exist isn't
+  refused, and on Forge they exist before mods load; its fake player is Forge's, whose connection drops every packet, so
+  a fake player using an entity does nothing; a Fabric fuel's burn time is answered through Forge's burn time event,
+  not vanilla's fuel table; a built-in pack a Fabric mod enables by default is offered but not switched on, as it
+  switches such packs on as the options load, before Fabric mods register theirs; and its transfer bridge reports the
+  last part of a millibucket filled as 0 mB, gives Fabric mods' items no fluid handler, never hands the context the
+  item a Forge item's handler turns into, and lets a second insertion into a Forge item handler in one transaction
+  miss the first, each simulated on the handler as it stands (PROVIDER-15). A stand-in nesting a copy as Forgified
+  Fabric API does is a gate, and so is the server with Forgified Fabric API itself, its newest build, since it passed
+  two extended runs in a row (CI-1); the client with it is informational, in extended runs. The test mod takes those
+  answers as the provider's there and checks the rest.
 - **Default method bridges:** where an interface a Fabric mod's mixin adds to a game class brings a second default
   method beside one Forge's own interfaces give it (`IForgeLivingEntity.self()` on `LivingEntity`, `IForgeEntity`'s
   `isMultipartEntity()` on every entity class), the class declares the method, calling Forge's, as on NeoForge
@@ -402,19 +424,6 @@ What else differs on Forge, for Fabric mods in general:
 
 What Fabric mods can't rely on there. The report names every hook left out; these are the ones nothing on Forge does
 instead. Unless a task is named, nothing is planned for them yet.
-
-**Taken on by a later task:**
-
-- **Forgified Fabric API (task 5).** Its 1.20.1 build nests Forgified Fabric Loader, whose packages are Fabric Loader's
-  API, as Fabricated's own copy's are. Fabricated's in-game mod nests an empty jar under that loader's jar-in-jar
-  identifier (`dev.su5ed.sinytra:fabric-loader`) at version 999.999.999, as Sinytra Connector does: Forge's jar-in-jar
-  adds the newest version every range admits, so it adds the empty jar and leaves the copy out, and the mod locator lets
-  the jar load (PROVIDER-2). Its modules are Forge mods whose `@Mod` classes start them and which use Fabric Loader's
-  public API only (read off its jar), so Fabricated's copy serves them; Fabricated's own Fabric API modules stand down
-  for theirs (PROVIDER-1). The in-game mod is then loaded even without Fabric mods, as only it nests the empty jar.
-  A copy under another identifier, in a jar's own entries, or with a range the empty jar's version doesn't satisfy is
-  still refused. A stand-in nesting a copy as Forgified Fabric API does is a gate; the server with Forgified Fabric API
-  itself is informational until it has passed (extended runs).
 
 **Not supported on Forge** (Forge's code differs where upstream hooks in):
 

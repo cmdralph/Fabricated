@@ -107,8 +107,9 @@ Forge*, with the task that takes each on. The main ones:
 - **Injectors in interface mixins:** Forge 47's Mixin (0.8.5) applies none. Fabricated applies an `@Inject` at `HEAD`,
   `RETURN` or `TAIL` there itself (INTERFACE-1), so `TooltipComponentCallback` and the oxidizable blocks registry work;
   a Fabric item's stack-aware recipe remainder, whose injectors are others, is lost.
-- **Forgified Fabric API** is refused, as is any jar carrying its own copy of Fabric Loader; task 5 tries letting both
-  run.
+- **Forgified Fabric API** runs beside Fabricated, its modules used as they are: what they do differently from
+  upstream is in [`docs/FORGE-LEGACY.md`](/docs/FORGE-LEGACY.md) (PROVIDER-14, PROVIDER-15). Any other jar carrying its
+  own copy of Fabric Loader is refused (PROVIDER-2).
 
 ## Installing (for testing)
 
