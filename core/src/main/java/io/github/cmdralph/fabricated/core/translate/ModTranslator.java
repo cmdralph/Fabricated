@@ -145,6 +145,7 @@ public final class ModTranslator {
 	private final TranslationCache cache;
 	private final io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits;
 	private final PlatformRenames renames;
+	private final PlatformStatics statics;
 	private final RetypedFields retyped;
 	private final PrivateFieldReads privateReads;
 
@@ -153,6 +154,7 @@ public final class ModTranslator {
 		this.cache = cache;
 		this.limits = limits;
 		this.renames = PlatformRenames.of(env.untransformable(), env.game(), env.descriptor().replacedMods().containsKey("forgeconfigapiport"));
+		this.statics = new PlatformStatics(env.untransformable());
 		this.retyped = RetypedFields.of(env.game());
 		this.privateReads = PrivateFieldReads.of(env.game(), env.descriptor().privateFields(), env.bridgedFields());
 	}
@@ -334,8 +336,8 @@ public final class ModTranslator {
 					addBridges(DefaultBridge.of(ii.target(), List.of(ii.interfaceName()), classes), List.of(ii.interfaceName()), bridges, notes);
 				}
 
-				int renamed = remapped != null ? applyRenames(remapped, remapped.keySet(), files)
-						: applyRenames(overlay, archive.classEntryNames(), archive::read);
+				int renamed = remapped != null ? applyRenames(remapped, remapped.keySet(), files, notes)
+						: applyRenames(overlay, archive.classEntryNames(), archive::read, notes);
 				if (renamed > 0) notes.add(renamed + " class(es) use NeoForge members as Forge Config API Port's copy of NeoForge declares them; the references are adapted to NeoForge's own");
 				// Last, on the classes as they will load: the members Fabric's @Environment reserves for the other side (ENV-1).
 				stripEnvironment(overlay, remapped, remapped != null ? remapped.keySet() : archive.classEntryNames(), files,
@@ -532,10 +534,11 @@ public final class ModTranslator {
 
 	/**
 	 * Puts the mod's classes that use members NeoForge renamed (see {@link PlatformRenames}), with the references
-	 * renamed, into {@code target}, and those reading resources through a class, with the reads made to look beyond the
-	 * mod's module as on Fabric ({@link ResourceLookups}); returns how many used renamed members.
+	 * renamed, into {@code target}, those calling a loader's methods the platform made static through its accessor, with
+	 * the calls made static ({@link PlatformStatics}, noted), and those reading resources through a class, with the reads
+	 * made to look beyond the mod's module as on Fabric ({@link ResourceLookups}); returns how many used renamed members.
 	 */
-	private int applyRenames(Map<String, byte[]> target, Collection<String> entries, FileView files) throws ArchiveException {
+	private int applyRenames(Map<String, byte[]> target, Collection<String> entries, FileView files, List<String> notes) throws ArchiveException {
 		int count = 0;
 		for (String name : List.copyOf(entries)) {
 			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
@@ -543,6 +546,12 @@ public final class ModTranslator {
 			if (data == null) continue;
 			byte[] renamed = renames.apply(data);
 			if (renamed != null) count++;
+			byte[] made = statics.apply(renamed != null ? renamed : data);
+			if (made != null) {
+				notes.add(name.substring(0, name.length() - ".class".length()).replace('/', '.') + " calls methods of " + env.descriptor().loaderName()
+						+ "'s loader through an accessor that is private here, where they are static; the calls are made static");
+				renamed = made;
+			}
 			byte[] adapted = ResourceLookups.apply(renamed != null ? renamed : data);
 			if (adapted != null || renamed != null) target.put(name, adapted != null ? adapted : renamed);
 		}
