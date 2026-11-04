@@ -108,6 +108,14 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	}
 
 	/**
+	 * Whether a level is a chunk section's: vanilla's, or Sodium's when Sodium meshes the world (through a renderer of
+	 * Fabric's API, Indium's on 1.20.1).
+	 */
+	static boolean isSection(BlockAndTintGetter level) {
+		return level instanceof RenderChunkRegion || level.getClass().getName().endsWith(".sodium.client.world.WorldSlice");
+	}
+
+	/**
 	 * What the game is drawing, by the innermost of its frames on the stack that says: {@code "breaking"} for the breaking
 	 * overlay (Forge's overload of the block renderer's method for it, which keeps its name at runtime), {@code "piston"}
 	 * for a block a piston moves (Forge's hook for it, or the piston head renderer), {@code "falling"} for a falling block,
@@ -202,7 +210,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		@Override
 		public void emitBlockQuads(BlockAndTintGetter level, BlockState state, BlockPos pos, Supplier<RandomSource> randomSupplier, RenderContext context) {
 			emitWrapped(level, state, pos, randomSupplier, context);
-			if (level instanceof RenderChunkRegion) {
+			if (isSection(level)) {
 				if (!logged.getAndSet(true)) {
 					FrapiTestMod.LOGGER.info("FABRICATED-TEST {} ({} in {} on {}, seam={})", check, state, level.getClass().getName(), Thread.currentThread().getName(), seam());
 				}

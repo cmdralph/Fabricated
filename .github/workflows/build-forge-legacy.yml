@@ -327,6 +327,8 @@ jobs:
             "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${{ matrix.target.fabric_api }}/fabric-api-${{ matrix.target.fabric_api }}.jar"
       # What a run of these mods shows: the report's summary and what it left out, the mods' errors, and what stopped
       # the game, to its innermost cause.
+      # With Indium, Sodium 0.5's renderer of Fabric's API, which Fabric mods' block models need under Sodium on 1.20.1
+      # (on Fabric too; Sodium has its own from 0.6).
       - name: Sodium and Iris, with the renderer test mod
         if: ${{ !cancelled() }}
         env:
@@ -334,12 +336,12 @@ jobs:
         run: |
           dir="$RUNNER_TEMP/extra-sodium"
           mkdir -p "$dir"
-          python3 ci/fetch-corpus.py "$MC" "$dir" fabric sodium iris || true
+          python3 ci/fetch-corpus.py "$MC" "$dir" fabric sodium iris indium || true
           ls "$dir"/sodium*.jar >/dev/null 2>&1 || { echo "Modrinth has no Fabric build of Sodium for $MC: nothing to run"; exit 0; }
           cp "$RUNNER_TEMP/fabric-api/fabric-api.jar" mc/forge-legacy/$MC/build/testmods/fabricated-testmod-frapi.jar "$dir/"
           status=0
           SMOKE_TIMEOUT=480 ci/forge-legacy/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-sodium" "$dir" > "$RUNNER_TEMP/client-sodium.out" 2>&1 || status=$?
-          ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-sodium" "$status" "Sodium and Iris" "FABRICATED-TEST frapi|Sodium|Iris|sodium|iris" sodium iris
+          ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-sodium" "$status" "Sodium and Iris" "FABRICATED-TEST frapi|Sodium|Iris|Indium|sodium|iris|indium" sodium iris indium
       - name: malilib, MiniHUD, Tweakeroo and Litematica
         if: ${{ !cancelled() }}
         env:
