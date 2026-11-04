@@ -20,6 +20,7 @@
     "ForgeRegistryEntryAddedMixin": ["fabric-registry-sync-v0"],
     "GameDataFreezeMixin": [],
     "IngredientForgeNetworkMixin": ["fabric-recipe-api-v1"],
+    "LanguageHookVanillaReaderMixin": [],
     "LiquidBlockEarlyFluidMixin": [],
     "LivingEntityDropCaptureMixin": [],
     "LivingEntityFluidTravelMixin": [],

@@ -245,6 +245,10 @@ by the server runs (the colours, screens, key mappings and config screens by the
   model reader (Moonlight's for Supplementaries, Porting Lib's for `porting_lib:obj` and the rest). A loader in a Fabric
   mod's namespace, or in no loaded mod's, is left to those hooks, as on Fabric; one in Forge's namespace or a Forge
   mod's fails as without Fabricated (CORPUS-92, client run).
+- **Language files on the server (Forge 47):** Forge's server reads every mod's language file with its own copy of
+  vanilla's reader, which no Fabric mod hooks. The in-game mod has it use vanilla's reader, as a Fabric server does
+  through Fabric API, so a Fabric mod's hook applies there: owo-lib's lets its files hold rich text, which Forge's copy
+  refused (CORPUS-100, server run).
 - **Fabric's renderer API (task 4, R5):** a Fabric block model (one with its own emitter) is drawn in chunk sections,
   alone and inside a vanilla multipart model, as a falling block and with the breaking overlay, on Forge 61 to 66 as a
   minecart's block too and on Forge 47 as a block a piston moves, and a Fabric item model's quads in the hotbar, the

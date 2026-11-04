@@ -21,6 +21,7 @@
     "CraftingHelperFabricConditionsMixin",
     "CraftingHelperFabricIngredientsMixin",
     "IngredientForgeNetworkMixin",
+    "LanguageHookVanillaReaderMixin",
     "ShapedRecipeUtilCraftingSizeMixin",
     "TagFileRemoveMixin",
     "BucketItemEarlyFluidMixin",

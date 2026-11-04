@@ -19,6 +19,7 @@ import io.github.cmdralph.fabricated.forgetest.ForgeDropCaptureTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFluidTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFuelTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeIngredientTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeLanguageTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeMobBucketTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeRecipeConditionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeRegistryAliasTest;
@@ -58,7 +59,7 @@ import net.minecraft.server.MinecraftServer;
  * tick), whether a block Fabric's sleep events admit as a bed survives being slept on, whether the furnace takes the
  * test item Fabric's fuel registry made a fuel, whether a brewing recipe Fabric's brewing registry added brews, whether
  * the recipes naming a Fabric resource condition in Forge's {@code conditions} loaded as it answered ({@code method_3772}
- * is {@code getRecipeManager()}), and whether the defaults of the interfaces the test mod's mixins add to entities beside
+ * is {@code getRecipeManager()}), whether vanilla's reader read the test mod's language file, and whether the defaults of the interfaces the test mod's mixins add to entities beside
  * Forge's run (default bridges).
  */
 @Mixin(MinecraftServer.class)
@@ -123,6 +124,7 @@ public abstract class MinecraftServerMixin {
 			ForgeMobBucketTest.check();
 			ForgeRecipeConditionTest.check(method_3772());
 			ForgeIngredientTest.check();
+			ForgeLanguageTest.check();
 			if (ForgeTestMod.testItem != null && FabricLoader.getInstance().isModLoaded("fabric-content-registries-v0")) {
 				ForgeFuelTest.check();
 				ForgeBrewingTest.check();
