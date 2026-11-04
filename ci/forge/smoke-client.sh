@@ -230,7 +230,7 @@ if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST sleep events OK" "fabric-entity-events-v1 (with Fabric API): on the integrated server, a hay block EntitySleepEvents.ALLOW_BED admits stays hay while an armor stand sleeps on it (SLEEP-1)"
 	check "FABRICATED-FORGE-TEST damage events OK" "fabric-entity-events-v1 (with Fabric API): on the integrated server, an entity hurt asks ALLOW_DAMAGE, whose refusal holds, and fires AFTER_DAMAGE (DAMAGE-1)"
 	check "FABRICATED-FORGE-TEST effect command context OK" "fabric-entity-events-v1 (with Fabric API): on the integrated server, an effect the effect command gives reaches ALLOW_ADD from that command, and one given by code from none (EFFECT-1)"
-	check "FABRICATED-FORGE-TEST storages OK" "fabric-transfer-api-v1 (with Fabric API): on the integrated server, a Fabric mod's storages, on blocks and in tank items, are Forge's capabilities and a Forge mod's handlers Fabric's storages"
+	check "FABRICATED-FORGE-TEST storages OK" "fabric-transfer-api-v1 (with Fabric API): on the integrated server, a Fabric mod's storages, on blocks, in tank items and in bags, are Forge's capabilities and a Forge mod's handlers Fabric's storages"
 	check "FABRICATED-FORGE-TEST builtin resource pack enabled by default OK" "fabric-resource-loader-v1 (with Fabric API): a built-in pack a Fabric mod's client entrypoint registers as enabled by default is switched on, as upstream does once the options load, which on Forge is before the entrypoints (CORPUS-104)"
 fi
 # The test mod for Fabric API's client modules (26.x: mc/forge/common26/src/testmodfrapi), where the run has it.
