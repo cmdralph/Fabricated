@@ -3,6 +3,35 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: Iris's particle hook on Forge 47 (IRIS-1), MixinConstraints' Forge abstraction on Forge 64 to 66 (PLUGIN-1), and malilib's set on Forge (task 5)
+
+- **IRIS-1, the particle hook** (P1 for Iris's Fabric build on Forge 47; `main` #303): Iris redirects the read of
+  `ParticleEngine.RENDER_ORDER` in `render`, the list vanilla's loop goes over, so that each of its passes renders the
+  particle types it picks: a copy of the list without the opaque types, or a list of its own. Forge 47 keeps vanilla's
+  `render` only to call an overload taking a frustum, and that overload goes over the keys of the particles' map
+  instead. Forge orders the map by `RENDER_ORDER` and puts Forge mods' own types after vanilla's. Left out, the hook
+  would have Iris's mixed setting, which shaders off use too, draw every particle twice. Decision: pre-flight points
+  the redirect at that loop through a bridge (`KeyedLoops`). While the bridge calls the handler, Iris's reads of
+  `RENDER_ORDER` see the map's other keys after the list's elements, and the loop then goes over the types Iris picks.
+  A pass that copies the list so keeps Forge mods' types, and a list of Iris's own leaves them out, as Iris treats a
+  type added to the list on Fabric. The repair matches the shape (a static list a constructor orders a map field by,
+  that map's `keySet()` gone over in the method or the overload it calls), not Forge's names.
+- **PLUGIN-1** (P0 for Flashback's Fabric build on Forge 64 to 66; `main` #303): MixinConstraints 1.0.8, which Flashback
+  nests, calls `LoadingModList.get().getModFileById(id)` in its Forge abstraction, built for Forge 47. Forge 64 made
+  `LoadingModList` an interface whose methods are static and whose `get()` is private, so the call can't link
+  (`IncompatibleClassChangeError`), and MixinConstraints' mixin plugin stopped the game as Mixin selected Flashback's
+  config. Decision: translation makes a Fabric mod's call of such a method through the accessor a call of the static
+  method (`PlatformStatics`), in FML's packages only, and only where the code can't link as built. A receiver kept in
+  a local is left as it is.
+- **malilib, MiniHUD, Tweakeroo and Litematica on Forge** (`main` #303): their Fabric builds reached their worlds with
+  every smoke check passing on Forge 47 and 61 to 66, in two extended runs in a row on each Forge branch (41790201492
+  and 41796106172, 41790205318 and 41796109577), which makes their run a gate there (CI-1). Decision: the
+  compatibility plan's refusal of malilib is lifted on Forge, so the plan no longer lists it, and the Forge branches'
+  syncs of this change turn their run into a gate that loads them by default.
+- **Forge branches:** `forge` #298 and `forge-legacy` #299 sync `main` #302, and Forge's Mixin extension now hands a
+  constructor's arguments to the one Forge moved its code into (IRIS-1's shader hook). The evidence steps were read
+  and are removed.
+
 ## 2026-11-04: A Fabric hook into the window's creation on Forge 66 (ENTRY-4), Iris's shader hook on Forge 47 (IRIS-1, in part), Essential's key hooks on Forge 61 to 66 (GROUP-2), and ENTRY-3 verified (task 5)
 
 - **Verified:** ENTRY-3 on Forge 64 and 65, in `forge` #298's extended run 41796106172: Sodium and Iris reach their

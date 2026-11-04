@@ -890,7 +890,7 @@ jobs:
           mods="sodium iris"
           [ "${{ matrix.target.minecraft }}" = "1.21.1" ] && mods="sodium"
           failed=0
-          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-sodium-fabric" "$status" "the Fabric builds of Sodium and Iris" $mods || failed=1
+          ci/gate-mods.sh "$RUNNER_TEMP/client-sodium-fabric" "$status" "the Fabric builds of Sodium and Iris" $mods || failed=1
           if grep -q "Fabric block models are drawn by the renderer net.caffeinemc.mods.sodium" "$RUNNER_TEMP/client-sodium-fabric/run/logs/latest.log"; then
             echo "PASS: Sodium's renderer draws Fabric's block models"
           else
@@ -1011,7 +1011,7 @@ jobs:
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-malilib/"
           status=0
           SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-malilib" "$RUNNER_TEMP/extra-malilib" || status=$?
-          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-malilib" "$status" "malilib and the mods needing it" malilib minihud tweakeroo litematica
+          ci/gate-mods.sh "$RUNNER_TEMP/client-malilib" "$status" "malilib and the mods needing it" malilib minihud tweakeroo litematica
       # Essential's Fabric build (its loader, which downloads Essential as the game starts; Fabricated itself never
       # downloads anything), which the compatibility plan loads on NeoForge (task 5), on its own, launched twice: the
       # first launch's loader downloads Essential, which Fabricated loads from the second (DOWNLOAD-1). A gate: both
@@ -1046,7 +1046,7 @@ jobs:
             unzip -l "$jar" | grep -E "META-INF/jars/|mixins[^/]*\.json$|\.accesswidener$" | head -40 || true
           done
           failed=0
-          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-essential-first" "$first_status" "Essential's first launch" essential-container essential-loader || failed=1
+          ci/gate-mods.sh "$RUNNER_TEMP/client-essential-first" "$first_status" "Essential's first launch" essential-container essential-loader || failed=1
           if ! ls "$RUNNER_TEMP/seed-essential/essential/"Essential*.jar >/dev/null 2>&1; then
             echo "::warning::Essential's loader downloaded nothing in the first launch (its server): no second launch to gate"
             exit "$failed"
@@ -1059,7 +1059,7 @@ jobs:
           grep -n -m 60 -i -E "essential|/(ERROR|FATAL)\]" "$log" | cut -c1-400 || true
           # What its loader downloaded, and where (its own folder in the game directory).
           find "$RUNNER_TEMP/client-essential/run" -maxdepth 4 -ipath "*essential*" -type f | head -30 || true
-          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" essential-container essential-loader essential || failed=1
+          ci/gate-mods.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" essential-container essential-loader essential || failed=1
           exit "$failed"
       # Flashback, which the compatibility plan loads on NeoForge (task 5: its refusal rested on a registry freeze REG-8
       # holds), on its own. A gate: every smoke check passes and Flashback loads.
@@ -1079,7 +1079,7 @@ jobs:
           SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-flashback" "$RUNNER_TEMP/extra-flashback" || status=$?
           awk '/^== /{show = /^== (Summary|Disabled|Unsupported|Mixins left out)/} show' "$RUNNER_TEMP/client-flashback/run/logs/fabric-bridge-report.txt" | head -40 | cut -c1-400 || true
           grep -n -m 40 -i -E "flashback|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-flashback/run/logs/latest.log" | cut -c1-400 || true
-          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-flashback" "$status" "Flashback" flashback
+          ci/gate-mods.sh "$RUNNER_TEMP/client-flashback" "$status" "Flashback" flashback
       - name: Upload other mods' client logs and reports
         if: ${{ matrix.part == 'mods' && !cancelled() }}
         uses: actions/upload-artifact@v4
