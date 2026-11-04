@@ -321,8 +321,10 @@ What else differs on Forge, for Fabric mods in general:
   entity type, a supplier there) invokes a getter the in-game mod adds, which gives vanilla's type: the holder's value,
   a view by raw id of Forge's map, and the bucket's `getFishType` (CORPUS-37: Porting Lib's accessors, and with them its
   extensions and Farmer's Delight's entrypoint, failed pre-flight; CORPUS-94: Supplementaries' bucket accessor stopped
-  the corpus server's data reload). The test mod reads a mix's potions and the pufferfish bucket's type so on the
-  server and the providers on the client. An accessor of another such field still fails pre-flight.
+  the corpus server's data reload). A mod's own read of such a field by vanilla's type calls the getter too
+  (CORPUS-107: REI's default client plugin reads a mix's `from` itself, and failed before its later displays). The test
+  mod reads a mix's potions and the pufferfish bucket's type so on the server, the mix's `from` by the field itself
+  too, and the providers on the client. An accessor or read of another such field still fails.
 - **Forge Config API Port** on Forge 61 to 66: its Fabric build loads, with its own copies of NeoForge's config
   classes, which Forge lacks (REPL-1, PLAT-5). On Forge 47 its version for 1.20.1 copies Forge's own config system,
   packages included, so its copies were left out for Forge's and its registry failed to link (Ponder's main
