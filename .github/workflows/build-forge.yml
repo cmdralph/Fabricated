@@ -309,7 +309,9 @@ jobs:
         run: |
           dir="$RUNNER_TEMP/extra-sodium"
           mkdir -p "$dir"
-          python3 ci/fetch-corpus.py "$MC" "$dir" fabric sodium iris || true
+          # A pair of builds that work together (ci_fabric_renderers in the version's gradle.properties): Sodium's newest
+          # Fabric build for 26.3 refused the newest Iris for 26.3 (CI-4).
+          python3 ci/fetch-corpus.py "$MC" "$dir" fabric ${{ matrix.target.fabric_renderers }} || true
           ls "$dir"/sodium*.jar >/dev/null 2>&1 || { echo "Modrinth has no Fabric build of Sodium for $MC: nothing to run"; exit 0; }
           cp "$RUNNER_TEMP/fabric-api/fabric-api.jar" mc/forge/$MC/build/testmods/fabricated-testmod-frapi.jar "$dir/"
           status=0
