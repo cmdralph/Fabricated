@@ -879,7 +879,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/extra-sodium-fabric"
-          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium-fabric" fabric sodium iris || true
+          # A pair of builds that work together (ci_fabric_renderers in the version's gradle.properties), as for the
+          # NeoForge builds: Sodium's newest Fabric build for 26.3 refused the newest Iris for 26.3 (CI-4).
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium-fabric" fabric ${{ matrix.target.fabric_renderers }} || true
           if ! ls "$RUNNER_TEMP"/extra-sodium-fabric/sodium*.jar >/dev/null 2>&1; then
             echo "Modrinth has no Fabric build of Sodium for ${{ matrix.target.minecraft }}: nothing to run"
             exit 0

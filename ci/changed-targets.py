@@ -14,9 +14,10 @@ Three modes:
              folders changed, when nothing else of the platform did, else every version.
   --all      every version of every platform the branch holds (release tags, runs by hand); stdin is not read.
 
-Prints a JSON list of {"platform", "minecraft", "loader", "java", "fabric_api", "plugin_hosts", "renderers"} for a
-matrix, read from each version's gradle.properties (the loader version, java_version, ci_plugin_hosts, ci_renderers,
-whose default is the newest Sodium and Iris) and its Fabric API plan (fabricApiVersion).
+Prints a JSON list of {"platform", "minecraft", "loader", "java", "fabric_api", "plugin_hosts", "renderers",
+"fabric_renderers"} for a matrix, read from each version's gradle.properties (the loader version, java_version,
+ci_plugin_hosts, ci_renderers and ci_fabric_renderers, whose default is the newest Sodium and Iris) and its Fabric API
+plan (fabricApiVersion).
 Usage: git diff --name-only A B | ci/changed-targets.py [--full | --all] [repository root]
 """
 import json
@@ -85,7 +86,8 @@ def target(root, platform, version):
     fabric_api = json.loads(plan.read_text(encoding="utf-8")).get("fabricApiVersion", "") if plan.is_file() else ""
     return {"platform": platform, "minecraft": version, "loader": props[LOADER_PROPERTY[platform]],
             "java": props["java_version"], "fabric_api": fabric_api, "plugin_hosts": props.get("ci_plugin_hosts", ""),
-            "renderers": props.get("ci_renderers", "sodium iris")}
+            "renderers": props.get("ci_renderers", "sodium iris"),
+            "fabric_renderers": props.get("ci_fabric_renderers", "sodium iris")}
 
 
 def targets(root, paths, mode="quick"):
