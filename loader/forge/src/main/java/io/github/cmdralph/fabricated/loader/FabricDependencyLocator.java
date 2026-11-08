@@ -42,6 +42,7 @@ import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.OfficialClasses;
+import io.github.cmdralph.fabricated.core.report.LaunchPhases;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.NativeModules;
@@ -88,10 +89,10 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 	public List<IModFile> scanMods(Iterable<IModFile> loadedMods) {
 		if (FabricatedState.get() != null) return List.of();
 		List<IModFile> handed = new ArrayList<>();
-		long start = System.nanoTime();
+		LaunchPhases phases = new LaunchPhases();
 		try {
-			run(loadedMods, handed);
-			LOGGER.info("Fabricated discovery finished in {} ms", (System.nanoTime() - start) / 1_000_000);
+			run(loadedMods, handed, phases);
+			LOGGER.info("Fabricated discovery finished in {} ms ({})", phases.totalMillis(), phases);
 		} catch (Throwable t) {
 			if (t instanceof VirtualMachineError vme && !(t instanceof StackOverflowError)) throw vme;
 			// The state is published just before the first Fabric mod is handed to Forge.
@@ -105,7 +106,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		return handed;
 	}
 
-	private void run(Iterable<IModFile> loadedMods, List<IModFile> handed) throws IOException, JsonException {
+	private void run(Iterable<IModFile> loadedMods, List<IModFile> handed, LaunchPhases phases) throws IOException, JsonException {
 		// Sinytra Connector or a second Fabricated jar: the mod locator, which ran first, stopped the launch (ConflictingMods).
 		if (ConflictingMods.refusal(FMLPaths.MODSDIR.get()) != null) return;
 		FabricatedInfo info = FabricatedInfo.get();
@@ -140,6 +141,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		Optional<IModFile> devGameMod = find(loadedMods, ModIds.FABRICATED);
 		Path gameModJar = devGameMod.isPresent() || fabricJars.isEmpty() ? null : NestedJars.extract(NestedJars.GAME_MOD, cache);
 		List<Path> fabricatedFiles = gameModJar != null ? List.of(gameModJar) : devGameMod.map(file -> List.of(file.getFilePath())).orElse(List.of());
+		phases.end("in-game mod");
 
 		// Classes visible to Forge's non-transforming layers (the JDK, and libraries such as DataFixerUpper or Brigadier).
 		// Mixins targeting them never apply, so pre-flight reports them instead of letting the mod fail later.
@@ -165,6 +167,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 				}
 			}
 		}
+		phases.end("platform packages");
 		ClassBytesSource nativeApi = ClassBytesSource.EMPTY;
 		List<InstalledClasses.Jar> fabricApi = List.of();
 		// Interfaces the in-game mod's mixins add to game classes (Fabric API's injected interfaces).
@@ -213,6 +216,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 
 			// Fabric mixins may target the classes of Fabricated's Fabric API and of the Forge mods (an addon's mod).
 			ForgeMods.Found forgeMods = ForgeMods.of(loadedMods, !fabricJars.isEmpty(), client, fabricApi);
+			phases.end("Forge mods");
 
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
@@ -250,6 +254,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 				forgeMods.providers().forEach(p -> platformPackages.addAll(p.packages()));
 				platformPackages.addAll(forgeMods.libraryPackages());
 			}
+			phases.end("providers");
 
 			// Forge's installer leaves vanilla in Mojang's names among the libraries (ForgeLibraries); else NeoForge's layout.
 			Optional<Path> installedVanilla = fabricJars.isEmpty() ? Optional.empty()
@@ -268,6 +273,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 					}
 				}), vanilla.location() + ", in Mojang's names through its mappings");
 			}
+			phases.end("vanilla game");
 			// Where a locator could read the game's program arguments is open (docs/PORTING.md §4.1, question 10).
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, forgeVersion,
 					client, info.namespace(), runtimeMixinVersion(info), mixinExtras, info.mixinLowest(), info.fabricatedVersion(),
@@ -282,6 +288,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 				result.report().line("Fabric API providers", "Fabricated's in-game mod leaves out " + standDown.packages().size()
 						+ " package(s) of the modules other mods provide, the mixin configs " + standDown.mixinConfigs() + " and the mixins " + standDown.mixins());
 			}
+			phases.end("pipeline");
 		} finally {
 			closeAll(vanillaJars);
 		}
@@ -368,6 +375,8 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		int reported = cache.notes().size();
 		cache.finish(config.maxUnusedLaunches());
 		for (String note : cache.notes().subList(reported, cache.notes().size())) result.report().line("Cache", note);
+		phases.end("hand-over");
+		result.report().line(LaunchPhases.SECTION, "Discovery: " + phases + " (" + phases.totalMillis() + " ms)");
 		state.writeReport();
 	}
 
