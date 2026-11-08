@@ -18,8 +18,8 @@ It's built to be:
 - **Safe.** Mod jars are treated as untrusted input. Fabricated never runs mod code while translating, never
   modifies your mod jars, never touches the network, and has no telemetry.
 
-> **Status: alpha (v0.5.1-alpha); 0.6.0-beta in development.** Nearly every Fabric API module
-> loads, but many Fabric mods still patch code that NeoForge changed and are disabled before they run. Read
+> **Status: beta (v0.6.0-beta).** Nearly every Fabric API module loads, and every platform and version is held to
+> the same bar in CI, but Fabric mods that patch code NeoForge changed can still be disabled before they run. Read
 > [What works today](#what-works-today) before relying on it.
 
 **Platforms and branches.** NeoForge is the main platform, and this README is about it. Builds for Minecraft Forge, for

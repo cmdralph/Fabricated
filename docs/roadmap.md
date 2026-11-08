@@ -90,8 +90,8 @@ resume from it.
 | 3 | Parity on every platform and version, and the crashes v0.5 left open | Done (#239, #240, #241); PRE-18's check on Forge carried to task 5, and verified there |
 | 4 | Fabric's renderer API on NeoForge and Forge (*FRAPI plan*) | Done (#243, #244, #245: R1 to R7; FRAPI-5 to FRAPI-9 and PACK-6 fixed); R8 stays a candidate |
 | 5 | General compatibility, the difficult mods' Fabric builds first (*Difficult mods*) | Done (#247 to #253, #257, #260, #264, #266, #270 and #272 on main; #254, #258, #261 and #268 on `forge`, #249, #259, #263, #265, #267, #269 and #271 on `forge-legacy`): the difficult mods' Fabric builds load and are gated on NeoForge and Forge (#298 and #299 on the Forge branches); the Forge corpus stops read and fixed one by one (CORPUS-70 to 102); then PROVIDER-12 to 18 and PRE-19 (#313 to #315) |
-| 6 | Optimization, cleanup and bug fixes, no features | Done on `main` (#316: the launch baselines, PERF-1 and PERF-2, FC-5 and FC-6, PLAT-2, CI-3 and CI-4); the Forge branches' changes follow |
-| 7 | Release v0.6.0-beta | |
+| 6 | Optimization, cleanup and bug fixes, no features | Done (#316 on `main`: the launch baselines, PERF-1 and PERF-2, FC-5 and FC-6, PLAT-2, CI-3 to CI-5; #317 on `forge`, #318 on `forge-legacy`) |
+| 7 | Release v0.6.0-beta | In progress: SEC-5 fixed, the release notes written; the release heads' extended runs and the draft release next |
 
 ### The owner's decisions
 
@@ -223,15 +223,12 @@ change costing more than 10% on either says why in its pull request.
    v0.5.1-alpha on each platform (FRAPI's status included) and what to do on upgrade.
 5. The owner chooses the version and approves the tag, as for every release.
 
-**What blocks it** (2026-11-04, task 5 in progress): on Forge 47, both corpora reach a world (extended runs 41770251158
-and 41772824375): the server starts, its recipes parsing but two that fail on Fabric too (CORPUS-106), and the client
-joins its world and quits as mc-runtime-test does, with Artifacts' creative tab listed by EMI, JEI and REI and
-Supplementaries' and Create's block models loaded (extended run 41776560917). The Forge 61 to 66
-corpus clients reach their worlds and quit as mc-runtime-test does (extended run 41782561336). PRE-18, CORPUS-53 to
-55, CORPUS-72, CORPUS-77, CORPUS-79, CORPUS-80, CORPUS-84 to 87, CORPUS-90 to 92, CORPUS-94 to 105, CORPUS-107 to
-111, NET-11, PROVIDER-13, SELF-3 and the stops behind them are fixed and verified; everywhere, SEC-5, the targets not yet
-gates and the launch baselines. The corpus findings task 5 takes block only where a run shows them on a mod the beta
-names, and the corpus target is a gate only once every corpus run reaches a world.
+**What blocks it** (2026-11-08, task 7): criteria 1, 3 and 4 wait on two extended runs on each branch's release
+head (the stability bar held on the heads before task 7, extended runs 42527530813, 42529812463 and 42529814940, with
+SEC-5 fixed since); criterion 2 on the owner's decision on the targets still informational: Sodium and Iris for
+NeoForge on 1.21.11, the shader pack runs, OneConfig and PolyPlus, the clients sharing the game with Forgified Fabric
+API, Forge 66's glow outline and the corpora. The corpora can't be gates as they stand: 1.21.1's advanced client stays
+on Origins' screen (CORPUS-66) and its corpus client can hang as mc-runtime-test stops it (CORPUS-48).
 
 ### FRAPI plan (task 4)
 
@@ -420,13 +417,25 @@ logs become findings, and the corpora grow by the mods they name.
   - **Done on `main` (#316):** the launch timings in the report and both servers' cached launches measured (*Performance
     baselines*); PERF-2's repeated work gone from a cached launch, its last suspect split as PERF-3 (unmeasured on a
     large pack); PERF-1 measured and left as it is; FC-5 decided, FC-6 fixed, FC-7 fixed and open until checked on
-    Windows; PLAT-2, CI-3, CI-4 and CI-5 fixed; P3-2 and SEC-5 closed as won't fix; the cleanup candidates decided; task
+    Windows; PLAT-2, CI-3, CI-4 and CI-5 fixed; P3-2 and SEC-5 closed as won't fix (SEC-5 reopened and fixed in task 7, as bar
+    item 4 requires); the cleanup candidates decided; task
     4's hand-offs: the Forge configs' rows in `MIXINS.md` (MIX-3 found on the way) and a Fabric model's throw on Forge
     47 (PERF-4, decided). The decisions are in `CHANGELOG.md`.
-  - **Next, on the Forge branches:** the shared changes by the sync script, their loaders on the lazy mapping table
-    and the in-game mod found by its recorded hash, the discovery phases' timings, CI-3 in their smoke scripts, and
-    CI-4's pins for the difficult mods' Sodium and Iris on Forge 61 to 66.
+  - **Done on the Forge branches** (#317 into `forge`, #318 into `forge-legacy`, synced from #316): the shared changes,
+    their loaders on the lazy mapping table and the in-game mod found by its recorded hash (`storedNested`), the
+    discovery phases' timings in the report (Forge 64: the in-game mod's phase 8 to 32 ms), CI-3 in their smoke scripts
+    and CI-4's pins for the difficult mods' Sodium and Iris on Forge 61 to 66. Verified in PR runs 42529794259 and
+    42529805694 and extended runs 42529812463 and 42529814940: every job passed.
 - **Task 7 (release):** the ship criteria above.
+  - **Audit (2026-11-08)**, against `main`'s extended run 42527530813 and the Forge branches' 42529812463 and
+    42529814940: every gate passed on every version, and no P0 or P1 is open. Bar item 4 didn't hold: task 6 had closed
+    SEC-5 as won't fix. It is fixed (all the top-level jars of a launch share one budget for their nested jars). The
+    informational runs' misses are the corpora's, none Fabricated's: on 1.21.1 the advanced client stays on Origins'
+    screen (CORPUS-66), the corpus client can hang as mc-runtime-test stops it (CORPUS-48, this run only), and the
+    advanced server's `/reload` fails in Wover's code (CORPUS-113, new). Which informational targets become gates
+    before the beta is the owner's call (asked 2026-11-08).
+  - **Done:** SEC-5; the release notes (`docs/releases/v0.6.0-beta.md`). **Next:** two extended runs on each branch's
+    release head, then the draft release for the owner to publish.
 
 ## Tracks
 
@@ -452,7 +461,7 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 
 - **`main`:** NeoForge for 1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
-- **Next** (the v0.6.0-beta pass, task 6 done on `main`, #316): task 6 on the Forge branches, then task 7, the release.
+- **Next** (the v0.6.0-beta pass, task 6 done on every branch: #316, #317, #318): task 7, the release.
   Task 5, done on `main`: Fabric mods' command
   argument types and default attribute modifications on a client with Forgified Fabric API (PROVIDER-12, #313;
   PROVIDER-18, #315), and its packet context and HUD answers named in the test mods (PROVIDER-17, #315); CORPUS-48
@@ -695,6 +704,7 @@ with its cause, why the tests missed it and its fix, in the change that fixes it
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
+| CORPUS-113 | — (Wover's, not Fabricated's) | Wover's biome tags (`BiomeManagerImpl.onBootstrapTags`, `CustomBootstrapContext`), the 1.21.1 advanced corpus server | The advanced corpus server's `/reload` fails ("Failed to execute reload", a `NullPointerException`: `BiomeBootstrapContextImpl.prepareTags` on a null `context`), so the test mod's check that its reload listener runs again misses (extended runs 42524794672 and 42527530813). Read in Wover's source (MIT, its 1.21 branch): its tag loader mixin asks for the biome tags' additions each time the tags load, and its biome module's handler takes the context the biome registry's bootstrap made, then drops it ("preparing tags is the last step"). A `/reload` loads the tags again without loading the worldgen registries, so the handler finds no context, on Fabric as here. The server keeps its data as it was. | Not Fabricated's: the check stays as it is, and passes on every other server run. |
 | MIX-3 | P3, no case seen | The Forge branches' mixin configs but `fabricated-loot` (`MIXINS.md`, *Forge configs*) | They leave `overwrites.requireAnnotations` unset, which every NeoForge config sets: a method a Forge mixin adds that its target already declares replaces the target's silently, without an `@Overwrite`, where on NeoForge the launch would stop on it. Found writing their rows in task 6. | Open: set it on each, checking every method the configs' mixins add against their targets on every version first, in its own pull request on each Forge branch (each launch applies them all, so CI shows a collision). |
 | PERF-3 | P3, UNVERIFIED | `NeoForgeMods.of` (the mods' declarations, `NestedNeoForgeJars.readAll`); split from PERF-2 | A cached launch still reads every NeoForge mod's declarations and nested jars: the phase takes 16 to 23 ms on 1.21.1 and 40 to 68 ms on 1.21.11 and 26.x in CI's servers (extended run 42522554523), which have few NeoForge mods. What in it costs that, and how it grows with a pack of NeoForge mods, is unmeasured. | Read the report's *Launch timings* on a large pack (the owner's reference pack among them); if the nested jars are the cost, keep their contents in the cache by the file's hash. |
 | PROVIDER-19 | — (CI only), UNVERIFIED | The test mod's client block entity check (`BlockEntityEventsClientTest`) on the NeoForge 26.1.2 client with Forgified Fabric API's renderer, whose `fabric-lifecycle-events-v1` client mixins are upstream's (read in its `26.1.2` sources) | The check reported neither way there in extended run 41871298631 (no "client block entity events OK", no failure logged), where it passed in extended run 41858750959; that client's other checks passed, and the 26.2 one passed it. The provider's module unloads a client's block entities as it clears its level (`ClientPacketListener.clearLevel`), and on a respawn or a login. The job log's tail kept only the summary's failure, not the check's own line saying whether the client stopped in its world (the check's run 683 case). | Likely CI-5 (fixed in task 6), not the provider's: this client has the renderer API test mod too, whose terrain block replaced the check's chest, and the check misses wherever no other block entity is near spawn; run 41871298631's log kept no line to tell. The check passed on this client in extended runs 42522554523 and 42524794672. Closes once it holds here on two extended runs with CI-5's fix. |
