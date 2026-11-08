@@ -752,7 +752,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/extra-sodium"
-          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium" neoforge sodium iris
+          # A pair of Sodium and Iris builds that work together (ci_renderers in the version's gradle.properties): Sodium's
+          # newest 26.3 build refused the newest Iris for 26.3 (CI-4).
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium" neoforge ${{ matrix.target.renderers }}
           cp "$RUNNER_TEMP/extra/fabric-api.jar" mc/neoforge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-sodium/"
           SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium" "$RUNNER_TEMP/extra-sodium" || true
           grep -A200 "== " "$RUNNER_TEMP/client-sodium/run/logs/fabric-bridge-report.txt" || true
