@@ -22,6 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
+import io.github.cmdralph.fabricated.core.remap.LazyMappingTable;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
@@ -264,7 +265,7 @@ class FabricLoaderRuntimeTest {
 	void mappingResolversTranslateIntermediaryNames() {
 		MappingTable table = MappingTable.fromMembers(Map.of("net/minecraft/class_1", "net/minecraft/world/Level"),
 				Map.of("method_5", Map.of("net/minecraft/class_1.method_5()V", "tick")));
-		MappingResolver r = MappingResolvers.intermediary(table);
+		MappingResolver r = MappingResolvers.intermediary(new LazyMappingTable(() -> table));
 		assertEquals("named", r.getCurrentRuntimeNamespace());
 		assertEquals("net.minecraft.world.Level", r.mapClassName("intermediary", "net.minecraft.class_1"));
 		assertEquals("net.minecraft.class_1", r.unmapClassName("intermediary", "net.minecraft.world.Level"));

@@ -208,6 +208,14 @@ for attempt in 1 2; do
 done
 echo "::endgroup::"
 
+# CI-3: log4j rotates the game log at 00:00 UTC, moving the lines before it to logs/<date>-<n>.log.gz. The run directory
+# is new each run, so every rotated file is this run's: they go in front of latest.log, oldest first, for every check
+# that reads it (here and in the workflow).
+rotated=$(ls -1tr run/logs/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.log.gz 2>/dev/null || true)
+if [ -n "$rotated" ] && [ -f run/logs/latest.log ]; then
+	{ for f in $rotated; do gzip -dc "$f"; done; cat run/logs/latest.log; } > run/logs/whole.log && mv run/logs/whole.log run/logs/latest.log
+	echo "The game log was rotated during the run: checking it whole, with $(echo "$rotated" | wc -l) rotated file(s) in front"
+fi
 log=run/logs/latest.log
 [ -f "$log" ] || log=client.out
 echo "::group::Client output (tail)"

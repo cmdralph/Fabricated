@@ -17,8 +17,9 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 /**
  * Native {@code fabric-lifecycle-events-v1}, block entities: one placed in a loaded chunk loads, and unloads when its
  * block is broken (a mod tracking block entities would otherwise keep it, and its level). For the client run, a
- * chest is also placed next to the joining player, so the client has a block entity to unload when it leaves
- * ({@link BlockEntityEventsClientTest}).
+ * chest is also placed behind the joining player, so the client has a block entity to unload when it leaves
+ * ({@link BlockEntityEventsClientTest}). Not in front of it: the renderer API test mod's blocks go there, in the same
+ * tick, and would replace the chest before the client is sent it (CI-5).
  */
 public final class BlockEntityEventsTest implements ModInitializer {
 	private static final BlockPos POS = new BlockPos(12, 252, 12);
@@ -43,7 +44,9 @@ public final class BlockEntityEventsTest implements ModInitializer {
 				TestMod.LOGGER.error("FABRICATED-TEST block entity events FAILED: loaded on place {}, unloaded on break {}", loadedOnPlace, unloadedOnBreak);
 			}
 		});
-		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> server.execute(() ->
-				listener.player.level().setBlockAndUpdate(listener.player.blockPosition().relative(Direction.SOUTH, 2).above(), Blocks.CHEST.defaultBlockState())));
+		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> server.execute(() -> {
+			Direction behind = listener.player.getDirection().getOpposite();
+			listener.player.level().setBlockAndUpdate(listener.player.blockPosition().relative(behind, 2).above(), Blocks.CHEST.defaultBlockState());
+		}));
 	}
 }

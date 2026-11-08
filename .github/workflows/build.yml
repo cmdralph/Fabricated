@@ -229,7 +229,8 @@ jobs:
             python3 ci/nested-jar.py team_reborn_energy "$RUNNER_TEMP/energy" "$RUNNER_TEMP"/energy-hosts/*.jar > "$RUNNER_TEMP/energy-source.txt" || true
           fi
           cp "$RUNNER_TEMP"/energy/*.jar "$RUNNER_TEMP/extra/" 2>/dev/null || true
-          ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
+          # A second launch measures discovery with everything cached (task 6's launch baselines).
+          SMOKE_WARM_LAUNCH=1 ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
           # Fabric's load conditions in a data loader of vanilla's JSON kind, which NeoForge 21.1 leaves as vanilla's: the
           # test mod's file whose conditions fail must not be read (CORPUS-49). A gate.
           if [ "${{ matrix.target.minecraft }}" = 1.21.1 ] && ! grep -q "FABRICATED-TEST json loader conditions OK" "$RUNNER_TEMP/server-fapi/server.out"; then
@@ -751,7 +752,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/extra-sodium"
-          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium" neoforge sodium iris
+          # A pair of Sodium and Iris builds that work together (ci_renderers in the version's gradle.properties): Sodium's
+          # newest 26.3 build refused the newest Iris for 26.3 (CI-4).
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium" neoforge ${{ matrix.target.renderers }}
           cp "$RUNNER_TEMP/extra/fabric-api.jar" mc/neoforge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-sodium/"
           SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium" "$RUNNER_TEMP/extra-sodium" || true
           grep -A200 "== " "$RUNNER_TEMP/client-sodium/run/logs/fabric-bridge-report.txt" || true
@@ -876,7 +879,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/extra-sodium-fabric"
-          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium-fabric" fabric sodium iris || true
+          # A pair of builds that work together (ci_fabric_renderers in the version's gradle.properties), as for the
+          # NeoForge builds: Sodium's newest Fabric build for 26.3 refused the newest Iris for 26.3 (CI-4).
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium-fabric" fabric ${{ matrix.target.fabric_renderers }} || true
           if ! ls "$RUNNER_TEMP"/extra-sodium-fabric/sodium*.jar >/dev/null 2>&1; then
             echo "Modrinth has no Fabric build of Sodium for ${{ matrix.target.minecraft }}: nothing to run"
             exit 0
@@ -982,7 +987,9 @@ jobs:
       - name: Server with the mod corpus (informational)
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
-        run: ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" || true
+        # A second launch measures discovery with the corpus cached (task 6's launch baselines); the summary repeats both
+        # launches' timings, which the job log's tail no longer holds by then.
+        run: SMOKE_WARM_LAUNCH=1 ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" | tee "$RUNNER_TEMP/server-corpus.txt" || true
       - name: Client with the mod corpus (informational)
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
@@ -1174,6 +1181,7 @@ jobs:
           [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt" | cut -c1-300; }
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
           [ -f "$RUNNER_TEMP/summary-advanced.txt" ] && { echo "== advanced corpus fetched"; cut -c1-200 "$RUNNER_TEMP/summary-advanced.txt"; }
+          [ -f "$RUNNER_TEMP/server-corpus.txt" ] && { echo "== corpus server's launches (cold, then with everything cached)"; grep -E "^(Discovery|Launch timings), (cold|warm)" "$RUNNER_TEMP/server-corpus.txt" | cut -c1-400; }
           [ -f "$RUNNER_TEMP/summary-neoforge-data.txt" ] && { echo "== NeoForge biome and structure modifiers in the advanced corpus's Fabric jars"; head -40 "$RUNNER_TEMP/summary-neoforge-data.txt"; }
           for run in client client-fapi client-coexist client-ffapi client-sodium client-shaders client-sodium-fabric client-shaders-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-essential client-flashback client-advanced; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"

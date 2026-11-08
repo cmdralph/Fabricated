@@ -40,15 +40,21 @@ final class IntermediaryMappings {
 			throws MappingException, IOException {
 		Path mojang = locateMojangMappings(minecraftVersion, client, configuredPath);
 		// Intermediary is fixed per Minecraft version and Fabricated build (which bundles it and composes the table), and
-		// the Mojang file's hash is memoised: a warm launch reads neither mapping file.
+		// the Mojang file's hash is memoised: a warm launch reads neither mapping file, and reads the table only when a
+		// translation or a mod needs it (PERF-2).
 		String hash = Hashing.sha256("intermediary-" + minecraftVersion + "|" + FabricatedInfo.get().fabricatedVersion() + "|"
 				+ cache.sha256(mojang) + "|" + client).substring(0, 40);
 		String blob = "mappings-" + minecraftVersion.replace('.', '_') + "-" + hash + ".bin";
+		cache.keepBlob(blob);
+		return new Pipeline.Mappings(() -> table(cache, minecraftVersion, mojang, blob), hash);
+	}
 
+	/** The table, from the cache's blob, else composed from Intermediary and the Mojang file and cached. */
+	private static MappingTable table(TranslationCache cache, String minecraftVersion, Path mojang, String blob) throws MappingException, IOException {
 		Optional<byte[]> cached = cache.readBlob(blob);
 		if (cached.isPresent()) {
 			try {
-				return new Pipeline.Mappings(MappingTable.deserialize(cached.get()), hash);
+				return MappingTable.deserialize(cached.get());
 			} catch (IOException e) {
 				// Corrupt cache file: rebuild below.
 			}
@@ -71,7 +77,7 @@ final class IntermediaryMappings {
 			// Only the next launch's head start: this one has its table.
 			LOGGER.warn("Could not cache the composed mappings; they are composed again on the next launch", e);
 		}
-		return new Pipeline.Mappings(table, hash);
+		return table;
 	}
 
 	/**
