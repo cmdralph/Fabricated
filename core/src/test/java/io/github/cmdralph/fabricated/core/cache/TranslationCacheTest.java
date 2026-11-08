@@ -123,6 +123,23 @@ class TranslationCacheTest {
 		assertFalse(Files.exists(new TranslationCache(game, true, true).root().resolve("entries").resolve(name)));
 	}
 
+	/** A blob a launch keeps without reading it (the mapping table, PERF-2) outlives cleanup; one nothing keeps doesn't. */
+	@Test
+	void keepsABlobALaunchKeepsUnread(@TempDir Path game) throws Exception {
+		TranslationCache first = new TranslationCache(game, true, true);
+		Path kept = first.storeBlob("kept.bin", new byte[] {1});
+		Path dropped = first.storeBlob("dropped.bin", new byte[] {2});
+		first.finish(1);
+		for (int i = 0; i < 3; i++) {
+			TranslationCache next = new TranslationCache(game, true, true);
+			next.keepBlob("kept.bin");
+			next.finish(1);
+		}
+		assertTrue(Files.isRegularFile(kept));
+		assertFalse(Files.exists(dropped));
+		assertThrows(IllegalArgumentException.class, () -> first.keepBlob("../x"));
+	}
+
 	/** CACHE-3: a name looked up but never stored (its translation failed) leaves the index too, though it has no file. */
 	@Test
 	void forgetsNamesNeverStored(@TempDir Path game) throws Exception {

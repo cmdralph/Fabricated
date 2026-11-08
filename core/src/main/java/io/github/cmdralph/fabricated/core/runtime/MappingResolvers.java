@@ -4,6 +4,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
+import io.github.cmdralph.fabricated.core.remap.LazyMappingTable;
+import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import net.fabricmc.loader.api.MappingResolver;
 
@@ -49,11 +51,20 @@ public final class MappingResolvers {
 
 	/**
 	 * Obfuscated Minecraft running with Mojang names. Mods ask to map from {@code intermediary}; the
-	 * runtime namespace is reported as {@code named} so mods that check it call the map methods.
+	 * runtime namespace is reported as {@code named} so mods that check it call the map methods. The table is loaded when a
+	 * mod first maps a name (PERF-2).
 	 */
-	public static MappingResolver intermediary(MappingTable table) {
-		Objects.requireNonNull(table, "table");
+	public static MappingResolver intermediary(LazyMappingTable mappings) {
+		Objects.requireNonNull(mappings, "mappings");
 		return new MappingResolver() {
+			private MappingTable table() {
+				try {
+					return mappings.table();
+				} catch (MappingException e) {
+					throw new IllegalStateException("Fabricated could not load the mappings to Minecraft's names: " + e.getMessage(), e);
+				}
+			}
+
 			@Override
 			public Collection<String> getNamespaces() {
 				return List.of("intermediary", "named");
@@ -67,25 +78,25 @@ public final class MappingResolvers {
 			@Override
 			public String mapClassName(String namespace, String className) {
 				if (!"intermediary".equals(namespace)) return className;
-				return table.mapClass(className.replace('.', '/')).replace('/', '.');
+				return table().mapClass(className.replace('.', '/')).replace('/', '.');
 			}
 
 			@Override
 			public String unmapClassName(String targetNamespace, String className) {
 				if (!"intermediary".equals(targetNamespace)) return className;
-				return table.unmapClass(className.replace('.', '/')).replace('/', '.');
+				return table().unmapClass(className.replace('.', '/')).replace('/', '.');
 			}
 
 			@Override
 			public String mapFieldName(String namespace, String owner, String name, String descriptor) {
 				if (!"intermediary".equals(namespace)) return name;
-				return table.mapMember(owner.replace('.', '/'), name, descriptor);
+				return table().mapMember(owner.replace('.', '/'), name, descriptor);
 			}
 
 			@Override
 			public String mapMethodName(String namespace, String owner, String name, String descriptor) {
 				if (!"intermediary".equals(namespace)) return name;
-				return table.mapMember(owner.replace('.', '/'), name, descriptor);
+				return table().mapMember(owner.replace('.', '/'), name, descriptor);
 			}
 		};
 	}

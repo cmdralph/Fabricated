@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -774,7 +775,7 @@ class PipelineTest {
 				.write(mods.resolve("stale-addon.jar"));
 
 		Pipeline.Result result = Pipeline.run(input(game, List.of(base, good, stale), Namespace.INTERMEDIARY, Map.of(TARGET, targetClass()),
-				(cache, path) -> new Pipeline.Mappings(table, "test-hash"), List.of()));
+				(cache, path) -> new Pipeline.Mappings(() -> table, "test-hash"), List.of()));
 
 		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
 		assertEquals(Set.of("base", "good-addon"), loaded, result.report().render());
@@ -795,12 +796,40 @@ class PipelineTest {
 				.write(mods.resolve("replay.jar"));
 
 		Pipeline.Result result = Pipeline.run(input(game, List.of(replay), Namespace.INTERMEDIARY, Map.of(TARGET, targetClass()),
-				(cache, path) -> new Pipeline.Mappings(table, "test-hash"), List.of()));
+				(cache, path) -> new Pipeline.Mappings(() -> table, "test-hash"), List.of()));
 
 		try (SafeArchive jar = SafeArchive.open(result.mods().getFirst().translated().jar(), ArchiveLimits.DEFAULTS)) {
 			String refmap = jar.readText("mixins.replay.refmap.json");
 			assertTrue(refmap.contains("Lnet/minecraft/world/Thing;tick()V"), refmap);
 		}
+	}
+
+	/**
+	 * A launch whose translations all come from the cache doesn't read the mapping table; a mod asking to map a name
+	 * then has it read (PERF-2).
+	 */
+	@Test
+	void aCachedLaunchReadsTheMappingTableOnlyWhenAModMapsAName(@TempDir Path game) throws Exception {
+		String tiny = "v1\tofficial\tintermediary\nCLASS\ta\tnet/minecraft/class_1\n";
+		String proguard = "net.minecraft.world.Thing -> a:\n";
+		MappingTable table = MappingComposer.compose(new StringReader(tiny), new StringReader(proguard));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path mod = TestJars.create().fabricModJson(TestJars.modJson("plain", "1.0", "")).write(mods.resolve("plain.jar"));
+		AtomicInteger reads = new AtomicInteger();
+		Pipeline.MappingSupplier mappings = (cache, path) -> new Pipeline.Mappings(() -> {
+			reads.incrementAndGet();
+			return table;
+		}, "test-hash");
+
+		Pipeline.Result cold = Pipeline.run(input(game, List.of(mod), Namespace.INTERMEDIARY, Map.of(TARGET, targetClass()), mappings, List.of()));
+		assertEquals(1, reads.get(), cold.report().render());
+		assertTrue(cold.report().render().matches("(?s).*Mappings: +1 classes.*"), cold.report().render());
+		Pipeline.Result warm = Pipeline.run(input(game, List.of(mod), Namespace.INTERMEDIARY, Map.of(TARGET, targetClass()), mappings, List.of()));
+		assertEquals(1, warm.mods().size(), warm.report().render());
+		assertEquals(1, reads.get(), "the cached launch read the table");
+		assertTrue(warm.report().render().matches("(?s).*Mappings: +not read.*"), warm.report().render());
+		assertEquals("net.minecraft.world.Thing", warm.runtime().getMappingResolver().mapClassName("intermediary", "net.minecraft.class_1"));
+		assertEquals(2, reads.get());
 	}
 
 	/**
@@ -1017,7 +1046,7 @@ class PipelineTest {
 				.write(game.resolve("mods/old.jar"));
 
 		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.INTERMEDIARY, Map.of(TARGET, targetClass()),
-				(cache, path) -> new Pipeline.Mappings(table, "test-hash")));
+				(cache, path) -> new Pipeline.Mappings(() -> table, "test-hash")));
 		assertEquals(1, result.mods().size(), result.report().render());
 		Path remapped = result.mods().getFirst().translated().jar();
 		assertEquals("old_mod.jar", remapped.getFileName().toString(), "named after the mod, as the platform's logs name it");

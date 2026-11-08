@@ -330,6 +330,15 @@ public final class TranslationCache {
 		return target;
 	}
 
+	/**
+	 * Keeps a blob through this launch's cleanup, as reading it would: for one read only when needed (the mapping table,
+	 * PERF-2), which cleanup would otherwise take for unused.
+	 */
+	public void keepBlob(String fileName) {
+		if (!SAFE_NAME.matcher(fileName).matches()) throw new IllegalArgumentException("Unsafe blob name " + fileName);
+		lastUsed.put("blobs/" + fileName, launch);
+	}
+
 	/** Reads a blob stored with {@link #storeBlob}, or empty if absent, damaged (then deleted) or reuse is disabled. */
 	public Optional<byte[]> readBlob(String fileName) throws IOException {
 		if (!SAFE_NAME.matcher(fileName).matches()) throw new IllegalArgumentException("Unsafe blob name " + fileName);
