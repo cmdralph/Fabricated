@@ -1,9 +1,12 @@
 package io.github.cmdralph.fabricated.core.resolve;
 
+import java.io.IOException;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 
@@ -49,6 +52,13 @@ public final class PlatformLibraries {
 			"cpw/mods/",
 			"joptsimple/");
 
+	/**
+	 * The prefixes of {@link #PROVIDED_PACKAGES} whose library comes in modules the platform ships some of only (the
+	 * game's LWJGL bindings, Netty's and Log4j's modules): a Fabric mod may nest another (LWJGL's NanoVG, Netty's HTTP
+	 * codec), whose packages aren't the platform's (PLAT-2, as PLAT-1 was for night-config).
+	 */
+	static final List<String> PARTIAL_FAMILIES = List.of("org/lwjgl/", "io/netty/", "org/apache/logging/log4j/");
+
 	private PlatformLibraries() {
 	}
 
@@ -58,6 +68,33 @@ public final class PlatformLibraries {
 			if (path.startsWith(prefix)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Whether a mod's package (internal form, e.g. {@code org/lwjgl/nanovg}) is a platform library's. In a family of
+	 * {@link #PARTIAL_FAMILIES} it is where the platform's loaders have one of its classes: the family's modules the
+	 * platform ships may be on no module layer (the game's LWJGL on FML 10 and later), so its packages aren't all among
+	 * those the loader reads from its layers. Elsewhere it is as by {@link #isProvided(String)}.
+	 *
+	 * @param files           the package's files, by name in the jar (e.g. {@code org/lwjgl/nanovg/NanoVG.class})
+	 * @param platformClasses the classes the platform's loaders have outside the game
+	 */
+	public static boolean isProvided(String pkg, Collection<String> files, ClassBytesSource platformClasses) {
+		String path = pkg + "/";
+		if (!isProvided(path)) return false;
+		for (String family : PARTIAL_FAMILIES) {
+			if (!path.startsWith(family)) continue;
+			for (String file : files) {
+				if (!file.endsWith(".class")) continue;
+				try {
+					if (platformClasses.read(file.substring(0, file.length() - ".class".length())) != null) return true;
+				} catch (IOException e) {
+					return true; // the platform has the class, but it couldn't be read: still the platform's package
+				}
+			}
+			return false;
+		}
+		return true;
 	}
 
 	/**
