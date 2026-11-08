@@ -1016,7 +1016,7 @@ class PipelineTest {
 		String json = TestJars.modJson(id, "1.0", "");
 		Path file = TestJars.create().fabricModJson(json).write(dir.resolve(id + ".jar"));
 		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(json), id + ".jar", null, 0, List.of(), Set.of());
-		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, false, 1);
+		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, 1);
 		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
 				List.of(new DefaultBridge("net/minecraft/world/Thing", "net/minecraft/world/Extension", "size", "()I")), Set.of(environmentClass),
 				Set.of("net/minecraft/world/Thing check()Z"), false, 0);

@@ -1858,15 +1858,13 @@ public final class ModTranslator {
 		m.put("target", i.target());
 		m.put("interface", i.interfaceName());
 		m.put("signature", i.genericSignature());
-		m.put("transitive", i.transitive());
 		m.put("line", i.line());
 		return m;
 	}
 
 	private static InjectedInterface injectionFromJson(Map<?, ?> m) {
 		return new InjectedInterface(String.valueOf(m.get("target")), String.valueOf(m.get("interface")),
-				String.valueOf(m.get("signature")), Boolean.TRUE.equals(m.get("transitive")),
-				m.get("line") instanceof Number n ? n.intValue() : 0);
+				String.valueOf(m.get("signature")), m.get("line") instanceof Number n ? n.intValue() : 0);
 	}
 
 
