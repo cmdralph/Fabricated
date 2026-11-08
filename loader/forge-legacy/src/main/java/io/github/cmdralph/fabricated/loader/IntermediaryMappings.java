@@ -45,15 +45,21 @@ final class IntermediaryMappings {
 		Path mojang = locateMojangMappings(minecraftVersion, version, client, configuredPath, gameJar);
 		Path srg = locateSrgMappings(minecraftVersion, version, gameJar);
 		// Intermediary is fixed per Minecraft version and Fabricated build (which bundles it and composes the table), and
-		// the other files' hashes are memoised: a warm launch reads no mapping file.
+		// the other files' hashes are memoised: a warm launch reads no mapping file, and reads the table only when a
+		// translation or a mod needs it (PERF-2).
 		String hash = Hashing.sha256("intermediary-srg-" + minecraftVersion + "|" + FabricatedInfo.get().fabricatedVersion() + "|"
 				+ cache.sha256(srg) + "|" + cache.sha256(mojang) + "|" + client).substring(0, 40);
 		String blob = "mappings-" + minecraftVersion.replace('.', '_') + "-" + hash + ".bin";
+		cache.keepBlob(blob);
+		return new Pipeline.Mappings(() -> table(cache, minecraftVersion, srg, mojang, blob), hash);
+	}
 
+	/** The table, from the cache's blob, else composed from Intermediary, MCPConfig's and Mojang's files and cached. */
+	private static MappingTable table(TranslationCache cache, String minecraftVersion, Path srg, Path mojang, String blob) throws MappingException, IOException {
 		Optional<byte[]> cached = cache.readBlob(blob);
 		if (cached.isPresent()) {
 			try {
-				return new Pipeline.Mappings(MappingTable.deserialize(cached.get()), hash);
+				return MappingTable.deserialize(cached.get());
 			} catch (IOException e) {
 				// Corrupt cache file: rebuild below.
 			}
@@ -77,7 +83,7 @@ final class IntermediaryMappings {
 			// Only the next launch's head start: this one has its table.
 			LOGGER.warn("Could not cache the composed mappings; they are composed again on the next launch", e);
 		}
-		return new Pipeline.Mappings(table, hash);
+		return table;
 	}
 
 	/** {@code <mc>-<mcp>}, as Forge's installer names the game's and MCPConfig's libraries; the Minecraft version alone without an MCP version. */
