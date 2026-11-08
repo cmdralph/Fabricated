@@ -93,6 +93,20 @@ class TranslationCacheTest {
 	}
 
 	@Test
+	void findsANestedJarByItsHash(@TempDir Path game) throws Exception {
+		TranslationCache first = new TranslationCache(game, true, true);
+		Path stored = first.storeNested(new byte[] {4, 5, 6});
+		first.finish(5);
+		TranslationCache next = new TranslationCache(game, true, true);
+		assertEquals(stored, next.storedNested(TranslationCache.nestedSha(stored)).orElseThrow());
+		assertTrue(next.storedNested("ab".repeat(32)).isEmpty());
+		assertTrue(next.storedNested("../" + TranslationCache.nestedSha(stored)).isEmpty(), "only a hash names a stored jar");
+		assertTrue(new TranslationCache(game, false, true).storedNested(TranslationCache.nestedSha(stored)).isEmpty(), "nothing is reused when reuse is off");
+		Files.write(stored, new byte[] {1});
+		assertTrue(next.storedNested(TranslationCache.nestedSha(stored)).isEmpty(), "a damaged copy is not reused");
+	}
+
+	@Test
 	void rejectsUnsafeNames(@TempDir Path game) throws Exception {
 		TranslationCache cache = new TranslationCache(game, true, true);
 		assertThrows(IllegalArgumentException.class, () -> TranslationCache.entryName("../x", "00".repeat(32)));

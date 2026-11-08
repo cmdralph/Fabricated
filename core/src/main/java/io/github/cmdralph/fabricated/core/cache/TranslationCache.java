@@ -50,6 +50,7 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
 public final class TranslationCache {
 	public static final String LAYOUT_VERSION = "v1";
 	private static final Pattern SAFE_NAME = Pattern.compile("[a-z0-9_.-]{1,160}");
+	private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
 	private static final String ENTRY_FILE = "entry.json";
 	private static final String INDEX_FILE = "index.json";
 	/** Held while a launch merges its use into the index and cleans up, so launches sharing the directory take turns. */
@@ -299,13 +300,22 @@ public final class TranslationCache {
 	 * in the cache (and intact, when verifying): the parent's content decides the nested jar's, so it needn't be read.
 	 */
 	public Optional<Path> nested(String parentSha, String entry) throws IOException {
-		if (!reuse) return Optional.empty();
 		NestedRef ref = nestedIndex.get(parentSha + "!/" + entry);
 		if (ref == null) return Optional.empty();
-		Path target = root.resolve("nested").resolve(ref.sha256() + ".jar");
-		if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || (verify && !sha256(target).equals(ref.sha256()))) return Optional.empty();
-		nestedIndex.put(parentSha + "!/" + entry, new NestedRef(ref.sha256(), launch));
-		lastUsed.put("nested/" + target.getFileName(), launch);
+		Optional<Path> target = storedNested(ref.sha256());
+		if (target.isPresent()) nestedIndex.put(parentSha + "!/" + entry, new NestedRef(ref.sha256(), launch));
+		return target;
+	}
+
+	/**
+	 * The jar {@link #storeNested} stored with the SHA-256 {@code sha}, if it is still in the cache (and intact, when
+	 * verifying): a caller that knows a jar's hash without reading it (the build recorded it) needn't read it.
+	 */
+	public Optional<Path> storedNested(String sha) throws IOException {
+		if (!reuse || !SHA256.matcher(sha).matches()) return Optional.empty();
+		Path target = root.resolve("nested").resolve(sha + ".jar");
+		if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || (verify && !sha256(target).equals(sha))) return Optional.empty();
+		lastUsed.put("nested/" + sha + ".jar", launch);
 		return Optional.of(target);
 	}
 
