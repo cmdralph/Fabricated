@@ -5,7 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.Set;
+
 import org.junit.jupiter.api.Test;
+
+import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 
 class PlatformLibrariesTest {
 	@Test
@@ -47,5 +53,30 @@ class PlatformLibrariesTest {
 		assertTrue(PlatformLibraries.isProvided("com/electronwill/nightconfig/toml/TomlFormat.class"));
 		assertFalse(PlatformLibraries.isProvided("com/electronwill/nightconfig/json/JsonFormat.class"));
 		assertFalse(PlatformLibraries.isProvided("com/electronwill/nightconfig/yaml/YamlFormat.class"));
+	}
+
+	/**
+	 * In a library the platform ships some modules of, a mod's package is the platform's only where the platform has its
+	 * classes: LWJGL's NanoVG and Netty's HTTP codec are the mod's own, the game's LWJGL core and Netty buffers aren't
+	 * (PLAT-2). Whole libraries stay the platform's whether or not its loaders show them.
+	 */
+	@Test
+	void aLibrarysModuleThePlatformLacksIsTheMods() {
+		Set<String> platform = Set.of("org/lwjgl/system/MemoryUtil", "io/netty/buffer/ByteBuf");
+		ClassBytesSource classes = name -> platform.contains(name) ? new byte[0] : null;
+		assertFalse(PlatformLibraries.isProvided("org/lwjgl/nanovg", List.of("org/lwjgl/nanovg/NanoVG.class"), classes));
+		assertFalse(PlatformLibraries.isProvided("io/netty/handler/codec/http",
+				List.of("io/netty/handler/codec/http/HttpObject.class", "io/netty/handler/codec/http/mime.types"), classes));
+		assertTrue(PlatformLibraries.isProvided("org/lwjgl/system",
+				List.of("org/lwjgl/system/Added.class", "org/lwjgl/system/MemoryUtil.class"), classes));
+		assertTrue(PlatformLibraries.isProvided("io/netty/buffer", List.of("io/netty/buffer/ByteBuf.class"), classes));
+		assertTrue(PlatformLibraries.isProvided("com/google/gson", List.of("com/google/gson/Gson.class"), ClassBytesSource.EMPTY));
+		assertFalse(PlatformLibraries.isProvided("com/example/lib", List.of("com/example/lib/A.class"), classes));
+		assertFalse(PlatformLibraries.isProvided("com/electronwill/nightconfig/json", List.of("com/electronwill/nightconfig/json/JsonFormat.class"), classes));
+		// A class the platform has but can't read is still the platform's.
+		ClassBytesSource unreadable = name -> {
+			throw new IOException("unreadable");
+		};
+		assertTrue(PlatformLibraries.isProvided("org/lwjgl/system", List.of("org/lwjgl/system/MemoryUtil.class"), unreadable));
 	}
 }

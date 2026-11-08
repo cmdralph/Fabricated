@@ -861,7 +861,7 @@ public final class Pipeline {
 				List<TranslatedMod> ordered = translate(resolution.ordered(), translator, aliases);
 				changed |= ordered.size() != resolution.ordered().size();
 
-				PackageGuard.Result guard = packageGuard.check(ordered, in.platformPackages());
+				PackageGuard.Result guard = packageGuard.check(ordered, in.platformPackages(), in.untransformableClasses());
 				for (PackageGuard.Conflict conflict : guard.conflicts()) {
 					dropped.put(conflict.mod().candidate().id(), new Drop(conflict.reason(), conflict.suggestion(), conflict.mod().candidate()));
 					changed = true;

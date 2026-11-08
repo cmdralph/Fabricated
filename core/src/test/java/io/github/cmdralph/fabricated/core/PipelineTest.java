@@ -421,6 +421,30 @@ class PipelineTest {
 		assertFalse(forge.report().render().contains(note), forge.report().render());
 	}
 
+	/**
+	 * A mod nesting a module of LWJGL the game doesn't ship (NanoVG) keeps it, while its copy of the game's LWJGL core is
+	 * left out: the game's LWJGL is on no module layer on FML 10 and later, so the platform's loaders decide (PLAT-2).
+	 */
+	@Test
+	void aLibrarysModuleThePlatformLacksStaysInTheMod(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String core = "org/lwjgl/system/MemoryUtil";
+		String nanovg = "org/lwjgl/nanovg/NanoVG";
+		Path ui = TestJars.create().fabricModJson(TestJars.modJson("vector-ui", "1.0", ""))
+				.bytes(core + ".class", TestJars.emptyClass(core, "java/lang/Object"))
+				.bytes(nanovg + ".class", TestJars.emptyClass(nanovg, "java/lang/Object"))
+				.write(mods.resolve("vector-ui.jar"));
+		byte[] platformCore = TestJars.emptyClass(core, "java/lang/Object");
+		ClassBytesSource libraries = name -> name.equals(core) ? platformCore : null;
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(ui), Namespace.OFFICIAL, Map.of(), null, List.of(), InstalledClasses.NONE, libraries));
+		Pipeline.LoadedMod mod = result.mods().stream().filter(m -> m.translated().candidate().id().equals("vector-ui")).findFirst()
+				.orElseThrow(() -> new AssertionError(result.report().render()));
+		assertEquals(Set.of("org/lwjgl/system"), mod.packages().excludedPackages(), result.report().render());
+		assertFalse(mod.packages().hides(nanovg + ".class"));
+		assertTrue(mod.packages().hides(core + ".class"));
+	}
+
 	/** On another platform, the report's reasons and suggestions name its loader where they named NeoForge (PLAT-3). */
 	@Test
 	void reasonsAndSuggestionsNameThePlatformsLoader(@TempDir Path game) throws Exception {
