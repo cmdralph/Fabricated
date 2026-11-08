@@ -137,7 +137,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		// Fabricated's own in-game mod (native Fabric API implementation and NeoForge event bridges): loaded from the
 		// development workspace, or extracted from this jar when there is anything Fabric to load.
 		Optional<IModFile> devGameMod = find(loadedMods, ModIds.FABRICATED);
-		Path gameModJar = devGameMod.isPresent() || fabricJars.isEmpty() ? null : extractGameMod(cache);
+		Path gameModJar = devGameMod.isPresent() || fabricJars.isEmpty() ? null : extractGameMod(cache, info);
 		List<Path> fabricatedFiles = gameModJar != null ? List.of(gameModJar) : devGameMod.map(file -> List.of(file.getFilePath())).orElse(List.of());
 		phases.end("in-game mod");
 
@@ -430,16 +430,31 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 	 * {@code fabricated.jar}: NeoForge names a mod by its file in its lists (a crash report's), as the translated mods'
 	 * {@code <modid>.jar}.
 	 */
-	private static Path extractGameMod(TranslationCache cache) throws IOException {
-		byte[] data = FabricatedInfo.readOptional(GAME_MOD_RESOURCE);
-		if (data == null) throw new IOException("The Fabricated jar is missing " + GAME_MOD_RESOURCE);
-		String name = TranslationCache.entryName(ModIds.FABRICATED, Hashing.sha256(data));
+	private static Path extractGameMod(TranslationCache cache, FabricatedInfo info) throws IOException {
 		String fileName = ModIds.FABRICATED + ".jar";
-		TranslationCache.Entry entry = cache.lookup(name, fileName).orElse(null);
-		if (entry == null) entry = cache.store(name, Map.of(fileName, data), Map.of());
+		// Named by the hash the build recorded, a copy in the cache (which verifies it) is used without reading the jar's
+		// (PERF-2); a jar the build recorded none for, or whose copy isn't the one recorded, is named by its own.
+		String recorded = info.gameModSha256();
+		TranslationCache.Entry entry = recorded.isEmpty() ? null : cache.lookup(TranslationCache.entryName(ModIds.FABRICATED, recorded), fileName).orElse(null);
+		if (entry == null) {
+			byte[] data = readGameMod();
+			String hash = Hashing.sha256(data);
+			if (!recorded.isEmpty() && !hash.equals(recorded)) {
+				LOGGER.warn("Fabricated's {} isn't the one its build recorded: the Fabricated jar may be damaged", GAME_MOD_RESOURCE);
+			}
+			String name = TranslationCache.entryName(ModIds.FABRICATED, hash);
+			if (!hash.equals(recorded)) entry = cache.lookup(name, fileName).orElse(null);
+			if (entry == null) entry = cache.store(name, Map.of(fileName, data), Map.of());
+		}
 		Path path = entry.file(fileName);
 		if (!Files.isRegularFile(path)) throw new IOException("Could not extract " + GAME_MOD_RESOURCE);
 		return path;
+	}
+
+	private static byte[] readGameMod() throws IOException {
+		byte[] data = FabricatedInfo.readOptional(GAME_MOD_RESOURCE);
+		if (data == null) throw new IOException("The Fabricated jar is missing " + GAME_MOD_RESOURCE);
+		return data;
 	}
 
 	/** The running Mixin version, read the same way NeoForge reads it. */
