@@ -152,7 +152,7 @@ The generated overlay `neoforge.mods.toml` uses `modLoader="fabricated"`, so FML
 
 ### 3.3 Nested jars (Fabric jar-in-jar)
 * Extracted **from the validated archive only**, to `<gameDir>/.fabricated/cache/v1/nested/<sha256>.jar` (content-addressed, so it's written once).
-* Max nesting depth is 8 (Polymer's bundle nests a library four jars deep, LIMIT-2); a top-level jar's nested jars are bounded in number (1024) and bytes whatever their depth. Every level gets the same archive checks. A `config/fabricated.json` holding an earlier version's default limits, as it wrote them, reads as today's.
+* Max nesting depth is 8 (Polymer's bundle nests a library four jars deep, LIMIT-2); a top-level jar's nested jars are bounded in number (1024) and bytes (`maxTotalUncompressedBytes`) whatever their depth, and all the nested jars of a launch together to eight times that (SEC-5): a nested jar past either is rejected and reported. Every level gets the same archive checks. A `config/fabricated.json` holding an earlier version's default limits, as it wrote them, reads as today's.
 * Nested jars with `fabric.mod.json` become Fabric candidates. For duplicates by id, **highest version wins**, as in Fabric Loader. Fabric API modules nested inside mods are routed to the module plan (§6).
 * A nested jar without `fabric.mod.json` is rejected and reported (Loom gives every nested library one).
 
@@ -526,7 +526,7 @@ Unknown keys produce a warning. Invalid values fall back to defaults with a warn
 | Threat | Mitigation |
 |---|---|
 | Path traversal / zip-slip | Entry names are validated, not rewritten: a jar with an empty, absolute, `.` or `..` segment, a backslash, a drive letter, a control character (NUL included) or a duplicate name is rejected. Nothing is extracted under an entry's name: nested jars go to the cache as `nested/<sha256>.jar`, and the cache root is checked to resolve inside the real game directory. |
-| Decompression bombs | Caps on jar size, entry size, total uncompressed size, entry count and compression ratio. Declared sizes are checked when the jar is opened; reads count the bytes actually inflated, and refuse an entry that inflates past the size its header declares. |
+| Decompression bombs | Caps on jar size, entry size, total uncompressed size, entry count and compression ratio, and on what nested jars extract to the cache, per top-level jar and per launch (§3.3). Declared sizes are checked when the jar is opened; reads count the bytes actually inflated, and refuse an entry that inflates past the size its header declares. |
 | Malformed JSON / huge metadata | 1 MiB cap and strict types. Parse errors are per-mod. |
 | Code execution during translation | Bytes-only processing (ASM `ClassReader`). No mod class is loaded, no service loading from mod jars, no scripting. |
 | Cache tampering | Each cached file's SHA-256 verified before use (`cache.verifyIntegrity`, on by default). Cache confined to the game dir, symlinks refused. |

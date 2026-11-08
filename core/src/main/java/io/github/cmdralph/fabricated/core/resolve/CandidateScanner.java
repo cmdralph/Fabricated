@@ -57,8 +57,10 @@ public final class CandidateScanner {
 		List<Candidate> all = new ArrayList<>();
 		List<Rejected> rejected = new ArrayList<>();
 		List<String> notes = new ArrayList<>();
+		NestedBudget launch = NestedBudget.forLaunch(limits);
 		for (Path jar : topLevelJars) {
-			scanJar(jar, null, jar.getFileName().toString(), null, List.of(), 0, new NestedBudget(), all, rejected, notes);
+			String origin = jar.getFileName().toString();
+			scanJar(jar, null, origin, null, List.of(), 0, launch.forTopLevelJar(origin, limits), all, rejected, notes);
 		}
 		return new Result(List.copyOf(select(all, notes).values()), List.copyOf(rejected), List.copyOf(notes));
 	}
@@ -97,13 +99,54 @@ public final class CandidateScanner {
 	}
 
 	/**
-	 * What a top-level jar and everything nested in it may extract to the cache together: the archive limits cap each
-	 * jar on its own, so without this a jar nesting jars that nest jars could fill the disk.
+	 * What jars nested in mods may extract to the cache. The archive limits cap each jar on its own, so a top-level jar's
+	 * nested jars, whatever their depth, share one budget, and all the top-level jars of a launch share a larger one:
+	 * without them, a jar nesting jars that nest jars, or many such jars, could fill the disk (SEC-5). A nested jar left
+	 * out takes nothing from either.
 	 */
 	private static final class NestedBudget {
+		/** The nested jars one top-level jar may hold. */
 		static final int MAX_JARS = 1024;
-		long bytes;
-		int jars;
+		/** How many top-level jars' budgets a launch holds in all: several times a large pack's nested jars, and bounded. */
+		static final int LAUNCH_SHARES = 8;
+
+		private final String scope;
+		private final NestedBudget launch;
+		private final int maxJars;
+		private final long maxBytes;
+		private int jars;
+		private long bytes;
+
+		private NestedBudget(String scope, NestedBudget launch, int maxJars, long maxBytes) {
+			this.scope = scope;
+			this.launch = launch;
+			this.maxJars = maxJars;
+			this.maxBytes = maxBytes;
+		}
+
+		static NestedBudget forLaunch(ArchiveLimits limits) {
+			long perJar = limits.maxTotalUncompressedBytes();
+			return new NestedBudget("this launch's mods", null, MAX_JARS * LAUNCH_SHARES,
+					perJar <= Long.MAX_VALUE / LAUNCH_SHARES ? perJar * LAUNCH_SHARES : Long.MAX_VALUE);
+		}
+
+		NestedBudget forTopLevelJar(String origin, ArchiveLimits limits) {
+			return new NestedBudget(origin, this, MAX_JARS, limits.maxTotalUncompressedBytes());
+		}
+
+		/** Takes a nested jar of {@code size} bytes from this budget and the launch's, or says which limit it exceeds. */
+		String take(long size) {
+			for (NestedBudget b = this; b != null; b = b.launch) {
+				if (b.jars >= b.maxJars || size > b.maxBytes - b.bytes) {
+					return "nested jars of " + b.scope + " exceed the limit of " + b.maxJars + " jars or " + (b.maxBytes >> 20) + " MiB in all";
+				}
+			}
+			for (NestedBudget b = this; b != null; b = b.launch) {
+				b.jars++;
+				b.bytes += size;
+			}
+			return null;
+		}
 	}
 
 	/**
@@ -162,10 +205,9 @@ public final class CandidateScanner {
 							notes.add(metadata.getId() + " declares nested jar " + nested + " which is missing; ignored");
 							continue;
 						}
-						budget.bytes += known != null ? Files.size(known) : data.length;
-						if (++budget.jars > NestedBudget.MAX_JARS || budget.bytes > limits.maxTotalUncompressedBytes()) {
-							rejected.add(new Rejected(nestedOrigin, "nested jars of " + origin.split("!/", 2)[0] + " exceed the limit of "
-									+ NestedBudget.MAX_JARS + " jars or " + (limits.maxTotalUncompressedBytes() >> 20) + " MiB in all"));
+						String exceeded = budget.take(known != null ? Files.size(known) : data.length);
+						if (exceeded != null) {
+							rejected.add(new Rejected(nestedOrigin, exceeded));
 							continue;
 						}
 						nestedPaths.add(known != null ? known : cache.storeNested(data, sha, nested));
