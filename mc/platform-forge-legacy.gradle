@@ -163,6 +163,15 @@ afterEvaluate {
         archiveFileName = 'game-mod.jar'
         destinationDirectory = layout.buildDirectory.dir('gamemod-srg')
     }
+    // The hash naming the in-game mod's copy in the cache (PERF-2) is the nested jar's: the reobfuscated one, not the jar
+    // as built, which mc/mc.gradle records.
+    tasks.named('fabricatedVersionProperties', WriteProperties) {
+        def nestedGameMod = reobfGameModJar.flatMap { it.archiveFile }
+        inputs.files(nestedGameMod)
+        property 'gamemod.sha256', providers.provider {
+            java.security.MessageDigest.getInstance('SHA-256').digest(nestedGameMod.get().asFile.bytes).encodeHex().toString()
+        }
+    }
     // The renderer test mod (mc/mc.gradle) is compiled in Mojang's names: Fabric API 0.92's renderer types and the game
     // classes its models extend are too many for Intermediary stand-ins. Forge 47 runs the game in SRG's member names, so
     // the jar CI installs is reobfuscated, as the in-game mod is; Fabricated reads a Fabric mod through Intermediary's
@@ -292,6 +301,17 @@ afterEvaluate {
             def placeholderEntries = readZip(new ByteArrayInputStream(placeholderBytes))
             if (placeholderEntries.keySet().any { !it.startsWith('META-INF/') }) {
                 throw new GradleException("${nested.path} is not empty: ${placeholderEntries.keySet().sort()}")
+            }
+
+            // The in-game mod's hash version.properties records, which names its copy in the cache (PERF-2), is the nested
+            // jar's: the reobfuscated one.
+            def versionBytes = outer['META-INF/fabricated/version.properties']
+            if (versionBytes == null) throw new GradleException('The Fabricated jar has no META-INF/fabricated/version.properties')
+            def versionInfo = new Properties()
+            versionInfo.load(new ByteArrayInputStream(versionBytes))
+            def gameModSha = java.security.MessageDigest.getInstance('SHA-256').digest(outer['META-INF/fabricated/game-mod.jar']).encodeHex().toString()
+            if (versionInfo.getProperty('gamemod.sha256') != gameModSha) {
+                throw new GradleException("version.properties records the in-game mod's hash ${versionInfo.getProperty('gamemod.sha256')}, the nested game-mod.jar's is $gameModSha")
             }
 
             def names = parts.keySet() as List

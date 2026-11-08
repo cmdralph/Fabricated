@@ -10,7 +10,6 @@ import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
@@ -26,7 +25,6 @@ import java.util.zip.ZipFile;
  * <p>The underlying file is opened read-only and never modified.
  */
 public final class SafeArchive implements Closeable {
-	private static final Pattern DRIVE_LETTER = Pattern.compile("^[A-Za-z]:.*");
 
 	private final Path path;
 	private final ArchiveLimits limits;
@@ -116,22 +114,35 @@ public final class SafeArchive implements Closeable {
 		}
 	}
 
-	/** Validates an archive entry name; package-private for tests. */
+	/**
+	 * Validates an archive entry name; package-private for tests. Every archive opened checks each of its entries' names,
+	 * so this allocates nothing: the checks with a regular expression and a split took most of opening a game jar
+	 * (PERF-2).
+	 */
 	static void validateName(String name) throws ArchiveException {
-		if (name.isEmpty()) throw new ArchiveException("Empty entry name");
-		if (name.length() > 1024) throw new ArchiveException("Entry name too long");
-		if (name.startsWith("/")) throw new ArchiveException("Absolute entry name '" + name + "'");
+		int length = name.length();
+		if (length == 0) throw new ArchiveException("Empty entry name");
+		if (length > 1024) throw new ArchiveException("Entry name too long");
+		char first = name.charAt(0);
+		if (first == '/') throw new ArchiveException("Absolute entry name '" + name + "'");
 		if (name.indexOf('\\') >= 0) throw new ArchiveException("Backslash in entry name '" + name + "'");
-		if (DRIVE_LETTER.matcher(name).matches()) throw new ArchiveException("Drive letter in entry name '" + name + "'");
-		for (int i = 0; i < name.length(); i++) {
+		if (length > 1 && name.charAt(1) == ':' && (first >= 'A' && first <= 'Z' || first >= 'a' && first <= 'z')) {
+			throw new ArchiveException("Drive letter in entry name '" + name + "'");
+		}
+		for (int i = 0; i < length; i++) {
 			char c = name.charAt(i);
 			if (c < 0x20 || c == 0x7f) throw new ArchiveException("Control character in entry name");
 		}
-		String trimmed = name.endsWith("/") ? name.substring(0, name.length() - 1) : name;
-		for (String segment : trimmed.split("/", -1)) {
-			if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) {
+		// No empty, "." or ".." segment, a directory's trailing slash aside.
+		int end = name.charAt(length - 1) == '/' ? length - 1 : length;
+		int start = 0;
+		for (int i = 0; i <= end; i++) {
+			if (i < end && name.charAt(i) != '/') continue;
+			int segment = i - start;
+			if (segment == 0 || name.charAt(start) == '.' && (segment == 1 || segment == 2 && name.charAt(start + 1) == '.')) {
 				throw new ArchiveException("Unsafe path segment in entry name '" + name + "'");
 			}
+			start = i + 1;
 		}
 	}
 

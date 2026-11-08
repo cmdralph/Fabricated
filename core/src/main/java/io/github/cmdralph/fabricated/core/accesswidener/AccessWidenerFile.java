@@ -29,11 +29,13 @@ public record AccessWidenerFile(String format, String namespace, List<Entry> ent
 	}
 
 	/**
-	 * One access directive. For classes {@code name} and {@code descriptor} are {@code null}.
+	 * One access directive. For classes {@code name} and {@code descriptor} are {@code null}. A {@code transitive-}
+	 * directive is the same at runtime (where every directive applies to every mod; the prefix only tells Loom to pass it
+	 * to dependents' compile classpath), so none of these records keeps it.
 	 *
 	 * @param line source line number, for messages
 	 */
-	public record Entry(Access access, Kind kind, String owner, String name, String descriptor, boolean transitive, int line) {
+	public record Entry(Access access, Kind kind, String owner, String name, String descriptor, int line) {
 	}
 
 	/**
@@ -41,13 +43,13 @@ public record AccessWidenerFile(String format, String namespace, List<Entry> ent
 	 * @param interfaceName   raw interface internal name (generic arguments removed)
 	 * @param genericSignature the full declaration including generics, as written
 	 */
-	public record InjectedInterface(String target, String interfaceName, String genericSignature, boolean transitive, int line) {
+	public record InjectedInterface(String target, String interfaceName, String genericSignature, int line) {
 	}
 
 	/**
 	 * An enum constant the mod's enum mixin adds to {@code target}. The line only declares it for compiling against;
 	 * Mixin adds the constant itself when the mixin applies.
 	 */
-	public record EnumExtension(String target, String constant, boolean transitive, int line) {
+	public record EnumExtension(String target, String constant, int line) {
 	}
 }
