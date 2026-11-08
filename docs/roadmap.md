@@ -89,8 +89,8 @@ resume from it.
 | 2 | CI and workflows: the matrix from what a change touches, caching, fewer game boots per job, with times before and after | Done (#236, #237, #238) |
 | 3 | Parity on every platform and version, and the crashes v0.5 left open | Done (#239, #240, #241); PRE-18's check on Forge carried to task 5, and verified there |
 | 4 | Fabric's renderer API on NeoForge and Forge (*FRAPI plan*) | Done (#243, #244, #245: R1 to R7; FRAPI-5 to FRAPI-9 and PACK-6 fixed); R8 stays a candidate |
-| 5 | General compatibility, the difficult mods' Fabric builds first (*Difficult mods*) | In progress (#247 to #253, #257, #260, #264, #266, #270 and #272 on main; #254, #258, #261 and #268 on `forge`, #249, #259, #263, #265, #267, #269 and #271 on `forge-legacy`): the difficult mods' Fabric builds load and are gated on NeoForge and Forge (#298 and #299 on the Forge branches); the Forge corpus stops read and fixed one by one (CORPUS-70 to 102) |
-| 6 | Optimization, cleanup and bug fixes, no features | |
+| 5 | General compatibility, the difficult mods' Fabric builds first (*Difficult mods*) | Done (#247 to #253, #257, #260, #264, #266, #270 and #272 on main; #254, #258, #261 and #268 on `forge`, #249, #259, #263, #265, #267, #269 and #271 on `forge-legacy`): the difficult mods' Fabric builds load and are gated on NeoForge and Forge (#298 and #299 on the Forge branches); the Forge corpus stops read and fixed one by one (CORPUS-70 to 102); then PROVIDER-12 to 18 and PRE-19 (#313 to #315) |
+| 6 | Optimization, cleanup and bug fixes, no features | Done on `main` (#316: the launch baselines, PERF-1 and PERF-2, FC-5 and FC-6, PLAT-2, CI-3 and CI-4); the Forge branches' changes follow |
 | 7 | Release v0.6.0-beta | |
 
 ### The owner's decisions
@@ -211,7 +211,7 @@ gates. Work that serves none of the criteria below goes into a track for after t
 A run becomes a gate once it holds on two extended runs in a row on the same code (CI-1).
 
 **Speed and weight.** A launch's cost is measured and kept: a cold and a warm launch per version in *Performance
-baselines*, the warm one with PERF-2's re-reads gone. The beta's numbers become the bar later releases are held to; a
+baselines*, the warm one with PERF-2's re-reads gone (task 6; PERF-3 open). The beta's numbers become the bar later releases are held to; a
 change costing more than 10% on either says why in its pull request.
 
 **Ship criteria for 0.6.0-beta:**
@@ -417,6 +417,14 @@ logs become findings, and the corpora grow by the mods they name.
     (PROVIDER-14, PROVIDER-15), with Fabricated's transfer bridge standing down for its transfer module (PROVIDER-16).
 - **Task 6 (optimization and cleanup):** PERF-1, PERF-2 and the launch baselines; the cache findings (FC-5, FC-6,
   FC-7); SEC-5, CI-3, PLAT-2 and P3-2; the cleanup candidates in *Quality* (below); and whatever tasks 3 to 5 leave.
+  - **Done on `main` (#316):** the launch timings in the report and both servers' cached launches measured (*Performance
+    baselines*); PERF-2's repeated work gone from a cached launch, its last suspect split as PERF-3 (unmeasured on a
+    large pack); PERF-1 measured and left as it is; FC-5 decided, FC-6 fixed, FC-7 fixed and open until checked on
+    Windows; PLAT-2, CI-3 and CI-4 fixed; P3-2 and SEC-5 closed as won't fix; the cleanup candidates decided. The
+    decisions are in `CHANGELOG.md`.
+  - **Next, on the Forge branches:** the shared changes by the sync script, their loaders on the lazy mapping table
+    and the in-game mod found by its recorded hash, CI-3 in their smoke scripts, and task 4's hand-offs: the Forge
+    configs' rows in `MIXINS.md`, and what a Fabric model's throw in a chunk section costs on Forge 47.
 - **Task 7 (release):** the ship criteria above.
 
 ## Tracks
@@ -443,7 +451,8 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 
 - **`main`:** NeoForge for 1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
-- **Next** (the v0.6.0-beta pass, task 5 done): task 6, optimization and cleanup. Done on `main`: Fabric mods' command
+- **Next** (the v0.6.0-beta pass, task 6 done on `main`, #316): task 6 on the Forge branches, then task 7, the release.
+  Task 5, done on `main`: Fabric mods' command
   argument types and default attribute modifications on a client with Forgified Fabric API (PROVIDER-12, #313;
   PROVIDER-18, #315), and its packet context and HUD answers named in the test mods (PROVIDER-17, #315); CORPUS-48
   closed, not Fabricated's. Verified on Forge 47: PRE-19's overload repair (`forge-legacy` #314). Done on Forge: the
@@ -666,16 +675,17 @@ size, re-checked every Sodium release, and its licence); Iris fixes beyond its p
   release tags and by hand, the informational runs with `extended`; a push to `main` only builds; a job installs the
   game once for all its runs (*Standing decisions*, 2026-10-27).
 - **Next:** task 2 of the v0.6.0-beta pass; the gates listed in *Beta*; checks for what the corpus mods do in the world.
-- **Noted at the cleanup (task 4), for later:** the `fabricapi-overrides` copied between versions (about 875 lines;
-  `import-fabric-api.sh` copies each version's alone, so identical copies need shared-overrides support there). Copies
-  across platforms (the loot mixins Forge and NeoForge both have, the biome and particle code Forge 47 and NeoForge
-  1.21.x share) stay per branch since each platform has its own (`claude.md`, *Branches*); `FabricDependencyLocator`'s runs both
-  Forge loaders have alike, the stand-ins in Forge's `src/fabricapistubs` and the test-mod source sets the Forge
-  projects set up but never build are the Forge branches' to merge. Access widener records keep a `transitive` flag nothing acts on (every
-  access transformer applies to every mod). The retired config keys (`logLevel`, `preferNativeNeoForgeMods`,
-  `preferFabric`) stay accepted and ignored at 0.5.0, so older configs don't warn. Flashback's refusal
-  (`compat-plan.json`, CORPUS-21) is lifted on NeoForge (task 5): a run with it lifted stopped in another early
-  freeze, which REG-8 holds until the main entrypoints.
+- **Done (task 6), the cleanup candidates noted at task 4:** access widener records no longer keep the `transitive`
+  flag nothing read (every access transformer applies to every mod, as on Fabric). Kept, decided: the
+  `fabricapi-overrides` copies between versions (of the 19 override files, ten are identical copies of four classes
+  in two or three versions; `import-fabric-api.sh` applies each version's to its own import, so sharing them would
+  need support there to save six files), and the retired config keys (`logLevel`, `preferNativeNeoForgeMods`, `preferFabric`),
+  accepted and ignored so 0.5 configs don't warn. Copies across platforms (the loot mixins Forge and NeoForge both
+  have, the biome and particle code Forge 47 and NeoForge 1.21.x share) stay per branch since each platform has its
+  own (`claude.md`, *Branches*); `FabricDependencyLocator`'s runs both Forge loaders have alike, the stand-ins in
+  Forge's `src/fabricapistubs` and the test-mod source sets the Forge projects set up but never build are the Forge
+  branches' task 6 changes'. Flashback's refusal (`compat-plan.json`, CORPUS-21) is lifted on NeoForge (task 5): a run
+  with it lifted stopped in another early freeze, which REG-8 holds until the main entrypoints.
 
 ## Findings
 
@@ -684,6 +694,7 @@ with its cause, why the tests missed it and its fix, in the change that fixes it
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
+| PERF-3 | P3, UNVERIFIED | `NeoForgeMods.of` (the mods' declarations, `NestedNeoForgeJars.readAll`); split from PERF-2 | A cached launch still reads every NeoForge mod's declarations and nested jars: the phase takes 16 to 23 ms on 1.21.1 and 40 to 68 ms on 1.21.11 and 26.x in CI's servers (extended run 42522554523), which have few NeoForge mods. What in it costs that, and how it grows with a pack of NeoForge mods, is unmeasured. | Read the report's *Launch timings* on a large pack (the owner's reference pack among them); if the nested jars are the cost, keep their contents in the cache by the file's hash. |
 | PROVIDER-19 | — (CI only), UNVERIFIED | The test mod's client block entity check (`BlockEntityEventsClientTest`) on the NeoForge 26.1.2 client with Forgified Fabric API's renderer, whose `fabric-lifecycle-events-v1` client mixins are upstream's (read in its `26.1.2` sources) | The check reported neither way there in extended run 41871298631 (no "client block entity events OK", no failure logged), where it passed in extended run 41858750959; that client's other checks passed, and the 26.2 one passed it. The provider's module unloads a client's block entities as it clears its level (`ClientPacketListener.clearLevel`), and on a respawn or a login. The job log's tail kept only the summary's failure, not the check's own line saying whether the client stopped in its world (the check's run 683 case). | The bytecode step's lines on how a client left its world now cover this client (`client-ffapi`): read them in the next extended run, and whether the check misses again. |
 | PART-5 | P3 on NeoForge 26.x clients with Fabric API, for Fabric block models whose particle sprite depends on the level (the view from inside such a block only) | The NeoForge 26.1.2, 26.2 and 26.3 plans of `fabric-renderer-api-v1` (its left-out `block.particle.ScreenEffectRendererMixin` on 26.1.2 and 26.2, `block.particle.LevelExtractorMixin` on 26.3) | The screen effect seen from inside a block asks the block's model for its particle sprite without the level, where upstream's hook gives Fabric's level-aware one: the plans leave upstream's hooks out and nothing asks the level-aware sprite in their place. On 26.3 NeoForge's `extractPlayerState` calls its own lookup (`getViewBlockingStateAndPos`), not vanilla's `getViewBlockingState`, whose view blocking check upstream's hook reads the position from (read in NeoForge's 26.3.x patch, while fixing PART-4 on Forge 64 to 66, whose lookup does the same). The 26.3 plan's reason doesn't name it; `COMPATIBILITY.md` lists the plain sprite on all three. | Task 5 or 6: as PART-4 on Forge, keep the block and position NeoForge's lookup found and ask a Fabric model's level-aware sprite there, with the Forge renderer test mod's screen effect check on NeoForge too. |
 | CORPUS-112 | — | REI 21.11.816's banner displays (`ShieldDecorationRecipeFiller.randomizeBanners`, `BannerDuplicateRecipeFiller`), its registry access (`InstanceHelper.registryAccess`) and display sync (`DisplaySyncPacket`) | The Forge 61 corpus client's `debug.log` has 17 "[REI] Failed to encode display: …DefaultCustomShapelessDisplay@…" with "Can't find id for 'Reference{ResourceKey[minecraft:banner_pattern / …]}' in map net.minecraft.core.Registry$1@…", from REI's display sync in the integrated server's tick (`ServerDisplayRegistryImpl.getResetPackets`; extended runs 41782561336 and 41786931339, whose evidence step printed the first one with its stack). Read in REI's `1.21.11` sources: its banner duplicate and shield decoration displays take random banner patterns from `BasicDisplay.registryAccess()`, which on a client answers with the client connection's registries (`InstanceHelper.registryAccess`), on the integrated server's thread too. The server encodes those holders with its own registries, which have no id for them, and leaves the displays out of the sync, at debug level; the client stays in its world. The Forge 64 to 66 corpus clients, with REI 26.x, have none. The code is REI's and the same on Fabric, where a fill while a player is connected does the same (by the code, not run there). | Closed: not Fabricated's (REI's registry access on a client); left as it is. |
@@ -698,12 +709,7 @@ with its cause, why the tests missed it and its fix, in the change that fixes it
 | PROVIDER-5 | — | Forgified Fabric API's `fabric-networking-api-v1` (1.21.1 seen) | With it providing the module, NeoForge refuses a payload type in the `minecraft` namespace, which Fabricated's own networking registers (NET-4): the Fabric mod's initializer throws "Cannot register payload minecraft:... using the domain \"minecraft\"" and it is marked failed (the test mod's payload on the 1.21.1 client run, 40738724928; BetterEnd's ritual update UNVERIFIED). | Not Fabricated's: the module is the provider's (*Standing decisions*, 2026-10-28). The test mods skip that case when another mod provides networking. |
 | PROVIDER-7 | — | Forgified Fabric API's `fabric-item-api-v1` on 26.x (26.1.2 and 26.2 seen) | Its `IItemExtensionMixin` answers NeoForge's `getEquipmentSlot` for an item with Fabric's equipment slot provider by casting the item to `LivingEntity` (`(LivingEntity) this`, read in its 26.1.2 source), which throws `ClassCastException`: the test mod's item stopped the servers with Forgified Fabric API once PROVIDER-6 let its initializers run (this change's CI, run 40772701272). A Fabric mod's item with an equipment slot provider (`FabricItem.Settings.equipmentSlot`) would stop the game wherever NeoForge asks its slot. | Not Fabricated's: the module is the provider's (*Standing decisions*, 2026-10-28); worth reporting to Forgified Fabric API (the owner's call). The 26.x test mod skips its item checks when another mod provides the module. |
 | KEYMAP-1 | P3 | Fabric mods' accessors to `KeyMapping.MAP` (OneConfig's keybind registry) | NeoForge retyped the field to `KeyMappingLookup`, so a `Map` accessor is left out and its callers throw `NoSuchMethodError`. OneConfig catches it (warning that its keybinds may shadow Minecraft's) and leaves the Controls screen mirrors of its keybinds registered with Minecraft's keybinds, which on Fabric it takes out again as it makes each one (`MinecraftKeybindBridgeImpl.detached`, read in its source and in its 1.21.1 jar in extended run 41496005222). They don't shadow Minecraft's there: the mirrors have OneConfig's own names, and NeoForge's lookup keeps every binding of a key, where vanilla's map keeps the last. P3 since then (was P2). | Open, documented in `COMPATIBILITY.md`: a `Map` view of NeoForge's lookup, served for such an accessor, would take the mirrors out as on Fabric; built if a mod needs it for more than that. |
-| CI-3 | P3 (CI only) | The client checks of `.github/workflows/build.yml` and `ci/neoforge/smoke-client.sh`, which read `logs/latest.log` | A client run crossing 00:00 UTC has its log rotated by log4j: the lines before midnight move to `logs/<date>-1.log.gz`, and their checks fail with the lines missing (#230's run 40790221936 on 26.1.2: `model deserializer OK`, `neoforge blockstate type OK`, `key mapping OK`, all in the rotated file). | Open: after the game exits, the smoke script puts the run's rotated logs (oldest first) in front of `latest.log`; the run directory is new each step, so they are this run's. |
-| PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
-| FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
-| FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
-| FC-7 | P3, UNVERIFIED | cache cleanup | `Files.walk` may follow Windows directory junctions. | Must be verified on Windows first. |
-| P3-2 | P3 | `LootBridge` | One global reload manager. Two overlapping reloads can label a loot table with the wrong source. | Low impact. Needs a per-reload key. |
+| FC-7 | P3, UNVERIFIED on Windows | cache cleanup (`TranslationCache`) | `Files.walk` walks a Windows directory junction as a directory, so cleaning a tree holding one would delete what it leads to. | Fixed in task 6, unverified: cleanup deletes a link itself (a directory whose real path isn't its parent's with its name, or a reparse point), never its target, and the cache refuses a junction among its own directories as it refuses a symbolic link. The symbolic link case is tested (`TranslationCacheTest`); junctions exist only on Windows, where neither CI nor the tests run, so that case is untested. It moves to `FINDINGS.md` once checked on Windows. |
 | P3-8 | — | `BlockEntityTypeMixin` | Field replaced without `volatile`. | Won't fix: written only during mod initialization, before world threads start. |
 | COMPAT-2 | — | NeoForge's loading logs | NeoForge's dedicated server (every version) and its 1.21.11 client log each mod loading warning as its raw translation key and arguments (`"{} [{}]", translationKey, translationArgs`), for every mod: Fabricated's show as `[Fabricated] {0} [[Fabric mod ... was not loaded: ...]]`. 26.x clients log the text, and the warnings screen formats it everywhere. | Won't fix: NeoForge's logging, and the line carries the whole text. Putting the text in the key instead would need escaping for the formatter, which those logs would then print. |
 | CORPUS-12 | — | Zoomify (26.x corpus) | Its "universal" jar, the build Modrinth lists for Fabric, is a NeoForge mod too: NeoForge loads it itself and stops at startup without Kotlin for Forge ("Missing language loader klf"). Not Fabricated's to handle: the NeoForge mod's dependency is missing. | Taken out of the corpus (run 355). |
@@ -714,9 +720,6 @@ with its cause, why the tests missed it and its fix, in the change that fixes it
 | CORPUS-17 | P3, UNVERIFIED | REI's Fabric build (26.2, 26.3 corpus) | REI logs "Failed to fill display for recipe" for Farmer's Delight's cooking pot recipes (2 to 4 times) and, on the 26.3 dedicated server, for 560 brewing recipes (run 379). REI logs them without a stack (run 381's digest found none to print). | Open: needs REI's own log at debug level, or its source. |
 | CORPUS-18 | — | Do a Barrel Roll (advanced corpus clients, every 26.x version) | Mixin stopped the client applying its `CameraMixin`: the argument modifier `doABarrelRoll$setRoll` found no injection point in `Camera.setRotation(FF)V`, which NeoForge reduced to a call of `setRotation(FFF)V` (read in the game's code on `0799e2a`). Pre-flight's overload repair moves exactly that case (`MixinPreflightTest.anArgumentModifierInAMethodThatOnlyCallsItsOverloadMovesThere`), yet no translated copy of the mixin was found. On `29da4f5` the diagnostics found no line of Fabricated's report naming the mod, which wasn't among its loaded, skipped or disabled mods either, while NeoForge's mod list in the crash report had it. Fabricated leaves a jar with `fabric.mod.json` to NeoForge only when it also has `META-INF/neoforge.mods.toml`, and Do a Barrel Roll's sources keep one for the NeoForge build: so NeoForge loaded the jar itself and applied the Fabric build's mixins untranslated (inferred: the jar's entries weren't listed). | MULTI-1. On `c725f6f` Fabricated took the jar on every version and disabled it with a reason instead: the 26.2 build depends on YetAnotherConfigLib, which the advanced corpus didn't fetch (its Modrinth build doesn't list it as required; added now), and pre-flight fails the 26.3 and 1.21.11 builds' `CameraMixin`, whose `@WrapWithCondition`s expect the third and fourth `setRotation(FF)V` calls in `Camera.alignWithEntity` (`setup` on 1.21.11), which NeoForge's has fewer of. |
 | CORPUS-20 | — | owo-lib (corpus clients, every version) | Past LEAVE-2, PIP-1 and PRE-12, two of owo's mixins still failed and owo stayed disabled with every mod needing it: its GUI library's `GuiRendererMixin` (which adds an interface) wraps a read of `pictureInPictureRenderers` in `GuiRenderer.close`, which NeoForge's `close` no longer makes, and its `Matrix3x2fStackAccessor` targets JOML's `Matrix3x2fStack`, which FML loads outside its transforming class loader. | Closed by LEAVE-3 and LIB-1b: owo loads on every version, with the mixins NeoForge's code can't take left out (CI of PR #88: `braid.GuiRendererMixin`'s read in `close`, a `@Group` of `MinecraftMixin` neither of whose injectors finds its point, `DataResultMixin` into DataFixerUpper, `SimpleJsonResourceReloadListenerMixin`, and on 26.1.2 `braid.LevelRendererMixin`, on 1.21.11 `ui.GuiRendererMixin`'s `@ModifyArgs` in `executeDraw`). |
-| SEC-5 | P3 | `CandidateScanner` (nested jars) | Nesting is bounded per top-level jar (depth 8, 1024 jars, 512 MiB of nested jars), not across all of them: many hostile jars cost that much each. The 1 MiB cap on metadata applies after reading the entry, which since SEC-4 is bounded by its declared size and the compression ratio. | Bounded by what the player puts in `mods/`; a global budget would need a size no legitimate pack exceeds. |
-| PERF-1 | P3, UNVERIFIED | `PacketEncoderContextMixin`, `PacketDecoderContextMixin`, `GenericPacketSplitterContextMixin` (26.x) | Each wraps every packet's encoding or decoding (vanilla's too) with `@WrapMethod`, which allocates the `Operation`'s argument array, a `ScopedValue` carrier and a lambda per packet. Not measured. | Measure on a busy server; if it shows, bind the context only for packets whose codecs read it. |
-| PERF-2 | P3 | `NeoForgeMods` (`NestedNeoForgeJars`), `FabricDependencyLocator`, `Pipeline` (1.21.11 mappings) | A launch with everything cached still reads every NeoForge mod's nested jars, re-reads and hashes `game-mod.jar`, and on 1.21.11 loads the mapping table, whichever mods need it. | Cache the nested NeoForge mods' metadata by their files' hashes; load the mapping table when a mod is translated or calls `MappingResolver`. |
 | CORPUS-22 | P3 | Biomes O' Plenty on 1.21.11 (`MixinEntity`) | Disabled on 1.21.11 servers and clients: its `@Redirect` at `FluidState.getTags()` in `Entity.updateFluidOnEyes`, which only records the fluid state at the eyes and returns the tags as they are, has no call to take, as NeoForge's 1.21.11 patch reads the state's fluid type there instead (read in its `1.21.11` branch). The mixin adds an interface whose method returns that state, and a field the redirect writes, so the hook can't be left out alone (LEAVE-1). | Not repaired: no call there gives the handler what it takes. Its NeoForge build is used when installed. |
 | CORPUS-30 | — | Wilder Wild on 1.21.11 (advanced corpus client) | NeoForge's model loading logs "Missing textures in model wilderwild:block/potted_tumbleweed" (45 times on #150's run) and "Unresolved texture references in wilderwild:block/baobab_nut_hanging_stage_1". Its `1.21.11` branch's models have them: `potted_tumbleweed.json` names its sand texture `bminecraft:lock/sand`, and `baobab_nut_hanging_stage_1.json` declares the texture `#texture` while its faces read `##texture` and its particle `#texture`. Vanilla's model loading logs the same on Fabric. That the released jar matches the branch is UNVERIFIED. | Wilder Wild's own on 1.21.11; left as it is. |
 | CORPUS-29 | — | Tech Reborn on 26.1.2 (server and client corpus, every run since at least #101) | 67 errors a server run (134 with the client): "Couldn't parse data file 'techreborn:crafting_table/uu_matter/misc/plant/twisting_vines': Unknown registry key in ResourceKey[minecraft:root / minecraft:recipe_serializer]: reborncore:padded" (the first of them; CI of PR #133). Its `26.1` branch (`221345f`) has 67 recipe files of type `reborncore:padded` and no code registering a serializer of that name, RebornCore's included (only the JSON files name it). Vanilla's registry lookup fails the same on Fabric. That the released jar matches the branch is UNVERIFIED. | Tech Reborn's own on 26.1.2; left as it is. |
@@ -750,6 +753,26 @@ Translation time per mod on a cold cache, taken from `fabric-bridge-report.txt` 
 | 26.3 | server, mod corpus | 79 | 3,425 ms | 12 ms | 385 ms |
 | 1.21.11 (remapped) | client, test mods + Fabric API | 25 | 1,375 ms | 41 ms | 204 ms |
 | 1.21.11 (remapped) | server, mod corpus | 87 | 15,844 ms | 59 ms | 3,433 ms |
+
+Discovery of a launch (the "Launch timings" section of the report: Fabricated's work before NeoForge loads the mods),
+cold and with every translation cached, on CI's dedicated servers: before task 6's changes (PR run 42518900058, `f8fc212`)
+and after them (extended run 42522554523, `476e9a2`). The Fabric API server runs the test mods with Fabric API, the
+stand-ins server the test mods alone.
+
+| Version | Fabric API server, cold | Fabric API server, cached | Stand-ins server, cold | Stand-ins server, cached |
+|---|---|---|---|---|
+| 1.21.1 | 2,700 → 2,618 ms | 554 → 492 ms | 2,110 → 1,919 ms | 541 → 391 ms |
+| 1.21.11 | 2,537 → 2,465 ms | 471 → 406 ms | 1,959 → 1,843 ms | 375 → 312 ms |
+| 26.1.2 | 1,481 → 1,327 ms | 530 → 524 ms | 936 → 864 ms | 433 → 406 ms |
+| 26.2 | 1,360 → 1,445 ms | 570 → 533 ms | 887 → 890 ms | 424 → 415 ms |
+| 26.3 | 1,229 → 1,412 ms | 435 → 510 ms | 843 → 854 ms | 383 → 415 ms |
+
+Runners differ by up to a third: the same code took 342 ms cached on 26.1.2's Fabric API server in PR run 42521740905,
+and 26.3's after run is slower in every phase alike, those no change touched included (the scan, the cached
+translations, the assembly). The phases the changes touched moved beyond that spread in a cached launch: on 1.21.x the
+mappings phase went from 76 to 112 ms to 9 to 13 (in a cold one, the table's loading moved into the first translation),
+on 1.21.1 the in-game mod's from 44 to 59 ms to 19 to 23, and the vanilla game's from 31 to 96 ms to 26 to 49 (PERF-2). The corpus server's launches are in the summary of an
+extended run's corpus jobs from task 7's runs on.
 
 The chunk meshing hot path has no frame-time or allocation measurement: CI has no GPU and no profiler. Per block,
 `FabricBlockRendering` does a `ClassValue` lookup and a `ThreadLocal` read, and hooks the call with `@WrapWithCondition`, so

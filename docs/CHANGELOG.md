@@ -3,6 +3,68 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-08: Cached launches measured and shortened, the cache shared between launches, library modules the platform lacks (task 6)
+
+- **Launch timings:** discovery's log line names how long each phase took (the in-game mod, platform packages, NeoForge
+  mods, providers, the vanilla game, the pipeline, the hand-over), and the report has a "Launch timings" section with
+  them and the pipeline's own (scan, mappings, game classes, translation, assembly), so a player's shared report shows
+  them too. The server smoke's second launch, which the stand-ins' run gates, also runs for the Fabric API server and
+  the corpus server (`SMOKE_WARM_LAUNCH`) and prints both launches' timings; the corpus server's lines were above what
+  the job log keeps, so the corpus jobs' summary now repeats them (from the next extended run on).
+- **PERF-2** (a cached launch repeated work): 1.21.x's mapping table is read when a translation, pre-flight or a mod
+  first needs it (`LazyMappingTable`), not on every launch; its hash, which cache keys hold, is still taken up front,
+  and the cache keeps the table's blob for the launches that don't read it. The in-game mod's cached copy is found by
+  the hash its build records (`gamemod.sha256` in `version.properties`), so a launch no longer reads and hashes
+  `game-mod.jar`. Archive entry names are checked in one pass, without a regular expression or a split: opening a
+  26,000-entry jar in a fresh JVM took 175 to 263 ms and takes 64 to 78 ms; a test compares the new check with the
+  former over 300,000 random names. In a cached launch (extended run 42522554523 against PR run 42518900058) the
+  mappings phase went from 76 to 112 ms to 9 to 13 on 1.21.x, the in-game mod's from 44 to 59 ms to 19 to 23 on 1.21.1,
+  and the vanilla game's from 31 to 96 ms to 26 to 49; the Fabric API server's discovery from 471 to 554 ms to 406
+  to 492 on 1.21.x.
+  Correction to `ca6dd2b`'s message: the in-game mod phase dropped on 1.21.1 only; on 1.21.11 and 26.x it stayed within
+  the runners' spread, so there the jar's read wasn't most of it. 26.3's after run is slower in every phase alike, those
+  no change touched included, as runners differ by up to a third (the same code took 342 ms cached on 26.1.2's Fabric API
+  server in PR run 42521740905, 524 to 530 ms in the other two). The NeoForge mods' declarations and nested jars, PERF-2's
+  last suspect, cost 16 to 23 ms on 1.21.1 and 40 to 68 ms on 1.21.11 and 26.x with CI's few NeoForge mods: split as
+  **PERF-3**, open, unmeasured on a large pack. *Performance baselines* in `roadmap.md` has the cold and cached launches
+  per version, before and after. For the Forge loaders, the cache finds a nested jar it stored by its hash alone
+  (`storedNested`). PERF-2 moves to `FINDINGS.md`.
+- **PERF-1** measured: the packet context's `@WrapMethod` costs about 15 to 20 ns and 56 bytes a packet over a plain
+  call (a microbenchmark of the same shape), about 0.4 ms a second at 20,000 packets a second. Decision: no change. It
+  moves to `FINDINGS.md`.
+- **FC-5, FC-6, FC-7** (the translation cache): two launches sharing a game directory no longer delete the files the
+  other's game uses when both translate a mod, nor drop each other's use from the index, which is saved under a lock
+  after merging (FC-6). Decision on FC-5: the hash memo trusts a file's metadata rather than read every translated jar
+  on each launch, its stamp adding the creation time for Windows. Cleanup deletes a link itself, never its target, and
+  the cache refuses a Windows junction among its directories (FC-7, open until checked on Windows, where junctions
+  exist). `TranslationCacheTest` covers two cache instances at once and a tree holding a symbolic link.
+- **PLAT-2:** in LWJGL's, Netty's and Log4j's families a Fabric mod's package is the platform's only where the
+  platform's loaders have one of its classes, so a module the game doesn't ship (LWJGL's NanoVG, Netty's HTTP codec)
+  stays in the mod nesting it, as PLAT-1 did for night-config. Unit tests; no mod in CI nests one.
+- **CI-3, CI-4** (CI only): a client run crossing midnight UTC checks its whole game log, the rotated part in front
+  (CI-3). The 26.x Sodium client runs a pinned pair of Sodium and Iris builds (`ci_renderers` in each version's
+  `gradle.properties`): Sodium 0.9.3-beta.4 for 26.3, published since the last green run, refuses Modrinth's newest
+  Iris for 26.3, which failed the gate with nothing of Fabricated's involved (CI-4, opened and verified in PR run
+  42521740905). The extended run's gate on the Fabric builds of Sodium and Iris failed on 26.3 the same way (extended
+  run 42522554523), so those are pinned too (`ci_fabric_renderers`): on 1.21.11 and 26.x the pairs Forge's extended run
+  41848003908 passed with, the same builds as NeoForge's on 1.21.11, 26.1.2 and 26.2; 1.21.1, whose ids no kept log
+  names, keeps the newest. Both move to `FINDINGS.md`.
+- **Cleanup:** access widener records no longer keep the `transitive` flag nothing read. Decided, kept: the
+  `fabricapi-overrides` copies between versions (ten of the 19 files are identical copies of four classes, and the
+  import script applies each version's to its own import) and the retired config keys, so 0.5 configs don't warn.
+- **Decided, won't fix:** P3-2 (reloads overlap only when a command queued during one starts another, and the effect is
+  a loot table's source label in Fabric's events) and SEC-5 (nesting is bounded per jar by what the player puts in
+  `mods/`, where a jar runs its own code anyway). Deferred: opening the vanilla game jar only when pre-flight reads it,
+  as the cache key would then need the jar's identity, and the name check took most of its cost. Both rows move to
+  `FINDINGS.md`.
+- **Verified:** core's tests; PR run 42521740905 (every version's server, client and mods jobs, the 26.x Sodium gate
+  with the pinned pairs among them); extended run 42522554523 on `476e9a2`: every job passed but 26.3's mods, whose
+  gate on the Fabric builds of Sodium and Iris failed on Sodium's new beta (CI-4); the pinned pairs are checked by the
+  extended run on #316's last commit.
+- **Next:** the Forge branches' task 6 changes (the shared code by the sync script, their loaders on the lazy mapping
+  table, CI-3 in their smoke scripts, and task 4's hand-offs: the Forge configs in `MIXINS.md` and what a Fabric model's
+  throw in a chunk section costs on Forge 47), then task 7, the release.
+
 ## 2026-11-04: Fabric mods' command argument types and attribute modifications on a client with Forgified Fabric API (PROVIDER-12, PROVIDER-18), CORPUS-48 closed, PRE-19 verified (task 5)
 
 - **PROVIDER-12** (P0 for packs with Forgified Fabric API on NeoForge 21.1, 26.1.2 and 26.2 clients with a Fabric mod

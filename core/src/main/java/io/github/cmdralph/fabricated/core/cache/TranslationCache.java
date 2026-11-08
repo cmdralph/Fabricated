@@ -376,9 +376,10 @@ public final class TranslationCache {
 	 * SHA-256 of a file, memoised across launches so unchanged mods are not re-hashed. The memo is keyed by path,
 	 * size, modification time, creation time and, where the file system has them, change time and file key (inode):
 	 * copying a jar over another with its old timestamp kept ({@code cp -p}, a restored backup) still changes the change
-	 * time, and on Windows, which has neither, its creation time (FC-5). A file changed in place with all of them kept
-	 * isn't seen: the cache trusts its files' metadata as the game trusts the mods folder, rather than read every
-	 * translated jar again on each launch.
+	 * time. Windows has neither, so there the creation time is added, which a jar copied in as a new file gets; one
+	 * written over the old file in place may keep that file's (FC-5). A file changed with all of them kept, its size
+	 * included, isn't seen: the cache trusts its files' metadata as the game trusts the mods folder, rather than read
+	 * every translated jar again on each launch.
 	 */
 	public String sha256(Path file) throws IOException {
 		String key = memoKey(file);
