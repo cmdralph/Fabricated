@@ -15,7 +15,7 @@
   that load other mods (Essential), Fabric-only interface stacks (OneConfig, PolyPlus), with generic capabilities, and
   refuse only what can't run safely or correctly, saying why (the owner, 2026-11-01; `roadmap.md`, *Difficult mods*).
 * Be lightweight: no runtime dependencies beyond what NeoForge ships, and nothing at all without Fabric mods. With them,
-  little work on unchanged launches (PERF-2 lists what is still repeated), and per tick only the dispatch of the Fabric
+  little work on unchanged launches (PERF-3 lists what is still repeated), and per tick only the dispatch of the Fabric
   events Fabricated bridges, without allocation.
 * Be robust: an isolatable failure never takes the game down, and every failure is attributed to a mod and explained.
 * Be safe: mod jars are untrusted input, nothing runs during translation, nothing touches the network, no telemetry, and original jars are never modified.

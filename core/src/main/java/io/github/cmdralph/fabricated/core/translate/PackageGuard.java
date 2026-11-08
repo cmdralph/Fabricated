@@ -16,6 +16,7 @@ import java.util.TreeSet;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
+import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
 
 /**
@@ -115,8 +116,10 @@ public final class PackageGuard {
 	/**
 	 * @param mods             translated mods in load order
 	 * @param platformPackages packages (internal form, e.g. {@code net/minecraft/world}) owned by the platform
+	 * @param platformClasses  the classes the platform's loaders have outside the game, which decide whether a package of
+	 *                         a library the platform ships some modules of is its ({@link PlatformLibraries}, PLAT-2)
 	 */
-	public Result check(List<TranslatedMod> mods, Set<String> platformPackages) {
+	public Result check(List<TranslatedMod> mods, Set<String> platformPackages, ClassBytesSource platformClasses) {
 		List<Conflict> conflicts = new ArrayList<>();
 		// Package → the NeoForge id of the mod whose module has it, and every file that module serves there.
 		Map<String, String> owner = new HashMap<>();
@@ -149,7 +152,7 @@ public final class PackageGuard {
 			for (Map.Entry<String, Map<String, Path>> pkg : contents.packages().entrySet()) {
 				String name = pkg.getKey();
 				String dotted = name.replace('/', '.');
-				if (platformPackages.contains(name) || PlatformLibraries.isProvided(name + "/") || ownedByLoader(name)) {
+				if (platformPackages.contains(name) || PlatformLibraries.isProvided(name, pkg.getValue().keySet(), platformClasses) || ownedByLoader(name)) {
 					excluded.add(name);
 					notes.add("bundles package " + dotted + ", which the platform already provides; using the platform's copy");
 					continue;

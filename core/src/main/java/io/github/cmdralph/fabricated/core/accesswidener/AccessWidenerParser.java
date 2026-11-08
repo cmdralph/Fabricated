@@ -65,22 +65,18 @@ public final class AccessWidenerParser {
 				int generic = full.indexOf('<');
 				String raw = generic >= 0 ? full.substring(0, generic) : full;
 				checkClassName(raw, lineNo);
-				injections.add(new InjectedInterface(tokens[1], raw, full, first.startsWith(TRANSITIVE), lineNo));
+				injections.add(new InjectedInterface(tokens[1], raw, full, lineNo));
 				continue;
 			}
 
 			if (enumExtensions && (first.equals("extend-enum") || first.equals(TRANSITIVE + "extend-enum"))) {
 				if (tokens.length != 3) throw new AccessWidenerException(lineNo, "Expected 'extend-enum <class> <constant>'");
 				checkClassName(tokens[1], lineNo);
-				enums.add(new EnumExtension(tokens[1], tokens[2], first.startsWith(TRANSITIVE), lineNo));
+				enums.add(new EnumExtension(tokens[1], tokens[2], lineNo));
 				continue;
 			}
 
-			boolean transitive = false;
-			if (v2Grammar && first.startsWith(TRANSITIVE)) {
-				first = first.substring(TRANSITIVE.length());
-				transitive = true;
-			}
+			if (v2Grammar && first.startsWith(TRANSITIVE)) first = first.substring(TRANSITIVE.length());
 			Access access = switch (first.toLowerCase(Locale.ROOT)) {
 				case "accessible" -> Access.ACCESSIBLE;
 				case "extendable" -> Access.EXTENDABLE;
@@ -93,20 +89,20 @@ public final class AccessWidenerParser {
 					if (tokens.length != 3) throw new AccessWidenerException(lineNo, "Expected '<access> class <className>'");
 					if (access == Access.MUTABLE) throw new AccessWidenerException(lineNo, "Classes cannot be made mutable");
 					checkClassName(tokens[2], lineNo);
-					entries.add(new Entry(access, Kind.CLASS, tokens[2], null, null, transitive, lineNo));
+					entries.add(new Entry(access, Kind.CLASS, tokens[2], null, null, lineNo));
 				}
 				case "method" -> {
 					if (tokens.length != 5) throw new AccessWidenerException(lineNo, "Expected '<access> method <className> <name> <descriptor>'");
 					if (access == Access.MUTABLE) throw new AccessWidenerException(lineNo, "Methods cannot be made mutable");
 					checkClassName(tokens[2], lineNo);
 					if (!tokens[4].startsWith("(")) throw new AccessWidenerException(lineNo, "Invalid method descriptor " + tokens[4]);
-					entries.add(new Entry(access, Kind.METHOD, tokens[2], tokens[3], tokens[4], transitive, lineNo));
+					entries.add(new Entry(access, Kind.METHOD, tokens[2], tokens[3], tokens[4], lineNo));
 				}
 				case "field" -> {
 					if (tokens.length != 5) throw new AccessWidenerException(lineNo, "Expected '<access> field <className> <name> <descriptor>'");
 					if (access == Access.EXTENDABLE) throw new AccessWidenerException(lineNo, "Fields cannot be made extendable");
 					checkClassName(tokens[2], lineNo);
-					entries.add(new Entry(access, Kind.FIELD, tokens[2], tokens[3], tokens[4], transitive, lineNo));
+					entries.add(new Entry(access, Kind.FIELD, tokens[2], tokens[3], tokens[4], lineNo));
 				}
 				default -> throw new AccessWidenerException(lineNo, "Unsupported target type '" + tokens[1] + "'");
 			}

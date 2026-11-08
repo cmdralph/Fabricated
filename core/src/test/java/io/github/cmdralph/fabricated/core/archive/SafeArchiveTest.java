@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.archive;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Random;
 import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 
@@ -51,6 +53,55 @@ class SafeArchiveTest {
 		for (String bad : new String[] {"../evil.txt", "/abs.txt", "a\\b.txt", "C:/x.txt", "a/../../b", "a//b", "./x", "a\u0000b"}) {
 			assertThrows(ArchiveException.class, () -> SafeArchive.validateName(bad), bad);
 		}
+	}
+
+	/**
+	 * The allocation-free check accepts and refuses the names the check with a regular expression and a split did
+	 * (PERF-2), over short names of the characters that matter; it also refuses a drive letter followed by a line
+	 * separator, which the expression's {@code .*} let through.
+	 */
+	@Test
+	void validatesNamesAsTheFormerCheckDid() {
+		char[] alphabet = {'a', 'Z', '.', '/', '\\', ':', '\u0001', '\u007f', ' ', '\u00e9', '\u2028', '1'};
+		Random random = new Random(42);
+		for (int n = 0; n < 300_000; n++) {
+			char[] name = new char[random.nextInt(9)];
+			for (int i = 0; i < name.length; i++) name[i] = alphabet[random.nextInt(alphabet.length)];
+			String s = new String(name);
+			boolean driveLetter = s.length() > 1 && s.charAt(1) == ':' && Character.isLetter(s.charAt(0)) && s.charAt(0) < 0x80;
+			boolean accepted = accepts(s);
+			if (driveLetter) {
+				assertFalse(accepted, s);
+			} else {
+				assertEquals(formerlyAccepted(s), accepted, () -> "name " + s.chars().mapToObj(Integer::toHexString).toList());
+			}
+		}
+		for (String good : new String[] {"a/b/c.class", "META-INF/", "a/b/", "a/.b/..c", "x", "..a"}) assertTrue(accepts(good), good);
+		for (String bad : new String[] {"a//", "..", ".", "a/./b", "a/..", "a/../", "C:", "z:x"}) assertFalse(accepts(bad), bad);
+	}
+
+	private static boolean accepts(String name) {
+		try {
+			SafeArchive.validateName(name);
+			return true;
+		} catch (ArchiveException e) {
+			return false;
+		}
+	}
+
+	/** The former check, as it read before PERF-2. */
+	private static boolean formerlyAccepted(String name) {
+		if (name.isEmpty() || name.length() > 1024 || name.startsWith("/") || name.indexOf('\\') >= 0) return false;
+		if (java.util.regex.Pattern.compile("^[A-Za-z]:.*").matcher(name).matches()) return false;
+		for (int i = 0; i < name.length(); i++) {
+			char c = name.charAt(i);
+			if (c < 0x20 || c == 0x7f) return false;
+		}
+		String trimmed = name.endsWith("/") ? name.substring(0, name.length() - 1) : name;
+		for (String segment : trimmed.split("/", -1)) {
+			if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) return false;
+		}
+		return true;
 	}
 
 	@Test

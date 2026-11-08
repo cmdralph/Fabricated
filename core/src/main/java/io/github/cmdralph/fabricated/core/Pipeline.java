@@ -44,9 +44,11 @@ import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.RestoredFields;
 import io.github.cmdralph.fabricated.core.remap.JarRemapper;
+import io.github.cmdralph.fabricated.core.remap.LazyMappingTable;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.remap.Supertypes;
+import io.github.cmdralph.fabricated.core.report.LaunchPhases;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.report.Report.ModRow;
 import io.github.cmdralph.fabricated.core.report.Report.Status;
@@ -128,13 +130,19 @@ public final class Pipeline {
 	public interface MappingSupplier {
 		/**
 		 * @param mojangMappingsPath the {@code mojangMappingsPath} setting (null to find the file NeoForge's installer left)
-		 * @return the table and a hash identifying it
+		 * @return how to load the table, and a hash identifying it
 		 */
 		Mappings get(TranslationCache cache, String mojangMappingsPath) throws MappingException, IOException;
 	}
 
-	/** A mapping table and its identity hash. */
-	public record Mappings(MappingTable table, String hash) {
+	/**
+	 * A mapping table and its identity hash.
+	 *
+	 * @param table loads the table, when a translation, pre-flight or a mod's mapping resolver first needs it: a launch
+	 *              whose translations all come from the cache may need none (PERF-2)
+	 * @param hash  identifies the table without loading it (cache keys hold it)
+	 */
+	public record Mappings(LazyMappingTable.Loader table, String hash) {
 	}
 
 	/**
@@ -336,6 +344,8 @@ public final class Pipeline {
 	private final Set<String> ignoredPatches = new HashSet<>();
 	/** The mixins that failed as Mixin applied them in an earlier launch, by Fabric mod id: each one's {@code skipMixins} entry and why. */
 	private final Map<String, Map<String, String>> failedLastLaunch = new HashMap<>();
+	/** Where the run's time goes, in the report (a launch with everything cached still scans and checks). */
+	private final LaunchPhases phases = new LaunchPhases();
 
 	private Pipeline(Input in) {
 		this.in = in;
@@ -461,6 +471,7 @@ public final class Pipeline {
 		scan.rejected().forEach(r -> report.mod(new ModRow(r.origin(), "", "", Status.REJECTED, r.reason(), "Make sure this is an unmodified Fabric mod jar for this Minecraft version.")));
 		scan.notes().forEach(n -> report.line("Discovery notes", n));
 		List<Candidate> eligible = withoutOrphanedDownloads(filter(scan.candidates()), downloads, scan.candidates());
+		phases.end("scan");
 		loadMixinFailures(scan.candidates());
 		for (FabricApiPlan.Module m : plan.modules().values()) {
 			NeoForgeMod provider = providedElsewhere.get(m.id());
@@ -472,15 +483,14 @@ public final class Pipeline {
 			}
 		}
 
-		MappingTable mappingTable = null;
+		LazyMappingTable mappingTable = null;
 		String mappingsHash = "none";
 		// Without Fabric mods to translate the table isn't needed; skip building it (it takes a few seconds).
 		if (in.namespace() == Namespace.INTERMEDIARY && !eligible.isEmpty()) {
 			try {
 				Mappings m = in.mappings().get(in.cache(), config.mojangMappingsPath());
-				mappingTable = m.table();
+				mappingTable = new LazyMappingTable(m.table());
 				mappingsHash = m.hash();
-				report.environment("Mappings", mappingTable.classCount() + " classes, " + mappingTable.memberCount() + " members");
 			} catch (MappingException | IOException e) {
 				for (Candidate c : eligible) {
 					report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "Minecraft's official mapping file is unavailable: " + e.getMessage(),
@@ -491,7 +501,8 @@ public final class Pipeline {
 		}
 		FabricLoaderRuntime runtime = new FabricLoaderRuntime(side, in.gameDir(), in.configDir(), in.minecraftVersion(), in.development(),
 				mappingTable != null ? MappingResolvers.intermediary(mappingTable) : MappingResolvers.identity(), in::launchArguments);
-		if (eligible.isEmpty()) return assemble(runtime, new Rounds());
+		phases.end("mappings");
+		if (eligible.isEmpty()) return timed(assemble(runtime, new Rounds()));
 
 		// The game as the platform's own transformers leave it as it loads, as Mixin sees it (CORPUS-61), and as Fabricated's
 		// own mixins leave it: with the vanilla fields they restore, which Fabric mods use (PIP-1).
@@ -506,13 +517,17 @@ public final class Pipeline {
 		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11
 		// remapped from intermediary names, as translating each mod remaps it.
 		List<SafeArchive> opened = new ArrayList<>();
-		InstalledClasses installed = in.installedClasses().with(fabricJars(eligible, opened,
-				mappingTable == null ? null : new JarRemapper(mappingTable, Supertypes.ofRuntime(game::supertypes, mappingTable))));
+		LazyMappingTable table = mappingTable;
+		InstalledClasses installed = in.installedClasses().with(fabricJars(eligible, opened, table == null ? null : () -> {
+			MappingTable loaded = table.table();
+			return new JarRemapper(loaded, Supertypes.ofRuntime(game::supertypes, loaded));
+		}));
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 				in.runtimeMixinVersion(), in.mixinExtrasVersion(), in.lowestMixinBehavior(), in.fabricatedVersion() + " " + in.fabricatedBuild(), mappingTable, mappingsHash, game, in.untransformableClasses(),
 				// In the game's names: on 1.21.11 the loader reads the obfuscated jar through Mojang's mappings.
 				in.vanillaGame().classes(), installed, installed.isEmpty() ? game : new ClassIndex(gameClasses.or(installed)), unsupportedPackages(scan.candidates()),
 				in.descriptor(), restored.bridgedFields());
+		phases.end("game classes");
 		Rounds rounds = new Rounds();
 		try {
 			rounds.run(scan.candidates(), eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
@@ -531,16 +546,50 @@ public final class Pipeline {
 				}
 			}
 		}
-		return assemble(runtime, rounds);
+		if (mappingTable != null) {
+			MappingTable loaded = mappingTable.loaded();
+			report.environment("Mappings", loaded != null ? loaded.classCount() + " classes, " + loaded.memberCount() + " members"
+					: "not read: every Fabric mod's translation came from the cache (read when a mod first maps a name)");
+		}
+		phases.end("translation");
+		return timed(assemble(runtime, rounds));
+	}
+
+	/** The result, once its phases' times are in its report. */
+	private Result timed(Result result) {
+		phases.end("assembly");
+		report.line(LaunchPhases.SECTION, "Fabric mods: " + phases + " (" + phases.totalMillis() + " ms)");
+		return result;
+	}
+
+	/** Makes a remapper to runtime names. */
+	@FunctionalInterface
+	private interface RemapperSource {
+		JarRemapper get() throws MappingException;
+	}
+
+	/** {@code source}'s remapper, made by the first call (a failure to make it is {@code source}'s at each call). */
+	private static RemapperSource once(RemapperSource source) {
+		return new RemapperSource() {
+			private JarRemapper made;
+
+			@Override
+			public synchronized JarRemapper get() throws MappingException {
+				if (made == null) made = source.get();
+				return made;
+			}
+		};
 	}
 
 	/**
 	 * The classes of the Fabric mods about to load, for pre-flight. A jar is opened only when a lookup names a class in
 	 * one of its packages, then kept open until translation ends ({@code opened}).
 	 *
-	 * @param remapper remaps each class read to runtime names (1.21.11), or null where the jars have them (26.x)
+	 * @param remapper makes the remapper of each class read to runtime names (1.21.11), when the first is read, or null
+	 *                 where the jars have them (26.x)
 	 */
-	private List<InstalledClasses.Jar> fabricJars(List<Candidate> candidates, List<SafeArchive> opened, JarRemapper remapper) {
+	private List<InstalledClasses.Jar> fabricJars(List<Candidate> candidates, List<SafeArchive> opened, RemapperSource remapper) {
+		RemapperSource base = remapper == null ? null : once(remapper);
 		List<InstalledClasses.Jar> jars = new ArrayList<>();
 		for (Candidate c : candidates) {
 			Supplier<SafeArchive> archive = new Supplier<>() {
@@ -564,14 +613,14 @@ public final class Pipeline {
 				}
 			};
 			// The jar's own classes too, which its classes may inherit from (CORPUS-86).
-			JarRemapper own = remapper == null ? null : remapper.with(Supertypes.ofClassFiles(name -> {
+			RemapperSource own = base == null ? null : once(() -> base.get().with(Supertypes.ofClassFiles(name -> {
 				SafeArchive a = archive.get();
 				try {
 					return a == null ? null : a.read(name + ".class");
 				} catch (ArchiveException e) {
 					return null;
 				}
-			}));
+			})));
 			jars.add(new InstalledClasses.Jar(c.metadata().getName(), name -> {
 				int slash = name.lastIndexOf('/');
 				if (!c.packages().contains(slash < 0 ? "" : name.substring(0, slash))) return false;
@@ -582,7 +631,7 @@ public final class Pipeline {
 				byte[] data = a == null ? null : a.read(name + ".class");
 				if (data == null || own == null) return data;
 				try {
-					return own.remapClass(data, name);
+					return own.get().remapClass(data, name);
 				} catch (MappingException | RuntimeException | StackOverflowError e) {
 					// Not verified then; translating the mod reports it. Another mod's pre-flight reads this jar's classes.
 					return null;
@@ -847,7 +896,7 @@ public final class Pipeline {
 				List<TranslatedMod> ordered = translate(resolution.ordered(), translator, aliases);
 				changed |= ordered.size() != resolution.ordered().size();
 
-				PackageGuard.Result guard = packageGuard.check(ordered, in.platformPackages());
+				PackageGuard.Result guard = packageGuard.check(ordered, in.platformPackages(), in.untransformableClasses());
 				for (PackageGuard.Conflict conflict : guard.conflicts()) {
 					dropped.put(conflict.mod().candidate().id(), new Drop(conflict.reason(), conflict.suggestion(), conflict.mod().candidate()));
 					changed = true;

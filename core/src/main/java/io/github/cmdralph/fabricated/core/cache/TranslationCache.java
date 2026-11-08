@@ -1,19 +1,23 @@
 package io.github.cmdralph.fabricated.core.cache;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +25,6 @@ import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 import io.github.cmdralph.fabricated.core.archive.AtomicFiles;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
@@ -33,18 +36,29 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  *
  * <ul>
  *   <li><b>Sandboxed:</b> the root must resolve inside the game directory and no path component may be
- *       a symbolic link.</li>
+ *       a link (a symbolic link, or a Windows junction, which the real path shows); cleanup deletes no link's
+ *       target (FC-7).</li>
  *   <li><b>Integrity-checked:</b> every entry records the SHA-256 of each file it contains; entries are
- *       verified before use and rebuilt if anything differs.</li>
- *   <li><b>Atomic:</b> entries are written to a temporary directory and moved into place.</li>
+ *       verified before use and rebuilt if anything differs. A file's hash is memoised by its metadata, which
+ *       is trusted as the mods folder's files are (FC-5).</li>
+ *   <li><b>Atomic:</b> entries are written to a temporary directory and moved into place. Launches sharing one
+ *       game directory keep each other's entries: one already there that is the same stays, and the index is
+ *       merged under a lock (FC-6).</li>
  *   <li><b>Self-cleaning:</b> entries unused for a configurable number of launches are deleted.</li>
  * </ul>
  */
 public final class TranslationCache {
 	public static final String LAYOUT_VERSION = "v1";
 	private static final Pattern SAFE_NAME = Pattern.compile("[a-z0-9_.-]{1,160}");
+	private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
 	private static final String ENTRY_FILE = "entry.json";
 	private static final String INDEX_FILE = "index.json";
+	/** Held while a launch merges its use into the index and cleans up, so launches sharing the directory take turns. */
+	private static final String INDEX_LOCK = "index.lock";
+	/** How long a launch waits for another to finish with the index before going ahead without the lock. */
+	private static final long INDEX_LOCK_WAIT_MS = 5_000;
+	/** How many times a store tries again when another launch is storing the same entry. */
+	private static final int STORE_ATTEMPTS = 3;
 	private static final int BLOB_HASH_LENGTH = 32;
 
 	private final Path root;
@@ -83,12 +97,21 @@ public final class TranslationCache {
 		cleanTmp();
 	}
 
+	/** Creates {@code p}, whose parent is a real directory, refusing it where it is a link of any kind. */
 	private static void createRealDirectory(Path p) throws IOException {
 		if (Files.isSymbolicLink(p)) throw new IOException("Refusing to use a cache path containing a symbolic link: " + p);
 		if (Files.exists(p, LinkOption.NOFOLLOW_LINKS) && !Files.isDirectory(p, LinkOption.NOFOLLOW_LINKS)) {
 			throw new IOException("Cache path component is not a directory: " + p);
 		}
 		Files.createDirectories(p);
+		// A Windows junction is no symbolic link to Java, but its real path is elsewhere.
+		if (leavesItsParent(p)) throw new IOException("Refusing to use a cache path containing a link: " + p);
+	}
+
+	/** Whether {@code path}'s real path isn't its real parent's with its own name: it is a link (or junction). */
+	private static boolean leavesItsParent(Path path) throws IOException {
+		Path parent = path.toAbsolutePath().getParent();
+		return parent != null && !path.toRealPath().equals(parent.toRealPath().resolve(path.getFileName().toString()));
 	}
 
 	public Path root() {
@@ -139,8 +162,10 @@ public final class TranslationCache {
 		Path dir = root.resolve("entries").resolve(name);
 		Path entryJson = dir.resolve(ENTRY_FILE);
 		if (Files.isSymbolicLink(dir) || !Files.isRegularFile(entryJson, LinkOption.NOFOLLOW_LINKS)) return Optional.empty();
+		String text = null;
 		try {
-			Map<String, Object> meta = Json.parseObject(Files.readString(entryJson, StandardCharsets.UTF_8));
+			text = Files.readString(entryJson, StandardCharsets.UTF_8);
+			Map<String, Object> meta = Json.parseObject(text);
 			if (!(meta.get("files") instanceof Map<?, ?> files)) throw new JsonException("missing files");
 			for (String required : requiredFiles) {
 				if (!files.containsKey(required)) throw new JsonException("missing " + required);
@@ -155,8 +180,17 @@ public final class TranslationCache {
 			return Optional.of(new Entry(dir, meta));
 		} catch (IOException | JsonException | RuntimeException e) {
 			notes.add("Cache entry " + name + " failed verification (" + e.getMessage() + ") and will be rebuilt");
-			deleteQuietly(dir);
+			// Unless another launch sharing the game directory replaced it meanwhile, which a game may be using (FC-6).
+			if (text != null && text.equals(readQuietly(entryJson))) setAsideQuietly(dir);
 			return Optional.empty();
+		}
+	}
+
+	private static String readQuietly(Path file) {
+		try {
+			return Files.readString(file, StandardCharsets.UTF_8);
+		} catch (IOException e) {
+			return null;
 		}
 	}
 
@@ -181,13 +215,64 @@ public final class TranslationCache {
 			meta.put("files", hashes);
 			Files.writeString(tmp.resolve(ENTRY_FILE), Json.write(meta, true), StandardCharsets.UTF_8);
 			Path target = root.resolve("entries").resolve(name);
-			deleteQuietly(target);
-			AtomicFiles.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
-			lastUsed.put(name, launch);
-			for (Map.Entry<String, Object> h : hashes.entrySet()) remember(target.resolve(h.getKey()), (String) h.getValue());
-			return new Entry(target, meta);
+			for (int attempt = 1; ; attempt++) {
+				if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+					try {
+						AtomicFiles.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
+						lastUsed.put(name, launch);
+						for (Map.Entry<String, Object> h : hashes.entrySet()) remember(target.resolve(h.getKey()), (String) h.getValue());
+						return new Entry(target, meta);
+					} catch (IOException e) {
+						// Another launch sharing the game directory moved its copy in first: look at it below.
+						if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS) || attempt == STORE_ATTEMPTS) throw e;
+						continue;
+					}
+				}
+				// Already there: stored by another launch sharing the game directory, whose game may be using it (FC-6),
+				// or left by a launch that didn't reuse it. The same files stay as they are; others are replaced.
+				Optional<Entry> same = sameEntry(target, hashes);
+				if (same.isPresent()) {
+					lastUsed.put(name, launch);
+					return same.get();
+				}
+				if (attempt == STORE_ATTEMPTS) throw new IOException("Could not replace the cache entry " + name + ": another launch keeps storing it");
+				setAside(target);
+			}
 		} finally {
 			deleteQuietly(tmp);
+		}
+	}
+
+	/** The entry at {@code dir} when it holds exactly the files {@code hashes} lists, each intact. */
+	private Optional<Entry> sameEntry(Path dir, Map<String, Object> hashes) {
+		try {
+			Map<String, Object> meta = Json.parseObject(Files.readString(dir.resolve(ENTRY_FILE), StandardCharsets.UTF_8));
+			if (!hashes.equals(meta.get("files"))) return Optional.empty();
+			for (Map.Entry<String, Object> h : hashes.entrySet()) {
+				Path file = dir.resolve(h.getKey());
+				if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || !sha256(file).equals(h.getValue())) return Optional.empty();
+			}
+			return Optional.of(new Entry(dir, meta));
+		} catch (IOException | JsonException | RuntimeException e) {
+			return Optional.empty();
+		}
+	}
+
+	/**
+	 * Moves {@code path} out of the way in one step, then deletes it: a launch looking it up meanwhile finds nothing there
+	 * rather than part of it.
+	 */
+	private void setAside(Path path) throws IOException {
+		Path aside = root.resolve("tmp").resolve(path.getFileName() + ".old-" + System.nanoTime());
+		AtomicFiles.move(path, aside, StandardCopyOption.ATOMIC_MOVE);
+		deleteQuietly(aside);
+	}
+
+	private void setAsideQuietly(Path path) {
+		try {
+			setAside(path);
+		} catch (IOException e) {
+			// In use (Windows) or gone already: the next store replaces it, or finds it replaced.
 		}
 	}
 
@@ -215,13 +300,22 @@ public final class TranslationCache {
 	 * in the cache (and intact, when verifying): the parent's content decides the nested jar's, so it needn't be read.
 	 */
 	public Optional<Path> nested(String parentSha, String entry) throws IOException {
-		if (!reuse) return Optional.empty();
 		NestedRef ref = nestedIndex.get(parentSha + "!/" + entry);
 		if (ref == null) return Optional.empty();
-		Path target = root.resolve("nested").resolve(ref.sha256() + ".jar");
-		if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || (verify && !sha256(target).equals(ref.sha256()))) return Optional.empty();
-		nestedIndex.put(parentSha + "!/" + entry, new NestedRef(ref.sha256(), launch));
-		lastUsed.put("nested/" + target.getFileName(), launch);
+		Optional<Path> target = storedNested(ref.sha256());
+		if (target.isPresent()) nestedIndex.put(parentSha + "!/" + entry, new NestedRef(ref.sha256(), launch));
+		return target;
+	}
+
+	/**
+	 * The jar {@link #storeNested} stored with the SHA-256 {@code sha}, if it is still in the cache (and intact, when
+	 * verifying): a caller that knows a jar's hash without reading it (the build recorded it) needn't read it.
+	 */
+	public Optional<Path> storedNested(String sha) throws IOException {
+		if (!reuse || !SHA256.matcher(sha).matches()) return Optional.empty();
+		Path target = root.resolve("nested").resolve(sha + ".jar");
+		if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || (verify && !sha256(target).equals(sha))) return Optional.empty();
+		lastUsed.put("nested/" + sha + ".jar", launch);
 		return Optional.of(target);
 	}
 
@@ -244,6 +338,15 @@ public final class TranslationCache {
 		AtomicFiles.writeAtomically(target, file, root.resolve("tmp"));
 		lastUsed.put("blobs/" + fileName, launch);
 		return target;
+	}
+
+	/**
+	 * Keeps a blob through this launch's cleanup, as reading it would: for one read only when needed (the mapping table,
+	 * PERF-2), which cleanup would otherwise take for unused.
+	 */
+	public void keepBlob(String fileName) {
+		if (!SAFE_NAME.matcher(fileName).matches()) throw new IllegalArgumentException("Unsafe blob name " + fileName);
+		lastUsed.put("blobs/" + fileName, launch);
 	}
 
 	/** Reads a blob stored with {@link #storeBlob}, or empty if absent, damaged (then deleted) or reuse is disabled. */
@@ -271,8 +374,12 @@ public final class TranslationCache {
 
 	/**
 	 * SHA-256 of a file, memoised across launches so unchanged mods are not re-hashed. The memo is keyed by path,
-	 * size, modification time and, where the file system has them, change time and file key (inode): copying a jar
-	 * over another with its old timestamp kept ({@code cp -p}, a restored backup) still changes the change time.
+	 * size, modification time, creation time and, where the file system has them, change time and file key (inode):
+	 * copying a jar over another with its old timestamp kept ({@code cp -p}, a restored backup) still changes the change
+	 * time. Windows has neither, so there the creation time is added, which a jar copied in as a new file gets; one
+	 * written over the old file in place may keep that file's (FC-5). A file changed with all of them kept, its size
+	 * included, isn't seen: the cache trusts its files' metadata as the game trusts the mods folder, rather than read
+	 * every translated jar again on each launch.
 	 */
 	public String sha256(Path file) throws IOException {
 		String key = memoKey(file);
@@ -294,7 +401,7 @@ public final class TranslationCache {
 
 	private static String stamp(Path file) throws IOException {
 		BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-		return attrs.size() + "|" + attrs.lastModifiedTime().toMillis() + "|" + changeTime(file) + "|" + attrs.fileKey();
+		return attrs.size() + "|" + attrs.lastModifiedTime().toMillis() + "|" + attrs.creationTime().toMillis() + "|" + changeTime(file) + "|" + attrs.fileKey();
 	}
 
 	private static Object changeTime(Path file) {
@@ -310,6 +417,59 @@ public final class TranslationCache {
 	 * launches, then persists the index. Call once per launch after all lookups.
 	 */
 	public void finish(int maxUnusedLaunches) {
+		IndexLock lock = indexLock();
+		try {
+			// What other launches sharing the game directory recorded since this one read the index (FC-6).
+			long saved = readIndex(true);
+			cleanAndSave(Math.max(launch, saved), maxUnusedLaunches);
+		} finally {
+			if (lock != null) lock.close();
+		}
+	}
+
+	/** The index's lock; closing its channel releases it. */
+	private record IndexLock(FileChannel channel, FileLock lock) implements AutoCloseable {
+		@Override
+		public void close() {
+			closeQuietly(channel);
+		}
+	}
+
+	/**
+	 * The lock on the index, or null where the file system has none or another launch held it too long (then this one
+	 * goes ahead without it, as before locks).
+	 */
+	private IndexLock indexLock() {
+		FileChannel channel = null;
+		try {
+			channel = FileChannel.open(root.resolve(INDEX_LOCK), StandardOpenOption.CREATE, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
+			long deadline = System.nanoTime() + INDEX_LOCK_WAIT_MS * 1_000_000;
+			while (true) {
+				FileLock lock = channel.tryLock();
+				if (lock != null) return new IndexLock(channel, lock);
+				if (System.nanoTime() > deadline) break;
+				Thread.sleep(20);
+			}
+			notes.add("Another launch held the cache index for over " + INDEX_LOCK_WAIT_MS / 1000 + " s; saved it without waiting");
+		} catch (IOException | OverlappingFileLockException | UnsupportedOperationException e) {
+			// A file system without locks, or this JVM holding it already: as before locks.
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
+		closeQuietly(channel);
+		return null;
+	}
+
+	private static void closeQuietly(FileChannel channel) {
+		if (channel == null) return;
+		try {
+			channel.close();
+		} catch (IOException e) {
+			// Nothing written through it.
+		}
+	}
+
+	private void cleanAndSave(long savedLaunch, int maxUnusedLaunches) {
 		gcDirectory(root.resolve("entries"), "", maxUnusedLaunches);
 		gcDirectory(root.resolve("nested"), "nested/", maxUnusedLaunches);
 		gcDirectory(root.resolve("blobs"), "blobs/", maxUnusedLaunches);
@@ -319,7 +479,7 @@ public final class TranslationCache {
 		nestedIndex.values().removeIf(n -> launch - n.launch() > maxUnusedLaunches);
 		try {
 			Map<String, Object> index = new LinkedHashMap<>();
-			index.put("launch", launch);
+			index.put("launch", savedLaunch);
 			index.put("lastUsed", new TreeMap<>(lastUsed));
 			Map<String, Object> hashes = new TreeMap<>();
 			hashMemo.forEach((k, m) -> hashes.put(k, List.of(m.stamp(), m.sha256(), m.launch())));
@@ -356,6 +516,15 @@ public final class TranslationCache {
 	}
 
 	private long loadIndex() {
+		return readIndex(false);
+	}
+
+	/**
+	 * Reads the index into this launch's maps and returns the launch count it saved.
+	 *
+	 * @param merge whether to keep this launch's own record of an item where it is the newer (when saving)
+	 */
+	private long readIndex(boolean merge) {
 		Path index = root.resolve(INDEX_FILE);
 		if (!Files.isRegularFile(index, LinkOption.NOFOLLOW_LINKS)) return 0;
 		try {
@@ -363,14 +532,15 @@ public final class TranslationCache {
 			Map<String, Object> json = Json.parseObject(Files.readString(index, StandardCharsets.UTF_8), 64 << 20);
 			if (json.get("lastUsed") instanceof Map<?, ?> m) {
 				for (Map.Entry<?, ?> e : m.entrySet()) {
-					if (e.getValue() instanceof Number n) lastUsed.put(String.valueOf(e.getKey()), n.longValue());
+					if (e.getValue() instanceof Number n) lastUsed.merge(String.valueOf(e.getKey()), n.longValue(), Math::max);
 				}
 			}
 			if (json.get("hashes") instanceof Map<?, ?> h) {
 				h.forEach((k, v) -> {
 					if (v instanceof List<?> l && l.size() == 3 && l.get(0) instanceof String stamp && l.get(1) instanceof String sha
 							&& l.get(2) instanceof Number used) {
-						hashMemo.put(String.valueOf(k), new Memo(stamp, sha, used.longValue()));
+						Memo saved = new Memo(stamp, sha, used.longValue());
+						hashMemo.merge(String.valueOf(k), saved, (own, other) -> merge && own.launch() >= other.launch() ? own : other);
 					}
 				});
 			}
@@ -378,13 +548,15 @@ public final class TranslationCache {
 				n.forEach((k, v) -> {
 					if (v instanceof List<?> l && l.size() == 2 && l.get(0) instanceof String sha && SAFE_NAME.matcher(sha + ".jar").matches()
 							&& l.get(1) instanceof Number used) {
-						nestedIndex.put(String.valueOf(k), new NestedRef(sha, used.longValue()));
+						NestedRef saved = new NestedRef(sha, used.longValue());
+						nestedIndex.merge(String.valueOf(k), saved, (own, other) -> merge && own.launch() >= other.launch() ? own : other);
 					}
 				});
 			}
 			return json.get("launch") instanceof Number n ? n.longValue() : 0;
 		} catch (IOException | JsonException e) {
-			notes.add("Cache index was unreadable and has been reset: " + e.getMessage());
+			notes.add(merge ? "Cache index was unreadable; saved this launch's alone: " + e.getMessage()
+					: "Cache index was unreadable and has been reset: " + e.getMessage());
 			return 0;
 		}
 	}
@@ -402,13 +574,40 @@ public final class TranslationCache {
 		}
 	}
 
+	/**
+	 * Deletes a file or directory tree, best effort: a leftover is harmless and cleaned next launch. A link inside it,
+	 * symbolic or a Windows junction (which Java walks as a directory), is deleted itself, never what it leads to (FC-7).
+	 */
 	static void deleteQuietly(Path path) {
 		if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return;
-		// Files.walk does not follow symbolic links; reverse order deletes children before their directory.
-		try (Stream<Path> walk = Files.walk(path)) {
-			for (Path p : (Iterable<Path>) walk.sorted(Comparator.reverseOrder())::iterator) Files.delete(p);
-		} catch (IOException | UncheckedIOException ignored) {
-			// Best effort; a leftover temporary file is harmless and is cleaned next launch.
+		try {
+			Files.walkFileTree(path, new SimpleFileVisitor<>() {
+				@Override
+				public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+					if (!attrs.isOther() && !leavesItsParent(dir)) return FileVisitResult.CONTINUE;
+					Files.delete(dir);
+					return FileVisitResult.SKIP_SUBTREE;
+				}
+
+				@Override
+				public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+					Files.delete(file);
+					return FileVisitResult.CONTINUE;
+				}
+
+				@Override
+				public FileVisitResult visitFileFailed(Path file, IOException e) {
+					return FileVisitResult.CONTINUE;
+				}
+
+				@Override
+				public FileVisitResult postVisitDirectory(Path dir, IOException e) throws IOException {
+					Files.delete(dir);
+					return FileVisitResult.CONTINUE;
+				}
+			});
+		} catch (IOException ignored) {
+			// Best effort, as above.
 		}
 	}
 }
