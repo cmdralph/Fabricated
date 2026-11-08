@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-08: Cached launches measured and shortened, the cache shared between launches, library modules the platform lacks (task 6)
+## 2026-11-08: Cached launches measured and shortened, the cache shared between launches, library modules the platform lacks, the Forge mixins inventoried (task 6)
 
 - **Launch timings:** discovery's log line names how long each phase took (the in-game mod, platform packages, NeoForge
   mods, providers, the vanilla game, the pipeline, the hand-over), and the report has a "Launch timings" section with
@@ -49,6 +49,13 @@ One entry per working session, newest first: what changed, and how it was verifi
   run 42522554523), so those are pinned too (`ci_fabric_renderers`): on 1.21.11 and 26.x the pairs Forge's extended run
   41848003908 passed with, the same builds as NeoForge's on 1.21.11, 26.1.2 and 26.2; 1.21.1, whose ids no kept log
   names, keeps the newest. Both move to `FINDINGS.md`.
+- **Task 4's hand-offs:** `MIXINS.md` has the Forge branches' configs, the test mods' included (84 mixins in 24
+  configs on `forge`, 85 in 13 on `forge-legacy`), generated from their sources in its per-config tables' format, so
+  `scripts/check-mixin-inventory.py` passes on each branch. Found on the way: the Forge configs but one leave
+  `overwrites.requireAnnotations` unset (**MIX-3**, open). **PERF-4** (a Fabric model's first throw in a chunk
+  section held a Forge 47 worker about 1.4 s): Indigo builds vanilla's crash report for the throw, which gathers the
+  system's details, before Fabricated's guard sees it; Forge 61 to 66 guard Indigo's own call into the model. Decided:
+  no change before the beta, as it comes with a broken model and rule 8 pays it once per model class.
 - **Cleanup:** access widener records no longer keep the `transitive` flag nothing read. Decided, kept: the
   `fabricapi-overrides` copies between versions (ten of the 19 files are identical copies of four classes, and the
   import script applies each version's to its own import) and the retired config keys, so 0.5 configs don't warn.
@@ -62,8 +69,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   gate on the Fabric builds of Sodium and Iris failed on Sodium's new beta (CI-4); the pinned pairs are checked by the
   extended run on #316's last commit.
 - **Next:** the Forge branches' task 6 changes (the shared code by the sync script, their loaders on the lazy mapping
-  table, CI-3 in their smoke scripts, and task 4's hand-offs: the Forge configs in `MIXINS.md` and what a Fabric model's
-  throw in a chunk section costs on Forge 47), then task 7, the release.
+  table and the in-game mod found by its recorded hash, the discovery phases' timings, CI-3 in their smoke scripts,
+  CI-4's pins for the difficult mods' Sodium and Iris), then task 7, the release.
 
 ## 2026-11-04: Fabric mods' command argument types and attribute modifications on a client with Forgified Fabric API (PROVIDER-12, PROVIDER-18), CORPUS-48 closed, PRE-19 verified (task 5)
 
