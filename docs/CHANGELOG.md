@@ -3,6 +3,35 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-08: The v0.6.0-beta release: nested jars bounded per launch (SEC-5), the ship criteria audited, the release notes (task 7)
+
+- **SEC-5** (P3), reopened and fixed: task 6 closed it as won't fix, but the beta's stability bar asks that the limits
+  on nested jars hold across all the jars of a launch (item 4), so the decision didn't stand. All the top-level jars of
+  a launch now share one budget for what their nested jars extract to the cache, eight top-level jars' worth (8192
+  jars, and 4 GiB with the default `maxTotalUncompressedBytes`), and each keeps its own (1024 jars and that limit). A
+  nested jar past either is rejected, the report naming the limit, and takes nothing from either; before, a rejected
+  jar still counted against its top-level jar. The size is several times a large pack's: a top-level jar's own budget
+  was already far above any mod's, Fabric API nesting one jar per module. `CandidateScannerTest` covers fourteen jars
+  each within its own budget, of whose libraries the launch's takes twelve. SEC-5 moves to the top of `FINDINGS.md`.
+- **Task 6 on the Forge branches**, done: #317 into `forge` (`e36f420`) and #318 into `forge-legacy` (`b76710d`), synced
+  from #316: the loaders on the lazy mapping table and the in-game mod found by its recorded hash, the discovery
+  phases' timings in the report, CI-3 in their smoke scripts and CI-4's pins on Forge 61 to 66. Verified in PR runs
+  42529794259 and 42529805694 and extended runs 42529812463 and 42529814940: every job passed.
+- **The ship criteria audited** against the release heads before this change (`main`'s extended run 42527530813, the
+  Forge branches' above): every gate passed on every version, and no P0 or P1 is open. The informational runs' misses
+  are the corpora's: on 1.21.1 the advanced client stays on Origins' screen (CORPUS-66) and the corpus client hung as
+  mc-runtime-test stopped it (CORPUS-48, this run only; the run before passed), and the advanced server's `/reload`
+  fails in Wover's code, on Fabric as here (**CORPUS-113**, new, open, not Fabricated's: read in Wover's source, its
+  biome tags' handler drops the context the biome registry's bootstrap made once the tags first load, and a `/reload`
+  loads the tags again without that bootstrap). Which informational targets become gates before the beta is the
+  owner's call (criterion 2), asked today.
+- **The release notes** (`docs/releases/v0.6.0-beta.md`): what changed since v0.5.1-alpha on NeoForge, Forge 61 to 66
+  and Forge 47, Fabric's renderer API by platform, upgrading and the known limits. `README.md`'s status says beta, and
+  `ARCHITECTURE.md` the launch's budget.
+- **Verified:** core's tests (`./gradlew -Pfabricated.coreOnly=true :core:test`).
+- **Next:** this change synced to `forge` and `forge-legacy`, two extended runs on each branch's release head, then the
+  draft release for the owner to check and publish.
+
 ## 2026-11-08: Cached launches measured and shortened, the cache shared between launches, library modules the platform lacks, the Forge mixins inventoried (task 6)
 
 - **Launch timings:** discovery's log line names how long each phase took (the in-game mod, platform packages, NeoForge
