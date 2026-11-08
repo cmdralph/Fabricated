@@ -28,8 +28,10 @@ class AccessWidenerTest {
 		assertEquals("named", v1.namespace());
 		assertEquals(3, v1.entries().size());
 
+		// A transitive- directive is the plain one at runtime.
 		AccessWidenerFile v2 = AccessWidenerParser.parse("accessWidener v2 intermediary\ntransitive-extendable class net/minecraft/class_1\n");
-		assertTrue(v2.entries().getFirst().transitive());
+		assertEquals(new AccessWidenerFile.Entry(AccessWidenerFile.Access.EXTENDABLE, AccessWidenerFile.Kind.CLASS, "net/minecraft/class_1", null, null, 2),
+				v2.entries().getFirst());
 
 		AccessWidenerFile ct = AccessWidenerParser.parse("""
 				classTweaker v1 official
@@ -48,7 +50,6 @@ class AccessWidenerTest {
 				""");
 		assertEquals(1, ct2.entries().size());
 		assertEquals(List.of("NEW_ONE", "NEW_TWO"), ct2.enumExtensions().stream().map(AccessWidenerFile.EnumExtension::constant).toList());
-		assertTrue(ct2.enumExtensions().getLast().transitive());
 	}
 
 	@Test

@@ -225,6 +225,12 @@ def versionProperties = tasks.register('fabricatedVersionProperties', WritePrope
     property 'namespace', project.namespace
     property 'mixin.fallback', project.mixin_fallback
     property 'mixin.lowest', project.mixin_lowest
+    // Names the in-game mod's copy in the translation cache, so that a launch finding it there reads none of the jar (PERF-2).
+    def gameModFile = tasks.named('gameModJar', Jar).flatMap { it.archiveFile }
+    inputs.files(gameModFile)
+    property 'gamemod.sha256', providers.provider {
+        MessageDigest.getInstance('SHA-256').digest(gameModFile.get().asFile.bytes).encodeHex().toString()
+    }
 }
 
 // --- Intermediary (obfuscated Minecraft versions only) ------------------------------------------------

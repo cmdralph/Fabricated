@@ -81,6 +81,7 @@ import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.Refmap;
 import io.github.cmdralph.fabricated.core.remap.JarRemapper;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
+import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.remap.Supertypes;
 import io.github.cmdralph.fabricated.core.remap.TokenRemapper;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
@@ -159,6 +160,16 @@ public final class ModTranslator {
 		this.privateReads = PrivateFieldReads.of(env.game(), env.descriptor().privateFields(), env.bridgedFields());
 	}
 
+	/** The intermediary table: the first translation of a launch loads it (PERF-2). */
+	private MappingTable mappings() throws TranslationException {
+		try {
+			return env.mappings().table();
+		} catch (MappingException e) {
+			throw new TranslationException("The mappings to Minecraft's names could not be loaded: " + e.getMessage(), "Reinstall "
+					+ env.descriptor().loaderName() + " with its installer (it leaves the mapping files among the libraries), or set \"mojangMappingsPath\" in config/fabricated.json.");
+		}
+	}
+
 	/**
 	 * @param plannedSkips the entries of {@code override}'s {@code skipMixins} that come from Fabricated's Fabric API plan:
 	 *                     made for one Fabric API version, so one naming no mixin of another version isn't reported
@@ -195,12 +206,14 @@ public final class ModTranslator {
 				Map<String, byte[]> remapped = null;
 				List<String> notes = new ArrayList<>();
 				TokenRemapper tokens = null;
+				MappingTable table = null;
 				if (env.namespace() == Namespace.INTERMEDIARY) {
-					tokens = new TokenRemapper(env.mappings());
+					table = mappings();
+					tokens = new TokenRemapper(table);
 					Set<String> refmaps = collectRefmapPaths(candidate.metadata(), archive);
 					// The game's classes, which the mod's may inherit from (CORPUS-86).
-					Supertypes game = env.game() == null ? Supertypes.NONE : Supertypes.ofRuntime(env.game()::supertypes, env.mappings());
-					JarRemapper.Result result = new JarRemapper(env.mappings(), game).remap(archive, refmaps);
+					Supertypes game = env.game() == null ? Supertypes.NONE : Supertypes.ofRuntime(env.game()::supertypes, table);
+					JarRemapper.Result result = new JarRemapper(table, game).remap(archive, refmaps);
 					remapped = result.files();
 					if (!result.strippedSignatureFiles().isEmpty()) {
 						notes.add("Removed jar signature files (signatures cannot survive remapping): " + result.strippedSignatureFiles());
@@ -238,7 +251,8 @@ public final class ModTranslator {
 				}
 				Collection<String> classEntries = remapped != null ? remapped.keySet() : archive.classEntryNames();
 				// Fabric ASM's enum additions, as enum mixins of a config of their own (CORPUS-80).
-				List<MixinEntry> generatedConfigs = earlyRisers(candidate, files, classEntries, overlay, classes, findings);
+				List<MixinEntry> generatedConfigs = earlyRisers(candidate, files, classEntries, overlay, classes, findings,
+						table != null ? table::mapClass : UnaryOperator.identity());
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files, classEntries, overlay, findings,
 						installedClasses, enumEntries, enumTargets, classes, bridges, notes, widened, generatedConfigs);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
@@ -886,10 +900,11 @@ public final class ModTranslator {
 	 * arguments and the mod's supplier methods those call made reachable): the platform's way with enum mixins then adds
 	 * them, as it would the mod's own (CORPUS-80: Farmer's Delight's recipe book types on Forge 47, whose Fabric ASM plugin
 	 * can't run there). An early riser it can't read is reported, and adds nothing, as is Fabric ASM's access transformer
-	 * ({@code silky.at}), which nothing applies. Returns the config's entry, if any.
+	 * ({@code silky.at}), which nothing applies. Returns the config's entry, if any; {@code mapClass} maps a class name the
+	 * mod's metadata gives to the game's.
 	 */
 	private List<MixinEntry> earlyRisers(Candidate candidate, FileView files, Collection<String> entries, Map<String, byte[]> overlay,
-			Function<String, ClassNode> classes, List<PreflightFinding> findings) throws ArchiveException {
+			Function<String, ClassNode> classes, List<PreflightFinding> findings, UnaryOperator<String> mapClass) throws ArchiveException {
 		if (files.read(EarlyRisers.ACCESS_TRANSFORMER) != null) {
 			findings.add(new PreflightFinding(Severity.WARN, EarlyRisers.ACCESS_TRANSFORMER, null, "Fabric ASM's access transformer isn't applied:"
 					+ " Fabric ASM's plugin, which applies it on Fabric, can't run on " + env.descriptor().loaderName() + ", so the classes and methods"
@@ -897,7 +912,6 @@ public final class ModTranslator {
 		}
 		List<EntrypointSpec> specs = candidate.metadata().entrypoints().getOrDefault(EarlyRisers.ENTRYPOINT, List.of());
 		if (specs.isEmpty()) return List.of();
-		UnaryOperator<String> mapClass = env.namespace() == Namespace.INTERMEDIARY ? env.mappings()::mapClass : UnaryOperator.identity();
 		String loader = env.descriptor().loaderName();
 		List<EarlyRisers.Addition> additions = new ArrayList<>();
 		List<String> risers = new ArrayList<>();
@@ -1844,15 +1858,13 @@ public final class ModTranslator {
 		m.put("target", i.target());
 		m.put("interface", i.interfaceName());
 		m.put("signature", i.genericSignature());
-		m.put("transitive", i.transitive());
 		m.put("line", i.line());
 		return m;
 	}
 
 	private static InjectedInterface injectionFromJson(Map<?, ?> m) {
 		return new InjectedInterface(String.valueOf(m.get("target")), String.valueOf(m.get("interface")),
-				String.valueOf(m.get("signature")), Boolean.TRUE.equals(m.get("transitive")),
-				m.get("line") instanceof Number n ? n.intValue() : 0);
+				String.valueOf(m.get("signature")), m.get("line") instanceof Number n ? n.intValue() : 0);
 	}
 
 

@@ -7,7 +7,7 @@ import java.util.TreeMap;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
-import io.github.cmdralph.fabricated.core.remap.MappingTable;
+import io.github.cmdralph.fabricated.core.remap.LazyMappingTable;
 
 /**
  * Everything about the running game that affects translation output.
@@ -20,7 +20,8 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
  * @param mixinExtrasVersion  running MixinExtras version, e.g. {@code 0.5.3}, or {@code null} when unknown
  * @param fabricatedBuild     Fabricated's version and the digest of its code and data (part of cache keys: a
  *                            translation is reused only by the build that made it)
- * @param mappings            intermediary table, or {@code null} when {@code namespace} is official
+ * @param mappings            intermediary table, loaded when a translation first needs it, or {@code null} when
+ *                            {@code namespace} is official
  * @param mappingsHash        hash identifying {@code mappings}, or {@code "none"}
  * @param game                index of runtime game classes (Minecraft + NeoForge)
  * @param untransformable     classes loaded outside NeoForge's transforming class loader (the JDK, libraries)
@@ -48,7 +49,7 @@ public record TranslationEnvironment(
 		String mixinExtrasVersion,
 		String lowestMixinBehavior,
 		String fabricatedBuild,
-		MappingTable mappings,
+		LazyMappingTable mappings,
 		String mappingsHash,
 		ClassIndex game,
 		ClassBytesSource untransformable,
