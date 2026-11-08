@@ -116,4 +116,28 @@ class CandidateScannerTest {
 		assertEquals(List.of("lib-a", "mid", "top"), ids);
 		assertTrue(result.rejected().stream().anyMatch(r -> r.origin().endsWith("!/b.jar") && r.reason().contains("in all")), result.rejected().toString());
 	}
+
+	/** SEC-5: each top-level jar's nested jars fit its own budget, and many such jars still share the launch's. */
+	@Test
+	void nestedJarsOfAllTopLevelJarsShareTheLaunchsBudget(@TempDir Path game) throws Exception {
+		java.util.Random random = new java.util.Random(2);
+		long perArchive = 64 << 10;
+		List<Path> tops = new java.util.ArrayList<>();
+		for (int i = 0; i < 14; i++) {
+			byte[] payload = new byte[40 << 10];
+			random.nextBytes(payload);
+			byte[] lib = TestJars.create().fabricModJson(TestJars.modJson("lib-" + i, "1.0", "")).bytes("p.bin", payload).toBytes();
+			tops.add(TestJars.create().fabricModJson(TestJars.modJson("top-" + i, "1.0", "\"jars\":[{\"file\":\"lib.jar\"}]"))
+					.bytes("lib.jar", lib).write(game.resolve(String.format("top-%02d.jar", i))));
+		}
+		ArchiveLimits limits = new ArchiveLimits(1 << 20, 1 << 20, perArchive, 100, 100, 3);
+		CandidateScanner.Result result = new CandidateScanner(new TranslationCache(game, true, true), limits).scan(tops);
+		// Eight archives' worth, 512 KiB, holds twelve of the 40 KiB libraries; the thirteenth and fourteenth are left out.
+		long libs = result.candidates().stream().filter(c -> c.id().startsWith("lib-")).count();
+		assertEquals(12, libs, result.rejected().toString());
+		assertEquals(List.of("top-12.jar!/lib.jar", "top-13.jar!/lib.jar"), result.rejected().stream().map(CandidateScanner.Rejected::origin).toList());
+		assertTrue(result.rejected().stream().allMatch(r -> r.reason().startsWith("nested jars of this launch's mods exceed the limit of 8192 jars")),
+				result.rejected().toString());
+		assertEquals(14, result.candidates().stream().filter(c -> c.id().startsWith("top-")).count(), "the jars nesting them still load");
+	}
 }
