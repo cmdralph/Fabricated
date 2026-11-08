@@ -49,6 +49,14 @@ One entry per working session, newest first: what changed, and how it was verifi
   run 42522554523), so those are pinned too (`ci_fabric_renderers`): on 1.21.11 and 26.x the pairs Forge's extended run
   41848003908 passed with, the same builds as NeoForge's on 1.21.11, 26.1.2 and 26.2; 1.21.1, whose ids no kept log
   names, keeps the newest. Both move to `FINDINGS.md`.
+- **CI-5** (CI only): the test mod's client block entity check missed on both of 26.1.2's clients with the Fabric
+  builds of Sodium and Iris in extended run 42524794672, which stopped having loaded no block entity, where the same
+  builds passed it in extended run 42522554523. Its chest went two blocks south of the joining player, where the
+  renderer API test mod puts its terrain block for a player facing south, as a new player does: both are placed in
+  the same tick, the terrain block replaced the chest before the client was sent it, and a world with no other block
+  entity near spawn left the check nothing to see (in both clients the terrain block was at the chest's place). The
+  chest now goes behind the player. PROVIDER-19's miss on the client with Forgified Fabric API, which has that test
+  mod too, is likely the same. CI-5 moves to `FINDINGS.md`.
 - **Task 4's hand-offs:** `MIXINS.md` has the Forge branches' configs, the test mods' included (84 mixins in 24
   configs on `forge`, 85 in 13 on `forge-legacy`), generated from their sources in its per-config tables' format, so
   `scripts/check-mixin-inventory.py` passes on each branch. Found on the way: the Forge configs but one leave
@@ -66,8 +74,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   `FINDINGS.md`.
 - **Verified:** core's tests; PR run 42521740905 (every version's server, client and mods jobs, the 26.x Sodium gate
   with the pinned pairs among them); extended run 42522554523 on `476e9a2`: every job passed but 26.3's mods, whose
-  gate on the Fabric builds of Sodium and Iris failed on Sodium's new beta (CI-4); the pinned pairs are checked by the
-  extended run on #316's last commit.
+  gate on the Fabric builds of Sodium and Iris failed on Sodium's new beta (CI-4); extended run 42524794672 on
+  `8f7f353`, with the Fabric builds pinned: every job passed, 26.3's mods included, but 26.1.2's mods (CI-5); PR run
+  42526436993 on `66894c7`. CI-5's fix is checked by the PR run and the extended run on #316's last commit.
 - **Next:** the Forge branches' task 6 changes (the shared code by the sync script, their loaders on the lazy mapping
   table and the in-game mod found by its recorded hash, the discovery phases' timings, CI-3 in their smoke scripts,
   CI-4's pins for the difficult mods' Sodium and Iris), then task 7, the release.

@@ -13,7 +13,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 
 /**
  * Client half of {@link BlockEntityEventsTest}: once the client has left its world (mc-runtime-test disconnects
- * before quitting), every block entity it loaded, the chest next to the player at least, has been unloaded. NeoForge
+ * before quitting), every block entity it loaded, the chest behind the player at least, has been unloaded. NeoForge
  * posts no unload for the block entities of a level the client drops. Checked at the end of the tick the client left
  * its world in, or as it stops, for a client that quit before that tick ended (run 673's Sodium client on 26.2 reported
  * neither way). A client still in its world as it stops drops it in {@code Minecraft.destroy()}, after
