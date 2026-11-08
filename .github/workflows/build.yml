@@ -985,8 +985,9 @@ jobs:
       - name: Server with the mod corpus (informational)
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
-        # A second launch measures discovery with the corpus cached (task 6's launch baselines).
-        run: SMOKE_WARM_LAUNCH=1 ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" || true
+        # A second launch measures discovery with the corpus cached (task 6's launch baselines); the summary repeats both
+        # launches' timings, which the job log's tail no longer holds by then.
+        run: SMOKE_WARM_LAUNCH=1 ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" | tee "$RUNNER_TEMP/server-corpus.txt" || true
       - name: Client with the mod corpus (informational)
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
@@ -1178,6 +1179,7 @@ jobs:
           [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt" | cut -c1-300; }
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
           [ -f "$RUNNER_TEMP/summary-advanced.txt" ] && { echo "== advanced corpus fetched"; cut -c1-200 "$RUNNER_TEMP/summary-advanced.txt"; }
+          [ -f "$RUNNER_TEMP/server-corpus.txt" ] && { echo "== corpus server's launches (cold, then with everything cached)"; grep -E "^(Discovery|Launch timings), (cold|warm)" "$RUNNER_TEMP/server-corpus.txt" | cut -c1-400; }
           [ -f "$RUNNER_TEMP/summary-neoforge-data.txt" ] && { echo "== NeoForge biome and structure modifiers in the advanced corpus's Fabric jars"; head -40 "$RUNNER_TEMP/summary-neoforge-data.txt"; }
           for run in client client-fapi client-coexist client-ffapi client-sodium client-shaders client-sodium-fabric client-shaders-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-essential client-flashback client-advanced; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
