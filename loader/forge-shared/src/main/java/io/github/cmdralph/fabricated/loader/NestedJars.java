@@ -5,6 +5,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.archive.DeterministicJarWriter;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
@@ -20,6 +24,7 @@ import net.minecraftforge.fml.loading.FMLPaths;
  * translation cache, content-addressed, and written once.
  */
 final class NestedJars {
+	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	/** The language provider ({@code FMLModType: LANGPROVIDER}). */
 	static final String LANG_PROVIDER = "lang-provider.jar";
 	/** Fabricated's in-game mod. */
@@ -36,10 +41,20 @@ final class NestedJars {
 
 	/** The path of a nested jar in {@code cache}, copied there if it isn't yet. */
 	static Path extract(String name, TranslationCache cache) throws IOException {
+		// The in-game mod's copy is found by the hash its build recorded, without reading the jar (PERF-2); a jar the build
+		// recorded none for, or whose copy isn't in the cache, is read and stored by its own.
+		String recorded = name.equals(GAME_MOD) ? FabricatedInfo.get().gameModSha256() : "";
+		if (!recorded.isEmpty()) {
+			Optional<Path> stored = cache.storedNested(recorded);
+			if (stored.isPresent()) return stored.get();
+		}
 		byte[] data = FabricatedInfo.readOptional(name);
 		if (data == null) throw new IOException("The Fabricated jar is missing " + name);
 		Path path = cache.storeNested(data);
 		if (!Files.isRegularFile(path)) throw new IOException("Could not extract " + name);
+		if (!recorded.isEmpty() && !TranslationCache.nestedSha(path).equals(recorded)) {
+			LOGGER.warn("Fabricated's {} isn't the one its build recorded: the Fabricated jar may be damaged", name);
+		}
 		return path;
 	}
 
