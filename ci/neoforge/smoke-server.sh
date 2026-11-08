@@ -255,25 +255,33 @@ if [ -n "$extra" ] && [ -f "$extra/standin-forgified-fabric-api.jar" ]; then
 	else
 		echo "PASS: the linkage check counts the classes of the modules other mods provide"
 	fi
-	# A second launch, up to the end of discovery: every translation comes from the cache.
-	if [ "$status" = "started" ]; then
-		cp logs/fabric-bridge-report.txt fabric-bridge-report-cold.txt
-		exec 3<>console
-		./run.sh nogui < console > server-warm.out 2>&1 &
-		pid=$!
-		for _ in $(seq 1 60); do grep -q "Fabricated discovery finished" server-warm.out 2>/dev/null && break; kill -0 "$pid" 2>/dev/null || break; sleep 2; done
-		sleep 2
-		# run.sh starts Java as its child.
-		pkill -P "$pid" 2>/dev/null || true
-		kill "$pid" 2>/dev/null || true
-		wait "$pid" 2>/dev/null || true
-		exec 3>&-
-		echo "Discovery: cold $(grep -o 'discovery finished in [0-9]* ms' server.out | head -1), warm $(grep -o 'discovery finished in [0-9]* ms' server-warm.out | head -1)"
-		if grep -q "Fabricated discovery finished" server-warm.out && ! grep -q "translated in" logs/fabric-bridge-report.txt; then
-			echo "PASS: a second launch takes every translation from the cache"
-		else
-			echo "FAIL: a second launch takes every translation from the cache"; { grep "translated in" logs/fabric-bridge-report.txt || true; }; fail=1
-		fi
+fi
+# A second launch, up to the end of discovery: every translation comes from the cache. The stand-ins' run gates it; with
+# SMOKE_WARM_LAUNCH set (Fabric API's run, the corpus'), it measures how long a launch with everything cached takes.
+if [ "$status" = "started" ] && { $standins || [ -n "${SMOKE_WARM_LAUNCH:-}" ]; }; then
+	cp logs/fabric-bridge-report.txt fabric-bridge-report-cold.txt
+	exec 3<>console
+	./run.sh nogui < console > server-warm.out 2>&1 &
+	pid=$!
+	for _ in $(seq 1 60); do grep -q "Fabricated discovery finished" server-warm.out 2>/dev/null && break; kill -0 "$pid" 2>/dev/null || break; sleep 2; done
+	sleep 2
+	# run.sh starts Java as its child.
+	pkill -P "$pid" 2>/dev/null || true
+	kill "$pid" 2>/dev/null || true
+	wait "$pid" 2>/dev/null || true
+	exec 3>&-
+	# Each launch's discovery time and phases, and the pipeline's phases in its report.
+	echo "Discovery, cold: $(grep -o 'discovery finished in .*' server.out | head -1 | cut -c1-400)"
+	echo "Discovery, warm: $(grep -o 'discovery finished in .*' server-warm.out | head -1 | cut -c1-400)"
+	for launch in cold warm; do
+		report=logs/fabric-bridge-report.txt
+		[ "$launch" = cold ] && report=fabric-bridge-report-cold.txt
+		awk -v launch="$launch" '/^== Launch timings ==/ { show = 1; next } /^$/ { show = 0 } show { print "Launch timings, " launch ":" $0 }' "$report" | cut -c1-400
+	done
+	if grep -q "Fabricated discovery finished" server-warm.out && ! grep -q "translated in" logs/fabric-bridge-report.txt; then
+		echo "PASS: a second launch takes every translation from the cache"
+	else
+		echo "FAIL: a second launch takes every translation from the cache"; { grep "translated in" logs/fabric-bridge-report.txt || true; }; fail=1
 	fi
 fi
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.

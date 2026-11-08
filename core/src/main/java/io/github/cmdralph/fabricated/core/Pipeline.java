@@ -47,6 +47,7 @@ import io.github.cmdralph.fabricated.core.remap.JarRemapper;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.remap.Supertypes;
+import io.github.cmdralph.fabricated.core.report.LaunchPhases;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.report.Report.ModRow;
 import io.github.cmdralph.fabricated.core.report.Report.Status;
@@ -336,6 +337,8 @@ public final class Pipeline {
 	private final Set<String> ignoredPatches = new HashSet<>();
 	/** The mixins that failed as Mixin applied them in an earlier launch, by Fabric mod id: each one's {@code skipMixins} entry and why. */
 	private final Map<String, Map<String, String>> failedLastLaunch = new HashMap<>();
+	/** Where the run's time goes, in the report (a launch with everything cached still scans and checks). */
+	private final LaunchPhases phases = new LaunchPhases();
 
 	private Pipeline(Input in) {
 		this.in = in;
@@ -461,6 +464,7 @@ public final class Pipeline {
 		scan.rejected().forEach(r -> report.mod(new ModRow(r.origin(), "", "", Status.REJECTED, r.reason(), "Make sure this is an unmodified Fabric mod jar for this Minecraft version.")));
 		scan.notes().forEach(n -> report.line("Discovery notes", n));
 		List<Candidate> eligible = withoutOrphanedDownloads(filter(scan.candidates()), downloads, scan.candidates());
+		phases.end("scan");
 		loadMixinFailures(scan.candidates());
 		for (FabricApiPlan.Module m : plan.modules().values()) {
 			NeoForgeMod provider = providedElsewhere.get(m.id());
@@ -491,7 +495,8 @@ public final class Pipeline {
 		}
 		FabricLoaderRuntime runtime = new FabricLoaderRuntime(side, in.gameDir(), in.configDir(), in.minecraftVersion(), in.development(),
 				mappingTable != null ? MappingResolvers.intermediary(mappingTable) : MappingResolvers.identity(), in::launchArguments);
-		if (eligible.isEmpty()) return assemble(runtime, new Rounds());
+		phases.end("mappings");
+		if (eligible.isEmpty()) return timed(assemble(runtime, new Rounds()));
 
 		// The game as the platform's own transformers leave it as it loads, as Mixin sees it (CORPUS-61), and as Fabricated's
 		// own mixins leave it: with the vanilla fields they restore, which Fabric mods use (PIP-1).
@@ -513,6 +518,7 @@ public final class Pipeline {
 				// In the game's names: on 1.21.11 the loader reads the obfuscated jar through Mojang's mappings.
 				in.vanillaGame().classes(), installed, installed.isEmpty() ? game : new ClassIndex(gameClasses.or(installed)), unsupportedPackages(scan.candidates()),
 				in.descriptor(), restored.bridgedFields());
+		phases.end("game classes");
 		Rounds rounds = new Rounds();
 		try {
 			rounds.run(scan.candidates(), eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
@@ -531,7 +537,15 @@ public final class Pipeline {
 				}
 			}
 		}
-		return assemble(runtime, rounds);
+		phases.end("translation");
+		return timed(assemble(runtime, rounds));
+	}
+
+	/** The result, once its phases' times are in its report. */
+	private Result timed(Result result) {
+		phases.end("assembly");
+		report.line(LaunchPhases.SECTION, "Fabric mods: " + phases + " (" + phases.totalMillis() + " ms)");
+		return result;
 	}
 
 	/**

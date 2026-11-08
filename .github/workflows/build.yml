@@ -229,7 +229,8 @@ jobs:
             python3 ci/nested-jar.py team_reborn_energy "$RUNNER_TEMP/energy" "$RUNNER_TEMP"/energy-hosts/*.jar > "$RUNNER_TEMP/energy-source.txt" || true
           fi
           cp "$RUNNER_TEMP"/energy/*.jar "$RUNNER_TEMP/extra/" 2>/dev/null || true
-          ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
+          # A second launch measures discovery with everything cached (task 6's launch baselines).
+          SMOKE_WARM_LAUNCH=1 ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
           # Fabric's load conditions in a data loader of vanilla's JSON kind, which NeoForge 21.1 leaves as vanilla's: the
           # test mod's file whose conditions fail must not be read (CORPUS-49). A gate.
           if [ "${{ matrix.target.minecraft }}" = 1.21.1 ] && ! grep -q "FABRICATED-TEST json loader conditions OK" "$RUNNER_TEMP/server-fapi/server.out"; then
@@ -982,7 +983,8 @@ jobs:
       - name: Server with the mod corpus (informational)
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
-        run: ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" || true
+        # A second launch measures discovery with the corpus cached (task 6's launch baselines).
+        run: SMOKE_WARM_LAUNCH=1 ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" || true
       - name: Client with the mod corpus (informational)
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true

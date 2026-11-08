@@ -41,6 +41,7 @@ import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.OfficialClasses;
+import io.github.cmdralph.fabricated.core.report.LaunchPhases;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.DownloadedMods;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
@@ -80,10 +81,10 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 	@Override
 	public void scanMods(List<IModFile> loadedMods, IDiscoveryPipeline pipeline) {
 		if (FabricatedState.get() != null) return;
-		long start = System.nanoTime();
+		LaunchPhases phases = new LaunchPhases();
 		try {
-			run(loadedMods, pipeline);
-			LOGGER.info("Fabricated discovery finished in {} ms", (System.nanoTime() - start) / 1_000_000);
+			run(loadedMods, pipeline, phases);
+			LOGGER.info("Fabricated discovery finished in {} ms ({})", phases.totalMillis(), phases);
 		} catch (Throwable t) {
 			if (t instanceof VirtualMachineError vme && !(t instanceof StackOverflowError)) throw vme;
 			// The state is published just before the first Fabric mod is handed to NeoForge.
@@ -100,7 +101,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		}
 	}
 
-	private void run(List<IModFile> loadedMods, IDiscoveryPipeline pipeline) throws IOException, JsonException {
+	private void run(List<IModFile> loadedMods, IDiscoveryPipeline pipeline, LaunchPhases phases) throws IOException, JsonException {
 		String refusal = FabricCandidateLocator.refusal();
 		if (refusal != null) {
 			pipeline.addIssue(ModLoadingIssue.error(MESSAGE, refusal));
@@ -138,6 +139,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		Optional<IModFile> devGameMod = find(loadedMods, ModIds.FABRICATED);
 		Path gameModJar = devGameMod.isPresent() || fabricJars.isEmpty() ? null : extractGameMod(cache);
 		List<Path> fabricatedFiles = gameModJar != null ? List.of(gameModJar) : devGameMod.map(file -> List.of(file.getFilePath())).orElse(List.of());
+		phases.end("in-game mod");
 
 		// Classes visible to NeoForge's non-transforming loaders (JDK and libraries such as DataFixerUpper or
 		// Brigadier). Mixins targeting them never apply, so pre-flight reports them instead of letting the mod
@@ -163,6 +165,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 				}
 			}
 		}
+		phases.end("platform packages");
 		ClassBytesSource nativeApi = ClassBytesSource.EMPTY;
 		List<InstalledClasses.Jar> fabricApi = List.of();
 		// Interfaces the in-game mod's mixins add to game classes (Fabric API's injected interfaces).
@@ -208,6 +211,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 
 			// Fabric mixins may target the classes of Fabricated's Fabric API and of the NeoForge mods (an addon's mod).
 			NeoForgeMods.Found neoForgeMods = NeoForgeMods.of(loadedMods, !fabricJars.isEmpty(), fabricApi);
+			phases.end("NeoForge mods");
 
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
@@ -246,6 +250,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 				neoForgeMods.providers().forEach(p -> platformPackages.addAll(p.packages()));
 				platformPackages.addAll(neoForgeMods.libraryPackages());
 			}
+			phases.end("providers");
 
 			Pipeline.VanillaGame vanilla = fabricJars.isEmpty() ? Pipeline.VanillaGame.NONE
 					: VanillaGameJar.find(minecraft.getFilePath(), mcVersion, client, cache, vanillaJars);
@@ -260,6 +265,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 					}
 				}), vanilla.location() + ", in Mojang's names through its mappings");
 			}
+			phases.end("vanilla game");
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
 					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), info.build(), !Fml.production(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, neoMods, neoForgeMods.classes(),
@@ -274,6 +280,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 				result.report().line("Fabric API providers", "Fabricated's in-game mod leaves out " + standDown.packages().size()
 						+ " package(s) of the modules other mods provide, the mixin configs " + standDown.mixinConfigs() + " and the mixins " + standDown.mixins());
 			}
+			phases.end("pipeline");
 		} finally {
 			closeAll(vanillaJars);
 		}
@@ -368,6 +375,8 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		int reported = cache.notes().size();
 		cache.finish(config.maxUnusedLaunches());
 		for (String note : cache.notes().subList(reported, cache.notes().size())) result.report().line("Cache", note);
+		phases.end("hand-over");
+		result.report().line(LaunchPhases.SECTION, "Discovery: " + phases + " (" + phases.totalMillis() + " ms)");
 		state.writeReport();
 	}
 
