@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -152,5 +153,69 @@ class TranslationCacheTest {
 			assertTrue(Files.isRegularFile(gameMod), "game mod kept on launch " + launch);
 			assertTrue(Files.isRegularFile(library), "nested library kept on launch " + launch);
 		}
+	}
+
+	/** FC-6: a launch sharing the game directory that stores an entry another stored first keeps that one's files. */
+	@Test
+	void keepsTheSameEntryAnotherLaunchStored(@TempDir Path game) throws Exception {
+		String name = TranslationCache.entryName("shared_mod", "33".repeat(32));
+		TranslationCache first = new TranslationCache(game, true, true);
+		TranslationCache second = new TranslationCache(game, true, true);
+		// Both missed it, then translated it: the first stores, and its game may be using the files.
+		assertTrue(first.lookup(name).isEmpty());
+		assertTrue(second.lookup(name).isEmpty());
+		TranslationCache.Entry stored = first.store(name, Map.of("overlay.jar", new byte[] {1, 2}), Map.of("by", "first"));
+		Object fileKey = Files.readAttributes(stored.file("overlay.jar"), BasicFileAttributes.class).fileKey();
+		TranslationCache.Entry again = second.store(name, Map.of("overlay.jar", new byte[] {1, 2}), Map.of("by", "second"));
+		assertEquals(stored.dir(), again.dir());
+		assertEquals("first", again.metadata().get("by"), "the entry already there is kept");
+		assertEquals(fileKey, Files.readAttributes(again.file("overlay.jar"), BasicFileAttributes.class).fileKey(), "its file wasn't replaced");
+	}
+
+	/** FC-6: an entry already there with other files, or damaged ones, is replaced. */
+	@Test
+	void replacesAnEntryWithOtherOrDamagedFiles(@TempDir Path game) throws Exception {
+		String name = TranslationCache.entryName("shared_mod", "44".repeat(32));
+		TranslationCache cache = new TranslationCache(game, true, true);
+		cache.store(name, Map.of("overlay.jar", new byte[] {1}), Map.of());
+		TranslationCache.Entry other = cache.store(name, Map.of("overlay.jar", new byte[] {2}), Map.of());
+		assertArrayEquals(new byte[] {2}, Files.readAllBytes(other.file("overlay.jar")));
+		Files.write(other.file("overlay.jar"), new byte[] {9});
+		TranslationCache.Entry repaired = new TranslationCache(game, true, true).store(name, Map.of("overlay.jar", new byte[] {2}), Map.of());
+		assertArrayEquals(new byte[] {2}, Files.readAllBytes(repaired.file("overlay.jar")));
+		try (var left = Files.list(cache.root().resolve("tmp"))) {
+			assertEquals(0, left.count(), "what was set aside is deleted");
+		}
+	}
+
+	/** FC-6: two launches that ran side by side both keep what they used, whichever saves the index last. */
+	@Test
+	void mergesTheIndexOfLaunchesSharingTheDirectory(@TempDir Path game) throws Exception {
+		String a = TranslationCache.entryName("client_mod", "55".repeat(32));
+		String b = TranslationCache.entryName("server_mod", "66".repeat(32));
+		TranslationCache client = new TranslationCache(game, true, true);
+		TranslationCache server = new TranslationCache(game, true, true);
+		client.store(a, Map.of("overlay.jar", new byte[] {1}), Map.of());
+		server.store(b, Map.of("overlay.jar", new byte[] {2}), Map.of());
+		server.finish(5);
+		client.finish(5);
+		String index = Files.readString(client.root().resolve("index.json"));
+		assertTrue(index.contains(a) && index.contains(b), index);
+		// Each later launch counts from both: the entries stay until five launches have used neither.
+		for (int i = 0; i < 5; i++) new TranslationCache(game, true, true).finish(5);
+		TranslationCache later = new TranslationCache(game, true, true);
+		assertTrue(later.lookup(a).isPresent() && later.lookup(b).isPresent());
+	}
+
+	/** FC-7: cleanup deletes a link inside the cache, never what it leads to. */
+	@Test
+	void deletesLinksNotWhatTheyLeadTo(@TempDir Path game, @TempDir Path elsewhere) throws Exception {
+		Path outside = Files.write(elsewhere.resolve("keep.txt"), new byte[] {1});
+		TranslationCache cache = new TranslationCache(game, true, true);
+		Path dir = Files.createDirectories(cache.root().resolve("tmp").resolve("leftover"));
+		Files.createSymbolicLink(dir.resolve("link"), elsewhere);
+		TranslationCache.deleteQuietly(dir);
+		assertFalse(Files.exists(dir));
+		assertTrue(Files.isRegularFile(outside));
 	}
 }
