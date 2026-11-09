@@ -1107,7 +1107,7 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.color.mixin` �
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| client | BlockColorsLookupMixin | 1.21.11 (1.21.11) | n.m.client.color.block.BlockColors | no injectors; adds methods get; @Shadow blockColors | | | | |
+| client | BlockColorsLookupMixin | mc/forge-shared/1.20.1-1.21.11 (1.21.11) | n.m.client.color.block.BlockColors | no injectors; adds methods get; @Shadow blockColors | | | | |
 
 ### `mc/forge/1.21.11/src/main/resources/fabricated-forge-conditions.mixins.json`
 
@@ -1511,8 +1511,8 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.color.mixin` ·
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| client | BlockColorsLookupMixin | 1.20.1 (1.20.1) | n.m.client.color.block.BlockColors | no injectors; adds methods get; @Shadow blockColors | | | | |
-| client | ItemColorsLookupMixin | 1.20.1 (1.20.1) | n.m.client.color.item.ItemColors | no injectors; adds methods get; @Shadow itemColors | | | | |
+| client | BlockColorsLookupMixin | mc/forge-shared/1.20.1-1.21.11 (1.20.1) | n.m.client.color.block.BlockColors | no injectors; adds methods get; @Shadow blockColors | | | | |
+| client | ItemColorsLookupMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.color.item.ItemColors | no injectors; adds methods get; @Shadow itemColors | | | | |
 
 ### `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-content.mixins.json`
 
@@ -1692,7 +1692,7 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.testmod.frapi.mixin` 
 |---|---|---|---|---|---|---|---|---|
 | client | McRuntimeTestHoldMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedFrapiTest$holdForMovingBlocks | "tickHook" | HEAD cancellable=true | — | default |
 
-## Forge 52 (`forge-legacy`): 33 mixins in 9 configs
+## Forge 52 (`forge-legacy`): 35 mixins in 10 configs
 
 Minecraft 1.21.1, in Mojang's names without a refmap, as on Forge 61 to 66. The mixins come from `mc/forge-shared` and its
 groups, as the source column says, but `NamespacedWrapperAliasMixin`, over 1.21.1's lookups, and `LoadingRegistriesMixin`,
@@ -1706,6 +1706,7 @@ on 1.21.1's tagless wrapper of the registries.
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-entity.mixins.json` | `io.github.cmdralph.fabricated.forge.entity.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
 | `mc/forge-shared/1.21.1+/src/main/resources/fabricated-forge-block.mixins.json` | `io.github.cmdralph.fabricated.forge.block.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-color.mixins.json` | `io.github.cmdralph.fabricated.forge.color.mixin` | 1.21.1 | client 2 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.21.1 | client 1 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.21.1 | client 4 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
@@ -1813,6 +1814,15 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.block.mixin` ·
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
 | mixins | BlockForgeHooksMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.world.level.block.Block | no injectors; adds method makesOpenTrapdoorAboveClimbable (Forge's ladder rule, or a block in Fabric's trapdoor tag) | | | | |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-color.mixins.json`
+
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.color.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| client | BlockColorsLookupMixin | mc/forge-shared/1.20.1-1.21.11 (1.21.1) | n.m.client.color.block.BlockColors | no injectors; adds methods get; @Shadow blockColors | | | | |
+| client | ItemColorsLookupMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.color.item.ItemColors | no injectors; adds methods get; @Shadow itemColors | | | | |
 
 ### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-keybinding.mixins.json`
 
