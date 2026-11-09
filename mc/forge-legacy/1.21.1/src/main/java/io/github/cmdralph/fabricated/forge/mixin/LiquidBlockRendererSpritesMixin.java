@@ -15,9 +15,10 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
  * {@code FluidRendererMixin.modSpriteArray}, at the method's first neighbour check, puts a Fabric fluid render
  * handler's sprites in their place, which have no overlay for a fluid without one (lava's, a Fabric mod's), so the
  * client crashed meshing the first lava it saw. Just after upstream's hook, an array without the slot gets an empty
- * one, which Forge reads as no overlay.
+ * one, which Forge reads as no overlay. Both hooks are at the same point, so this one applies after upstream's (a higher
+ * priority): applied first, it ran before upstream's replaced the array, which then kept no overlay slot.
  */
-@Mixin(LiquidBlockRenderer.class)
+@Mixin(value = LiquidBlockRenderer.class, priority = 1100)
 abstract class LiquidBlockRendererSpritesMixin {
 	@ModifyVariable(method = "tesselate", at = @At(value = "INVOKE", ordinal = 0, target = "Lnet/minecraft/client/renderer/block/LiquidBlockRenderer;"
 			+ "isFaceOccludedByNeighbor(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/Direction;F"
