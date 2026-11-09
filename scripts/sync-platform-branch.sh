@@ -16,7 +16,7 @@ platform="${1:-}"
 base="${2:-origin/main}"
 case "$platform" in
 	forge)
-		own=(mc/forge mc/platform-forge.gradle ci/forge README.md docs/FORGE.md)
+		own=(mc/forge ci/forge README.md docs/FORGE.md)
 		gone=(loader/forge)
 		;;
 	forge-legacy)
