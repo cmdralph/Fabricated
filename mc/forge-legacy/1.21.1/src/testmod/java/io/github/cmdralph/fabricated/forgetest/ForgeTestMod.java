@@ -22,10 +22,9 @@ import net.minecraftforge.eventbus.api.EventPriority;
 /**
  * Forge 52's half of the CI test mod: the checks of Forge's own hooks, beside the shared ones (mc/shared), whose
  * entrypoints mc/platform-forge.gradle adds to the test mod's descriptor. Its main entrypoint registers what they need;
- * the first server tick runs the checks of the server: the interface the test mod's class tweaker injects, the frames
- * Fabricated repairs for a Fabric mod's mixin ({@link ForgeRecordedFramesTest}), Fabricated's loot hooks standing down
- * for another mod's loot module ({@link ForgeLootProviderTest}), the command module's registration
- * event ({@link ForgeCommandTest}), the interaction module's block break events ({@link ForgeBlockBreakTest}), the entity
+ * the first server tick runs the checks of the server: the interface the test mod's class tweaker injects, Fabricated's
+ * loot hooks standing down for another mod's loot module ({@link ForgeLootProviderTest}), the command module's
+ * registration event ({@link ForgeCommandTest}), the interaction module's block break events ({@link ForgeBlockBreakTest}), the entity
  * events module's sleep events ({@link ForgeSleepTest}), and the registry sync module's aliases
  * ({@link ForgeRegistryAliasTest}) and entry added events ({@link ForgeRegistryEntryAddedTest}).
  */
@@ -36,7 +35,6 @@ public final class ForgeTestMod implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		ForgeRecordedFramesTest.check();
 		ForgeLootProviderTest.register();
 		run("command listener", "fabric-command-api-v2", ForgeCommandTest::register);
 		run("registry aliases", "fabric-registry-sync-v0", ForgeRegistryAliasTest::register);

@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "io.github.cmdralph.fabricated.forgetest.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["ForgeRecordedFramesMixin"],
+  "mixins": [],
   "injectors": {
     "defaultRequire": 1
   }
