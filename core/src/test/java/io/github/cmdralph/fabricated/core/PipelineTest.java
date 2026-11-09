@@ -2911,15 +2911,32 @@ class PipelineTest {
 		api.afterEntrypoints(() -> {
 			throw new IllegalStateException("broken action");
 		});
+		// What else an action can throw (SEC-7): a checked exception Java doesn't see (Kotlin's), an assertion.
+		api.afterEntrypoints(() -> PipelineTest.<RuntimeException>sneakyThrow(new java.io.IOException("undeclared")));
+		api.afterEntrypoints(() -> {
+			throw new AssertionError("asserted");
+		});
 		api.afterEntrypoints(() -> ran.add("third"));
 		assertTrue(ran.isEmpty(), "waits for the entrypoints");
 		List<Throwable> errors = new ArrayList<>();
 		api.markEntrypointsComplete(Set.of("good-mod"), (action, error) -> errors.add(error));
 		assertEquals(List.of("first", "third"), ran, "a throwing action does not stop the others");
-		assertEquals(1, errors.size());
+		assertEquals(3, errors.size());
+		// The JVM's own failure is no action's, as for entrypoints (EntrypointRunner.fatalCause).
+		FabricatedApiImpl waiting = new FabricatedApiImpl(in.fabricatedVersion(), in.fabricApiPlan(), result.report(), result.runtime(), true);
+		waiting.afterEntrypoints(() -> {
+			throw new OutOfMemoryError("heap");
+		});
+		assertThrows(OutOfMemoryError.class, () -> waiting.markEntrypointsComplete(Set.of(), (action, error) -> errors.add(error)));
 		assertEquals(FabricMod.Status.FAILED, api.fabricMod("good-mod").orElseThrow().status());
 		api.afterEntrypoints(() -> ran.add("late"));
 		assertEquals("late", ran.getLast(), "runs right away once the entrypoints ran");
+	}
+
+	/** Throws {@code t} where the compiler doesn't see it, as Kotlin code throws a checked exception. */
+	@SuppressWarnings("unchecked")
+	private static <T extends Throwable> void sneakyThrow(Throwable t) throws T {
+		throw (T) t;
 	}
 
 	@Test
