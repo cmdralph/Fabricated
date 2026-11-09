@@ -34,6 +34,31 @@ final class PreflightAsm {
 		return methods;
 	}
 
+	/**
+	 * The methods Mixin scans for the points of an injector whose every selector is a bare wildcard ({@code *}, alone or
+	 * with a method descriptor): each of the target's methods with code that matches, but a static one where the handler
+	 * isn't static, as Mixin's {@code TargetSelectors} takes them for a selector matching any number of methods. Null for
+	 * an injector with another selector, or a descriptor no method has (Mixin then tries without it) (WILD-1).
+	 */
+	static List<MethodNode> wildcardMethods(AnnotationNode injector, MethodNode handler, ClassNode target, Context ctx) {
+		if (!(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.isEmpty()) return null;
+		boolean handlerStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
+		List<MethodNode> methods = new ArrayList<>();
+		for (Object selector : selectors) {
+			if (!(selector instanceof String raw)) return null;
+			String s = ctx.resolve(raw).replaceAll("\\s+", "");
+			if (!s.startsWith("*") || s.length() > 1 && s.charAt(1) != '(') return null;
+			String desc = s.length() > 1 ? s.substring(1) : null;
+			if (desc != null && target.methods.stream().noneMatch(m -> m.desc.equals(desc))) return null;
+			for (MethodNode m : target.methods) {
+				if (desc != null && !desc.equals(m.desc) || m.instructions == null || m.instructions.size() == 0
+						|| !handlerStatic && (m.access & Opcodes.ACC_STATIC) != 0 || methods.contains(m)) continue;
+				methods.add(m);
+			}
+		}
+		return methods;
+	}
+
 	/** The indices of {@code method}'s instructions a point ({@code INVOKE}, {@code FIELD} or {@code NEW}) matches, in order. */
 	static List<Integer> matching(MethodNode method, String point, MemberRef ref, int opcode) {
 		List<Integer> found = new ArrayList<>();

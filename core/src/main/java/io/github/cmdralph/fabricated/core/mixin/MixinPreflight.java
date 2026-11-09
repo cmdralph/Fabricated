@@ -1220,6 +1220,11 @@ public final class MixinPreflight extends PreflightPart {
 		int require = Annotations.value(ann, "require") instanceof Integer r && r >= 0 ? r : PreflightAsm.grouped(handler) ? 0 : ctx.config().defaultRequire();
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(ann, "slice"));
 		String injectorName = "@" + PreflightAsm.simpleName(ann.desc);
+		List<MethodNode> scanned = (mixin.access & Opcodes.ACC_INTERFACE) == 0 ? PreflightAsm.wildcardMethods(ann, handler, target, ctx) : null;
+		if (scanned != null) {
+			checkWildcardPoints(handler, ann, require, slices, injectorName, scanned, target, ctx);
+			return;
+		}
 
 		List<MethodNode> matched = new ArrayList<>();
 		boolean anyFuzzy = false;
@@ -1512,6 +1517,37 @@ public final class MixinPreflight extends PreflightPart {
 							+ ": its point does not occur in " + String.join(", ", new TreeSet<>(without)) + " in " + target.name.replace('/', '.'),
 					ctx.changer(true) + " changed " + (without.size() == 1 ? "that method" : "those methods") + "; the mod needs an update or this mixin must be skipped.");
 		}
+	}
+
+	/**
+	 * An injector selecting its target's methods by a bare wildcard ({@link PreflightAsm#wildcardMethods}) applies wherever
+	 * its points occur in them, and Mixin stops on too few injections whatever methods it scanned: judged by their count
+	 * only, where every point is counted. Balm's drag hooks select {@code MouseHandler}'s methods so, at a call Forge 52's
+	 * patch moved into a hook of its own (WILD-1).
+	 */
+	private static void checkWildcardPoints(MethodNode handler, AnnotationNode ann, int require, List<AnnotationNode> slices, String injectorName,
+			List<MethodNode> methods, ClassNode target, Context ctx) {
+		if (require < 1) return;
+		int injections = 0;
+		List<String> points = new ArrayList<>();
+		for (AnnotationNode at : Annotations.list(Annotations.value(ann, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String rawTarget = Annotations.value(at, "target") instanceof String t ? ctx.resolve(t) : null;
+			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
+			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+			AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
+			for (MethodNode m : methods) {
+				int n = InjectionPoints.count(point, rawTarget, ordinal, opcode, slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx), m);
+				if (n < 0) return;
+				injections += n;
+			}
+			points.add("@At(\"" + point + "\"" + (rawTarget != null ? ", target=\"" + rawTarget + "\"" : "") + (ordinal >= 0 ? ", ordinal=" + ordinal : "") + ")");
+		}
+		if (points.isEmpty() || injections >= require) return;
+		ctx.injector(handler, require, injectorName + " " + handler.name + " selects the methods of " + target.name.replace('/', '.') + " by \"*\" and applies "
+						+ injections + " time(s) where it requires " + require + ": " + String.join(", ", points) + " occurs "
+						+ (injections == 0 ? "in none of them" : "that often in them"),
+				ctx.changer(true) + " changed the code it hooks; the mod needs an update or this mixin must be skipped.");
 	}
 
 	/**

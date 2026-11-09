@@ -7257,6 +7257,102 @@ class MixinPreflightTest {
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
 	}
 
+	@Test
+	void anInjectorSelectingEveryMethodIsJudgedByTheMethodsMixinScans() throws Exception {
+		// WILD-1: a bare "*" selects each method of the target but its static ones, for a handler that isn't static.
+		byte[] found = mixin("com/example/mixin/Every", false, cw -> inject(cw, "every", "*", "INVOKE", "L" + TARGET + ";helper(I)V", 1, null));
+		assertTrue(run(config(true, "Every"), null, Map.of("com/example/mixin/Every", found), false).isEmpty(), "tick makes the call");
+		byte[] missing = mixin("com/example/mixin/Every", false, cw -> inject(cw, "every", "*", "INVOKE", "L" + TARGET + ";gone()V", 1, null));
+		List<PreflightFinding> findings = run(config(true, "Every"), null, Map.of("com/example/mixin/Every", missing), false);
+		assertEquals(1, findings.size(), findings.toString());
+		assertTrue(findings.getFirst().message().contains("by \"*\" and applies 0 time(s) where it requires 1"), findings.toString());
+		byte[] optional = mixin("com/example/mixin/Every", false, cw -> inject(cw, "every", "*", "INVOKE", "L" + TARGET + ";gone()V", 0, null));
+		assertTrue(run(config(true, "Every"), null, Map.of("com/example/mixin/Every", optional), false).isEmpty(), "nothing required");
+
+		// Only a static method makes the call: not scanned for this handler.
+		ClassWriter onlyStatic = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		onlyStatic.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor statics = onlyStatic.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "tick", "(L" + TARGET + ";)V", null, null);
+		statics.visitCode();
+		statics.visitVarInsn(Opcodes.ALOAD, 0);
+		statics.visitInsn(Opcodes.ICONST_0);
+		statics.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(I)V", false);
+		statics.visitInsn(Opcodes.RETURN);
+		statics.visitMaxs(0, 0);
+		statics.visitEnd();
+		onlyStatic.visitEnd();
+		ClassIndex staticGame = new ClassIndex(Map.of(TARGET, onlyStatic.toByteArray())::get);
+		assertEquals(1, preflight(staticGame, Map.of("com/example/mixin/Every", found)::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Every")), Refmap.EMPTY, Set.of()).size());
+	}
+
+	@Test
+	void anInjectorSelectingEveryMethodFollowsACallIntoThePlatformsHook() throws Exception {
+		// WILD-1: Balm's drag hooks select MouseHandler's methods by "*" at Screen.mouseDragged, which Forge 52's patch moved
+		// into ForgeHooksClient.onScreenMouseDrag, a void hook firing its events around it (HOOK-3 then points them there).
+		String hooks = "net/minecraftforge/client/ThingHooks";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor drag = target.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_SYNTHETIC, "lambda$onMove$0", "(I)V", null, null);
+		drag.visitCode();
+		drag.visitVarInsn(Opcodes.ALOAD, 0);
+		drag.visitVarInsn(Opcodes.ILOAD, 1);
+		drag.visitMethodInsn(Opcodes.INVOKESTATIC, hooks, "onDrag", "(L" + TARGET + ";I)V", false);
+		drag.visitInsn(Opcodes.RETURN);
+		drag.visitMaxs(0, 0);
+		drag.visitEnd();
+		MethodVisitor dragged = target.visitMethod(Opcodes.ACC_PUBLIC, "dragged", "(I)Z", null, null);
+		dragged.visitCode();
+		dragged.visitInsn(Opcodes.ICONST_1);
+		dragged.visitInsn(Opcodes.IRETURN);
+		dragged.visitMaxs(0, 0);
+		dragged.visitEnd();
+		target.visitEnd();
+		ClassWriter hook = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		hook.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, hooks, null, "java/lang/Object", null);
+		MethodVisitor onDrag = hook.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "onDrag", "(L" + TARGET + ";I)V", null, null);
+		onDrag.visitCode();
+		onDrag.visitVarInsn(Opcodes.ALOAD, 0);
+		onDrag.visitVarInsn(Opcodes.ILOAD, 1);
+		onDrag.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "dragged", "(I)Z", false);
+		onDrag.visitInsn(Opcodes.POP);
+		onDrag.visitInsn(Opcodes.RETURN);
+		onDrag.visitMaxs(0, 0);
+		onDrag.visitEnd();
+		hook.visitEnd();
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, target.toByteArray(), hooks, hook.toByteArray())::get);
+		byte[] original = mixin("com/example/mixin/Drag", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "onDrag", "(ILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "*");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";dragged(I)Z");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visit("require", 1);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 3);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Drag"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Drag", original));
+		assertEquals(1, preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size(),
+				"unrepaired, the call occurs in none of the methods");
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(forge, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("which this game build makes through NeoForge's " + hooks.replace('/', '.') + ".onDrag"), notes.toString());
+		mod.put("com/example/mixin/Drag", repaired.get("com/example/mixin/Drag.class"));
+		assertTrue(preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
 	/**
 	 * The game class's {@code tick} as Forge 47's {@code ServerPlayerGameMode.destroyBlock}, {@code helper} as vanilla's
 	 * {@code playerWillDestroy}: vanilla calls it, then {@code remove} and {@code destroyed}, after the restriction check
