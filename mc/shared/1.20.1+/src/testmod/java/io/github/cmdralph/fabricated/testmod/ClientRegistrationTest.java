@@ -15,11 +15,20 @@ public final class ClientRegistrationTest implements ClientModInitializer {
 	public void onInitializeClient() {
 		try {
 			Registry.register(BuiltInRegistries.MOB_EFFECT, TestCompat.id("fabricated_testmod", "client_registered"),
-					new MobEffect(MobEffectCategory.NEUTRAL, 0x808080) {
-					});
+					new ClientEffect());
 			TestMod.LOGGER.info("FABRICATED-TEST client entrypoint registration OK");
 		} catch (IllegalStateException e) {
 			TestMod.LOGGER.error("FABRICATED-TEST client entrypoint registration FAILED: {}", e.getMessage());
+		}
+	}
+
+	/**
+	 * Named, not anonymous: javac names an anonymous class's constructor parameters after the game's, as the jar
+	 * records them, and refuses two of one name (CI-6).
+	 */
+	private static final class ClientEffect extends MobEffect {
+		ClientEffect() {
+			super(MobEffectCategory.NEUTRAL, 0x808080);
 		}
 	}
 }
