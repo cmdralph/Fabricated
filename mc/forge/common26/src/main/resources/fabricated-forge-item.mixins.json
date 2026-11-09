@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "io.github.cmdralph.fabricated.forge.item.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["ItemForgeHooksMixin"],
+  "mixins": ["ItemForgeHooksMixin", "ItemEnchantingHookMixin"],
   "injectors": {
     "defaultRequire": 1
   }
