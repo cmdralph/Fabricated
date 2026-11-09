@@ -17,6 +17,7 @@
     "ForgePayloadEncodeMixin": ["fabric-networking-api-v1"],
     "ForgeRegistryEntryAddedMixin": ["fabric-registry-sync-v0"],
     "GameDataFreezeMixin": [],
+    "LiquidBlockRendererSpritesMixin": ["fabric-rendering-fluids-v1"],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
     "ModifiableBiomeInfoAccessor": [],
