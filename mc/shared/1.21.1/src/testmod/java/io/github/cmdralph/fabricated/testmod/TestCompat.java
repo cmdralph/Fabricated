@@ -30,6 +30,12 @@ final class TestCompat {
 	static final @Nullable String PROVIDERS_DEFAULT_PACK = "Forgified Fabric API selects such a pack as the game's options load, as upstream does, which NeoForge 21.1 does before"
 			+ " mods' initializers register their packs";
 
+	/**
+	 * Whether the version's Fabric API has the tag of the blocks that make an open trapdoor above them climbable, as a
+	 * ladder does ({@code fabric:can_climb_trapdoor_above}): Fabric API 0.92, 1.20.1's, has none.
+	 */
+	static final boolean TRAPDOOR_CLIMBING_TAG = true;
+
 	private TestCompat() {
 	}
 

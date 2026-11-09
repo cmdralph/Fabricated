@@ -1449,7 +1449,7 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | mixins | ReloadableServerRegistriesMixin | common (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
 | mixins | ReloadableServerRegistriesMixin | common (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 
-## Forge 47 (`forge-legacy`): 86 mixins in 13 configs
+## Forge 47 (`forge-legacy`): 83 mixins in 14 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1460,7 +1460,8 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-entity.mixins.json` | `io.github.cmdralph.fabricated.forge.entity.mixin` | 1.20.1 | mixins 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 1.20.1 | client 6 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.20.1 | mixins 1 | 1 | — | none |
-| `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.20.1 | mixins 26, client 4 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-item.mixins.json` | `io.github.cmdralph.fabricated.forge.item.mixin` | 1.20.1 | mixins 2 | 1 | — | none |
+| `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.20.1 | mixins 28, client 4 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.20.1 | client 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.20.1 | mixins 7 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.20.1 | client 4 | 1 | — | none |
@@ -1555,6 +1556,16 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.interaction.mix
 | mixins | ServerPlayerGameModeBreakMixin | 1.20.1 (1.20.1) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeBreak; @Shadow level, player | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;isCreative()Z` cancellable=true | — | default |
 | mixins | ServerPlayerGameModeBreakMixin | 1.20.1 (1.20.1) | n.m.server.level.ServerPlayerGameMode | @WrapOperation → fabricated$afterBreak | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;removeBlock(L…/BlockPos;Z)Z` | — | default |
 
+### `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-item.mixins.json`
+
+Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.item.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | ItemForgeHooksMixin | 1.20.1 (1.20.1) | n.m.world.item.Item | no injectors; implements IForgeItem; adds methods getEquipmentSlot, getCraftingRemainingItem, hasCraftingRemainingItem (Forge's item hooks answered from Fabric's item API) | | | | |
+| mixins | ItemStackForgeHooksMixin | 1.20.1 (1.20.1) | n.m.world.item.ItemStack | @WrapOperation → fabricated$fabricSuitableFor | "isCorrectToolForDrops" | INVOKE `L…/Item;isCorrectToolForDrops(L…/ItemStack;L…/BlockState;)Z` remap=false | — | default |
+| mixins | ItemStackForgeHooksMixin | 1.20.1 (1.20.1) | n.m.world.item.ItemStack | @WrapOperation → fabricated$fabricAttributeModifiers | "getAttributeModifiers" | INVOKE `L…/Item;getAttributeModifiers(L…/EquipmentSlot;L…/ItemStack;)L…/Multimap;` remap=false | — | default |
+
 ### `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge.mixins.json`
 
 Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.mixin` · required=true · defaultRequire=1 · plugin=`FabricatedMixinPlugin` · overwrites.requireAnnotations=—
@@ -1567,6 +1578,8 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | LivingEntityFluidTravelMixin | 1.20.1 (1.20.1) | n.m.world.entity.LivingEntity | @WrapOperation → fabricated$throughFabricFluid | "travel" | INVOKE `L…/LivingEntity;isInFluidType(L…/FluidState;)Z` | — | default |
 | mixins | MappedRegistryPendingHoldersMixin | mc/forge-shared (1.20.1) | n.m.core.MappedRegistry | @Inject → fabricated$beforeFreeze; implements PendingHolders; adds methods fabricated$keepPendingHolders, fabricated$restorePendingHolders; @Shadow unregisteredIntrusiveHolders, key; @Unique fields fabricated$pendingHolders | "freeze" | HEAD | — | default |
 | mixins | MappedRegistryPendingHoldersMixin | mc/forge-shared (1.20.1) | n.m.core.MappedRegistry | @Inject → fabricated$afterFreeze | "freeze" | RETURN | — | default |
+| mixins | MappedRegistryEarlyWriteMixin | 1.20.1 (1.20.1) | n.m.core.MappedRegistry | @Inject → fabricated$openForEarlyWrite (a frozen built-in registry written to before the main entrypoints is opened, REG-10); @Shadow frozen | "validateWrite(Lnet/minecraft/resources/ResourceKey;)V" | HEAD | — | default |
+| mixins | FabricRegistryBuilderRootMixin | 1.20.1 (1.20.1) | fapi.api.event.registry.FabricRegistryBuilder (`targets`) (@Pseudo) | @Inject → fabricated$joinRoot (the registry built joins the root registry, PROVIDER-20) | "buildAndRegister" remap=false | RETURN | — | default |
 | mixins | NamespacedWrapperPendingHoldersMixin | 1.20.1 (1.20.1) | forge.registries.NamespacedWrapper (`targets`) | @Inject → fabricated$beforeFreeze | "m_203521_" | HEAD | — | default |
 | mixins | NamespacedWrapperPendingHoldersMixin | 1.20.1 (1.20.1) | forge.registries.NamespacedWrapper (`targets`) | @Inject → fabricated$afterFreeze | "m_203521_" | RETURN | — | default |
 | mixins | NamespacedWrapperAliasMixin | 1.20.1 (1.20.1) | forge.registries.NamespacedWrapper (`targets`) | @Inject → fabricated$refuseAliasName; adds methods addAlias; @Shadow delegate; @Unique fields FABRICATED$LOGGER, fabricated$aliases | "m_255290_(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lcom/mojang/serialization/Lifecycle;)Lnet/minecraft/core/Holder$Reference;" | HEAD | — | default |
