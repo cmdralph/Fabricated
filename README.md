@@ -22,10 +22,9 @@ It's built to be:
 > the same bar in CI, but Fabric mods that patch code NeoForge changed can still be disabled before they run. Read
 > [What works today](#what-works-today) before relying on it.
 
-**Platforms and branches.** NeoForge is the main platform, and this README is about it. Builds for Minecraft Forge, for
-dedicated servers and clients, are on their own branches, each with a README of its own. They were experimental
-previews up to v0.5.1; from 0.6.0-beta they are held to NeoForge's bar, with less coverage, and each branch's
-`docs/FORGE.md` or `docs/FORGE-LEGACY.md` lists what Forge doesn't support:
+**Platforms and branches.** This README is about NeoForge. Builds for Minecraft Forge, for dedicated servers and
+clients, are on their own branches, held to the same bar; the [support matrix](docs/COMPATIBILITY.md#support-matrix)
+says what works on each loader and Minecraft version, and what Forge doesn't support yet:
 
 | Branch | Platform | Minecraft | Jars |
 |---|---|---|---|
