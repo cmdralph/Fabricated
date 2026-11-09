@@ -61,6 +61,8 @@ quiet_load_warnings() {
 
 client_keys() {
 	echo "key_$testmod_key:key.keyboard.k"
+	# 1.21.1's renderer test mod checks its key binding has the saved key too, as on NeoForge.
+	if [ "$mc" = 1.21.1 ]; then echo "key_key.fabricated_testmod_frapi.check:key.keyboard.k"; fi
 }
 
 standins() {
