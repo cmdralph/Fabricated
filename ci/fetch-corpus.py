@@ -26,14 +26,33 @@ CDN = "https://cdn.modrinth.com/"
 FABRIC_API = "P7dR8mSH"
 HEADERS = {"User-Agent": "cmdralph/Fabricated CI (github.com/cmdralph/Fabricated)"}
 MAX_BYTES = 256 << 20
+IMMUTABLE = re.compile(r"^(https://api\.modrinth\.com/v2/version/[A-Za-z0-9]+|https://cdn\.modrinth\.com/.+)$")
 
 
 ATTEMPTS = 4
 
 
 def get(url):
-    """The response's body. A timeout, a dropped connection or a server error (429, 5xx) is tried again, after 2, 4
-    and 8 seconds: one slow answer from Modrinth left a gate without its mods (extended run 41501863294)."""
+    """The response's body, from $MODRINTH_CACHE for what never changes at its URL (a version by its id, a file on the
+    CDN; a file's SHA-512 is checked as it is used). A timeout, a dropped connection or a server error (429, 5xx) is
+    tried again, after 2, 4 and 8 seconds: one slow answer from Modrinth left a gate without its mods (extended run
+    41501863294)."""
+    cache = os.environ.get("MODRINTH_CACHE")
+    if cache and IMMUTABLE.match(url):
+        path = os.path.join(cache, hashlib.sha256(url.encode()).hexdigest())
+        if os.path.isfile(path):
+            with open(path, "rb") as f:
+                return f.read()
+        data = fetch(url)
+        os.makedirs(cache, exist_ok=True)
+        with open(path + ".part", "wb") as f:
+            f.write(data)
+        os.replace(path + ".part", path)
+        return data
+    return fetch(url)
+
+
+def fetch(url):
     for attempt in range(ATTEMPTS):
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=60) as response:
