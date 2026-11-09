@@ -1854,7 +1854,9 @@ What else differs on Forge, for Fabric mods in general:
   the game reading it; the mod's calls give the default one, as Fabric's Mixin does (LOADER-6). On every platform
   pre-flight checks such a config as a listed one where the mod's code names it by a constant, as ReplayMod's does, and
   reports one added by a name the code computes unchecked (MIXCFG-1). ReplayMod's apply on a Forge 66 client, which
-  joins its world.
+  joins its world, and ReplayMod 1.20.1's on a Forge 47 client, which joins its world too: its recording config's
+  scroll hook captures locals Forge's `MouseHandler.onScroll` has otherwise, and skips itself, so ReplayMod doesn't see
+  the mouse wheel in a replay there.
 - **Two mixins' unique fields of one name:** for the same reason, Forge's Mixin renames a private `@Unique` field only
   when its class declares one of that name, not when another mixin adds it, and two mixins' fields became one, where
   Fabric's Mixin keeps a field each: Fabric API's screen mixin and SpruceUI's both keep `tickingScreen` in `Minecraft`,

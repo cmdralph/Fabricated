@@ -3,6 +3,18 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-09: ReplayMod 1.20.1 on Forge 47: the configs a mod adds from its code checked, its jar accepted (MIXCFG-1, SEC-11)
+
+- **MIXCFG-1** (P0), fixed: pre-flight checked only the mixin configs a mod's metadata lists, so the eight ReplayMod adds
+  from its code reached Mixin unchecked, and one of their hooks stopped a Forge 47 client. Translation reads the names
+  a mod's code passes to `Mixins.addConfiguration` as constants and checks those configs as listed ones; the mod's
+  call reads them as rewritten. A name the code computes is reported as unchecked.
+- **SEC-11** (P2), fixed: SafeArchive accepts a directory's entry repeated with no content (ReplayMod 1.20.1's
+  `assets/`); a repeated file, or a repeated directory entry with content, stays refused.
+- Verified: the core unit tests, CI's script tests and the mixin inventory; Forge 47 and NeoForge 1.21.1 build.
+  Locally, a Forge 47 client with Fabric API and ReplayMod 1.20.1-2.6.23 loads ReplayMod and joins its world (61 checks
+  pass, none fail), and Forge 47's client part passes.
+
 ## 2026-11-09: The advanced corpus's stops on Forge: FrozenLib, ReplayMod and Origins (ENUM-8, LOADER-6, MULTI-2, PLAT-7)
 
 - **ENUM-8** (P0), fixed: FrozenLib's `@Shadow @Final @Mutable` of `MobCategory`'s values array made it non-final
