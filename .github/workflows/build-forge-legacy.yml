@@ -1,12 +1,12 @@
 name: Build forge-legacy
 
 # The full matrix for Forge 47 for 1.20.1 (mc/forge-legacy, the project :mc:forge-legacy-1.20.1), on the forge-legacy
-# branch: built, then a dedicated server and a client with the test mod, and again with Fabric API, each a gate but the
-# client with Fabric API. It runs for pull requests to forge-legacy and by hand, with the quick check (check.yml) on
-# each push to a working branch, which stands down while the branch has a pull request. The plan job reads the version's
-# pins from its folder (ci/changed-targets.py); a push to forge-legacy (a merge) only builds, which keeps its Gradle
-# caches current. Shared changes come from main by merge (scripts/sync-platform-branch.sh). Changes to documentation
-# alone build nothing.
+# branch: built, then a dedicated server and a client with the test mod, and again with Fabric API, each a gate (the
+# client with Fabric API since task 3). It runs for pull requests to forge-legacy and by hand, with the quick check
+# (check.yml) on each push to a working branch, which stands down while the branch has a pull request. The plan job
+# reads the version's pins from its folder (ci/changed-targets.py); a push to forge-legacy (a merge) only builds, which
+# keeps its Gradle caches current. Shared changes come from main by merge (scripts/sync-platform-branch.sh). Changes to
+# documentation alone build nothing.
 on:
   pull_request:
     branches: [forge-legacy]
@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       extended:
-        description: Also the mod corpus on a server and a client (informational), and the difficult mods' Fabric builds on a client (gates)
+        description: Also the mod corpus on a server and a client (informational), and Forgified Fabric API and the difficult mods' Fabric builds on a client (gates)
         type: boolean
         default: false
 
@@ -229,22 +229,25 @@ jobs:
           for jar in "$RUNNER_TEMP"/ffapi/*.jar; do
             [ -f "$jar" ] && { python3 -I ci/forge-legacy/ffapi-anatomy.py "$jar" | head -n 220 || true; }
           done
-      # The client with Forgified Fabric API for 1.20.1 beside Fabricated and the test mod (task 5): it must reach its world;
-      # the test mod's checks of the modules it provides are evidence, as those modules are then its own, as on NeoForge.
-      # Informational, with "extended".
-      - name: Client with Forgified Fabric API (informational)
+      # The client with Forgified Fabric API for 1.20.1 beside Fabricated and the test mod (task 5): it must reach its world
+      # and pass every smoke check; the test mod's checks of the modules it provides are skipped, as those modules are then
+      # its own, as on NeoForge. With "extended"; a gate since it held on both of v0.6.0-beta's release head extended runs
+      # (task 7, CI-1).
+      - name: Client with Forgified Fabric API (must pass)
         if: ${{ env.EXTENDED == 'true' && !cancelled() }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls "$RUNNER_TEMP"/with-ffapi/*.jar > /dev/null 2>&1 || { echo "Forgified Fabric API wasn't downloaded"; exit 0; }
+          status=0
           ci/forge-legacy/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-ffapi" "$RUNNER_TEMP/with-ffapi" \
-              > "$RUNNER_TEMP/client-ffapi.out" 2>&1 && echo "== the client with Forgified Fabric API passed" || echo "== the client with Forgified Fabric API failed"
+              > "$RUNNER_TEMP/client-ffapi.out" 2>&1 || status=$?
+          [ "$status" = 0 ] && echo "== the client with Forgified Fabric API passed" || echo "== the client with Forgified Fabric API failed"
           grep -E '^(PASS|FAIL|SKIP|NOT SEEN):' "$RUNNER_TEMP/client-ffapi.out" | grep -v '^PASS' | head -n 60 || true
           echo "== The test mod's other lines"
           grep -h 'FABRICATED-FORGE-TEST' "$RUNNER_TEMP/client-ffapi/run/logs/latest.log" 2>/dev/null | grep -v ' OK$\| OK (' | head -n 30 | cut -c1-600 || true
           ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/client-ffapi/run" "$RUNNER_TEMP/client-ffapi/client.out" "client with Forgified Fabric API" || true
+          exit "$status"
       # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
       # SHA-512) with Fabric API, as build.yml runs them on NeoForge: which load on Forge, which are disabled and why.
       # Informational, with "extended" or on a release tag; a mod whose initializer throws is disabled, not fatal.
