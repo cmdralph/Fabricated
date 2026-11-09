@@ -442,7 +442,8 @@ if ((testSources.collect { rootProject.file(it) } + [projectDir]).any { new File
 // mods compile against all of Fabric API, as a Fabric mod does. In the game's names, Mojang's: as published where the
 // game is unobfuscated (26.x), and remapped from Intermediary's by core's own remapper where it isn't
 // (remapFabricApi). fabricApi(modules) gives those modules' jars so, and fabricApi() all of them, to a version's own
-// build script too.
+// build script too; fabricApiAsPublished(modules) gives them as published, for code compiled in Intermediary's names, as
+// Fabric mods for an obfuscated version are: a test mod compiled so says it with testmod_namespace=INTERMEDIARY.
 def fabricApiPlan = new groovy.json.JsonSlurper().parse(file('src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json'))
 def fabricApiRelease = configurations.detachedConfiguration(dependencies.create("net.fabricmc.fabric-api:fabric-api:${fabricApiPlan.fabricApiVersion}"))
 // The modules' own jars (every module's for null), not the release's jar, which nests them.
@@ -453,6 +454,7 @@ def publishedModules = { Collection<String> modules ->
         }
     }.artifacts
 }
+ext.fabricApiAsPublished = { Collection<String> modules = null -> publishedModules(modules).artifactFiles }
 if (project.namespace == 'INTERMEDIARY') {
     // Mojang's mappings of the game: the platform's (mojangMappings, a provider of the file), else those ModDevGradle's
     // NeoForm run downloads for the game (NeoForge's and legacy Forge's builds), written out where the task is told.
@@ -493,11 +495,11 @@ if (project.namespace == 'INTERMEDIARY') {
         files(remapFabricApi).asFileTree.matching { include(modules == null ? ['*.jar'] : modules.collect { "${it}.jar" }) }
     }
 } else {
-    ext.fabricApi = { Collection<String> modules = null -> publishedModules(modules).artifactFiles }
+    ext.fabricApi = fabricApiAsPublished
 }
 dependencies {
     compileOnly fabricApi(fabricApiPlan.modules.findAll { it.value.plan == 'passthrough' }.keySet())
     integrationstubsCompileOnly fabricApi(['fabric-transfer-api-v1'])
-    testmodCompileOnly fabricApi()
+    testmodCompileOnly(project.findProperty('testmod_namespace') == 'INTERMEDIARY' ? fabricApiAsPublished() : fabricApi())
     testmodfrapiCompileOnly fabricApi()
 }
