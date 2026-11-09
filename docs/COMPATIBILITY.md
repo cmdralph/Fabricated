@@ -1833,7 +1833,8 @@ What else differs on Forge, for Fabric mods in general:
   (CORPUS-61; on Forge 61 to 66 CORPUS-78: Friends and Foes' patrol spawner hook stopped the Forge 64 and 65 servers).
 - **MixinExtras** is 0.5.5 on every Forge version: the in-game mod nests it, and Forge's jar-in-jar locator picks it
   over the 0.5.4 Forge 61 to 66 offer (MIXEXT-3). Its mod's root is the in-game mod's files, which owo reads, as
-  it reads every mod's (CORPUS-77: owo's client stopped on Forge 47).
+  it reads every mod's (CORPUS-77: owo's client stopped on Forge 47). MixinExtras' own Fabric jar, nested under whatever id, isn't
+  loaded: its init config has the name of the platform's, which Mixin then never ran (PLAT-7: Origins' on Forge 47).
 - **`@ModifyArgs`:** Forge 47's Mixin 0.8.5 puts the classes it generates for a `@ModifyArgs` handler's arguments in no
   module of the game layer, so a game class naming one failed to load (the corpus server and client stopped as `Fluids`
   loaded, CORPUS-68). Fabricated's transformation service adds a module holding those packages, and no files, as
