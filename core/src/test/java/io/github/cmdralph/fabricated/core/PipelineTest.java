@@ -3164,6 +3164,80 @@ class PipelineTest {
 		}
 	}
 
+	/** A class whose {@code run} adds {@code config} to Mixin by name, as ReplayMod's launcher does, or a name it is given when null. */
+	private static byte[] configAdder(String name, String config) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "run", "(Ljava/lang/String;)V", null, null);
+		mv.visitCode();
+		if (config != null) mv.visitLdcInsn(config);
+		else mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, "org/spongepowered/asm/mixin/Mixins", "addConfiguration", "(Ljava/lang/String;)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * MIXCFG-1: a mixin config the mod's code adds to Mixin itself by a constant name, unlisted in its metadata (ReplayMod's
+	 * plugin adds eight so), is checked as a listed one: a required mixin the platform's code can't take is left out of it
+	 * where the mod can do without, as rewritten in the overlay, which the mod's call reads by name, or else the mod is
+	 * disabled. The descriptor still doesn't list it: the mod's code adds it, when it does.
+	 */
+	@Test
+	void aMixinConfigTheModsCodeAddsByNameIsCheckedAsAListedOne(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		ClassNode broken = new ClassNode();
+		new ClassReader(mixinClass("com/adds/mixin/Broken", "removedByNeoForge")).accept(broken, 0);
+		broken.fields.add(new org.objectweb.asm.tree.FieldNode(Opcodes.ACC_PRIVATE, "calls", "I", null, null));
+		Path adds = TestJars.create().fabricModJson(TestJars.modJson("adds-mod", "1.0", "\"mixins\":[\"adds.mixins.json\"]"))
+				.text("adds.mixins.json", "{\"required\":true,\"package\":\"com.adds.listed\",\"mixins\":[\"Listed\"]}")
+				.bytes("com/adds/listed/Listed.class", mixinClass("com/adds/listed/Listed", "tick"))
+				.bytes("com/adds/Launcher.class", configAdder("com/adds/Launcher", "adds.extra.mixins.json"))
+				// Comments, as ReplayMod's configs have, which Mixin's reader takes.
+				.text("adds.extra.mixins.json", "{\"required\":true,\"package\":\"com.adds.mixin\",\"mixins\":[\n// one\n\"Works\",\"Broken\"]}")
+				.bytes("com/adds/mixin/Works.class", mixinClass("com/adds/mixin/Works", "tick"))
+				.bytes("com/adds/mixin/Broken.class", write(broken))
+				.write(mods.resolve("adds.jar"));
+		Path ducks = TestJars.create().fabricModJson(TestJars.modJson("adds-duck", "1.0", ""))
+				.bytes("com/duck/Launcher.class", configAdder("com/duck/Launcher", "duck.mixins.json"))
+				.text("duck.mixins.json", "{\"required\":true,\"package\":\"com.duck.mixin\",\"mixins\":[\"Duck\"]}")
+				.bytes("com/duck/mixin/Duck.class", duckMixinClass("com/duck/mixin/Duck", "removedByNeoForge"))
+				.write(mods.resolve("duck.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(adds, ducks), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		String report = result.report().render();
+		assertTrue(result.runtime().isModLoaded("adds-mod"), report);
+		assertTrue(report.contains("adds-mod: LEFT_OUT [adds.extra.mixins.json com.adds.mixin.Broken]"), report);
+		assertTrue(report.contains("checked as listed ones: adds.extra.mixins.json (MIXCFG-1)"), report);
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			String config = overlay.readText("adds.extra.mixins.json");
+			assertTrue(config.contains("Works") && !config.contains("Broken"), config);
+			String toml = overlay.readText("META-INF/neoforge.mods.toml");
+			assertTrue(toml.contains("adds.mixins.json") && !toml.contains("adds.extra.mixins.json"), toml);
+		}
+		Report.ModRow duck = result.report().mods().stream().filter(r -> r.id().equals("adds-duck")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, duck.status());
+		assertTrue(duck.detail().contains("removedByNeoForge"), duck.detail());
+	}
+
+	/** MIXCFG-1: a config added by a name the mod's code computes can't be checked; the report says so, and the mod loads. */
+	@Test
+	void aMixinConfigAddedByANameTheModsCodeComputesIsReportedUnchecked(@TempDir Path game) throws Exception {
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("computes-mod", "1.0", ""))
+				.bytes("com/computes/Launcher.class", configAdder("com/computes/Launcher", null))
+				.bytes("com/computes/Missing.class", configAdder("com/computes/Missing", "missing.mixins.json"))
+				.write(game.resolve("mods/computes.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		String report = result.report().render();
+		assertTrue(result.runtime().isModLoaded("computes-mod"), report);
+		assertTrue(report.contains("computes-mod: WARN [Mixins.addConfiguration com.computes.Launcher] Adds mixin configs to Mixin by names its code"
+				+ " computes, which pre-flight can't read: their mixins aren't checked"), report);
+		assertTrue(report.contains("computes-mod: WARN [missing.mixins.json] Added to Mixin by com.computes.Missing, but not in the mod's jar"), report);
+	}
+
 	private static Path patchTarget(Path game) throws Exception {
 		return TestJars.create().fabricModJson(TestJars.modJson("target-mod", "2.0", "\"mixins\":[\"target.mixins.json\"]"))
 				.text("target.mixins.json", "{\"required\":true,\"package\":\"com.target.mixin\",\"mixins\":[\"BadMixin\"]}")

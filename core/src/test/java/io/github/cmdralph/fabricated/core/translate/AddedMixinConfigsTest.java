@@ -126,6 +126,41 @@ class AddedMixinConfigsTest {
 		assertNull(AddedMixinConfigs.withEnvironment(given), "nothing left to change");
 	}
 
+	/** MIXCFG-1: the names ReplayMod's launcher gives as constants, to either form, are found, for pre-flight to check them. */
+	@Test
+	void theConfigsAClassAddsByConstantNamesAreFound() {
+		AddedMixinConfigs.Added added = AddedMixinConfigs.added(launcher());
+		assertEquals(new AddedMixinConfigs.Added(List.of("mixins.core.example.json", "mixins.render.example.json", "mixins.sourced.example.json"), false),
+				added);
+		assertEquals(added, AddedMixinConfigs.added(AddedMixinConfigs.withEnvironment(launcher())), "as LOADER-6 rewrites them");
+	}
+
+	/** MIXCFG-1: a name the class's code computes (a parameter, or a choice of two constants jumping to the call) can't be read. */
+	@Test
+	void aConfigAddedByANameTheCodeComputesIsCounted() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, LAUNCHER, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_STATIC, "add", "(Ljava/lang/String;Z)V", null, null);
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, MIXINS, "addConfiguration", "(Ljava/lang/String;)V", false);
+		org.objectweb.asm.Label other = new org.objectweb.asm.Label();
+		org.objectweb.asm.Label call = new org.objectweb.asm.Label();
+		mv.visitVarInsn(Opcodes.ILOAD, 1);
+		mv.visitJumpInsn(Opcodes.IFEQ, other);
+		mv.visitLdcInsn("mixins.one.example.json");
+		mv.visitJumpInsn(Opcodes.GOTO, call);
+		mv.visitLabel(other);
+		mv.visitLdcInsn("mixins.other.example.json");
+		mv.visitLabel(call);
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, MIXINS, "addConfiguration", "(Ljava/lang/String;)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		assertEquals(new AddedMixinConfigs.Added(List.of(), true), AddedMixinConfigs.added(cw.toByteArray()));
+	}
+
 	@Test
 	void otherClassesAreLeftAsTheyAre() {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
@@ -140,6 +175,7 @@ class AddedMixinConfigsTest {
 		mv.visitEnd();
 		cw.visitEnd();
 		assertNull(AddedMixinConfigs.withEnvironment(cw.toByteArray()));
+		assertNull(AddedMixinConfigs.added(cw.toByteArray()));
 	}
 
 	@Test

@@ -359,20 +359,40 @@ public final class MixinPreflight extends PreflightPart {
 	/**
 	 * The first point of an {@code @Inject} into a constructor that SpongePowered's Mixin rejects (CTOR-2: it throws as it
 	 * applies the mixin, whatever the config's {@code required}): any but a return that isn't marked {@code unsafe}, or,
-	 * on 0.8.5, any but a return that isn't Fabricated's {@link ConstructorPoint}. Null when it takes them all, or on
-	 * Fabric's Mixin.
+	 * on 0.8.5, any but a return that isn't Fabricated's {@link ConstructorPoint}. Mixin judges only the instructions a
+	 * point finds, so a call, field or construction point that finds none in the constructors isn't one: the check of the
+	 * points reports it as missing (CTOR-7: owo's hooks after Fabric Loader's and Quilt's client start hooks in
+	 * {@code Minecraft}'s constructor, which neither Forge's nor NeoForge's constructor calls). Null when it takes them
+	 * all, or on Fabric's Mixin.
 	 */
-	private String constructorPointRejected(AnnotationNode injector, List<MethodNode> matched) {
+	private String constructorPointRejected(AnnotationNode injector, List<MethodNode> matched, Context ctx) {
 		if (constructorInjects == ConstructorInjects.AFTER_DELEGATE || !injector.desc.equals(MixinNames.INJECT)
 				|| matched.stream().noneMatch(m -> m.name.equals("<init>"))) return null;
+		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 			if (ConstructorRepairs.RETURN_POINTS.contains(point)) continue;
 			if (constructorInjects == ConstructorInjects.UNSAFE_POINTS && Boolean.TRUE.equals(Annotations.value(at, "unsafe"))) continue;
 			if (constructorInjects == ConstructorInjects.RETURNS_ONLY && point.equals(ConstructorPoint.AT)) continue;
+			if (findsNothing(at, point, slices, matched, ctx)) continue;
 			return point;
 		}
 		return null;
+	}
+
+	/** Whether a call, field or construction point finds no instruction in any of the constructors among {@code methods}. */
+	private static boolean findsNothing(AnnotationNode at, String point, List<AnnotationNode> slices, List<MethodNode> methods, Context ctx) {
+		if (!List.of("INVOKE", "INVOKE_ASSIGN", "INVOKE_STRING", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)) {
+			return false;
+		}
+		AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
+		for (MethodNode m : methods) {
+			if (!m.name.equals("<init>")) continue;
+			Range range = slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx);
+			if (InjectionPoints.evaluate(point, ctx.resolve(raw), Annotations.value(at, "ordinal") instanceof Integer n ? n : -1,
+					Annotations.value(at, "opcode") instanceof Integer n ? n : -1, range, m) != Verdict.MISSING) return false;
+		}
+		return true;
 	}
 
 	/**
@@ -1220,6 +1240,11 @@ public final class MixinPreflight extends PreflightPart {
 		int require = Annotations.value(ann, "require") instanceof Integer r && r >= 0 ? r : PreflightAsm.grouped(handler) ? 0 : ctx.config().defaultRequire();
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(ann, "slice"));
 		String injectorName = "@" + PreflightAsm.simpleName(ann.desc);
+		List<MethodNode> scanned = (mixin.access & Opcodes.ACC_INTERFACE) == 0 ? PreflightAsm.wildcardMethods(ann, handler, target, ctx) : null;
+		if (scanned != null) {
+			checkWildcardPoints(handler, ann, require, slices, injectorName, scanned, target, ctx);
+			return;
+		}
 
 		List<MethodNode> matched = new ArrayList<>();
 		boolean anyFuzzy = false;
@@ -1354,6 +1379,14 @@ public final class MixinPreflight extends PreflightPart {
 					(ctx.owner() == null ? loader + "'s build of Minecraft" : ctx.changer(true)) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
+		int beyond = anyFuzzy ? -1 : ordinalBeyondLocals(handler, ann, matched, ctx);
+		if (beyond >= 0) {
+			ctx.injector(handler, require, injectorName + " " + handler.name + " modifies the local of type " + Type.getReturnType(handler.desc).getClassName()
+							+ " with ordinal " + Annotations.value(ann, "ordinal") + " in " + matched.get(0).name + matched.get(0).desc + " in "
+							+ target.name.replace('/', '.') + ", which has " + (beyond == 0 ? "none" : "at most " + beyond) + " of that type where its @At points are",
+					(ctx.owner() == null ? loader + "'s build of Minecraft" : ctx.changer(true)) + " changed the method body; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
 
 		if (ann.desc.equals(MixinNames.MODIFY_CONSTANT)) {
 			for (AnnotationNode constant : Annotations.list(Annotations.value(ann, "constant"))) {
@@ -1421,7 +1454,7 @@ public final class MixinPreflight extends PreflightPart {
 					"The feature this hook serves doesn't work on this " + loader + ".");
 			return;
 		}
-		String constructorPoint = constructorPointRejected(ann, matched);
+		String constructorPoint = constructorPointRejected(ann, matched, ctx);
 		if (constructorPoint != null) {
 			ctx.injector(handler, 1, injectorName + " " + handler.name + " injects into the constructor of " + target.name.replace('/', '.') + " at @At(\""
 							+ constructorPoint + "\"), which " + loader + "'s Mixin takes only at a return"
@@ -1512,6 +1545,37 @@ public final class MixinPreflight extends PreflightPart {
 							+ ": its point does not occur in " + String.join(", ", new TreeSet<>(without)) + " in " + target.name.replace('/', '.'),
 					ctx.changer(true) + " changed " + (without.size() == 1 ? "that method" : "those methods") + "; the mod needs an update or this mixin must be skipped.");
 		}
+	}
+
+	/**
+	 * An injector selecting its target's methods by a bare wildcard ({@link PreflightAsm#wildcardMethods}) applies wherever
+	 * its points occur in them, and Mixin stops on too few injections whatever methods it scanned: judged by their count
+	 * only, where every point is counted. Balm's drag hooks select {@code MouseHandler}'s methods so, at a call Forge 52's
+	 * patch moved into a hook of its own (WILD-1).
+	 */
+	private static void checkWildcardPoints(MethodNode handler, AnnotationNode ann, int require, List<AnnotationNode> slices, String injectorName,
+			List<MethodNode> methods, ClassNode target, Context ctx) {
+		if (require < 1) return;
+		int injections = 0;
+		List<String> points = new ArrayList<>();
+		for (AnnotationNode at : Annotations.list(Annotations.value(ann, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String rawTarget = Annotations.value(at, "target") instanceof String t ? ctx.resolve(t) : null;
+			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
+			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+			AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
+			for (MethodNode m : methods) {
+				int n = InjectionPoints.count(point, rawTarget, ordinal, opcode, slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx), m);
+				if (n < 0) return;
+				injections += n;
+			}
+			points.add("@At(\"" + point + "\"" + (rawTarget != null ? ", target=\"" + rawTarget + "\"" : "") + (ordinal >= 0 ? ", ordinal=" + ordinal : "") + ")");
+		}
+		if (points.isEmpty() || injections >= require) return;
+		ctx.injector(handler, require, injectorName + " " + handler.name + " selects the methods of " + target.name.replace('/', '.') + " by \"*\" and applies "
+						+ injections + " time(s) where it requires " + require + ": " + String.join(", ", points) + " occurs "
+						+ (injections == 0 ? "in none of them" : "that often in them"),
+				ctx.changer(true) + " changed the code it hooks; the mod needs an update or this mixin must be skipped.");
 	}
 
 	/**
@@ -1729,6 +1793,97 @@ public final class MixinPreflight extends PreflightPart {
 			}
 		}
 		return (implicit ? anyAbsent : anyPoint && allAbsent) ? type.getClassName() : null;
+	}
+
+	/**
+	 * The most locals of its type a {@code @ModifyVariable} picking its local by an ordinal among those of its type
+	 * ({@code ordinal}, no name or slot) can find at any instruction its {@code @At} points pick, where that is no more
+	 * than the ordinal: Mixin's discriminator then finds no local at any of them and the injector injects nothing, which
+	 * {@code require} judges (Apoli's {@code modifyEffectiveTool} modifies the second boolean in scope at the
+	 * {@code ItemStack.mineBlock} call in {@code ServerPlayerGameMode.destroyBlock}, vanilla's tool check; Forge 47's patch
+	 * declares the other one, the block's removal, after that call, and a Forge 47 server with Origins stopped: "(0/1)
+	 * succeeded", PRE-25). Judged for a type whose locals Mixin takes only from the method's local variable table
+	 * ({@link #narrowLocalsAtMost}): boolean, byte, char and short, at unshifted call and field points, in methods with a
+	 * table. -1 where it may find more, or isn't judged.
+	 */
+	static int ordinalBeyondLocals(MethodNode handler, AnnotationNode injector, List<MethodNode> targets, Context ctx) {
+		if (!injector.desc.equals(MixinNames.MODIFY_VARIABLE) || targets.isEmpty() || Boolean.TRUE.equals(Annotations.value(injector, "argsOnly"))
+				|| Annotations.value(injector, "name") != null || Annotations.value(injector, "index") instanceof Integer index && index >= 0
+				|| Boolean.TRUE.equals(Annotations.value(injector, "print")) || !(Annotations.value(injector, "ordinal") instanceof Integer ordinal) || ordinal < 0) {
+			return -1;
+		}
+		Type type = Type.getReturnType(handler.desc);
+		if (!List.of(Type.BOOLEAN, Type.BYTE, Type.CHAR, Type.SHORT).contains(type.getSort())) return -1;
+		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
+		int most = -1;
+		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String rawTarget = Annotations.value(at, "target") instanceof String t ? t : null;
+			boolean shifted = Annotations.value(at, "shift") instanceof String[] shift && shift.length == 2 && !shift[1].equals("NONE")
+					|| Annotations.value(at, "by") instanceof Integer by && by != 0;
+			if (!point.equals("INVOKE") && !point.equals("FIELD") || rawTarget == null || shifted) return -1;
+			AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
+			for (MethodNode m : targets) {
+				if (m.instructions == null || m.localVariables == null || m.localVariables.isEmpty()) return -1;
+				Range range = slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx);
+				List<Integer> picked = range == Range.UNEVALUATED ? null : InjectionPoints.indexes(point, ctx.resolve(rawTarget),
+						Annotations.value(at, "ordinal") instanceof Integer n ? n : -1, Annotations.value(at, "opcode") instanceof Integer n ? n : -1, range, m);
+				if (picked == null) return -1;
+				for (int index : picked) {
+					int found = narrowLocalsAtMost(type, m, index);
+					if (found > ordinal) return -1;
+					most = Math.max(most, found);
+				}
+			}
+		}
+		return most;
+	}
+
+	/**
+	 * At most how many locals of {@code type}, boolean, byte, char or short, are among the locals Mixin builds at the
+	 * instruction at {@code point} ({@code Locals.getLocalsAt}, whatever its version). Mixin gives a slot a local at each
+	 * store (from the instruction after it), load and stack map frame on its walk up to the point, the entry of the local
+	 * variable table covering that instruction for the slot, else one its generated table has (an analyser's types, which
+	 * give these an int's), else any other entry for the slot. A frame gives slots up to its size as Mixin counts it (each
+	 * appending frame at least the argument slots more, a full frame its locals) and those below the highest slot a store
+	 * or load gave. So: the arguments of the type, and the slots below the highest of those bounds with an entry of that
+	 * type in the table.
+	 */
+	static int narrowLocalsAtMost(Type type, MethodNode method, int point) {
+		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
+		int initial = isStatic ? 0 : 1;
+		Map<Integer, Type> arguments = new HashMap<>();
+		for (Type arg : Type.getArgumentTypes(method.desc)) {
+			arguments.put(initial, arg);
+			initial += arg.getSize();
+		}
+		int reach = initial;
+		int frameSize = initial;
+		for (int i = 0; i <= point && i < method.instructions.size(); i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			if (insn instanceof VarInsnNode var) {
+				boolean load = var.getOpcode() >= Opcodes.ILOAD && var.getOpcode() <= Opcodes.ALOAD;
+				int size = var.getOpcode() == Opcodes.LLOAD || var.getOpcode() == Opcodes.DLOAD || var.getOpcode() == Opcodes.LSTORE
+						|| var.getOpcode() == Opcodes.DSTORE ? 2 : 1;
+				// A store gives its slot a local from the next instruction on.
+				if (load || i < point) reach = Math.max(reach, var.var + size);
+			} else if (insn instanceof FrameNode frame && frame.type != Opcodes.F_SAME && frame.type != Opcodes.F_SAME1) {
+				int width = 0;
+				for (Object local : frame.local == null ? List.of() : frame.local) width += local == Opcodes.LONG || local == Opcodes.DOUBLE ? 2 : 1;
+				frameSize = switch (frame.type) {
+					case Opcodes.F_NEW, Opcodes.F_FULL -> Math.max(initial, width);
+					case Opcodes.F_APPEND -> frameSize + Math.max(initial, width);
+					default -> frameSize;
+				};
+				reach = Math.max(reach, frameSize);
+			}
+		}
+		int found = 0;
+		for (int slot = isStatic ? 0 : 1; slot < reach; slot++) {
+			int s = slot;
+			if (type.equals(arguments.get(slot)) || method.localVariables.stream().anyMatch(lv -> lv.index == s && lv.desc.equals(type.getDescriptor()))) found++;
+		}
+		return found;
 	}
 
 	/**
