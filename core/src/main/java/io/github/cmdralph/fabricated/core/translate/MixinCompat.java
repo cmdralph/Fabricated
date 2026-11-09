@@ -60,16 +60,18 @@ public final class MixinCompat {
 	 * for interfaces in 0.15.0), and none sees the fields other mixins add to the same target as it prepares a mixin
 	 * ({@code TargetClassContext.findAliasedField} looks in the target's own fields; Fabric's Mixin also looks in the
 	 * fields of the mixins prepared before, its {@code mixinFields}, from 0.12.0): a {@code @Shadow} of one isn't found
-	 * (CORPUS-74), and a {@code @Unique} field of the same name isn't renamed (CORPUS-95).
+	 * (CORPUS-74), and a {@code @Unique} field of the same name isn't renamed (CORPUS-95). All three also reuse an earlier
+	 * injector's locals for a long or double without checking its second slot (PRE-22: {@code Target.allocateArgMapLocal},
+	 * read in 0.8.5 and 0.8.7; Fabric's checks it, read in 0.16.4 and 0.17.4).
 	 */
 	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects, boolean argumentNames,
-			boolean exactStaticInjects, boolean rebindsInterfaceSuperCalls, boolean seesMixinFields) {
+			boolean exactStaticInjects, boolean rebindsInterfaceSuperCalls, boolean seesMixinFields, boolean overlapsWideArguments) {
 	}
 
 	private static final Map<String, Upstream> UPSTREAM = Map.of(
-			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true, true, false),
-			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false),
-			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false));
+			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true, true, false, true),
+			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false, true),
+			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false, true));
 	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
 	private static final Pattern MINECRAFT = Pattern.compile("(\\d+)\\.(\\d+)(?:\\.(\\d+))?");
 
@@ -233,6 +235,17 @@ public final class MixinCompat {
 	public static boolean seesMixinFields(String runtimeMixinVersion) {
 		Upstream upstream = upstream(runtimeMixinVersion);
 		return upstream == null || upstream.seesMixinFields();
+	}
+
+	/**
+	 * Whether the running Mixin may store a long or double over another local where it reuses the locals it stored an
+	 * earlier injector's values in for an injector's values (PRE-22): SpongePowered's releases do, as
+	 * {@code Target.allocateArgMapLocal} takes the slot after a reused local for the value's second half unchecked. False
+	 * for a version not known here.
+	 */
+	public static boolean overlapsWideArguments(String runtimeMixinVersion) {
+		Upstream upstream = upstream(runtimeMixinVersion);
+		return upstream != null && upstream.overlapsWideArguments();
 	}
 
 	/**

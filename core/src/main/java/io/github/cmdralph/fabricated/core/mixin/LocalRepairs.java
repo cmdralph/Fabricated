@@ -60,7 +60,11 @@ final class LocalRepairs extends PreflightPart {
 	 * {@code GuiGraphicsExtractor.map}, which failed on Forge 65 with "(0/1) succeeded", as ARGS-1's hook had). The
 	 * argument is found as {@link #argumentNameRepairs} finds it: by its name in the target's local variable table or
 	 * vanilla's, or else the only argument of the type the local holds (not for a {@code LocalRef}, whose type is in its
-	 * signature). Returns a description of each.
+	 * signature). The same goes for a MixinExtras expression's {@code @Definition} of an argument by its name, which
+	 * MixinExtras finds with the same discriminator (PRE-21: Debugify's cactus fix wraps
+	 * {@code ?.getBlockState(pos.relative(direction))} in {@code CactusBlock.canSurvive}, defining {@code pos} as
+	 * {@code @Local(type = BlockPos.class, name = "pos", argsOnly = true)}, so the expression matched nothing on Forge 64
+	 * to 66 and the server stopped in {@code Blocks}' initializer: "(0/1) succeeded"). Returns a description of each.
 	 */
 	List<String> localArgumentNameRepairs(MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx) {
 		if (argumentNames) return List.of();
@@ -79,6 +83,16 @@ final class LocalRepairs extends PreflightPart {
 				Annotations.put(local, "index", slot);
 				repaired.add(takesSlot(names, slot));
 			}
+		}
+		for (AnnotationNode local : InjectionPoints.definitionLocals(handler)) {
+			// A definition's local has the type it is given; without one, Mixin's discriminator matches no local at all.
+			if (!takesArgumentByName(local) || !(Annotations.value(local, "type") instanceof Type held)) continue;
+			List<?> names = (List<?>) Annotations.value(local, "name");
+			Integer slot = argumentSlotInEvery(injector, targets, names, held.getDescriptor()::equals, held, ctx);
+			if (slot == null) continue;
+			removeValue(local, "name");
+			Annotations.put(local, "index", slot);
+			repaired.add("in its expression " + takesSlot(names, slot));
 		}
 		return repaired;
 	}

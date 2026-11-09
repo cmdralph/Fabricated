@@ -290,6 +290,12 @@ class TranslateHelpersTest {
 		assertFalse(MixinCompat.argumentNames("0.8.5+Jenkins-b310.git-1"), "Forge 47");
 		assertFalse(MixinCompat.argumentNames("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
 		assertTrue(MixinCompat.argumentNames("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
+		// PRE-22: whether a long or double goes into a reused local without its second slot checked.
+		assertTrue(MixinCompat.overlapsWideArguments("0.8.5+Jenkins-b310.git-1"), "Forge 47");
+		assertTrue(MixinCompat.overlapsWideArguments("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
+		assertFalse(MixinCompat.overlapsWideArguments("0.16.4+mixin.0.8.7"), "Fabric's Mixin, NeoForge 21.1's");
+		assertFalse(MixinCompat.overlapsWideArguments("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
+		assertFalse(MixinCompat.overlapsWideArguments(null));
 		// LAMBDA-6: whether an @Inject handler must be static exactly where its target is.
 		assertTrue(MixinCompat.exactStaticInjects("0.8.5+Jenkins-b310.git-1"), "Forge 47");
 		assertFalse(MixinCompat.exactStaticInjects("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
