@@ -123,13 +123,13 @@ class CurseForge:
     def redact(self, text):
         return text.replace(self.token, "***")
 
-    def request(self, what, path, body=None, content_type=None):
+    def request(self, what, path, body=None, content_type=None, retries=RETRIES):
         """The JSON answer. A server error, a dropped connection or a timeout is tried again, after 2, 4 and 8
         seconds; a client error (4xx) is not, as it would fail again."""
         headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
         if content_type:
             headers["Content-Type"] = content_type
-        for attempt in range(RETRIES + 1):
+        for attempt in range(retries + 1):
             try:
                 request = urllib.request.Request(API + path, data=body, headers=headers)
                 # Not sent on along a redirect, which could lead to another host.
@@ -137,13 +137,13 @@ class CurseForge:
                 with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
                     return json.loads(response.read())
             except urllib.error.HTTPError as e:
-                if e.code < 500 or attempt == RETRIES:
+                if e.code < 500 or attempt == retries:
                     raise Failure(self.redact(f"{what}: HTTP {e.code} from CurseForge: {error_body(e)}")) from None
                 problem = f"HTTP {e.code}"
             except (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError) as e:
                 reason = getattr(e, "reason", e)
                 problem = str(reason) or type(reason).__name__
-                if not isinstance(reason, (ConnectionError, TimeoutError)) or attempt == RETRIES:
+                if not isinstance(reason, (ConnectionError, TimeoutError)) or attempt == retries:
                     raise Failure(self.redact(f"{what}: {problem}")) from None
             except ValueError:
                 raise Failure(f"{what}: CurseForge's answer isn't JSON") from None
@@ -154,14 +154,15 @@ class CurseForge:
         return self.request(f"GET {path}", path)
 
     def upload(self, project, jar, metadata):
-        """The new file's id. The metadata is a JSON form field next to the file, as CurseForge's upload API asks."""
+        """The new file's id. The metadata is a JSON form field next to the file, as CurseForge's upload API asks.
+        Tried once: CurseForge may have stored a file whose answer was lost, and a second try would upload it twice."""
         boundary = secrets.token_hex(16)
         head = (f'--{boundary}\r\nContent-Disposition: form-data; name="metadata"\r\n\r\n{json.dumps(metadata)}\r\n'
                 f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{jar.name}"\r\n'
                 "Content-Type: application/java-archive\r\n\r\n")
         body = head.encode() + jar.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
         answer = self.request(f"Upload of {jar.name}", f"/api/projects/{project}/upload-file", body,
-                              f"multipart/form-data; boundary={boundary}")
+                              f"multipart/form-data; boundary={boundary}", retries=0)
         if not isinstance(answer, dict) or "id" not in answer:
             raise Failure(self.redact(f"Upload of {jar.name}: CurseForge's answer names no file id: {answer}"))
         return answer["id"]

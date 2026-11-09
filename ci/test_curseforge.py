@@ -271,6 +271,15 @@ class Uploads(unittest.TestCase):
             self.assertEqual(urlopen.call_count, 1)
         self.assertIn("certificate verify failed", str(failure.exception))
 
+    def test_upload_tried_once(self):
+        client = curseforge.CurseForge(TOKEN)
+        for error in (http_error(502), ConnectionResetError()):
+            urlopen = mock.Mock(side_effect=[error, answer({"id": 1})])
+            with self.subTest(error), mock.patch.object(curseforge.urllib.request, "urlopen", urlopen), \
+                    self.assertRaises(Failure):
+                client.upload("123456", self.jars[0], {})
+            self.assertEqual(urlopen.call_count, 1)
+
     def test_error_names_status_and_body(self):
         client = curseforge.CurseForge(TOKEN)
         error = http_error(400, b'{"errorCode":1009,"errorMessage":"Invalid game version ID"}')
