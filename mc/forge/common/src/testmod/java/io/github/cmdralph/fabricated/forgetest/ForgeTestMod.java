@@ -1,5 +1,7 @@
 package io.github.cmdralph.fabricated.forgetest;
 
+import java.util.function.BiConsumer;
+
 import org.slf4j.Logger;
 
 import io.github.cmdralph.fabricated.testmod.TestMod;
@@ -8,8 +10,12 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.common.capabilities.ICapabilityProvider;
+import net.minecraftforge.event.AttachCapabilitiesEvent;
 
 /**
  * Forge's half of the CI test mod: the checks of Forge's own hooks, beside the shared ones (mc/shared), whose
@@ -81,6 +87,11 @@ public final class ForgeTestMod implements ModInitializer {
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.error("FABRICATED-TEST {} FAILED", what, e);
 		}
+	}
+
+	/** As a Forge mod gives its items' stacks capabilities, by name: on Forge's attach event (EventBus 7's). */
+	public static void attachToStacks(BiConsumer<ItemStack, BiConsumer<Identifier, ICapabilityProvider>> attach) {
+		AttachCapabilitiesEvent.ItemStacks.BUS.addListener(event -> attach.accept(event.getObject(), event::addCapability));
 	}
 
 	/**
