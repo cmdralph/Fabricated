@@ -14,7 +14,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   logged its terrain line only in vanilla's chunk section level, not in Sodium's. Of what of Sodium doesn't apply
   there, its model overwrites (left out by pre-flight) cost only speed, its hook into NeoForge's block entity walk has
   nothing to hook, and its window hooks miss only where Forge's early window is off (its driver workarounds).
-- `client-sodium-fabric` gates on Forge 52. Verified locally: that run (58 checks passing, none failing) and the
+- `client-sodium-fabric` runs on Forge 52, informational until it holds on two extended runs (CI-1). Verified locally: that run (58 checks passing, none failing) and the
   client part on Forge 52, `client-sodium-iris` and the client part on Forge 47, `client-sodium-fabric` on NeoForge
   1.21.1, the core unit tests and NeoForge 1.21.1's build.
 
