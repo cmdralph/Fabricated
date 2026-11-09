@@ -24,6 +24,7 @@
     "GameDataFreezeMixin": [],
     "IngredientNetworkCodecMixin": [],
     "LiquidBlockRendererSpritesMixin": ["fabric-rendering-fluids-v1"],
+    "LivingEntityDropCaptureMixin": [],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
     "ModifiableBiomeInfoAccessor": [],
