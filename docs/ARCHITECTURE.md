@@ -543,7 +543,7 @@ Unknown keys produce a warning. Invalid values fall back to defaults with a warn
 
 | Threat | Mitigation |
 |---|---|
-| Path traversal / zip-slip | Entry names are validated, not rewritten: a jar with an empty, absolute, `.` or `..` segment, a backslash, a drive letter, a control character (NUL included) or a duplicate name is rejected. Nothing is extracted under an entry's name: nested jars go to the cache as `nested/<sha256>.jar`, and the cache root is checked to resolve inside the real game directory. |
+| Path traversal / zip-slip | Entry names are validated, not rewritten: a jar with an empty, absolute, `.` or `..` segment, a backslash, a drive letter, a control character (NUL included) or a duplicate name is rejected. The one repeat accepted is a directory's entry whose every copy declares no content (SEC-11): it has nothing two readers could see differently, and a directory is never read; each copy counts against the entry limit. Nothing is extracted under an entry's name: nested jars go to the cache as `nested/<sha256>.jar`, and the cache root is checked to resolve inside the real game directory. |
 | Decompression bombs | Caps on jar size, entry size, total uncompressed size, entry count and compression ratio, and on what nested jars extract to the cache, per top-level jar and per launch (§3.3). Declared sizes are checked when the jar is opened; reads count the bytes actually inflated, and refuse an entry that inflates past the size its header declares. |
 | Malformed JSON / huge metadata | 1 MiB cap and strict types. Parse errors are per-mod. |
 | Code execution during translation | Bytes-only processing (ASM `ClassReader`). No mod class is loaded, no service loading from mod jars, no scripting. |
