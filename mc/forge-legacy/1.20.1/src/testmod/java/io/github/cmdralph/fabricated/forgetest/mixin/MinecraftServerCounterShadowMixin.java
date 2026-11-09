@@ -29,9 +29,9 @@ public abstract class MinecraftServerCounterShadowMixin {
 		if (fabricatedForgeTest$checked) return;
 		fabricatedForgeTest$checked = true;
 		if (fabricatedForgeTest$ticks == 1) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST shared mixin field OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST shared mixin field OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST shared mixin field not shared: the shadow reads {} after the first tick", fabricatedForgeTest$ticks);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST shared mixin field not shared: the shadow reads {} after the first tick", fabricatedForgeTest$ticks);
 		}
 	}
 }

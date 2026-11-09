@@ -23,7 +23,7 @@ public final class ForgeHudClient {
 		HudRenderCallback.EVENT.register((drawContext, tickDelta) -> {
 			if (fired) return;
 			fired = true;
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST hud render callback OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST hud render callback OK");
 		});
 	}
 }

@@ -2,7 +2,7 @@ package io.github.cmdralph.fabricated.forgetest;
 
 /**
  * Keeps a client in its world while a check of the test mod's on the integrated server hasn't logged its result. CI's
- * client runs start the game with mc-runtime-test (ci/forge-legacy/smoke-client.sh), which quits a few seconds after
+ * client runs start the game with mc-runtime-test (ci/smoke-client.sh), which quits a few seconds after
  * the player's chunk has loaded: once before the interaction check's armor stand part had run, as the test site's chunk
  * took longer to tick entities than that, so its result was never logged (the forge branch: #254's run 41582983779,
  * Forge 26.2 with Fabric API). The test mod's mixin into mc-runtime-test ({@code mixin/McRuntimeTestMixin}) skips its

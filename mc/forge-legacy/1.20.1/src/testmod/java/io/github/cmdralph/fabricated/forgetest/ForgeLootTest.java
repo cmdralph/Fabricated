@@ -80,7 +80,7 @@ public final class ForgeLootTest {
 				try {
 					supplier.pool(FabricLootPoolBuilder.builder().with(class_77.method_411(class_1802.field_8831)));
 				} catch (RuntimeException | LinkageError e) {
-					ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST loot: the v1 event's pool failed", e);
+					ForgeTestMod.LOGGER.warn("FABRICATED-TEST loot: the v1 event's pool failed", e);
 				}
 			}
 		});
@@ -94,7 +94,7 @@ public final class ForgeLootTest {
 					return class_52.method_324().method_338();
 				}
 			} catch (RuntimeException | LinkageError e) {
-				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST loot: REPLACE failed for {}", id, e);
+				ForgeTestMod.LOGGER.warn("FABRICATED-TEST loot: REPLACE failed for {}", id, e);
 			}
 			return null;
 		});
@@ -110,7 +110,7 @@ public final class ForgeLootTest {
 					conditionedLoaded = true;
 				}
 			} catch (RuntimeException | LinkageError e) {
-				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST loot: MODIFY failed for {}", id, e);
+				ForgeTestMod.LOGGER.warn("FABRICATED-TEST loot: MODIFY failed for {}", id, e);
 			}
 		});
 		LootTableEvents.ALL_LOADED.register((resourceManager, lootManager) -> {
@@ -119,7 +119,7 @@ public final class ForgeLootTest {
 			try {
 				check(lootManager);
 			} catch (RuntimeException | LinkageError e) {
-				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST loot: reading the loaded tables failed", e);
+				ForgeTestMod.LOGGER.warn("FABRICATED-TEST loot: reading the loaded tables failed", e);
 			}
 		});
 	}
@@ -148,18 +148,18 @@ public final class ForgeLootTest {
 		int replacedPools = ((FabricLootSupplier) lootManager.getLootTable(REPLACED)).getPools().size();
 		if (replacedPools != 0) failed.add("the replaced table's pools " + replacedPools);
 		if (!failed.isEmpty()) {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST loot: not in the tables the game keeps: {}", failed);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST loot: not in the tables the game keeps: {}", failed);
 		} else if (sources.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST loot OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST loot OK");
 		} else {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST loot sources SKIPPED: fabric-loot-api-v2 is another mod's, which answers {} as its source reads;"
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST loot SKIPPED: fabric-loot-api-v2 is another mod's, which answers {} as its source reads;"
 					+ " the pools and the replaced table OK (PROVIDER-14)", sources);
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-resource-conditions-api-v1")) {
 			if (conditionedLoaded) {
-				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST loot conditions: a table whose fabric:load_conditions fail was loaded");
+				ForgeTestMod.LOGGER.warn("FABRICATED-TEST loot conditions: a table whose fabric:load_conditions fail was loaded");
 			} else {
-				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST loot conditions OK");
+				ForgeTestMod.LOGGER.info("FABRICATED-TEST loot conditions OK");
 			}
 		}
 	}

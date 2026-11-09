@@ -40,13 +40,13 @@ public final class ForgeRecordedFramesTest {
 		try {
 			result = Probe.probe("1", "2", "3", "4");
 		} catch (RuntimeException | Error e) { // Mixin's own failures are errors
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST recorded frames FAILED: the probe's class didn't load", e);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST recorded frames FAILED: the probe's class didn't load", e);
 			return;
 		}
 		if ("kept121+local4".equals(result)) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST recorded frames OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST recorded frames OK");
 		} else {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST recorded frames FAILED: the probe gave {}", result);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST recorded frames FAILED: the probe gave {}", result);
 		}
 	}
 }

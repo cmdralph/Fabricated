@@ -27,7 +27,7 @@ public abstract class MinecraftServerArgsMixin {
 		args.set(0, args.get(0));
 		if (!fabricatedForgeTest$modified) {
 			fabricatedForgeTest$modified = true;
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST @ModifyArgs OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST @ModifyArgs OK");
 		}
 	}
 }

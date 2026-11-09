@@ -48,7 +48,7 @@ public final class ForgeConfigPortTest {
 			config = ForgeConfigRegistry.INSTANCE.register(ForgeTestMod.MOD_ID, ModConfig.Type.COMMON, spec);
 			registered = values();
 		} catch (IOException | RuntimeException | LinkageError e) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST config port registration failed", e);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST config port registration failed", e);
 		}
 	}
 
@@ -61,13 +61,13 @@ public final class ForgeConfigPortTest {
 			boolean ok = "false/7".equals(registered) && "false/7".equals(now) && LOADINGS.get() == 1 && FILE.equals(config.getFileName())
 					&& config.getConfigData() != null && Files.isRegularFile(file) && file.equals(FabricLoader.getInstance().getConfigDir().resolve(FILE));
 			if (ok) {
-				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST config port OK");
+				ForgeTestMod.LOGGER.info("FABRICATED-TEST config port OK");
 			} else {
-				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST config port FAILED: after registering {}, now {}, loaded {} time(s), file {} ({}), loaded by Forge {}",
+				ForgeTestMod.LOGGER.error("FABRICATED-TEST config port FAILED: after registering {}, now {}, loaded {} time(s), file {} ({}), loaded by Forge {}",
 						registered, now, LOADINGS.get(), config.getFileName(), Files.isRegularFile(file) ? file : "missing", config.getConfigData() != null);
 			}
 		} catch (RuntimeException | LinkageError e) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST config port check failed", e);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST config port check failed", e);
 		}
 	}
 

@@ -22,9 +22,9 @@ public final class ForgeLanguageTest {
 	public static void check() {
 		boolean known = class_2477.method_10517().method_4678(KEY);
 		if (readByVanilla && known) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST language files OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST language files OK");
 		} else {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST language files FAILED: the test mod's key read by vanilla's reader {}, in the server's language {}",
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST language files FAILED: the test mod's key read by vanilla's reader {}, in the server's language {}",
 					readByVanilla, known);
 		}
 	}

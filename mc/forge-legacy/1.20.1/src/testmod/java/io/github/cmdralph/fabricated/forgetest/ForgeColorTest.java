@@ -21,9 +21,9 @@ public final class ForgeColorTest {
 		boolean grass = ColorProviderRegistry.BLOCK.get(class_2246.field_10219) != null;
 		boolean stone = ColorProviderRegistry.BLOCK.get(class_2246.field_10340) != null;
 		if (grass && !stone) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST colour providers OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST colour providers OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST colour providers: grass has one {}, stone {}", grass, stone);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST colour providers: grass has one {}, stone {}", grass, stone);
 		}
 	}
 }

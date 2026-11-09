@@ -32,9 +32,9 @@ public final class ForgeRecipeConditionTest {
 		boolean kept = recipes.method_8130(new class_2960(ForgeTestMod.MOD_ID, "condition_kept")).isPresent();
 		boolean dropped = recipes.method_8130(new class_2960(ForgeTestMod.MOD_ID, "condition_dropped")).isPresent();
 		if (kept && !dropped) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST recipe conditions OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST recipe conditions OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST recipe conditions: the true condition's recipe loaded {}, the false one's {}", kept, dropped);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST recipe conditions: the true condition's recipe loaded {}, the false one's {}", kept, dropped);
 		}
 	}
 
@@ -46,7 +46,7 @@ public final class ForgeRecipeConditionTest {
 		static void register() {
 			ResourceConditions.register(new class_2960(ForgeTestMod.MOD_ID, "enabled"), json -> {
 				boolean value = json.has("value") && json.get("value").getAsBoolean();
-				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST recipe condition asked: {}", value);
+				ForgeTestMod.LOGGER.info("FABRICATED-TEST recipe condition asked: {}", value);
 				return value;
 			});
 		}

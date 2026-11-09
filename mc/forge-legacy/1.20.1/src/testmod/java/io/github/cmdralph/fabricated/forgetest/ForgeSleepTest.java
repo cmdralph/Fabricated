@@ -84,9 +84,9 @@ public final class ForgeSleepTest {
 		if (!SEEN.contains("sleep time")) failed.add("ALLOW_SLEEP_TIME wasn't asked as the fake player tried to sleep");
 		level.method_8652(pos, class_2246.field_10124.method_9564(), 3);
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST sleep events OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST sleep events OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST sleep events: {}", String.join("; ", failed));
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST sleep events: {}", String.join("; ", failed));
 		}
 	}
 }

@@ -48,9 +48,9 @@ public final class ForgeBiomeTest {
 		}
 		if (plains.method_8712() != TEMPERATURE) failed.add("temperature " + plains.method_8712());
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST biome modifications OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST biome modifications OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST biome modifications: not in the biome Forge reads: {}", failed);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST biome modifications: not in the biome Forge reads: {}", failed);
 		}
 	}
 

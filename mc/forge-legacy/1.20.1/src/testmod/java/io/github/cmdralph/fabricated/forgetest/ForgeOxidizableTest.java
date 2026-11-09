@@ -28,12 +28,12 @@ public final class ForgeOxidizableTest {
 		try {
 			OxidizableBlocksRegistry.registerOxidizableBlockPair(less, more);
 			if (next.get(less) == more) {
-				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST oxidizable blocks OK");
+				ForgeTestMod.LOGGER.info("FABRICATED-TEST oxidizable blocks OK");
 			} else {
-				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST oxidizable blocks FAILED: the registered pair isn't in vanilla's oxidation map ({})", next.get(less));
+				ForgeTestMod.LOGGER.error("FABRICATED-TEST oxidizable blocks FAILED: the registered pair isn't in vanilla's oxidation map ({})", next.get(less));
 			}
 		} catch (UnsupportedOperationException e) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST oxidizable blocks FAILED: vanilla's oxidation map is still immutable ({}), so upstream's interface"
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST oxidizable blocks FAILED: vanilla's oxidation map is still immutable ({}), so upstream's interface"
 					+ " mixin didn't apply", next.getClass().getName(), e);
 		} finally {
 			if (next.get(less) == more) next.remove(less);

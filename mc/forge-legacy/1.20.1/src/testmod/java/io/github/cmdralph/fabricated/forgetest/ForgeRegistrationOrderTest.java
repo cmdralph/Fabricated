@@ -48,9 +48,9 @@ final class ForgeRegistrationOrderTest {
 			failed.add("the music disc made before its sound was registered: " + e);
 		}
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST registration order OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST registration order OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST registration order: {}", failed);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST registration order: {}", failed);
 		}
 	}
 }

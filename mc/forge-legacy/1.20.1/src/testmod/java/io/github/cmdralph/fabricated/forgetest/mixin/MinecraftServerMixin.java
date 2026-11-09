@@ -86,11 +86,11 @@ public abstract class MinecraftServerMixin {
 	private void fabricatedForgeTest$afterTick(CallbackInfo ci) {
 		if (!fabricatedForgeTest$logged) {
 			fabricatedForgeTest$logged = true;
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST mixin OK");
-			if ((Object) this instanceof ForgeTestMarker) ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST injected interface OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST mixin OK");
+			if ((Object) this instanceof ForgeTestMarker) ForgeTestMod.LOGGER.info("FABRICATED-TEST injected interface OK");
 			class_2378<class_1792> items = class_7923.field_41178;
 			if (ForgeTestMod.testItem != null && items.method_10223(new class_2960(ForgeTestMod.MOD_ID, ForgeTestMod.ITEM_PATH)) == ForgeTestMod.testItem) {
-				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST registry entry kept OK");
+				ForgeTestMod.LOGGER.info("FABRICATED-TEST registry entry kept OK");
 			}
 			// The test mod's tag lists stone and dirt and removes dirt in fabric:remove, which Fabricated's in-game mod reads
 			// into Forge's remove list.
@@ -98,9 +98,9 @@ public abstract class MinecraftServerMixin {
 			boolean stone = new class_1799(class_1802.field_20391).method_31573(tag);
 			boolean dirt = new class_1799(class_1802.field_8831).method_31573(tag);
 			if (stone && !dirt) {
-				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST fabric:remove OK");
+				ForgeTestMod.LOGGER.info("FABRICATED-TEST tag removal OK");
 			} else {
-				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST fabric:remove: the tag is loaded {}, stone is in it {}, dirt is in it {}",
+				ForgeTestMod.LOGGER.warn("FABRICATED-TEST tag removal FAILED: the tag is loaded {}, stone is in it {}, dirt is in it {}",
 						items.method_40266(tag).isPresent(), stone, dirt);
 			}
 			class_5455 registries = method_30611();

@@ -24,7 +24,7 @@ public final class ForgeBrewingMixTest {
 	public static void check() {
 		List<?> mixes = PotionBrewingAccessor.fabricatedtest$potionMixes();
 		if (mixes.isEmpty()) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST brewing mix accessors FAILED: the game has no potion mixes");
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST brewing mix accessors FAILED: the game has no potion mixes");
 			return;
 		}
 		PotionBrewingMixAccessor mix = (PotionBrewingMixAccessor) mixes.get(0);
@@ -32,16 +32,16 @@ public final class ForgeBrewingMixTest {
 		Object to = mix.fabricatedtest$to();
 		Object read = ((class_1845.class_1846<?>) mixes.get(0)).field_8962;
 		if (read != from) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST brewing mix accessors FAILED: the first potion mix's from, read as REI reads it, is {}",
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST brewing mix accessors FAILED: the first potion mix's from, read as REI reads it, is {}",
 					read == null ? null : read.getClass().getName());
 			return;
 		}
 		if (from instanceof class_1842 in && to instanceof class_1842 out && class_7923.field_41179.method_10221(in) != null
 				&& class_7923.field_41179.method_10221(out) != null) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST brewing mix accessors OK ({} to {})", class_7923.field_41179.method_10221(in),
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST brewing mix accessors OK ({} to {})", class_7923.field_41179.method_10221(in),
 					class_7923.field_41179.method_10221(out));
 		} else {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST brewing mix accessors FAILED: the first potion mix's from and to are {} and {}",
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST brewing mix accessors FAILED: the first potion mix's from and to are {} and {}",
 					from == null ? null : from.getClass().getName(), to == null ? null : to.getClass().getName());
 		}
 	}

@@ -29,9 +29,9 @@ public final class ForgeModelClient {
 				if (context.id() != null && !reported) {
 					reported = true;
 					if (beforeBake) {
-						ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST model bake events OK");
+						ForgeTestMod.LOGGER.info("FABRICATED-TEST model bake events OK");
 					} else {
-						ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST model bake events: a model was baked without its before-bake event");
+						ForgeTestMod.LOGGER.warn("FABRICATED-TEST model bake events: a model was baked without its before-bake event");
 					}
 				}
 				return model;

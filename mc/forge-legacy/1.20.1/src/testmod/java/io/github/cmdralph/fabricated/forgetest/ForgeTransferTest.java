@@ -172,7 +172,7 @@ public final class ForgeTransferTest {
 			level.method_8652(forgePos, class_2246.field_10124.method_9564(), 3);
 			forgeSeesFabricItems(failed);
 			fabricSeesForgeItems(failed);
-			ForgeTestMod.report("storages", failed, "fabric-transfer-api-v1", PROVIDERS_ANSWERS);
+			ForgeTestMod.report("transfer", failed, "fabric-transfer-api-v1", PROVIDERS_ANSWERS);
 		}
 
 		/** Forge's code, as a hopper or pipe of a Forge mod's, on the Fabric mod's storages. */

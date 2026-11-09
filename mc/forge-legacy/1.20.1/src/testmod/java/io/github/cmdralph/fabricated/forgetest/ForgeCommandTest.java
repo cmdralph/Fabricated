@@ -29,9 +29,9 @@ public final class ForgeCommandTest {
 	public static void check(class_2170 commands) {
 		if (!FabricLoader.getInstance().isModLoaded("fabric-command-api-v2")) return;
 		if (commands.method_9235().getRoot().getChild(COMMAND) != null) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST Fabric command registered OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST Fabric command registered OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST Fabric command {} is not in the server's dispatcher", COMMAND);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST Fabric command {} is not in the server's dispatcher", COMMAND);
 		}
 	}
 }

@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import io.github.cmdralph.fabricated.forgetest.ClientHold;
 
 /**
- * Holds mc-runtime-test, which CI's client runs start the game with (ci/forge-legacy/smoke-client.sh), while the test
+ * Holds mc-runtime-test, which CI's client runs start the game with (ci/smoke-client.sh), while the test
  * mod's checks on the integrated server haven't logged their results ({@link ClientHold}). Its tick hook returning
  * false skips its work that tick, so it neither counts down to quitting nor quits, as its controller class invites mods
  * to do. Not a Fabricated feature: only CI's runs have mc-runtime-test, and without it this mixin applies to nothing.

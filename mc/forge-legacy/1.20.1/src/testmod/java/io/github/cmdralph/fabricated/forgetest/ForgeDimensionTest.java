@@ -35,7 +35,7 @@ public final class ForgeDimensionTest {
 	/** On the server thread, after the first tick, as Fabric mods teleport entities. */
 	public static void check(class_3218 overworld, class_3218 end) {
 		if (overworld == null || end == null) {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST dimensions: no overworld ({}) or End ({})", overworld, end);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST dimensions: no overworld ({}) or End ({})", overworld, end);
 			return;
 		}
 		try {
@@ -62,12 +62,12 @@ public final class ForgeDimensionTest {
 			}
 			if (!end.method_8320(floor).method_27852(stone)) failed.add("the End's obsidian platform was built");
 			if (failed.isEmpty()) {
-				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST dimensions OK");
+				ForgeTestMod.LOGGER.info("FABRICATED-TEST dimensions OK");
 			} else {
-				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST dimensions: the teleport went wrong: {}", failed);
+				ForgeTestMod.LOGGER.warn("FABRICATED-TEST dimensions: the teleport went wrong: {}", failed);
 			}
 		} catch (RuntimeException | LinkageError e) {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST dimensions: the teleport failed", e);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST dimensions: the teleport failed", e);
 		}
 	}
 }

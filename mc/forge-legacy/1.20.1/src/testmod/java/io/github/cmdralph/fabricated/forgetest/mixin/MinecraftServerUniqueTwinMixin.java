@@ -32,9 +32,9 @@ public abstract class MinecraftServerUniqueTwinMixin {
 		if (fabricatedForgeTest$uniqueChecked) return;
 		fabricatedForgeTest$uniqueChecked = true;
 		if (fabricatedForgeTest$uniqueCount == 10) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST unique mixin fields OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST unique mixin fields OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST unique mixin fields shared: the twin reads {} after the first tick", fabricatedForgeTest$uniqueCount);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST unique mixin fields shared: the twin reads {} after the first tick", fabricatedForgeTest$uniqueCount);
 		}
 	}
 }

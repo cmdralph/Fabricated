@@ -55,8 +55,8 @@ public final class ForgeDefaultBridgeTest {
 	public static void check(class_3218 level) {
 		class_2378<class_1299<?>> entityTypes = class_7923.field_41177;
 		if (!(entityTypes.method_10223(new class_2960("minecraft", "pig")).method_5883(level) instanceof class_1308 pig)) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST default bridge FAILED: could not create a pig");
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST inherited default bridge FAILED: could not create a pig");
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST default bridge FAILED: could not create a pig");
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST inherited default bridge FAILED: could not create a pig");
 			return;
 		}
 		checkSelf(pig);
@@ -66,14 +66,14 @@ public final class ForgeDefaultBridgeTest {
 	/** The bridge for a default of the class's own interface (CORPUS-11, CORPUS-63). */
 	private static void checkSelf(class_1308 pig) {
 		if (!((Object) pig instanceof OwnSelf own)) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST default bridge FAILED: LivingEntitySelfMixin did not add OwnSelf to LivingEntity");
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST default bridge FAILED: LivingEntitySelfMixin did not add OwnSelf to LivingEntity");
 			return;
 		}
 		Object ours;
 		try {
 			ours = own.self();
 		} catch (LinkageError e) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST default bridge FAILED: the test mod's interface's self() on a pig", e);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST default bridge FAILED: the test mod's interface's self() on a pig", e);
 			return;
 		}
 		Object forges;
@@ -81,16 +81,16 @@ public final class ForgeDefaultBridgeTest {
 			Method self = class_1309.class.getMethod("self");
 			forges = self.invoke(pig);
 		} catch (InvocationTargetException e) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST default bridge FAILED: Forge's self() on a pig", e.getCause());
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST default bridge FAILED: Forge's self() on a pig", e.getCause());
 			return;
 		} catch (ReflectiveOperationException e) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST default bridge FAILED: LivingEntity has no public self()", e);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST default bridge FAILED: LivingEntity has no public self()", e);
 			return;
 		}
 		if (ours == pig && forges == pig) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST default bridge OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST default bridge OK");
 		} else {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST default bridge FAILED: self() on a pig answered {} through the test mod's interface and {}"
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST default bridge FAILED: self() on a pig answered {} through the test mod's interface and {}"
 					+ " through Forge's, where both must answer the pig", ours, forges);
 		}
 	}
@@ -98,14 +98,14 @@ public final class ForgeDefaultBridgeTest {
 	/** The bridge for a default the class has through its superclass's interface (DEFAULT-1). */
 	private static void checkMultipart(class_1308 pig) {
 		if (!((Object) pig instanceof OwnMultipart own)) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST inherited default bridge FAILED: MobMultipartMixin did not add OwnMultipart to Mob");
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST inherited default bridge FAILED: MobMultipartMixin did not add OwnMultipart to Mob");
 			return;
 		}
 		boolean ours;
 		try {
 			ours = own.isMultipartEntity();
 		} catch (LinkageError e) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST inherited default bridge FAILED: the test mod's interface's isMultipartEntity() on a pig", e);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST inherited default bridge FAILED: the test mod's interface's isMultipartEntity() on a pig", e);
 			return;
 		}
 		Object forges;
@@ -113,16 +113,16 @@ public final class ForgeDefaultBridgeTest {
 			Method multipart = class_1297.class.getMethod("isMultipartEntity");
 			forges = multipart.invoke(pig);
 		} catch (InvocationTargetException e) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST inherited default bridge FAILED: Forge's isMultipartEntity() on a pig", e.getCause());
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST inherited default bridge FAILED: Forge's isMultipartEntity() on a pig", e.getCause());
 			return;
 		} catch (ReflectiveOperationException e) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST inherited default bridge FAILED: Entity has no public isMultipartEntity()", e);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST inherited default bridge FAILED: Entity has no public isMultipartEntity()", e);
 			return;
 		}
 		if (!ours && Boolean.FALSE.equals(forges)) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST inherited default bridge OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST inherited default bridge OK");
 		} else {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST inherited default bridge FAILED: isMultipartEntity() on a pig answered {} through the test"
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST inherited default bridge FAILED: isMultipartEntity() on a pig answered {} through the test"
 					+ " mod's interface and {} through Forge's, where both must answer false", ours, forges);
 		}
 	}
