@@ -278,6 +278,91 @@ final class LocalRepairs extends PreflightPart {
 	}
 
 	/**
+	 * Gives a {@code @ModifyVariable} picking its local by an ordinal among those of its type ({@code ordinal}, no name or
+	 * slot) the ordinal vanilla's local has in this game build's code, where the platform's patch declares one of the type
+	 * before or after it (PRE-25: Apoli's {@code modifyEffectiveTool} modifies vanilla's second boolean in scope at the
+	 * {@code ItemStack.mineBlock} call in {@code ServerPlayerGameMode.destroyBlock}, its tool check; Forge 47's patch
+	 * declares the first one, the block's removal, after the call, so the tool check is the first there, and Mixin, finding
+	 * no second one, stopped a Forge 47 server with Origins). Vanilla's version of the method (VANILLA-1), aligned with this
+	 * build's ({@link PatchAlignment}), tells which local is vanilla's: at the vanilla instruction each picked one is,
+	 * the local the ordinal picks among those of the type its local variable table has in scope (parameters first, by
+	 * slot); here, the parameter in that slot, or the local whose scope starts after the store aligned with the store
+	 * vanilla's starts after. Its ordinal among the locals of the type in scope here must be the same at each instruction.
+	 * Only for an injector with one unshifted {@code @At} naming a call, field access or construction, outside a slice,
+	 * into one method vanilla declares, both with local variable tables. Returns a description of the change.
+	 */
+	List<String> vanillaVariableOrdinalRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!injector.desc.equals(MixinNames.MODIFY_VARIABLE) || Annotations.value(injector, "slice") != null || Boolean.TRUE.equals(Annotations.value(injector, "argsOnly"))
+				|| Annotations.value(injector, "name") != null || Annotations.value(injector, "index") != null
+				|| !(Annotations.value(injector, "ordinal") instanceof Integer vanillas) || vanillas < 0) return List.of();
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.size() != 1) return List.of();
+		AnnotationNode at = ats.get(0);
+		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)
+				|| Annotations.value(at, "shift") != null || Annotations.value(at, "by") != null) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		Type type = Type.getReturnType(handler.desc);
+		ClassNode original = vanillaClass(target.name);
+		List<MethodNode> methods = ref.fuzzy() || type.getSort() == Type.VOID || original == null ? List.of() : PreflightAsm.selectedMethods(injector, target, ctx);
+		if (methods.size() != 1) return List.of();
+		MethodNode patched = methods.get(0);
+		MethodNode before = PreflightAsm.declared(original, patched.name, patched.desc);
+		if (before == null || patched.localVariables == null || patched.localVariables.isEmpty() || before.localVariables == null
+				|| before.localVariables.isEmpty()) return List.of();
+		List<Integer> positions = PreflightAsm.matching(patched, point, ref, Annotations.value(at, "opcode") instanceof Integer o ? o : -1);
+		int pointOrdinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		if (pointOrdinal >= 0) positions = pointOrdinal < positions.size() ? List.of(positions.get(pointOrdinal)) : List.of();
+		PatchAlignment alignment = positions.isEmpty() ? null : PatchAlignment.of(before, patched);
+		if (alignment == null) return List.of();
+		Map<Integer, Integer> vanillaAt = new HashMap<>();
+		for (int i = 0; i < before.instructions.size(); i++) {
+			if (alignment.placeOf(i) >= 0) vanillaAt.put(alignment.placeOf(i), i);
+		}
+		String desc = type.getDescriptor();
+		int parameterSlots = argumentsEnd(patched);
+		int found = -1;
+		for (int p : positions) {
+			Integer v = vanillaAt.get(p);
+			if (v == null) return List.of();
+			List<LocalVariableNode> vanillaScope = inScope(before, v, desc);
+			vanillaScope.sort(java.util.Comparator.comparingInt(lv -> lv.index));
+			if (vanillaScope.size() <= vanillas || vanillaScope.stream().map(lv -> lv.index).distinct().count() != vanillaScope.size()) return List.of();
+			LocalVariableNode local = vanillaScope.get(vanillas);
+			int slot;
+			if (local.index < parameterSlots) {
+				slot = local.index;
+			} else {
+				int store = storeBefore(before, local);
+				int place = store < 0 ? -1 : alignment.placeOf(store);
+				if (place < 0 || !(patched.instructions.get(place) instanceof VarInsnNode var) || var.getOpcode() != type.getOpcode(Opcodes.ISTORE)) return List.of();
+				slot = var.var;
+				int placed = place;
+				if (patched.localVariables.stream().noneMatch(lv -> lv.index == var.var && lv.desc.equals(desc) && storeBefore(patched, lv) == placed)) {
+					return List.of();
+				}
+			}
+			List<LocalVariableNode> here = inScope(patched, p, desc);
+			if (here.stream().noneMatch(lv -> lv.index == slot) || here.stream().map(lv -> lv.index).distinct().count() != here.size()) return List.of();
+			int ordinal = (int) here.stream().filter(lv -> lv.index < slot).count();
+			if (found >= 0 && found != ordinal) return List.of();
+			found = ordinal;
+		}
+		if (found < 0 || found == vanillas) return List.of();
+		Annotations.put(injector, "ordinal", found);
+		return List.of("the local of type " + type.getClassName() + " with ordinal " + vanillas + " in " + patched.name + patched.desc + " in "
+				+ target.name.replace('/', '.') + ", vanilla's there, which has ordinal " + found + " in this game build, where " + loader + "'s patch has "
+				+ (found < vanillas ? "fewer" : "more") + " locals of the type in scope before it; the injector takes it by that ordinal");
+	}
+
+	/** The index of the instruction before a local's scope starts (its store), skipping labels, line numbers and frames; -1 for none. */
+	private static int storeBefore(MethodNode method, LocalVariableNode local) {
+		AbstractInsnNode previous = local.start.getPrevious();
+		while (previous != null && previous.getOpcode() < 0) previous = previous.getPrevious();
+		return previous == null ? -1 : method.instructions.indexOf(previous);
+	}
+
+	/**
 	 * Adds this build's name to each {@code @Local(name = ...)} none of whose names a local of its type has in scope at the
 	 * injection point, where exactly one local of that type is in scope there, the one MixinExtras would take by the type
 	 * alone (LOCAL-3: Fabric API's lifecycle hook takes {@code @Local(name = "level") ServerLevel} at
