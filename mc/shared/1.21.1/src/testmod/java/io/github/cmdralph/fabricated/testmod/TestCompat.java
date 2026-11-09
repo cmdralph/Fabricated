@@ -12,12 +12,18 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.RegistrationInfo;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.block.Block;
@@ -43,6 +49,9 @@ public final class TestCompat {
 	 */
 	static final boolean TRAPDOOR_CLIMBING_TAG = true;
 
+	/** The first byte of an empty recipe slot on the network ({@link #slot}): an empty item list's length. */
+	public static final int EMPTY_SLOT = 0;
+
 	private TestCompat() {
 	}
 
@@ -67,8 +76,13 @@ public final class TestCompat {
 		return registries.registryOrThrow(key);
 	}
 
-	static @Nullable Entity create(EntityType<?> type, Level level) {
+	public static @Nullable Entity create(EntityType<?> type, Level level) {
 		return type.create(level);
+	}
+
+	/** Hurts the entity as the game does, on the server; whether it was hurt. */
+	public static boolean hurt(LivingEntity entity, ServerLevel level, DamageSource source, float amount) {
+		return entity.hurt(source, amount);
 	}
 
 	/** The highest block y in the level. */
@@ -102,6 +116,20 @@ public final class TestCompat {
 	/** Whether the entry came from a pack the client knows, which then reads its own copy. */
 	static <T> boolean fromKnownPack(Registry<T> registry, ResourceKey<T> key) {
 		return registry.registrationInfo(key).flatMap(RegistrationInfo::knownPackInfo).isPresent();
+	}
+
+	/** An ingredient of the tag's items. */
+	public static Ingredient ingredient(TagKey<Item> tag) {
+		return Ingredient.of(tag);
+	}
+
+	/**
+	 * A recipe's slot on the network, as a recipe's codec writes its slots: 1.21.1 writes an empty one as the empty
+	 * ingredient, an empty item list.
+	 */
+	public static StreamCodec<RegistryFriendlyByteBuf, Optional<Ingredient>> slot() {
+		return Ingredient.CONTENTS_STREAM_CODEC.map(ingredient -> ingredient.isEmpty() ? Optional.empty() : Optional.of(ingredient),
+				slot -> slot.orElse(Ingredient.EMPTY));
 	}
 
 	/** Runs the listener after an entity was damaged. */
