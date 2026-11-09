@@ -5,7 +5,8 @@
     "fabricated-forge-content.mixins.json": ["fabric-content-registries-v0"],
     "fabricated-forge-entity.mixins.json": ["fabric-entity-events-v1"],
     "fabricated-forge-frapi.mixins.json": ["fabric-renderer-api-v1"],
-    "fabricated-forge-interaction.mixins.json": ["fabric-events-interaction-v0"]
+    "fabricated-forge-interaction.mixins.json": ["fabric-events-interaction-v0"],
+    "fabricated-forge-item.mixins.json": ["fabric-item-api-v1"]
   },
   "mixins": {
     "BlockItemEarlyBlockMixin": [],
