@@ -27,11 +27,13 @@
     "LivingEntityDropCaptureMixin": [],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
+    "MobBucketItemBridgeMixin": [],
     "ModifiableBiomeInfoAccessor": [],
     "NamespacedWrapperAliasMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperEarlyWriteMixin": [],
     "NamespacedWrapperEntryAddedMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperPendingHoldersMixin": [],
+    "ParticleEngineProvidersBridgeMixin": [],
     "PlayerListViewMixin": [],
     "ResourcePackLoaderKnownPackMixin": [],
     "TagFileRemoveMixin": ["fabric-tag-api-v1"]
