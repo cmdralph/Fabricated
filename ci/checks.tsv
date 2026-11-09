@@ -43,7 +43,7 @@ server-entrypoint	server	*	yes	*	*	*	out	FABRICATED-TEST server entrypoint OK			
 creative-tab-order	server	*	yes	*	*		out	FABRICATED-TEST creative tab order OK			a creative tab registered by a main initializer is ordered after the vanilla tabs	
 resource-bundle	server	*	yes	*	*		out	FABRICATED-TEST resource bundle with a control OK			translations loaded with a ResourceBundle.Control from a named module (LuckPerms, LOADER-3)	
 mixin	server	*	yes	*	*	*	out	FABRICATED-TEST mixin OK			mixin applied	
-early-language-adapter	server	*	yes	*			out	FABRICATED-TEST early language adapter OK			Fabric's start-up order: language adapters created before the mods' mixin plugins load	forge: task 3: the test mod's mixin plugin loads before Fabricated creates its language adapter, where Fabric creates the adapters first (fixing it needs Fabricated's Forge language loader to create the adapters before Mixin loads the mods' plugins)
+early-language-adapter	server	*	yes	*	*		out	FABRICATED-TEST early language adapter OK			Fabric's start-up order: language adapters created before the mods' mixin plugins load	
 lifecycle-server-started	server	*	yes	*	*		out	FABRICATED-TEST lifecycle server started OK			native lifecycle: SERVER_STARTED	
 lifecycle-server-tick	server	*	yes	*	*		out	FABRICATED-TEST lifecycle server tick OK			native lifecycle: END_SERVER_TICK	
 lifecycle-server-stopping	server	*	yes	*	*		out	FABRICATED-TEST lifecycle server stopping OK			native lifecycle: SERVER_STOPPING	
