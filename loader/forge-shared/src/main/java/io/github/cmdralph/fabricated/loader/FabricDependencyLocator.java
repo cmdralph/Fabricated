@@ -137,6 +137,13 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 
 		FabricatedConfig config = FabricatedConfig.load(FMLPaths.CONFIGDIR.get());
 		TranslationCache cache = new TranslationCache(gameDir, config.cacheEnabled(), config.verifyIntegrity());
+		// The language provider Forge loaded (FabricModLocator) is this cache's too: its use is recorded here, or the cache
+		// would delete it as unused, while Forge has it loaded (CACHE-4). A development workspace has none.
+		try {
+			NestedJars.extract(NestedJars.LANG_PROVIDER, cache);
+		} catch (IOException e) {
+			LOGGER.debug("No language provider to keep in the cache: {}", e.getMessage());
+		}
 		// Fabricated's own in-game mod: loaded from the development workspace, or extracted from this jar when there is
 		// anything Fabric to load.
 		Optional<IModFile> devGameMod = find(loadedMods, ModIds.FABRICATED);
