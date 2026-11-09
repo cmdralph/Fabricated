@@ -1449,7 +1449,7 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | mixins | ReloadableServerRegistriesMixin | common (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
 | mixins | ReloadableServerRegistriesMixin | common (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 
-## Forge 47 (`forge-legacy`): 85 mixins in 13 configs
+## Forge 47 (`forge-legacy`): 86 mixins in 13 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1460,7 +1460,7 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-entity.mixins.json` | `io.github.cmdralph.fabricated.forge.entity.mixin` | 1.20.1 | mixins 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 1.20.1 | client 6 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.20.1 | mixins 1 | 1 | — | none |
-| `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.20.1 | mixins 25, client 4 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.20.1 | mixins 26, client 4 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.20.1 | client 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.20.1 | mixins 7 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.20.1 | client 4 | 1 | — | none |
@@ -1596,6 +1596,7 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | PotionBrewingMixBridgeMixin | 1.20.1 (1.20.1) | n.m.world.item.alchemy.PotionBrewing$Mix | no injectors; adds methods fabricated$get$f_43532_, fabricated$get$f_43534_; @Shadow f_43532_, f_43534_ | | | | |
 | mixins | MobBucketItemBridgeMixin | 1.20.1 (1.20.1) | n.m.world.item.MobBucketItem | no injectors; adds methods fabricated$get$f_151134_; @Shadow getFishType | | | | |
 | mixins | PackRepositorySourcesMixin | 1.20.1 (1.20.1) | n.m.server.packs.repository.PackRepository | @Inject → fabricated$keepSourcesMutable (a set a Fabric mod made immutable is made mutable again before Forge adds a pack finder, PACK-1); @Shadow f_10497_ | "addPackFinder" remap=false | HEAD | — | default |
+| mixins | PlayerListViewMixin | 1.20.1 (1.20.1) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, as POLY-1 and POLY-2); @Shadow f_11196_ | "getPlayers" | RETURN | — | default |
 | client | ParticleEngineProvidersBridgeMixin | 1.20.1 (1.20.1) | n.m.client.particle.ParticleEngine | no injectors; adds methods fabricated$get$f_107293_; @Shadow f_107293_; @Unique fields fabricated$providersById | | | | |
 | client | ExtendedBlockModelDeserializerMixin | 1.20.1 (1.20.1) | forge.client.model.ExtendedBlockModelDeserializer | @WrapOperation → fabricated$fabricLoader | "deserialize(Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lnet/minecraft/client/renderer/block/model/BlockModel;" | INVOKE `L…/ExtendedBlockModelDeserializer;deserializeGeometry(L…/JsonDeserializationContext;L…/JsonObject;)L…/IUnbakedGeometry;` | — | default |
 | client | GuiHudSeamsMixin | 1.20.1 (1.20.1) | n.m.client.gui.Gui | no injectors; implements HudSeams; adds methods fabricated$startHud, fabricated$start$m_280421_, fabricated$end$m_280421_; @Unique fields fabricated$hudGoesOn | | | | |
