@@ -2834,6 +2834,15 @@ class PipelineTest {
 		assertEquals("4.0.0", module.version());
 		assertEquals(FabricApiModule.Status.NATIVE, api.fabricApiModule("fabric-api-base").orElseThrow().status(), "the plan's modules still come first");
 		assertTrue(api.fabricApiModule("fabric-api").isEmpty(), "the release's own jar isn't a module");
+
+		// Another mod (Forgified Fabric API's module, here) provides it: the module says so, as a module the plan lists would.
+		Pipeline.Input provided = input(game, List.of(fabricApi), Namespace.OFFICIAL, Map.of(), null,
+				List.of(new Pipeline.NeoForgeMod("fabric_networking_api_v1", "4.1.0", "Forgified Networking", Map.of(), List.of())));
+		Pipeline.Result withProvider = Pipeline.run(provided);
+		FabricApiModule elsewhere = new FabricatedApiImpl(provided.fabricatedVersion(), provided.fabricApiPlan(), withProvider.report(), withProvider.runtime(),
+				true).fabricApiModule("fabric-networking-api-v1").orElseThrow(() -> new AssertionError(withProvider.report().render()));
+		assertEquals(FabricApiModule.Status.PROVIDED_BY_MOD, elsewhere.status(), withProvider.report().render());
+		assertEquals("4.1.0", elsewhere.version());
 	}
 
 	@Test

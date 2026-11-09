@@ -2,13 +2,11 @@ package io.github.cmdralph.fabricated.loader;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.minecraftforge.fml.loading.FMLPaths;
-import net.minecraftforge.fml.loading.moddiscovery.AbstractJarFileModProvider;
 import net.minecraftforge.forgespi.locating.IModLocator;
 
 /**
@@ -19,20 +17,12 @@ import net.minecraftforge.forgespi.locating.IModLocator;
  * Sinytra Connector or a second Fabricated jar in the mods folder ({@link ConflictingMods}), it hands nothing over and
  * stops the launch with the error naming them, as NeoForge's locator does.
  */
-public final class FabricModLocator extends AbstractJarFileModProvider implements IModLocator {
+public final class FabricModLocator extends ForgeModProvider implements IModLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 
 	@Override
 	public String name() {
 		return "fabricated";
-	}
-
-	/**
-	 * Forge 47 leaves this to each provider (Forge 61's base class has it): no arguments are read. The class scan of the
-	 * files it hands over, which finds the in-game mod's {@code @Mod} class, is {@link AbstractJarFileModProvider}'s.
-	 */
-	@Override
-	public void initArguments(Map<String, ?> arguments) {
 	}
 
 	@Override
