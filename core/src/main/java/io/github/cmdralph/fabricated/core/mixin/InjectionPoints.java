@@ -402,14 +402,11 @@ final class InjectionPoints {
 
 	/**
 	 * A MixinExtras expression can only match when what each of the handler's {@code @Definition}s names (a type, a
-	 * method or a field) occurs in the target method. The expression itself is not evaluated.
+	 * method, a field or a local variable by its name) occurs in the target method. The expression itself is not
+	 * evaluated.
 	 */
 	static Verdict evaluateExpression(MethodNode handler, MethodNode method, Context ctx) {
-		List<AnnotationNode> definitions = new ArrayList<>();
-		for (AnnotationNode ann : Annotations.all(handler)) {
-			if (ann.desc.equals(DEFINITION)) definitions.add(ann);
-			else if (ann.desc.equals(DEFINITIONS)) definitions.addAll(Annotations.list(Annotations.value(ann, "value")));
-		}
+		List<AnnotationNode> definitions = definitions(handler);
 		if (definitions.isEmpty() || method.instructions == null) return Verdict.UNKNOWN;
 		for (AnnotationNode definition : definitions) {
 			if (!definitionOccurs(definition, method, ctx)) return Verdict.MISSING;
@@ -417,9 +414,34 @@ final class InjectionPoints {
 		return Verdict.FOUND;
 	}
 
+	/** The MixinExtras {@code @Definition}s of a handler, alone or in its {@code @Definitions}. */
+	static List<AnnotationNode> definitions(MethodNode handler) {
+		List<AnnotationNode> definitions = new ArrayList<>();
+		for (AnnotationNode ann : Annotations.all(handler)) {
+			if (ann.desc.equals(DEFINITION)) definitions.add(ann);
+			else if (ann.desc.equals(DEFINITIONS)) definitions.addAll(Annotations.list(Annotations.value(ann, "value")));
+		}
+		return definitions;
+	}
+
+	/**
+	 * The {@code @Local}s a handler's {@code @Definition}s name local variables by. MixinExtras finds each with Mixin's
+	 * local variable discriminator, as it finds a handler's {@code @Local} parameters.
+	 */
+	static List<AnnotationNode> definitionLocals(MethodNode handler) {
+		List<AnnotationNode> locals = new ArrayList<>();
+		for (AnnotationNode definition : definitions(handler)) locals.addAll(Annotations.list(Annotations.value(definition, "local")));
+		return locals;
+	}
+
 	static boolean definitionOccurs(AnnotationNode definition, MethodNode method, Context ctx) {
 		List<AbstractInsnNode> insns = List.of(method.instructions.toArray());
 		boolean judged = false;
+		for (AnnotationNode local : Annotations.list(Annotations.value(definition, "local"))) {
+			Boolean declared = namedLocalDeclared(local, method);
+			if (declared == null || declared) return true;
+			judged = true;
+		}
 		if (Annotations.value(definition, "type") instanceof List<?> types) {
 			for (Object o : types) {
 				if (!(o instanceof Type type) || (type.getSort() != Type.OBJECT && type.getSort() != Type.ARRAY)) return true;
@@ -439,6 +461,20 @@ final class InjectionPoints {
 			}
 		}
 		return !judged;
+	}
+
+	/**
+	 * Whether the method's local variable table declares a local an expression's {@code @Local} definition names, by its
+	 * name and of its type, as Mixin's discriminator matches it (PRE-21); null where that isn't judged: an argument
+	 * ({@code argsOnly}, which the running Mixin may not know by its name), a local taken by its index or ordinal, or a
+	 * method without the table.
+	 */
+	static Boolean namedLocalDeclared(AnnotationNode local, MethodNode method) {
+		if (Boolean.TRUE.equals(Annotations.value(local, "argsOnly")) || Annotations.value(local, "index") != null
+				|| Annotations.value(local, "ordinal") != null || !(Annotations.value(local, "type") instanceof Type type)
+				|| !(Annotations.value(local, "name") instanceof List<?> names) || names.isEmpty()
+				|| method.localVariables == null || method.localVariables.isEmpty()) return null;
+		return method.localVariables.stream().anyMatch(lv -> names.contains(lv.name) && lv.desc.equals(type.getDescriptor()));
 	}
 
 	/**
