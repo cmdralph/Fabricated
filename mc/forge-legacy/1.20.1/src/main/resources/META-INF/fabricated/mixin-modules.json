@@ -32,6 +32,7 @@
     "MobBucketItemBridgeMixin": [],
     "NamespacedWrapperPendingHoldersMixin": [],
     "PackRepositorySourcesMixin": [],
+    "PlayerListViewMixin": [],
     "ParticleEngineProvidersBridgeMixin": [],
     "PotionBrewingMixBridgeMixin": [],
     "RecordItemEarlySoundMixin": [],

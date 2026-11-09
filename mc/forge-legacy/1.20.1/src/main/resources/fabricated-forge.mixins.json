@@ -30,7 +30,8 @@
     "RecordItemEarlySoundMixin",
     "PotionBrewingMixBridgeMixin",
     "MobBucketItemBridgeMixin",
-    "PackRepositorySourcesMixin"
+    "PackRepositorySourcesMixin",
+    "PlayerListViewMixin"
   ],
   "client": [
     "ParticleEngineProvidersBridgeMixin",
