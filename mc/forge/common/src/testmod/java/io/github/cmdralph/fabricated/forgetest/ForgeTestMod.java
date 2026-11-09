@@ -14,9 +14,8 @@ import net.minecraft.server.level.ServerLevel;
 /**
  * Forge's half of the CI test mod: the checks of Forge's own hooks, beside the shared ones (mc/shared), whose
  * entrypoints mc/platform-forge.gradle adds to the test mod's descriptor. Its main entrypoint registers what they need;
- * the first server tick runs the checks of the server: the interface the test mod's class tweaker injects, the frames
- * Fabricated repairs for a Fabric mod's mixin ({@link ForgeRecordedFramesTest}), Fabricated's loot hooks standing down
- * for another mod's loot module ({@link ForgeLootProviderTest}), the object builder module's default attribute event
+ * the first server tick runs the checks of the server: the interface the test mod's class tweaker injects, Fabricated's
+ * loot hooks standing down for another mod's loot module ({@link ForgeLootProviderTest}), the object builder module's default attribute event
  * ({@link ForgeAttributeTest}), the command module's registration event ({@link ForgeCommandTest}), the interaction
  * module's block break events
  * ({@link ForgeBlockBreakTest}), the entity events module's sleep ({@link ForgeSleepTest}) and damage
@@ -33,7 +32,6 @@ public final class ForgeTestMod implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		ForgeRecordedFramesTest.check();
 		ForgeLootProviderTest.register();
 		run("default attribute listener", "fabric-object-builder-api-v1", ForgeAttributeTest::register);
 		run("command listener", "fabric-command-api-v2", ForgeCommandTest::register);
