@@ -149,6 +149,8 @@ public final class ModTranslator {
 	private final PlatformStatics statics;
 	private final RetypedFields retyped;
 	private final PrivateFieldReads privateReads;
+	/** Whether the mod's own additions of mixin configs need Mixin's default environment given (LOADER-6). */
+	private final boolean addedConfigsNeedEnvironment;
 
 	public ModTranslator(TranslationEnvironment env, TranslationCache cache, io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits) {
 		this.env = env;
@@ -158,6 +160,7 @@ public final class ModTranslator {
 		this.statics = new PlatformStatics(env.untransformable());
 		this.retyped = RetypedFields.of(env.game());
 		this.privateReads = PrivateFieldReads.of(env.game(), env.descriptor().privateFields(), env.bridgedFields());
+		this.addedConfigsNeedEnvironment = MixinCompat.addedConfigsWithoutEnvironment(env.runtimeMixinVersion());
 	}
 
 	/** The intermediary table: the first translation of a launch loads it (PERF-2). */
@@ -549,8 +552,10 @@ public final class ModTranslator {
 	/**
 	 * Puts the mod's classes that use members NeoForge renamed (see {@link PlatformRenames}), with the references
 	 * renamed, into {@code target}, those calling a loader's methods the platform made static through its accessor, with
-	 * the calls made static ({@link PlatformStatics}, noted), and those reading resources through a class, with the reads
-	 * made to look beyond the mod's module as on Fabric ({@link ResourceLookups}); returns how many used renamed members.
+	 * the calls made static ({@link PlatformStatics}, noted), those reading resources through a class, with the reads
+	 * made to look beyond the mod's module as on Fabric ({@link ResourceLookups}), and those adding mixin configs to a Mixin
+	 * that gives them no environment, with the default one given ({@link AddedMixinConfigs}, noted); returns how many used
+	 * renamed members.
 	 */
 	private int applyRenames(Map<String, byte[]> target, Collection<String> entries, FileView files, List<String> notes) throws ArchiveException {
 		int count = 0;
@@ -567,7 +572,15 @@ public final class ModTranslator {
 				renamed = made;
 			}
 			byte[] adapted = ResourceLookups.apply(renamed != null ? renamed : data);
-			if (adapted != null || renamed != null) target.put(name, adapted != null ? adapted : renamed);
+			if (adapted != null) renamed = adapted;
+			byte[] configured = addedConfigsNeedEnvironment ? AddedMixinConfigs.withEnvironment(renamed != null ? renamed : data) : null;
+			if (configured != null) {
+				notes.add(name.substring(0, name.length() - ".class".length()).replace('/', '.') + " adds mixin configs to Mixin by their names"
+						+ " alone, which " + env.descriptor().loaderName() + "'s Mixin gives no environment; the calls give the default one, as"
+						+ " Fabric's Mixin does (LOADER-6)");
+				renamed = configured;
+			}
+			if (renamed != null) target.put(name, renamed);
 		}
 		return count;
 	}

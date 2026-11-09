@@ -2,9 +2,11 @@ package io.github.cmdralph.fabricated.core.resolve;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 
@@ -45,6 +47,40 @@ class MultiLoaderJarsTest {
 				.write(dir.resolve("placeholder.jar"));
 		assertEquals(MultiLoaderJars.PLACEHOLDER, MultiLoaderJars.fabricReason(jar, ArchiveLimits.DEFAULTS));
 		assertFalse(forNeoForge(jar, ArchiveLimits.DEFAULTS));
+	}
+
+	/**
+	 * MULTI-2: Origins 1.10.2's Fabric jar ships Forge's {@code META-INF/mods.toml} as a placeholder for Connector
+	 * ({@code "connector:placeholder"=true} in its properties, a mandatory dependency on {@code connectormod}), and Forge 47
+	 * refused the launch for the missing dependency. On Forge, that placeholder alone makes such a jar a Fabric mod; any
+	 * other Forge metadata, even with Fabric's and no Forge mod class, is Forge's, as before. NeoForge doesn't read the file.
+	 */
+	@Test
+	void aConnectorPlaceholderInForgesMetadataIsAFabricMod(@TempDir Path dir) throws Exception {
+		String origins = "modLoader=\"javafml\"\nloaderVersion=\"[47,)\" # 47 = Forge 1.20.1+\nlicense=\"MIT\"\n\n[properties]\n"
+				+ "\"connector:placeholder\"=true\n\n[[mods]]\nmodId=\"origins\"\nversion=\"${file.jarVersion}\"\n\n[[dependencies.origins]]\n"
+				+ "modId=\"connectormod\"\nmandatory=true\nversionRange=\"[1.0.0-beta.46,)\"\nordering=\"NONE\"\nside=\"BOTH\"\n";
+		Path placeholder = TestJars.create().fabricModJson(TestJars.modJson("origins", "1.10.2", ENTRYPOINTS))
+				.text(MultiLoaderJars.FORGE_MODS_TOML, origins)
+				.write(dir.resolve("origins.jar"));
+		assertEquals(MultiLoaderJars.FORGE_PLACEHOLDER, MultiLoaderJars.forgeFabricReason(placeholder, ArchiveLimits.DEFAULTS));
+		assertFalse(forNeoForge(placeholder, ArchiveLimits.DEFAULTS), "NeoForge reads no mods.toml: a Fabric jar there anyway");
+
+		Path multiLoader = TestJars.create().fabricModJson(TestJars.modJson("example", "1.0", ENTRYPOINTS))
+				.text(MultiLoaderJars.FORGE_MODS_TOML, JAVA_MOD)
+				.write(dir.resolve("multi-loader.jar"));
+		assertNull(MultiLoaderJars.forgeFabricReason(multiLoader, ArchiveLimits.DEFAULTS), "Forge's, as nothing marks it a placeholder");
+
+		Path forgeOnly = TestJars.create().text(MultiLoaderJars.FORGE_MODS_TOML, origins).write(dir.resolve("forge-only.jar"));
+		assertNull(MultiLoaderJars.forgeFabricReason(forgeOnly, ArchiveLimits.DEFAULTS), "no Fabric metadata to load instead");
+
+		Path neoForgePlaceholder = TestJars.create().fabricModJson(TestJars.modJson("example", "1.0", ENTRYPOINTS))
+				.text(MultiLoaderJars.MODS_TOML, origins)
+				.write(dir.resolve("neoforge-placeholder.jar"));
+		assertNull(MultiLoaderJars.forgeFabricReason(neoForgePlaceholder, ArchiveLimits.DEFAULTS), "no Forge metadata: a plain Fabric jar on Forge");
+
+		Path broken = Files.write(dir.resolve("broken.jar"), new byte[] {'P', 'K', 3, 4});
+		assertNull(MultiLoaderJars.forgeFabricReason(broken, ArchiveLimits.DEFAULTS), "left to Forge, which reports it");
 	}
 
 	@Test
