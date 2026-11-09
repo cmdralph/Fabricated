@@ -63,8 +63,8 @@ public final class FluidTest implements ModInitializer {
 		if (type.getLightLevel() != 15) failed.add("light " + type.getLightLevel());
 		if (!type.getDescriptionId().equals(dry.block.getDescriptionId())) failed.add("description id " + type.getDescriptionId());
 		if (!type.getDescription().getString().equals(dry.block.getName().getString())) failed.add("name " + type.getDescription().getString());
-		if (TestCompat.waterLike(type) || !TestCompat.waterLike(wet.source.getFluidType())) {
-			failed.add("water-like: untagged " + TestCompat.waterLike(type) + ", tagged " + TestCompat.waterLike(wet.source.getFluidType()));
+		if (FluidTypeCompat.waterLike(type) || !FluidTypeCompat.waterLike(wet.source.getFluidType())) {
+			failed.add("water-like: untagged " + FluidTypeCompat.waterLike(type) + ", tagged " + FluidTypeCompat.waterLike(wet.source.getFluidType()));
 		}
 
 		// Placing a liquid block asks NeoForge's fluid interactions about it, which ask for its type.

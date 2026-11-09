@@ -10,7 +10,7 @@ import net.minecraft.server.MinecraftServer;
 /**
  * Injects at a call its target method never makes: the mixin pre-flight must catch it before launch, and leave it out
  * as it does {@link ImpossibleMixin}. Applied, where pre-flight is told to ignore what it finds
- * ({@code ci/neoforge/smoke-apply-failure.sh}), Mixin finds the method but no such call in it and stops the game with
+ * (the apply-failure runs in {@code ci/runs.tsv}), Mixin finds the method but no such call in it and stops the game with
  * an injector's critical failure, which bypasses Mixin's error handlers; the next launch must leave it out (APPLY-1).
  */
 @Mixin(MinecraftServer.class)

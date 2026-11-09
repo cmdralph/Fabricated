@@ -4,7 +4,8 @@
 // loader/forge-shared for both Forge platforms). The platform is the folder the version's folder is in: neoforge, forge
 // or forge-legacy.
 //
-// Each version project produces build/libs/fabricated-<version>+mc<minecraft>.jar in the root project:
+// Each version project produces build/libs/fabricated-<loader>-<version>+mc<minecraft>.jar in the root project, the
+// loader neoforge, or forge for both Forge platforms:
 //   - the "loader" source set (the loader's discovery services) plus :core and :fabric-loader-api, which run
 //     in the loader's early-services class loader, and
 //   - META-INF/fabricated/game-mod.jar, Fabricated's in-game mod (main source set: common code,
@@ -31,15 +32,13 @@ tasks.withType(JavaCompile).configureEach {
 
 repositories {
     mavenCentral()
-    // Fabric API's module jars, for the pass-through modules below, only ever from Fabric's maven. Declared before the
-    // platform's own repositories: an exclusive repository restricts every other one, and a platform plugin may have
+    // Fabric API's module jars, which the projects compile against (below), only ever from Fabric's maven. Declared before
+    // the platform's own repositories: an exclusive repository restricts every other one, and a platform plugin may have
     // used its repositories once its script ran (ForgeGradle prepares the game while it configures), after which
     // Gradle can't restrict them.
-    if (project.namespace == 'OFFICIAL') {
-        exclusiveContent {
-            forRepository { maven { name = 'Fabric'; url = 'https://maven.fabricmc.net' } }
-            filter { includeGroup 'net.fabricmc.fabric-api' }
-        }
+    exclusiveContent {
+        forRepository { maven { name = 'Fabric'; url = 'https://maven.fabricmc.net' } }
+        filter { includeGroup 'net.fabricmc.fabric-api' }
     }
 }
 
@@ -76,6 +75,16 @@ def renamedJava = { String sourceSet, List<File> dirs ->
 }
 def sharedJava = { String sourceSet -> renamedJava(sourceSet, sharedSources.collect { rootProject.file("$it/src/$sourceSet/java") }) }
 
+// The Fabric test mods' sources every platform's project for a Minecraft version builds, in mc/shared/<group>, as the
+// version's `testmod_sources` property lists the groups. A group is named by the versions it serves: every version from
+// 1.21.1 (1.21.1+), 1.21.1 and 1.21.11 (1.21.x), 1.21.11 and later (1.21.11+), 26.x, 26.1.2 and 26.2 (26.1-26.2), 26.2 and
+// later (26.2+), or one version (1.21.1, 1.21.11, 26.1.2, 26.3). They are Fabric mods' code. What a check asks of the
+// platform, and the checks of the platform's own hooks, are the platform's half of the test mods: in its shared folders
+// and the version's own (src/testmod, src/testmodfrapi), with TestPlatform and FrapiPlatform, which every platform's half
+// has, so the shared checks compile against each platform's.
+def testSources = (project.findProperty('testmod_sources') ?: '').split(',')*.trim().findAll { it }.collect { "mc/shared/${it}" } + sharedSources
+def testJava = { String sourceSet -> renamedJava(sourceSet, testSources.collect { rootProject.file("$it/src/$sourceSet/java") }) }
+
 // NeoForge's loader classes come in two variants, as the version's `loader_variant` property names it: those of FML 10
 // and later, on FML's own jar contents and class processors (loader/neoforge/src/fml, the default), and those of NeoForge
 // 21.1's FML 4, which runs on ModLauncher (loader/neoforge/src/modlauncher). The rest of loader/neoforge is both's.
@@ -102,16 +111,17 @@ sourceSets {
         resources.srcDirs = ['src/main/resources'] + sharedSources.collect { rootProject.file("$it/src/main/resources") }
     }
     testmod {
-        java.srcDir sharedJava('testmod')
-        sharedSources.each { resources.srcDir rootProject.file("$it/src/testmod/resources") }
+        java.srcDir testJava('testmod')
+        testSources.each { resources.srcDir rootProject.file("$it/src/testmod/resources") }
     }
     // Test sources every platform shares, in mc/shared: the broken test mods,
     testmodbroken {
         java.srcDir renamedJava('testmodbroken', [rootProject.file('mc/shared/src/testmodbroken/java')])
     }
-    // stand-ins for other mods' plugin interfaces, which the test mod compiles against (never packaged),
+    // stand-ins for other mods' plugin interfaces, which the test mod compiles against (never packaged), with the Mod Menu
+    // API the in-game mod provides,
     testmodstubs {
-        java.srcDir renamedJava('testmodstubs', [rootProject.file('mc/shared/src/testmodstubs/java')])
+        java.srcDir renamedJava('testmodstubs', [rootProject.file('mc/shared/src/testmodstubs/java'), rootProject.file('mc/shared/src/main/java')])
     }
     // and stand-ins for the APIs of Fabric libraries Fabricated bridges when a mod brings them (Team Reborn's energy
     // API), never packaged: the bridge loads only when the library is present.
@@ -143,11 +153,10 @@ dependencies {
     compileOnly project(':core')
     compileOnly sourceSets.integrationstubs.output
 
+    // A Fabric mod's view: Fabric Loader's API, Fabricated's, Fabric API (below) and the game; not the in-game mod.
     testmodCompileOnly project(':fabric-loader-api')
     testmodCompileOnly project(':api')
-    testmodCompileOnly sourceSets.main.output
     testmodCompileOnly sourceSets.testmodstubs.output
-    // After Fabricated's own classes, whose real Fabric API types win over the stubs' stand-ins.
     testmodCompileOnly sourceSets.integrationstubs.output
     testmodbrokenCompileOnly project(':fabric-loader-api')
 }
@@ -165,6 +174,30 @@ ext.expandProps = [
         // The same for its built-in resource pack: resource packs take their own formats (a range from 65, 1.21.9's).
         resource_pack_formats  : project.findProperty('testmod_resource_pack_formats') ?: '"min_format": 65, "max_format": 2048',
 ]
+
+// What a platform's half of a test mod adds to the shared descriptor for the checks of the platform's own hooks: parts of
+// a fabric.mod.json (entrypoints by key, mixin configs, nested jars), whose lists are appended to the descriptor's, in
+// testmodDescriptor.<source set>, and lines the test mod's access widener ends with, in testmodAccessWidener. The platform
+// script adds them.
+ext.testmodDescriptor = [testmod: [], testmodfrapi: []]
+ext.testmodAccessWidener = []
+def joined
+joined = { base, part -> base instanceof Map ? part.inject(base) { all, key, value -> all[key] = all.containsKey(key) ? joined(all[key], value) : value; all } : base + part }
+def addPlatformHalf = { String sourceSet ->
+    tasks.named("process${sourceSet.capitalize()}Resources", ProcessResources) {
+        def parts = testmodDescriptor[sourceSet]
+        def lines = sourceSet == 'testmod' ? testmodAccessWidener : []
+        inputs.property('platformHalf', providers.provider { groovy.json.JsonOutput.toJson([parts, lines]) })
+        doLast {
+            if (parts) {
+                def file = new File(destinationDir, 'fabric.mod.json')
+                def descriptor = parts.inject(new groovy.json.JsonSlurper().parse(file)) { all, part -> joined(all, part) }
+                file.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(descriptor)) + '\n'
+            }
+            if (lines) new File(destinationDir, 'fabricated-testmod.accesswidener') << lines.collect { it + '\n' }.join()
+        }
+    }
+}
 
 // The platform: its build plugin's settings, its mod descriptor, and gameDependencies(sourceSet), which gives a source
 // set the game and the loader to compile against.
@@ -195,6 +228,7 @@ tasks.named('processTestmodResources', ProcessResources) {
     inputs.properties(expandProps)
     filesMatching(['fabric.mod.json', '*.accesswidener', 'resourcepacks/*/pack.mcmeta']) { expand(expandProps) }
 }
+addPlatformHalf('testmod')
 
 // --- Generated build facts ---------------------------------------------------------------------------
 // What a cached translation depends on besides the mod: Fabricated's own classes and data. Their contents are digested
@@ -314,7 +348,7 @@ def gameModJar = tasks.register('gameModJar', Jar) {
 def fabricatedJar = tasks.register('fabricatedJar', Jar) {
     group = 'build'
     description = 'Builds the Fabricated jar for Minecraft ' + mcVersion
-    archiveBaseName = 'fabricated'
+    archiveBaseName = platform == 'neoforge' ? 'fabricated-neoforge' : 'fabricated-forge'
     archiveVersion = releaseName
     destinationDirectory = rootProject.layout.buildDirectory.dir('libs')
     duplicatesStrategy = DuplicatesStrategy.FAIL
@@ -401,77 +435,97 @@ tasks.register('testmods') {
     dependsOn brokenJars
 }
 
-// --- A Fabric mod using Fabric's renderer API, for the client smoke test with Fabric API (ci/neoforge/smoke-client.sh)
-// The first shared source folder that has one (26.x's), or the version's own.
-def frapiTestmodDir = sharedSources.collect { rootProject.file("$it/src/testmodfrapi") }.find { it.isDirectory() } ?: file('src/testmodfrapi')
+// --- A Fabric mod using Fabric's renderer API, for the client smoke test with Fabric API (ci/smoke-client.sh)
 sourceSets {
     testmodfrapi {
-        // Set, not added to Gradle's default (src/testmodfrapi), which on 1.21.11 is the same folder.
-        java.srcDirs = [new File(frapiTestmodDir, 'java')]
-        resources.srcDirs = [new File(frapiTestmodDir, 'resources')]
+        java.srcDir testJava('testmodfrapi')
+        testSources.each { resources.srcDir rootProject.file("$it/src/testmodfrapi/resources") }
     }
 }
 gameDependencies(sourceSets.testmodfrapi)
 dependencies {
     testmodfrapiCompileOnly project(':fabric-loader-api')
-    testmodfrapiCompileOnly sourceSets.main.output
 }
 tasks.named('processTestmodfrapiResources', ProcessResources) {
     inputs.properties(expandProps)
     filesMatching('fabric.mod.json') { expand(expandProps) }
 }
+addPlatformHalf('testmodfrapi')
 def frapiTestmodJar = tasks.register('testmodFrapiJar', Jar) {
     archiveFileName = 'fabricated-testmod-frapi.jar'
     destinationDirectory = testmodsDir
     from sourceSets.testmodfrapi.output
 }
-// Not where the version has none: NeoForge would report the empty jar as a broken mod file.
-if (frapiTestmodDir.isDirectory()) tasks.named('testmods') { dependsOn frapiTestmodJar }
+// Not where the version has none: NeoForge would report a jar without its fabric.mod.json as a broken mod file.
+if ((testSources.collect { rootProject.file(it) } + [projectDir]).any { new File(it, 'src/testmodfrapi/resources/fabric.mod.json').isFile() }) {
+    tasks.named('testmods') { dependsOn frapiTestmodJar }
+}
 
-// --- Pass-through Fabric API modules, at compile time only -------------------------------------------------
-// The player's Fabric API jar provides these modules at runtime; Fabricated never ships them. Code that uses one
-// only runs when that module is loaded, and is compiled against the module's own jar from the Fabric API release
-// in this version's plan, so its calls are typed and checked. Only where those jars use the game's names (Mojang's, as on
-// 26.x: the OFFICIAL namespace).
-if (project.namespace == 'OFFICIAL') {
-    def fabricApiRelease = new groovy.json.JsonSlurper().parse(file('src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json')).fabricApiVersion
-    def passThroughModules = { List<String> modules ->
-        configurations.detachedConfiguration(dependencies.create("net.fabricmc.fabric-api:fabric-api:${fabricApiRelease}"))
-                .incoming.artifactView {
-                    componentFilter { it instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier && it.module in modules }
-                }.files
+// --- Fabric API, at compile time only ----------------------------------------------------------------------------
+// The module jars of the Fabric API release in this version's plan; Fabricated never ships them. The in-game mod compiles
+// against the plan's pass-through modules, which the player's Fabric API provides at runtime (its own sources are the
+// native ones): code that uses one only runs once that module is loaded, and its calls are typed and checked. The test
+// mods compile against all of Fabric API, as a Fabric mod does. In the game's names, Mojang's: as published where the
+// game is unobfuscated (26.x), and remapped from Intermediary's by core's own remapper where it isn't
+// (remapFabricApi). fabricApi(modules) gives those modules' jars so, and fabricApi() all of them, to a version's own
+// build script too; fabricApiAsPublished(modules) gives them as published, for code compiled in Intermediary's names, as
+// Fabric mods for an obfuscated version are: a test mod compiled so says it with testmod_namespace=INTERMEDIARY.
+def fabricApiPlan = new groovy.json.JsonSlurper().parse(file('src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json'))
+def fabricApiRelease = configurations.detachedConfiguration(dependencies.create("net.fabricmc.fabric-api:fabric-api:${fabricApiPlan.fabricApiVersion}"))
+// The modules' own jars (every module's for null), not the release's jar, which nests them.
+def publishedModules = { Collection<String> modules ->
+    fabricApiRelease.incoming.artifactView {
+        componentFilter {
+            it instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier && it.module != 'fabric-api' && (modules == null || it.module in modules)
+        }
+    }.artifacts
+}
+ext.fabricApiAsPublished = { Collection<String> modules = null -> publishedModules(modules).artifactFiles }
+if (project.namespace == 'INTERMEDIARY') {
+    // Mojang's mappings of the game: the platform's (mojangMappings, a provider of the file), else those ModDevGradle's
+    // NeoForm run downloads for the game (NeoForge's and legacy Forge's builds), written out where the task is told.
+    def mojangMappings = project.findProperty('mojangMappings')
+    if (mojangMappings == null) {
+        def written = layout.buildDirectory.file('mojang/client_mappings.txt')
+        mojangMappings = tasks.named('createMinecraftArtifacts') {
+            additionalResults.put('node.downloadClientMappings.output.output', written.get().asFile)
+        }.map { written.get() }
     }
-    // The platform script may name more, which its in-game mod and test mod call (passThroughCompileModules), and more
-    // its client test mod calls (passThroughTestmodfrapiModules: modules NeoForge's in-game mod ships and another platform
-    // passes through).
-    def platformModules = (project.findProperty('passThroughCompileModules') ?: []) as List<String>
-    def frapiTestmodModules = (project.findProperty('passThroughTestmodfrapiModules') ?: []) as List<String>
-    dependencies {
-        compileOnly passThroughModules(['fabric-renderer-api-v1', 'fabric-model-loading-api-v1'] + platformModules)
-        if (platformModules) testmodCompileOnly passThroughModules(platformModules)
-        testmodfrapiCompileOnly passThroughModules(['fabric-renderer-api-v1', 'fabric-model-loading-api-v1', 'fabric-key-mapping-api-v1',
-                'fabric-rendering-v1', 'fabric-screen-api-v1', 'fabric-command-api-v2'] + frapiTestmodModules)
-    }
-} else {
-    // 1.21.1's and 1.21.11's Fabric API jars use intermediary names, so the few pass-through members Fabricated and its
-    // test mods call are compiled against stand-ins that declare them in Mojang's names, as the remapped modules have
-    // them at runtime. Never packaged.
+    // core's remapper, run by remapFabricApi on core's classes: build time only.
     sourceSets {
-        fabricapistubs {
-            java.srcDir 'src/fabricapistubs/java'
+        fabricapiremap {
+            java.srcDirs = [rootProject.file('mc/shared/src/fabricapiremap/java')]
         }
     }
-    // The stand-ins name Fabric API's TriState and Event, which Fabricated ships itself (fabric-api-base, in
-    // src/fabricapi).
-    tasks.named('compileFabricapistubsJava') {
-        source files('src/fabricapi/java/net/fabricmc/fabric/api/util/TriState.java',
-                'src/fabricapi/java/net/fabricmc/fabric/api/util/BooleanFunction.java',
-                'src/fabricapi/java/net/fabricmc/fabric/api/event/Event.java')
-    }
-    gameDependencies(sourceSets.fabricapistubs)
     dependencies {
-        compileOnly sourceSets.fabricapistubs.output
-        testmodCompileOnly sourceSets.fabricapistubs.output
-        testmodfrapiCompileOnly sourceSets.fabricapistubs.output
+        fabricapiremapImplementation project(':core')
+        fabricapiremapRuntimeOnly "org.ow2.asm:asm-commons:${asm_version}"
     }
+    def allModules = publishedModules(null)
+    def remapped = layout.buildDirectory.dir('fabricapi-mojang')
+    def remapFabricApi = tasks.register('remapFabricApi', JavaExec) {
+        description = "Remaps Fabric API's module jars from Intermediary's names to Mojang's, to compile against"
+        classpath = sourceSets.fabricapiremap.runtimeClasspath
+        mainClass = 'io.github.cmdralph.fabricated.fabricapiremap.RemapFabricApi'
+        inputs.files(downloadIntermediary).withPropertyName('intermediary').withPathSensitivity(PathSensitivity.NONE)
+        inputs.files(mojangMappings).withPropertyName('mojangMappings').withPathSensitivity(PathSensitivity.NONE)
+        inputs.files(allModules.artifactFiles).withPropertyName('modules').withNormalizer(ClasspathNormalizer)
+        outputs.dir(remapped).withPropertyName('remapped')
+        outputs.cacheIf { true }
+        argumentProviders.add({
+            [intermediaryFile.get().asFile.path, mojangMappings.get().asFile.path, remapped.get().asFile.path] +
+                    allModules.resolvedArtifacts.get().collect { "${(it.id.componentIdentifier as org.gradle.api.artifacts.component.ModuleComponentIdentifier).module}=${it.file.path}" }
+        } as CommandLineArgumentProvider)
+    }
+    ext.fabricApi = { Collection<String> modules = null ->
+        files(remapFabricApi).asFileTree.matching { include(modules == null ? ['*.jar'] : modules.collect { "${it}.jar" }) }
+    }
+} else {
+    ext.fabricApi = fabricApiAsPublished
+}
+dependencies {
+    compileOnly fabricApi(fabricApiPlan.modules.findAll { it.value.plan == 'passthrough' }.keySet())
+    integrationstubsCompileOnly fabricApi(['fabric-transfer-api-v1'])
+    testmodCompileOnly(project.findProperty('testmod_namespace') == 'INTERMEDIARY' ? fabricApiAsPublished() : fabricApi())
+    testmodfrapiCompileOnly fabricApi()
 }

@@ -49,7 +49,7 @@ The task table is the pass's checkpoint: it changes with every step, so the work
 | # | Task | Status |
 |---|---|---|
 | 1 | Rethink the project and the spec: the support matrix, the conclusions, the criteria, the plan (below) | Done |
-| 2 | CI and workflows: one workflow and one test harness on every branch, the same test-mod suite everywhere, caching, CurseForge deployment | Next |
+| 2 | CI and workflows: one workflow and one test harness on every branch, the same test-mod suite everywhere, caching, CurseForge deployment | In progress: on `main`'s branch, done (#326): `ci.yml`, the shared harness with checks as data, the shared test mods on the real Fabric API, the Forge-shared code, the release workflow with CurseForge. `forge-legacy`'s branch is on all of it, every local run passing; `forge`'s is under way. Then the syncs' pull requests and the times after |
 | 3 | Forge parity, and Minecraft 1.21.1 on Forge (Forge 52, `forge-legacy`) | — |
 | 4 | Compatibility: Fabric API coverage, mixin and remapping edge cases, the difficult mods, popular mods on every loader and version | — |
 | 5 | Security and robustness review, the release workflow's secrets included | — |
@@ -65,9 +65,10 @@ version (`core`, 536 unit tests), and none of the goals is at risk there. The de
 
 **Parity gaps.**
 
-1. **Minecraft 1.21.1 has no Forge build.** Forge 52 (52.1.21 is the newest) runs on ModLauncher, as Forge 47 does,
-   and Fabric mods for 1.21.1 use Intermediary names, as on NeoForge 1.21.1, so it reuses the remapping path NeoForge
-   1.21.1 has and the Forge loader `forge-legacy` has (task 3).
+1. **Minecraft 1.21.1 has no Forge build.** Forge 52 (52.1.21 is the newest) is modern Forge's generation below the
+   game: ForgeGradle 7, Mojang's names at runtime, the same module stack and installer as Forge 61, and Mixin 0.8.7;
+   like Forge 47 it has EventBus 6, JavaScript coremods and no MixinExtras. Fabric mods for 1.21.1 use Intermediary
+   names, remapped to Mojang's as on NeoForge 1.21.1 and Forge 61 (task 3).
 2. **The three platforms don't run the same tests.** The NeoForge test mods report 100 named checks, Forge 61 to 66's
    65 and Forge 47's 67; only 21 are common to all three. Each platform has its own test mod sources, Fabric API
    stand-ins and smoke scripts. The fix is one suite per Minecraft version, shared on `main` and built by every platform
@@ -97,9 +98,9 @@ version (`core`, 536 unit tests), and none of the goals is at risk there. The de
 release, folds the working rules into `CONTRIBUTING.md`, keeps the verified facts and drops the rest. The CI folder's
 diagnostic scripts that no job runs go in task 2.
 
-**Releases.** The jars are named `fabricated-<version>+mc<minecraft>.jar` on NeoForge and
-`fabricated-forge-<version>+mc<minecraft>.jar` on Forge, and the version in them doesn't say beta. From beta.2 every
-jar is `fabricated-<loader>-<version>+mc<minecraft>.jar`, with the full version (`fabricated-neoforge-0.6.0-beta.2+mc26.3.jar`).
+**Releases.** Every jar is named `fabricated-<loader>-<version>+mc<minecraft>.jar`, the loader `neoforge` or `forge`
+(`mc/mc.gradle`), and the version in it doesn't say beta yet. From beta.2 it is the full version
+(`fabricated-neoforge-0.6.0-beta.2+mc26.3.jar`).
 There is no CurseForge deployment yet: a release workflow uploads exactly the jars that passed the full matrix to one
 CurseForge project, every loader's (task 2).
 
@@ -155,6 +156,7 @@ that fixes or closes it.
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
+| FRAME-1 | P2, UNVERIFIED on real mods | Fabricated's frame repair (CORPUS-79), which runs on Forge only | A Fabric mod's `@ModifyVariable` of the shape CORPUS-79 fixed on Forge (a local the method's compressed stack frames don't record) fails to apply on NeoForge's Mixin too: Forge's "recorded frames" check, ported to the shared test-mod suite, finds "0 candidate variables" on NeoForge 1.21.11 (Mixin 0.16.5) and 26.1.2 (0.17.4). | Task 4: run the frame repair on NeoForge where the same shape occurs, then add the check to the shared suite. |
 | MIX-3 | P3, no case seen | The Forge branches' mixin configs but `fabricated-loot` (`MIXINS.md`, *Forge configs*) | They leave `overwrites.requireAnnotations` unset, which every NeoForge config sets: a method a Forge mixin adds that its target already declares replaces the target's silently, without an `@Overwrite`, where on NeoForge the launch would stop on it. | Open: set it on each, checking every method the configs' mixins add against their targets on every version first, in its own pull request on each Forge branch (each launch applies them all, so CI shows a collision). |
 | PERF-3 | P3, UNVERIFIED | `NeoForgeMods.of` (the mods' declarations, `NestedNeoForgeJars.readAll`); split from PERF-2 | A cached launch still reads every NeoForge mod's declarations and nested jars: the phase takes 16 to 23 ms on 1.21.1 and 40 to 68 ms on 1.21.11 and 26.x in CI's servers (extended run 42522554523), which have few NeoForge mods. What in it costs that, and how it grows with a pack of NeoForge mods, is unmeasured. | Read the report's *Launch timings* on a large pack; if the nested jars are the cost, keep their contents in the cache by the file's hash. |
 | PROVIDER-19 | — (CI only), UNVERIFIED | The test mod's client block entity check (`BlockEntityEventsClientTest`) on the NeoForge 26.1.2 client with Forgified Fabric API's renderer, whose `fabric-lifecycle-events-v1` client mixins are upstream's (read in its `26.1.2` sources) | The check reported neither way there in extended run 41871298631 (no "client block entity events OK", no failure logged), where it passed in extended run 41858750959; that client's other checks passed, and the 26.2 one passed it. The provider's module unloads a client's block entities as it clears its level (`ClientPacketListener.clearLevel`), and on a respawn or a login. The job log's tail kept only the summary's failure, not the check's own line saying whether the client stopped in its world (the check's run 683 case). | Likely CI-5 (fixed), not the provider's: this client has the renderer API test mod too, whose terrain block replaced the check's chest, and the check misses wherever no other block entity is near spawn; run 41871298631's log kept no line to tell. The check passed on this client in extended runs 42522554523 and 42524794672. Closes once it holds here on two extended runs with CI-5's fix. |
