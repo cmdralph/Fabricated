@@ -32,6 +32,7 @@ isn't supported says why, in the notes under the matrix.
 | Registries, registry sync, resource and data packs, load conditions | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ⏳ 3 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
 | Item, block, entity, interaction and lifecycle events | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ⏳ 3 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
 | Fabric fluids as the platform's fluid types | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
+| Biome modifications: features, spawns, climate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ◐ 16 |
 | Transfer API and the platform's item and fluid handlers, on blocks and in items | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 5 | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Team Reborn Energy and the platform's energy | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 |
 | Client modules: key mappings, HUD, screens, client commands | ✅ | ◐ 7 | ✅ | ✅ | ✅ | ◐ 7 | ⏳ 3 | ◐ 7 | ✅ | ✅ | ✅ |
@@ -59,7 +60,7 @@ isn't supported says why, in the notes under the matrix.
 | Continuity (connected textures through the renderer API) | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ ⏳ 4 | ⏳ 3 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 |
 | Popular Fabric mods (the corpora) | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ⏳ 3 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 |
 | **Tests** | | | | | | | | | | | |
-| One test-mod suite for every loader with this Minecraft version | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 |
+| One test-mod suite for every loader with this Minecraft version | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 17 | ⏳ 3 | ✅ 18 | ✅ 18 | ✅ 18 | ✅ 18 |
 
 Notes:
 
@@ -95,6 +96,12 @@ Notes:
 15. CI runs two corpora of popular Fabric mods on a server and a client, as informational runs: every server starts, and
     every client reaches its world but where a mod's own behaviour holds it (`roadmap.md`, CORPUS-66). Per-mod results
     are in *Fabric mods tested*.
+16. A mob spawn a Fabric mod adds through `BiomeModifications` doesn't reach the biome Forge 66 reads; features and the
+    climate do (BIOME-4, task 3).
+17. Forge 47 runs its own test mods, which log the shared suite's lines where a check is the same; the shared checks
+    Fabric API 0.92 and Minecraft 1.20.1 allow but it doesn't run yet are task 3's.
+18. The shared suite runs, with Forge's half of it; each shared check Forge doesn't pass yet is listed in `ci/checks.tsv`
+    with its reason, and is a cell of this matrix.
 
 ## How CI tests it
 

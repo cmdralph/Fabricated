@@ -49,8 +49,8 @@ The task table is the pass's checkpoint: it changes with every step, so the work
 | # | Task | Status |
 |---|---|---|
 | 1 | Rethink the project and the spec: the support matrix, the conclusions, the criteria, the plan (below) | Done |
-| 2 | CI and workflows: one workflow and one test harness on every branch, the same test-mod suite everywhere, caching, CurseForge deployment | In progress: on `main`'s branch, done (#326): `ci.yml`, the shared harness with checks as data, the shared test mods on the real Fabric API, the Forge-shared code, the release workflow with CurseForge. `forge-legacy`'s branch is on all of it, every local run passing; `forge`'s is under way. Then the syncs' pull requests and the times after |
-| 3 | Forge parity, and Minecraft 1.21.1 on Forge (Forge 52, `forge-legacy`) | — |
+| 2 | CI and workflows: one workflow and one test harness on every branch, the same test-mod suite everywhere, caching, CurseForge deployment | Done (#326, #329 on `main`; #327 on `forge-legacy`; #328 on `forge`): times below, in *CI times*. Found on the way and fixed: LEVEL-2, BIOME-3, POLY-2; open for task 3: BIOME-4 and the shared checks each Forge platform doesn't pass yet, marked in `ci/checks.tsv` |
+| 3 | Forge parity, and Minecraft 1.21.1 on Forge (Forge 52) | Next: the gaps `ci/checks.tsv` marks "task 3" on Forge, the shared-suite checks Forge 47 doesn't run yet, BIOME-4 and FRAME-1; Forge 52's branch waits on the owner's choice of `forge` or `forge-legacy` |
 | 4 | Compatibility: Fabric API coverage, mixin and remapping edge cases, the difficult mods, popular mods on every loader and version | — |
 | 5 | Security and robustness review, the release workflow's secrets included | — |
 | 6 | Optimization, cleanup and bug fixes, with a startup and memory benchmark in CI | — |
@@ -191,6 +191,23 @@ Candidates, each waiting for a mod or a report that needs it:
   and the one Forge 47 accepts (`0.8.5`).
 - FC-7 on Windows (junctions), and an in-game allocation baseline for the chunk meshing path (CI has no GPU or
   profiler).
+
+## CI times
+
+Wall time and job-minutes of a pull request's full matrix, before this pass's CI (v0.6.0-beta's last runs) and after
+it (the first runs of `ci.yml`, before the base branches had written any of its caches):
+
+| Run | Before | After |
+|---|---|---|
+| `main` pull request, NeoForge's five versions | 5 min, 50 job-min (22 jobs) | 6 to 7 min, 61 job-min (23 jobs) |
+| `forge` pull request, four versions | 8 min, 32 job-min | 7 min, 35 job-min (15 jobs) |
+| `forge-legacy` pull request, 1.20.1 | 7 min, 7 job-min | 5 min, 9 job-min (6 jobs) |
+| Fast check on a push (unit tests and one version booted) | 2 min, 2 job-min | 2.5 min, 3 job-min |
+
+The CI code shared by every branch replaced each branch's own: about 5,800 lines of workflows and smoke scripts in all
+three became about 2,000 lines of workflow, harness and adapters, 470 of manifests and 390 of tests; the hand-written
+Fabric API stand-ins went from about 6,900 lines to the 1,830 of game stand-ins Forge 47's Intermediary-named test mod
+needs. The next pull requests show the times with the base branches' caches written.
 
 ## Performance baselines
 
