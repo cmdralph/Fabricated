@@ -100,7 +100,7 @@ public final class FabricatedState {
 		return fabricIdByNeoForgeId.containsKey(neoForgeId);
 	}
 
-	/** What to add to a Fabric mod's scan data for other mods' NeoForge builds to find its plugins. */
+	/** What to add to a Fabric mod's scan data for other mods' platform builds to find its plugins ({@link PluginAnnotations}). */
 	public List<Interop.Annotation> pluginAnnotations(String neoForgeId) {
 		return pluginAnnotations.getOrDefault(neoForgeId, List.of());
 	}

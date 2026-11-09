@@ -975,11 +975,11 @@ owner's decision, 2026-11-02: no patch for one mod, the gaps listed):
 ### Plugins for recipe viewers, tooltip mods and Simple Voice Chat
 
 A Fabric mod's plugins for JEI, REI, Jade, EMI and Simple Voice Chat are its entrypoints (`jei_mod_plugin`,
-`rei_common`, `rei_client`, `rei_server`, `jade`, `emi`, `voicechat`); their NeoForge builds look for an annotation on
-the plugin class instead. Fabricated adds
-that annotation to the mod's NeoForge scan data for each such entrypoint, so the NeoForge builds find the plugins.
-WTHIT needs nothing: on NeoForge it reads the jar's `waila_plugins.json` / `wthit_plugins.json`, which stay in the
-translated mod. Jade's per-mod settings (the `jade` custom value) reach Jade for NeoForge as a mod property (see
+`rei_common`, `rei_client`, `rei_server`, `jade`, `emi`, `voicechat`); their NeoForge and Forge builds look for an
+annotation on the plugin class instead. Fabricated adds that annotation to the mod's scan data for each such entrypoint
+(loader/common's `PluginAnnotations`: on NeoForge as its language loader gets the mod, on Forge as Fabricated's container
+for it is made, both before any mod is constructed), so those builds find the plugins. WTHIT needs nothing: on NeoForge
+and Forge it reads the jar's `waila_plugins.json` / `wthit_plugins.json`, which stay in the translated mod. Jade's per-mod settings (the `jade` custom value) reach Jade for NeoForge as a mod property (see
 *Custom values* below). Which entrypoint becomes which annotation, or which mod property, is data: core's
 `interop.json`, one line per entrypoint key.
 
@@ -989,9 +989,10 @@ translated mod. Jade's per-mod settings (the `jade` custom value) reach Jade for
 - JEI and REI create plugins while NeoForge constructs mods, before Fabric `main` entrypoints run (on Fabric JEI does
   it after them); EMI and Jade create a plugin again on each reload.
 - A plugin that calls a viewer's Fabric-only API (`mezz.jei.api.fabric`, EMI's `FabricEmiStack`) fails at that call.
-- CI runs the NeoForge builds of JEI, REI, Jade, WTHIT and Simple Voice Chat (from Modrinth, where one exists for the
-  version) with the test mod's plugins, as a gate: each must create and call its plugin. EMI has no NeoForge build for
-  these versions (UNVERIFIED), so only its mapping is unit-tested.
+- CI runs the NeoForge builds of JEI, REI, Jade, WTHIT and Simple Voice Chat, and on Forge 61 to 66 the Forge builds
+  of WTHIT and Simple Voice Chat (from Modrinth, where one exists for the version: JEI, REI and Jade have no Forge build
+  for these versions there), with the test mod's plugins, as a gate: each must create and call its plugin. EMI has no
+  NeoForge or Forge build for these versions (UNVERIFIED), so only its mapping is unit-tested.
 
 ### Custom values
 

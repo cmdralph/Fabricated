@@ -350,16 +350,16 @@ ffapi-breaking	client	client-ffapi	yes	* !1.21.11			log	FABRICATED-TEST frapi br
 iris-shader-pack	client	client-shaders client-shaders-fabric	yes	*			log	Using shaderpack: fabricated-test && !Failed to create shader rendering pipeline			Iris uses CI's shader pack	
 sodium-draws-fabric-models	client	client-sodium-fabric	yes	*			log	Fabric block models are drawn by the renderer net\.caffeinemc\.mods\.sodium			Sodium's renderer draws Fabric's block models	
 polyfrost-none-disabled	client	client-polyfrost	yes	*			report#Summary	^  Disabled: +0$			OneConfig and PolyPlus: no Fabric mod disabled	
-plugin-jei-constructed	client	client-plugins	yes	*			log	FABRICATED-TEST jei plugin constructed OK			jei's NeoForge build constructed the test mod's plugin	
-plugin-jei-called	client	client-plugins	yes	*			log	FABRICATED-TEST jei plugin called OK			jei's NeoForge build called the test mod's plugin	
-plugin-rei-constructed	client	client-plugins	yes	*			log	FABRICATED-TEST rei plugin constructed OK			rei's NeoForge build constructed the test mod's plugin	
-plugin-rei-called	client	client-plugins	yes	*			log	FABRICATED-TEST rei plugin called OK			rei's NeoForge build called the test mod's plugin	
-plugin-jade-constructed	client	client-plugins	yes	*			log	FABRICATED-TEST jade plugin constructed OK			jade's NeoForge build constructed the test mod's plugin	
-plugin-jade-called	client	client-plugins	yes	*			log	FABRICATED-TEST jade plugin called OK			jade's NeoForge build called the test mod's plugin	
-plugin-wthit-constructed	client	client-plugins	yes	* !26.3			log	FABRICATED-TEST wthit plugin constructed OK			wthit's NeoForge build constructed the test mod's plugin	neoforge 26.3: no WTHIT build for 26.3
-plugin-wthit-called	client	client-plugins	yes	* !26.3			log	FABRICATED-TEST wthit plugin called OK			wthit's NeoForge build called the test mod's plugin	neoforge 26.3: no WTHIT build for 26.3
-plugin-simple-voice-chat-constructed	client	client-plugins	yes	*			log	FABRICATED-TEST simple-voice-chat plugin constructed OK			simple-voice-chat's NeoForge build constructed the test mod's plugin	
-plugin-simple-voice-chat-called	client	client-plugins	yes	*			log	FABRICATED-TEST simple-voice-chat plugin called OK			simple-voice-chat's NeoForge build called the test mod's plugin	
+plugin-jei-constructed	client	client-plugins	yes	*			log	FABRICATED-TEST jei plugin constructed OK			jei's build for the platform constructed the test mod's plugin	forge: Modrinth has no Forge build of JEI for these versions
+plugin-jei-called	client	client-plugins	yes	*			log	FABRICATED-TEST jei plugin called OK			jei's build for the platform called the test mod's plugin	forge: Modrinth has no Forge build of JEI for these versions
+plugin-rei-constructed	client	client-plugins	yes	*			log	FABRICATED-TEST rei plugin constructed OK			rei's build for the platform constructed the test mod's plugin	forge: Modrinth has no Forge build of REI for these versions
+plugin-rei-called	client	client-plugins	yes	*			log	FABRICATED-TEST rei plugin called OK			rei's build for the platform called the test mod's plugin	forge: Modrinth has no Forge build of REI for these versions
+plugin-jade-constructed	client	client-plugins	yes	*			log	FABRICATED-TEST jade plugin constructed OK			jade's build for the platform constructed the test mod's plugin	forge: Modrinth has no Forge build of Jade for these versions
+plugin-jade-called	client	client-plugins	yes	*			log	FABRICATED-TEST jade plugin called OK			jade's build for the platform called the test mod's plugin	forge: Modrinth has no Forge build of Jade for these versions
+plugin-wthit-constructed	client	client-plugins	yes	* !26.3	*		log	FABRICATED-TEST wthit plugin constructed OK			wthit's build for the platform constructed the test mod's plugin	neoforge 26.3: no WTHIT build for 26.3
+plugin-wthit-called	client	client-plugins	yes	* !26.3	*		log	FABRICATED-TEST wthit plugin called OK			wthit's build for the platform called the test mod's plugin	neoforge 26.3: no WTHIT build for 26.3
+plugin-simple-voice-chat-constructed	client	client-plugins	yes	*	*		log	FABRICATED-TEST simple-voice-chat plugin constructed OK			simple-voice-chat's build for the platform constructed the test mod's plugin	
+plugin-simple-voice-chat-called	client	client-plugins	yes	*	*		log	FABRICATED-TEST simple-voice-chat plugin called OK			simple-voice-chat's build for the platform called the test mod's plugin	
 loaded-sodium	client	client-sodium-fabric client-shaders-fabric client-sodium-indium client-sodium-iris	yes	*	*	*	report	<report#Loaded Fabric mods>^  sodium\s			sodium loaded	
 loaded-iris	client	client-sodium-fabric client-shaders-fabric client-sodium-iris	yes	*	*	*	report	<report#Loaded Fabric mods>^  iris\s			iris loaded	
 loaded-indium	client	client-sodium-indium client-sodium-iris	yes	*	*	*	report	<report#Loaded Fabric mods>^  indium\s			indium loaded	
