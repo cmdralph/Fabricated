@@ -1,13 +1,20 @@
 package io.github.cmdralph.fabricated.testmod;
 
+import java.util.function.Consumer;
+
 import org.jspecify.annotations.Nullable;
 
+import com.mojang.serialization.Lifecycle;
+
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.minecraft.core.RegistrationInfo;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
@@ -24,6 +31,10 @@ final class TestCompat {
 			+ " mods' initializers register their packs";
 
 	private TestCompat() {
+	}
+
+	static ResourceLocation id(String namespace, String path) {
+		return ResourceLocation.fromNamespaceAndPath(namespace, path);
 	}
 
 	static <T> T value(Registry<T> registry, ResourceLocation id) {
@@ -58,5 +69,20 @@ final class TestCompat {
 
 	static <T extends Entity> EntityType<T> build(EntityType.Builder<T> builder, ResourceKey<EntityType<?>> key) {
 		return builder.build(key.location().toString());
+	}
+
+	/** The lifecycle the registry gave the entry, null for none. */
+	static <T> @Nullable Lifecycle lifecycle(Registry<T> registry, ResourceKey<T> key) {
+		return registry.registrationInfo(key).map(RegistrationInfo::lifecycle).orElse(null);
+	}
+
+	/** Whether the entry came from a pack the client knows, which then reads its own copy. */
+	static <T> boolean fromKnownPack(Registry<T> registry, ResourceKey<T> key) {
+		return registry.registrationInfo(key).flatMap(RegistrationInfo::knownPackInfo).isPresent();
+	}
+
+	/** Runs the listener after an entity was damaged. */
+	static void afterDamage(Consumer<LivingEntity> listener) {
+		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, base, taken, blocked) -> listener.accept(entity));
 	}
 }

@@ -3923,16 +3923,27 @@ class MixinPreflightTest {
 		// REG-8: Flashback's @Inject at freeze's HEAD calls Flashback while the registry isn't frozen, which starts it; at
 		// NeoForge's bootstrap freeze its start-up found no client. On Fabric no freeze comes before Fabric mods' main
 		// entrypoints.
+		assertOnlyTheFreezeHandlerReturnsEarly("freeze", "size");
+	}
+
+	@Test
+	void aHandlerInARegistrysFreezeReturnsAtOnceWhereTheGameRunsWithSrgNames() throws Exception {
+		// Forge 47 runs MappedRegistry.freeze as m_203521_, the class's one method taking nothing and returning a registry:
+		// a Fabric mod's handler there ran in Forge's freezes before the main entrypoints (the shared test mod's REG-8 check).
+		assertOnlyTheFreezeHandlerReturnsEarly("m_203521_", "m_13562_");
+	}
+
+	private void assertOnlyTheFreezeHandlerReturnsEarly(String freeze, String size) throws Exception {
 		String registry = "net/minecraft/core/MappedRegistry";
 		String callback = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;";
 		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, registry, null, "java/lang/Object", null);
 		target.visitField(Opcodes.ACC_PRIVATE, "frozen", "Z", null, null).visitEnd();
-		for (String[] method : new String[][] {{"freeze", "()Lnet/minecraft/core/Registry;"}, {"size", "()I"}}) {
+		for (String[] method : new String[][] {{freeze, "()Lnet/minecraft/core/Registry;"}, {size, "()I"}}) {
 			MethodVisitor mv = target.visitMethod(Opcodes.ACC_PUBLIC, method[0], method[1], null, null);
 			mv.visitCode();
-			mv.visitInsn(method[0].equals("size") ? Opcodes.ICONST_0 : Opcodes.ACONST_NULL);
-			mv.visitInsn(method[0].equals("size") ? Opcodes.IRETURN : Opcodes.ARETURN);
+			mv.visitInsn(method[0].equals(size) ? Opcodes.ICONST_0 : Opcodes.ACONST_NULL);
+			mv.visitInsn(method[0].equals(size) ? Opcodes.IRETURN : Opcodes.ARETURN);
 			mv.visitMaxs(0, 0);
 			mv.visitEnd();
 		}
@@ -3947,7 +3958,7 @@ class MixinPreflightTest {
 		values.visitEnd();
 		m.visitEnd();
 		cw.visitField(Opcodes.ACC_PRIVATE, "frozen", "Z", null, null).visitAnnotation(SHADOW, false).visitEnd();
-		for (String[] handler : new String[][] {{"onFreeze", "freeze", callback}, {"onSize", "size", callback}}) {
+		for (String[] handler : new String[][] {{"onFreeze", freeze, callback}, {"onSize", size, callback}}) {
 			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, handler[0], "(" + handler[2] + ")V", null, null);
 			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
 			AnnotationVisitor methods = ann.visitArray("method");

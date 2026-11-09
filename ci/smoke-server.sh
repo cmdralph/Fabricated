@@ -74,12 +74,9 @@ if [ "$status" = timeout ] && ! kill -0 "$pid" 2>/dev/null; then
 fi
 wait_for_exit=15
 if [ "$status" = started ]; then
-	# A few ticks for the tick-based checks, then (where the adapter asks) a data pack reload, so reload listeners run a
-	# second time.
-	if [ "$server_reload" = 1 ]; then
-		sleep 10
-		echo "reload" >&3
-	fi
+	# A few ticks for the tick-based checks, then a data pack reload, so reload listeners run a second time.
+	sleep 10
+	echo "reload" >&3
 	sleep "${server_settle:-5}"
 	echo "stop" >&3
 	wait_for_exit=60
