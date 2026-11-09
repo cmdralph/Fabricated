@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.block.v1.FabricBlock;
 import net.fabricmc.fabric.api.block.v1.FabricBlockState;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.core.BlockPos;
@@ -32,7 +33,7 @@ public final class BlockApiTest implements ModInitializer {
 	public void onInitialize() {
 		ResourceKey<Block> key = ResourceKey.create(Registries.BLOCK, id("climbable_block"));
 		BlockBehaviour.Properties properties = BlockBehaviour.Properties.of().setId(key);
-		boolean idOk = key.equals(properties.blockId());
+		boolean idOk = key.equals(((FabricBlock.FabricProperties) properties).blockId());
 		// In data/fabric/tags/block/can_climb_trapdoor_above.json.
 		Block climbable = Registry.register(BuiltInRegistries.BLOCK, key, new Block(properties));
 		BlockApiTestCompat.init();

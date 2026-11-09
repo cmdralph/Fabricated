@@ -54,9 +54,9 @@ public final class ObjectBuilderTest implements ModInitializer {
 	public void onInitialize() {
 		ResourceKey<EntityType<?>> mobKey = ResourceKey.create(Registries.ENTITY_TYPE, id("test_mob"));
 		EntityType<TestMob> mob = Registry.register(BuiltInRegistries.ENTITY_TYPE, mobKey,
-				FabricEntityType.Builder.createMob(TestMob::new, MobCategory.CREATURE, builder -> builder
+				((FabricEntityType.Builder<TestMob>) FabricEntityType.Builder.createMob(TestMob::new, MobCategory.CREATURE, builder -> builder
 						.defaultAttributes(() -> Mob.createMobAttributes().add(Attributes.MAX_HEALTH, 42))
-						.spawnRestriction(SpawnPlacementTypes.ON_GROUND, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, (type, level, reason, pos, random) -> true))
+						.spawnRestriction(SpawnPlacementTypes.ON_GROUND, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, (type, level, reason, pos, random) -> true)))
 						.alwaysUpdateVelocity(false)
 						.build(mobKey.location().toString()));
 

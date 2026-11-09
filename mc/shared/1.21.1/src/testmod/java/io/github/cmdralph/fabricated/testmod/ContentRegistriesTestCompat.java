@@ -15,7 +15,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.ComposterBlock;
 import net.minecraft.world.level.gameevent.GameEvent;
 
 /** {@link ContentRegistriesTest}'s registrations under this version's API names, and the checks only it has. */
@@ -37,7 +36,7 @@ final class ContentRegistriesTestCompat {
 
 	@SuppressWarnings("deprecation")
 	static void check(MinecraftServer server, List<String> failed) {
-		if (ComposterBlock.getValue(new ItemStack(Items.BEDROCK)) != 0.5f) failed.add("compostable");
+		if (ContentRegistriesPlatform.compostChance(new ItemStack(Items.BEDROCK)) != 0.5f) failed.add("compostable");
 		if (AxeItem.getAxeStrippingState(Blocks.BASALT.defaultBlockState()) == null) failed.add("strippable");
 		// What a furnace asks NeoForge 21.1 for (its data map, then its burn time event).
 		if (new ItemStack(Items.BEDROCK).getBurnTime(RecipeType.SMELTING) != 1234) failed.add("fuel");

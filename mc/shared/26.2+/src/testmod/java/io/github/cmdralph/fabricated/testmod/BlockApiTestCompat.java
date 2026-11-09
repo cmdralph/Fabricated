@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.testmod;
 
 import org.jspecify.annotations.Nullable;
 
+import net.fabricmc.fabric.api.block.v1.FabricBlock;
 import net.fabricmc.fabric.api.block.v1.FluidFlowEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -26,8 +27,11 @@ final class BlockApiTestCompat {
 	private BlockApiTestCompat() {
 	}
 
-	/** Two and a half bookshelves (in the enchantment_power_provider tag through the test mod's data). */
-	private static final class PowerBlock extends Block {
+	/**
+	 * Two and a half bookshelves (in the enchantment_power_provider tag through the test mod's data). It names FabricBlock,
+	 * which NeoForge's build injects into Block at compile time and Forge's doesn't.
+	 */
+	private static final class PowerBlock extends Block implements FabricBlock {
 		PowerBlock(BlockBehaviour.Properties properties) {
 			super(properties);
 		}

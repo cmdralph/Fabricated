@@ -51,17 +51,17 @@ public final class RegistrySyncTest implements ModInitializer {
 		AtomicInteger added = new AtomicInteger();
 		RegistryEntryAddedCallback.event(custom).register((rawId, id, value) -> added.incrementAndGet());
 		Registry.register(custom, id("first"), "first value");
-		if (OWN) custom.addAlias(id("old_first"), id("first"));
+		if (OWN) ((FabricRegistry) custom).addAlias(id("old_first"), id("first"));
 		boolean customOk = BuiltInRegistries.REGISTRY.containsKey(CUSTOM.location())
 				&& added.get() == 1
-				&& custom.doesSync()
+				&& TestPlatform.syncs(custom)
 				&& (!OWN || custom instanceof FabricRegistry && RegistryAttributeHolder.get(CUSTOM).hasAttribute(RegistryAttribute.SYNCED));
 		if (customOk) {
 			TestMod.LOGGER.info("FABRICATED-TEST registry sync: custom registry OK");
 			if (!OWN) TestMod.LOGGER.info("FABRICATED-TEST registry sync: attributes and aliases SKIPPED: fabric-registry-sync-v0 is another mod's");
 		} else {
 			TestMod.LOGGER.error("FABRICATED-TEST registry sync: custom registry FAILED (registered={}, added={}, fabricRegistry={}, synced={})",
-					BuiltInRegistries.REGISTRY.containsKey(CUSTOM.location()), added.get(), custom instanceof FabricRegistry, custom.doesSync());
+					BuiltInRegistries.REGISTRY.containsKey(CUSTOM.location()), added.get(), custom instanceof FabricRegistry, TestPlatform.syncs(custom));
 		}
 
 		// A synced data-pack registry, loaded from data/fabricated_testmod/fabricated_testmod/dynamic/.
@@ -71,7 +71,7 @@ public final class RegistrySyncTest implements ModInitializer {
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			int entries = server.registryAccess().registry(DYNAMIC).map(Registry::size).orElse(-1);
-			boolean alias = custom.resolve(id("old_first")).equals(id("first"));
+			boolean alias = id("first").equals(TestPlatform.resolve(custom, id("old_first")));
 			TestMod.LOGGER.info("FABRICATED-TEST registry sync state: alias={}, dynamic={}, setupCallback={}", alias, entries, seen.get());
 		});
 	}

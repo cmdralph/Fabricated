@@ -14,7 +14,6 @@ import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.ComposterBlock;
 import net.minecraft.world.level.gameevent.GameEvent;
 
 /** {@link ContentRegistriesTest}'s registrations under this version's API names, and the checks only it has. */
@@ -39,7 +38,7 @@ final class ContentRegistriesTestCompat {
 
 	@SuppressWarnings("deprecation")
 	static void check(MinecraftServer server, List<String> failed) {
-		if (ComposterBlock.getValue(new ItemStack(Items.BEDROCK)) != 0.5f) failed.add("compostable");
+		if (ContentRegistriesPlatform.compostChance(new ItemStack(Items.BEDROCK)) != 0.5f) failed.add("compostable");
 		if (AxeItem.getAxeStrippingState(Blocks.BASALT.defaultBlockState()) == null) failed.add("strippable");
 		if (server.fuelValues().burnDuration(new ItemStack(Items.BEDROCK)) != 1234) failed.add("fuel");
 	}

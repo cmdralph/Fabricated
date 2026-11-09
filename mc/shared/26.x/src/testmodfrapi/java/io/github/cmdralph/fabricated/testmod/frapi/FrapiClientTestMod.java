@@ -185,7 +185,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			if (isSection(level) && !TERRAIN.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi terrain OK ({} in {} on {}, seam={})", state, level.getClass().getName(), Thread.currentThread().getName(),
 						seam());
-				checkQuadMark(level, pos, state, random);
+				checkQuadMark(random);
 			} else if (level instanceof MovingBlockRenderState) {
 				if (!MOVING.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({})", state);
 				checkOutline(pos);
@@ -212,9 +212,9 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		}
 
 		/** Whether the quads NeoForge baked for the wrapped model went through {@code BakedQuadMixin}'s hook. */
-		private void checkQuadMark(BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random) {
+		private void checkQuadMark(RandomSource random) {
 			List<BlockStateModelPart> parts = new ArrayList<>();
-			wrapped.collectParts(level, pos, state, random, parts);
+			wrapped.collectParts(random, parts);
 			for (BlockStateModelPart part : parts) {
 				for (Direction direction : Direction.values()) {
 					for (BakedQuad quad : part.getQuads(direction)) {
@@ -282,7 +282,8 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 				super.emitQuads(emitter, level, pos, state, random, cullTest);
 				return;
 			}
-			TextureAtlasSprite sprite = wrapped.particleMaterial(level, pos, state).sprite();
+			// Fabric's level-aware particle material, the model's (BlockStateModel takes Fabric's interface).
+			TextureAtlasSprite sprite = ((FabricBlockStateModel) wrapped).particleMaterial(level, pos, state).sprite();
 			int[] quads = new int[2];
 			emitter.pushTransform(quad -> {
 				if (quads[0]++ == 0) ContinuityProbe.quad(quad, sprite);
@@ -382,11 +383,11 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 	/**
 	 * A Fabric model that throws the first time it is drawn where {@link #throwsIn} says (a vanilla chunk section, or as an
-	 * entity), after emitting the wrapped model's quads and pushing a transform it never pops; it logs once when
-	 * NeoForge's renderer then asks it for its parts. Under Sodium (its own chunk sections) the section ones never throw:
-	 * Sodium's renderer calls them, not Fabricated.
+	 * entity), after emitting the wrapped model's quads and pushing a transform it never pops; it logs once when the
+	 * platform's renderer then asks it for its parts (vanilla's way, or the platform's own: {@link FrapiPlatform.PartsWrapper}).
+	 * Under Sodium (its own chunk sections) the section ones never throw: Sodium's renderer calls them, not Fabricated.
 	 */
-	private abstract static class ThrowingModel extends WrapperBlockStateModel {
+	private abstract static class ThrowingModel extends FrapiPlatform.PartsWrapper {
 		private final String name;
 		private final AtomicBoolean threw = new AtomicBoolean();
 		private final AtomicBoolean fellBack = new AtomicBoolean();
@@ -427,12 +428,11 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		}
 
 		@Override
-		public void collectParts(BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, List<BlockStateModelPart> parts) {
-			fellBack(level == BlockAndTintGetter.EMPTY ? "no level" : level.getClass().getSimpleName());
-			wrapped.collectParts(level, pos, state, random, parts);
+		void partsAsked(String caller) {
+			fellBack(caller);
 		}
 
-		/** Once it threw, Fabric's renderer never draws it again: its parts are asked for by NeoForge's. */
+		/** Once it threw, Fabric's renderer never draws it again: its parts are asked for by the platform's. */
 		private void fellBack(String caller) {
 			if (threw.get() && !fellBack.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi {} fallback OK ({} collectParts)", name, caller);
 		}

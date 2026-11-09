@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.testmod.frapi;
 
-import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -25,10 +24,8 @@ import net.fabricmc.fabric.api.renderer.v1.model.FabricBlockStateModel;
 import net.fabricmc.fabric.api.renderer.v1.render.FabricLayerRenderState;
 import net.fabricmc.fabric.api.renderer.v1.render.ItemRenderTypeGetter;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.Sheets;
-import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.BlockModelPart;
 import net.minecraft.client.renderer.block.model.BlockStateModel;
 import net.minecraft.client.renderer.chunk.RenderSectionRegion;
@@ -46,7 +43,6 @@ import net.minecraft.world.entity.ItemOwner;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockAndTintGetter;
-import net.minecraft.world.level.EmptyBlockAndTintGetter;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -55,8 +51,8 @@ import net.minecraft.world.level.block.state.BlockState;
  * blockstate model types ({@code fabric:type}), one the test block's model, the other the part of the nested test block's
  * vanilla multipart model. Each emits the quads of a NeoForge model with no {@code emitQuads} of its own, drawn through
  * Fabricated's NeoForge-aware default, and logs once when a chunk section draws it (vanilla's, or Sodium's), once when it
- * is drawn as a moving block and once with the breaking overlay. Once a world is loaded, the parts NeoForge's renderers
- * get from the test block's model are checked to be made from its quads, with NeoForge's baked colour kept (1.21.11).
+ * is drawn as a moving block and once with the breaking overlay. Once a world is loaded, what the platform's own
+ * renderers get from the test block's model is checked ({@link FrapiPlatform#checkRendererParts}).
  *
  * <p>Two more Fabric models throw once a vanilla chunk section draws them, after emitting their quads and pushing a
  * transform they never pop (FRAPI rule 8): one the broken test block's model, the other a part of the broken nested
@@ -81,7 +77,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	 * The colour the terrain block's model gives its faces ({@code neoforge_data}), as NeoForge bakes it into its quads
 	 * (ARGB, as Fabric's quads have it): red and blue differ, so channels in the wrong order fail the check.
 	 */
-	private static final int BAKED_COLOR = 0xFF8040C0;
+	static final int BAKED_COLOR = 0xFF8040C0;
 	private static final AtomicBoolean COLORS = new AtomicBoolean();
 	/** Logs once that a quad reached Fabric's renderer with NeoForge's baked colour. */
 	private static final QuadTransform CHECK_COLORS = quad -> {
@@ -114,7 +110,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			if (client.level != null && !partsChecked) {
 				partsChecked = true;
-				checkNeoForgeParts(client);
+				FrapiPlatform.checkRendererParts(client);
 			}
 		});
 	}
@@ -131,27 +127,6 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	/** Whether a level is a chunk section's: vanilla's, or Sodium's when Sodium meshes the world. */
 	static boolean isSection(BlockAndTintGetter level) {
 		return level instanceof RenderSectionRegion || level.getClass().getName().equals("net.caffeinemc.mods.sodium.client.world.LevelSlice");
-	}
-
-	/**
-	 * What NeoForge's renderers, and renderer mods drawing blocks NeoForge's way, get from the test block's Fabric model:
-	 * parts made from the quads it emits, the wrapped model's baked colour among them.
-	 */
-	private static void checkNeoForgeParts(Minecraft client) {
-		BlockState state = BuiltInRegistries.BLOCK.getValue(FrapiTestMod.TERRAIN_BLOCK_ID).defaultBlockState();
-		List<BlockModelPart> parts = client.getBlockRenderer().getBlockModel(state).collectParts(EmptyBlockAndTintGetter.INSTANCE, BlockPos.ZERO, state,
-				RandomSource.create(42L));
-		List<BakedQuad> quads = new ArrayList<>();
-		for (BlockModelPart part : parts) {
-			quads.addAll(part.getQuads(null));
-			for (Direction direction : Direction.values()) quads.addAll(part.getQuads(direction));
-		}
-		boolean colored = quads.stream().anyMatch(quad -> quad.bakedColors().color(0) == BAKED_COLOR);
-		if (colored) {
-			FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi NeoForge parts OK ({} parts, {} quads)", parts.size(), quads.size());
-		} else {
-			FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi NeoForge parts FAILED ({} parts, {} quads, none with the baked colour)", parts.size(), quads.size());
-		}
 	}
 
 	/**

@@ -9,6 +9,7 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.resource.v1.DataResourceLoader;
 import net.fabricmc.fabric.api.resource.v1.DataResourceStore;
+import net.fabricmc.fabric.api.resource.v1.FabricResource;
 import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
 import net.fabricmc.fabric.api.resource.v1.pack.PackActivationType;
 import net.fabricmc.fabric.api.resource.v1.reloader.ResourceReloaderKeys;
@@ -56,7 +57,7 @@ public final class ResourceLoaderTest implements ModInitializer {
 			protected void apply(Map<Identifier, Resource> files, SharedState state) {
 				state.get(DataResourceLoader.DATA_RESOURCE_STORE_KEY).put(FILES, files.size());
 				TestMod.LOGGER.info("FABRICATED-TEST resource reload listener OK ({} data file(s), pack source {})",
-						files.size(), files.values().stream().findFirst().map(r -> r.getFabricPackSource().getClass().getName()).orElse("none"));
+						files.size(), files.values().stream().findFirst().map(r -> ((FabricResource) r).getFabricPackSource().getClass().getName()).orElse("none"));
 			}
 		});
 
@@ -80,7 +81,7 @@ public final class ResourceLoaderTest implements ModInitializer {
 		});
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-			int files = server.getOrThrow(FILES);
+			int files = ((DataResourceStore) server).getOrThrow(FILES);
 			boolean packEnabled = server.getPackRepository().getSelectedIds().contains(id("extra").toString());
 			TestMod.LOGGER.info("FABRICATED-TEST resource loader state: order={}, store={}, builtinPackEnabled={}", orderOk, files, packEnabled);
 		});

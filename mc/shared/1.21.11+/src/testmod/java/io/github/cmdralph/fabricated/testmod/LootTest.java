@@ -41,8 +41,9 @@ public final class LootTest implements ModInitializer {
 	 * Whether the test mod names dirt's table as Porting Lib Loot would: not where Porting Lib Loot does, nor where another
 	 * mod's loot module fires the events (Forgified Fabric API's, whose hook names the tables it rebuilds itself).
 	 */
-	private static final boolean NAMES_DIRT = !PORTING_LIB_LOOT && Fabricated.get().flatMap(api -> api.fabricApiModule("fabric-loot-api-v3"))
-			.map(loot -> loot.status() != FabricApiModule.Status.PROVIDED_BY_MOD).orElse(true);
+	private static final boolean PROVIDED = Fabricated.get().flatMap(api -> api.fabricApiModule("fabric-loot-api-v3"))
+			.map(loot -> loot.status() == FabricApiModule.Status.PROVIDED_BY_MOD).orElse(false);
+	private static final boolean NAMES_DIRT = !PORTING_LIB_LOOT && !PROVIDED;
 
 	@Override
 	public void onInitialize() {
@@ -67,6 +68,11 @@ public final class LootTest implements ModInitializer {
 		});
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			if (PROVIDED && SEEN.isEmpty()) {
+				// A provider with no loading hooks of its own (the Forge branches' stand-in) leaves the events unfired.
+				TestMod.LOGGER.info("FABRICATED-TEST loot SKIPPED: fabric-loot-api-v3 is another mod's, which fired none of its loading events");
+				return;
+			}
 			ServerLevel level = server.overworld();
 			List<String> failed = new ArrayList<>();
 			List<String> expected = new ArrayList<>(List.of("replace", "modify_vanilla", "all_loaded"));

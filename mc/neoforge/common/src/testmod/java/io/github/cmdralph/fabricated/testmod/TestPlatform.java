@@ -10,6 +10,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.CreativeModeTab;
@@ -57,5 +58,20 @@ final class TestPlatform {
 	/** Registers server commands each time the platform builds the command tree. */
 	static void registerCommands(Consumer<CommandDispatcher<CommandSourceStack>> commands) {
 		NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> commands.accept(event.getDispatcher()));
+	}
+
+	/** Whether the platform takes the player for a fake one. */
+	static boolean isFakePlayer(Player player) {
+		return player.isFakePlayer();
+	}
+
+	/** Whether the registry's entries are synced to clients. */
+	static boolean syncs(Registry<?> registry) {
+		return registry.doesSync();
+	}
+
+	/** The id an id names in the registry, an alias resolved. */
+	static <T> Identifier resolve(Registry<T> registry, Identifier id) {
+		return registry.resolve(id);
 	}
 }

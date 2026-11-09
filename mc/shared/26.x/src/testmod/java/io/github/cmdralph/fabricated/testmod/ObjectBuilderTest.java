@@ -5,6 +5,7 @@ import java.util.List;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityType;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityDataRegistry;
@@ -47,9 +48,9 @@ public final class ObjectBuilderTest implements ModInitializer {
 	public void onInitialize() {
 		ResourceKey<EntityType<?>> mobKey = ResourceKey.create(Registries.ENTITY_TYPE, id("test_mob"));
 		EntityType<TestMob> mob = Registry.register(BuiltInRegistries.ENTITY_TYPE, mobKey,
-				FabricEntityType.Builder.createMob(TestMob::new, MobCategory.CREATURE, builder -> builder
+				((FabricEntityType.Builder<TestMob>) FabricEntityType.Builder.createMob(TestMob::new, MobCategory.CREATURE, builder -> builder
 						.defaultAttributes(() -> Mob.createMobAttributes().add(Attributes.MAX_HEALTH, 42))
-						.spawnPlacement(SpawnPlacementTypes.ON_GROUND, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, (type, level, reason, pos, random) -> true))
+						.spawnPlacement(SpawnPlacementTypes.ON_GROUND, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, (type, level, reason, pos, random) -> true)))
 						.alwaysUpdateVelocity(false)
 						.build(mobKey));
 		FabricDefaultAttributeRegistry.MODIFY.register(context -> context.modify(mob, (type, builder) -> builder.add(Attributes.ARMOR, 7)));
@@ -61,7 +62,7 @@ public final class ObjectBuilderTest implements ModInitializer {
 		Block dirt = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace("dirt"));
 		BlockEntityType<BarrelBlockEntity> blockEntity = Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE, id("test_block_entity"),
 				FabricBlockEntityTypeBuilder.create(BarrelBlockEntity::new, stone).canPotentiallyExecuteCommands(true).build());
-		blockEntity.addValidBlock(dirt);
+		((FabricBlockEntityType) blockEntity).addValidBlock(dirt);
 
 		// A point-of-interest type registered through vanilla's own registration, as Fabric API's helper and WorldWeaver
 		// do: NeoForge maps its states too (BetterEnd, POI-1).

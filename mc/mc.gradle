@@ -175,6 +175,30 @@ ext.expandProps = [
         resource_pack_formats  : project.findProperty('testmod_resource_pack_formats') ?: '"min_format": 65, "max_format": 2048',
 ]
 
+// What a platform's half of a test mod adds to the shared descriptor for the checks of the platform's own hooks: parts of
+// a fabric.mod.json (entrypoints by key, mixin configs, nested jars), whose lists are appended to the descriptor's, in
+// testmodDescriptor.<source set>, and lines the test mod's access widener ends with, in testmodAccessWidener. The platform
+// script adds them.
+ext.testmodDescriptor = [testmod: [], testmodfrapi: []]
+ext.testmodAccessWidener = []
+def joined
+joined = { base, part -> base instanceof Map ? part.inject(base) { all, key, value -> all[key] = all.containsKey(key) ? joined(all[key], value) : value; all } : base + part }
+def addPlatformHalf = { String sourceSet ->
+    tasks.named("process${sourceSet.capitalize()}Resources", ProcessResources) {
+        def parts = testmodDescriptor[sourceSet]
+        def lines = sourceSet == 'testmod' ? testmodAccessWidener : []
+        inputs.property('platformHalf', providers.provider { groovy.json.JsonOutput.toJson([parts, lines]) })
+        doLast {
+            if (parts) {
+                def file = new File(destinationDir, 'fabric.mod.json')
+                def descriptor = parts.inject(new groovy.json.JsonSlurper().parse(file)) { all, part -> joined(all, part) }
+                file.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(descriptor)) + '\n'
+            }
+            if (lines) new File(destinationDir, 'fabricated-testmod.accesswidener') << lines.collect { it + '\n' }.join()
+        }
+    }
+}
+
 // The platform: its build plugin's settings, its mod descriptor, and gameDependencies(sourceSet), which gives a source
 // set the game and the loader to compile against.
 apply from: rootProject.file("mc/platform-${platform}.gradle")
@@ -204,6 +228,7 @@ tasks.named('processTestmodResources', ProcessResources) {
     inputs.properties(expandProps)
     filesMatching(['fabric.mod.json', '*.accesswidener', 'resourcepacks/*/pack.mcmeta']) { expand(expandProps) }
 }
+addPlatformHalf('testmod')
 
 // --- Generated build facts ---------------------------------------------------------------------------
 // What a cached translation depends on besides the mod: Fabricated's own classes and data. Their contents are digested
@@ -425,6 +450,7 @@ tasks.named('processTestmodfrapiResources', ProcessResources) {
     inputs.properties(expandProps)
     filesMatching('fabric.mod.json') { expand(expandProps) }
 }
+addPlatformHalf('testmodfrapi')
 def frapiTestmodJar = tasks.register('testmodFrapiJar', Jar) {
     archiveFileName = 'fabricated-testmod-frapi.jar'
     destinationDirectory = testmodsDir

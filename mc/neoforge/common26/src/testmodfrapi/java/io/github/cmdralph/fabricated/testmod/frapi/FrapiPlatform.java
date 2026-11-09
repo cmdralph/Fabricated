@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.testmod.frapi;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import net.fabricmc.fabric.api.client.model.loading.v1.wrapper.WrapperBlockStateModel;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
@@ -37,6 +38,21 @@ final class FrapiPlatform {
 	/** The model, as one of the platform's with no {@code emitQuads} of its own, whose parts depend on the level. */
 	static BlockStateModel levelAware(BlockStateModel model) {
 		return new LevelAwareModel(model);
+	}
+
+	/** A Fabric model wrapping another, told when the platform's renderer asks its parts its own way: with the level. */
+	abstract static class PartsWrapper extends WrapperBlockStateModel {
+		PartsWrapper(BlockStateModel wrapped) {
+			super(wrapped);
+		}
+
+		abstract void partsAsked(String caller);
+
+		@Override
+		public void collectParts(BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, List<BlockStateModelPart> parts) {
+			partsAsked(level == BlockAndTintGetter.EMPTY ? "no level" : level.getClass().getSimpleName());
+			wrapped.collectParts(level, pos, state, random, parts);
+		}
 	}
 
 	private static final class LevelAwareModel extends DelegateBlockStateModel {

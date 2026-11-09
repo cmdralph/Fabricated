@@ -36,12 +36,12 @@ install_client() {
 	fi
 }
 
-# The test mod and the one that fails on purpose after leaving an intrusive holder nothing registers (its failure must
-# be isolated, and the registries' freeze must drop the holder: CORPUS-42, HOLD-2), and a Fabric mod whose dependency is
-# missing, which Fabricated doesn't load and Forge's loading warnings name. On a client the test mod alone: a Fabric mod
-# that doesn't load would put Forge's warning screen in front of the game.
+# Every test mod on a server, the deliberately broken ones included (the one that fails on purpose leaves an intrusive
+# holder nothing registers: its failure must be isolated, and the registries' freeze must drop the holder, CORPUS-42,
+# HOLD-2), and a Fabric mod whose dependency is missing, which Fabricated doesn't load and Forge's loading warnings name.
+# On a client the test mod alone: a Fabric mod that doesn't load would put Forge's warning screen in front of the game.
 server_testmods() {
-	cp "$testmods_dir/fabricated-testmod.jar" "$testmods_dir/fabricated-testmod-throws.jar" "$1/"
+	cp "$testmods_dir"/*.jar "$1/"
 	mkdir -p unmet
 	echo '{"schemaVersion": 1, "id": "fabricated_forge_unmet", "version": "1.0.0", "depends": {"fabricated_forge_missing": "*"}}' > unmet/fabric.mod.json
 	jar --create --file "$1/fabricated-forge-unmet.jar" -C unmet fabric.mod.json

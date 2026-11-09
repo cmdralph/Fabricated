@@ -70,7 +70,7 @@ public final class InteractionTest implements ModInitializer {
 			}
 			FakePlayer player = FakePlayer.get(level);
 			player.setPos(BASE.getX() + 2.5, BASE.getY() + 1, BASE.getZ() + 0.5);
-			if (!player.isFakePlayer()) failed.add("fake_player");
+			if (!TestPlatform.isFakePlayer(player)) failed.add("fake_player");
 			InteractionHand hand = InteractionHand.MAIN_HAND;
 
 			ItemStack stick = new ItemStack(Items.STICK);

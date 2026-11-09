@@ -18,9 +18,11 @@ import net.minecraft.server.packs.repository.RepositorySource;
 
 /**
  * Leaves a pack repository's sources in an immutable set, as vanilla makes them and as FrozenLib's resource pack API
- * leaves them when it adds one (PACK-1); NeoForge adds its own pack finders to the set afterwards.
+ * leaves them when it adds one (PACK-1); NeoForge adds its own pack finders to the set afterwards. Its hook runs before
+ * those of the default priority: Fabric API's own resource loader, where it loads (Forge), makes the set mutable again
+ * in the constructor and adds its pack source to it directly later, which a set left immutable after it throws on.
  */
-@Mixin(PackRepository.class)
+@Mixin(value = PackRepository.class, priority = 900)
 public abstract class PackRepositoryMixin {
 	@Shadow
 	@Final
