@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.api;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -85,19 +86,33 @@ public final class FabricatedApiImpl implements FabricatedApi {
 			if (row.status() == Report.Status.PROVIDED_BY_MOD) rows.put(row.id(), row);
 			else rows.putIfAbsent(row.id(), row);
 		}
+		// The plan's modules, then those of the installed Fabric API it doesn't list (a plan may list only the modules it
+		// makes native or changes), which pass through.
+		Set<String> ids = new LinkedHashSet<>(plan.modules().keySet());
+		for (String jar : List.of("fabric-api", "fabric")) {
+			Report.ModRow fabricApi = rows.get(jar);
+			if (fabricApi == null || fabricApi.source().isEmpty()) continue;
+			String nested = fabricApi.source() + "!/";
+			for (Report.ModRow row : report.mods()) {
+				if (row.source().startsWith(nested) && row.source().indexOf("!/", nested.length()) < 0) ids.add(row.id());
+			}
+		}
 		List<FabricApiModule> modules = new ArrayList<>();
-		for (FabricApiPlan.Module m : plan.modules().values()) {
-			Report.ModRow row = rows.get(m.id());
+		for (String id : ids) {
+			FabricApiPlan.Module m = plan.module(id);
+			FabricApiPlan.Plan decision = m == null ? FabricApiPlan.Plan.PASSTHROUGH : m.plan();
+			String reason = m == null ? "" : m.reason();
+			Report.ModRow row = rows.get(id);
 			if (row != null && row.status() == Report.Status.PROVIDED_BY_MOD) {
-				modules.add(new FabricApiModule(m.id(), FabricApiModule.Status.PROVIDED_BY_MOD, row.version(), "provided by " + row.source()));
+				modules.add(new FabricApiModule(id, FabricApiModule.Status.PROVIDED_BY_MOD, row.version(), "provided by " + row.source()));
 				continue;
 			}
-			modules.add(switch (m.plan()) {
-				case NATIVE -> new FabricApiModule(m.id(), FabricApiModule.Status.NATIVE, m.version(), m.reason());
-				case UNSUPPORTED -> new FabricApiModule(m.id(), FabricApiModule.Status.UNSUPPORTED, "", m.reason());
-				default -> row == null ? new FabricApiModule(m.id(), FabricApiModule.Status.NOT_INSTALLED, "", "")
-						: row.status() == Report.Status.LOADED ? new FabricApiModule(m.id(), FabricApiModule.Status.LOADED, row.version(), m.reason())
-						: new FabricApiModule(m.id(), FabricApiModule.Status.DISABLED, row.version(), row.detail());
+			modules.add(switch (decision) {
+				case NATIVE -> new FabricApiModule(id, FabricApiModule.Status.NATIVE, m.version(), reason);
+				case UNSUPPORTED -> new FabricApiModule(id, FabricApiModule.Status.UNSUPPORTED, "", reason);
+				case PASSTHROUGH -> row == null ? new FabricApiModule(id, FabricApiModule.Status.NOT_INSTALLED, "", "")
+						: row.status() == Report.Status.LOADED ? new FabricApiModule(id, FabricApiModule.Status.LOADED, row.version(), reason)
+						: new FabricApiModule(id, FabricApiModule.Status.DISABLED, row.version(), row.detail());
 			});
 		}
 		return List.copyOf(modules);

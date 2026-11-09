@@ -2816,6 +2816,27 @@ class PipelineTest {
 	}
 
 	@Test
+	void apiListsTheInstalledFabricApiModulesThePlanLeavesOut(@TempDir Path game) throws Exception {
+		// Forge's plans list only the modules they make native or change: the others in the installed release pass through.
+		byte[] networking = TestJars.create().fabricModJson(TestJars.modJson("fabric-networking-api-v1", "4.0.0", ""))
+				.bytes("net/fabricmc/fabric/impl/networking/Impl.class", TestJars.emptyClass("net/fabricmc/fabric/impl/networking/Impl", "java/lang/Object"))
+				.toBytes();
+		Path fabricApi = TestJars.create()
+				.fabricModJson(TestJars.modJson("fabric-api", "0.161.0+26.2", "\"jars\":[{\"file\":\"META-INF/jars/networking.jar\"}]"))
+				.bytes("META-INF/jars/networking.jar", networking)
+				.write(game.resolve("mods/fabric-api.jar"));
+		Pipeline.Input in = input(game, List.of(fabricApi), Namespace.OFFICIAL, Map.of(), null);
+		Pipeline.Result result = Pipeline.run(in);
+		FabricatedApiImpl api = new FabricatedApiImpl(in.fabricatedVersion(), in.fabricApiPlan(), result.report(), result.runtime(), true);
+
+		FabricApiModule module = api.fabricApiModule("fabric-networking-api-v1").orElseThrow(() -> new AssertionError(result.report().render()));
+		assertEquals(FabricApiModule.Status.LOADED, module.status());
+		assertEquals("4.0.0", module.version());
+		assertEquals(FabricApiModule.Status.NATIVE, api.fabricApiModule("fabric-api-base").orElseThrow().status(), "the plan's modules still come first");
+		assertTrue(api.fabricApiModule("fabric-api").isEmpty(), "the release's own jar isn't a module");
+	}
+
+	@Test
 	void apiReflectsTheLaunch(@TempDir Path game) throws Exception {
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		writeMods(mods);
