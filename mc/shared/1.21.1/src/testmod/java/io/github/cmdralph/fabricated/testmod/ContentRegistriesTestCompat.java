@@ -8,13 +8,14 @@ import net.fabricmc.fabric.api.registry.FuelRegistry;
 import net.fabricmc.fabric.api.registry.OxidizableBlocksRegistry;
 import net.fabricmc.fabric.api.registry.SculkSensorFrequencyRegistry;
 import net.fabricmc.fabric.api.registry.StrippableBlockRegistry;
+import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.FurnaceBlockEntity;
 import net.minecraft.world.level.gameevent.GameEvent;
 
 /** {@link ContentRegistriesTest}'s registrations under this version's API names, and the checks only it has. */
@@ -38,7 +39,20 @@ final class ContentRegistriesTestCompat {
 	static void check(MinecraftServer server, List<String> failed) {
 		if (ContentRegistriesPlatform.compostChance(new ItemStack(Items.BEDROCK)) != 0.5f) failed.add("compostable");
 		if (AxeItem.getAxeStrippingState(Blocks.BASALT.defaultBlockState()) == null) failed.add("strippable");
-		// What a furnace asks NeoForge 21.1 for (its data map, then its burn time event).
-		if (new ItemStack(Items.BEDROCK).getBurnTime(RecipeType.SMELTING) != 1234) failed.add("fuel");
+		if (new Furnace().burnDuration(new ItemStack(Items.BEDROCK)) != 1234) failed.add("fuel");
+	}
+
+	/**
+	 * A furnace, for the burn time it asks the platform for: NeoForge 21.1's item stack hook (its data map, then its burn
+	 * time event), Forge 52's burn times (vanilla's fuel table, then its burn time event).
+	 */
+	private static final class Furnace extends FurnaceBlockEntity {
+		Furnace() {
+			super(BlockPos.ZERO, Blocks.FURNACE.defaultBlockState());
+		}
+
+		int burnDuration(ItemStack stack) {
+			return getBurnDuration(stack);
+		}
 	}
 }
