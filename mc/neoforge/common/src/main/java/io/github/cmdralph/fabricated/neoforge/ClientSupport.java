@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.neoforge;
 
+import io.github.cmdralph.fabricated.command.FabricatedCommands;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
