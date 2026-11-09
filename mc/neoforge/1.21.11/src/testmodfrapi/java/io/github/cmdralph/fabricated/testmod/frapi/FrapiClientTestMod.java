@@ -71,6 +71,11 @@ import net.neoforged.neoforge.client.model.DelegateBlockStateModel;
  *
  * <p>With Continuity installed, glass's model is wrapped after every other wrapper, Continuity's included
  * ({@link ConnectedCheckModel}), to check that its connected textures reach the chunk section.
+ *
+ * <p>The models are compiled as a Fabric mod's are: they implement {@code BlockStateModel}, whose
+ * {@code FabricBlockStateModel} Fabric's renderer API adds at runtime, and their {@code emitQuads} overrides its own.
+ * Named here too, that interface would make javac refuse each model, which would then inherit its and NeoForge's
+ * extension's unrelated {@code createGeometryKey} defaults (resolved on {@code BlockStateModel} at runtime).
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
 	/**
@@ -171,7 +176,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	 * A Fabric model as Fabric mods write one: its geometry is only the quads it emits, those of the model it wraps.
 	 * Logs {@code check} the first time a chunk section draws it.
 	 */
-	private static final class CheckModel implements BlockStateModel, FabricBlockStateModel {
+	private static final class CheckModel implements BlockStateModel {
 		private static final AtomicBoolean MOVING = new AtomicBoolean();
 		private static final AtomicBoolean BREAKING = new AtomicBoolean();
 		private final BlockStateModel wrapped;
@@ -193,7 +198,6 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			return wrapped.particleIcon();
 		}
 
-		@Override
 		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
 			emitter.pushTransform(CHECK_COLORS);
 			try {
@@ -251,7 +255,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	 * (Continuity's default resource pack gives glass one), and which model it wraps. NeoForge's renderers get the
 	 * wrapped model's parts.
 	 */
-	private static final class ConnectedCheckModel implements BlockStateModel, FabricBlockStateModel {
+	private static final class ConnectedCheckModel implements BlockStateModel {
 		private static final AtomicBoolean LOGGED = new AtomicBoolean();
 		/** How far a texture coordinate may stray outside a sprite and still be on it (float rounding). */
 		private static final float EPSILON = 1.0E-5F;
@@ -271,7 +275,6 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			return wrapped.particleIcon();
 		}
 
-		@Override
 		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
 			FabricBlockStateModel fabricModel = (FabricBlockStateModel) wrapped;
 			if (LOGGED.get() || !isSection(level) || !nextToSame(level, pos, state)) {
@@ -404,7 +407,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	 * vanilla method, which Fabricated's default calls once Fabric's renderer no longer draws it). Under Sodium (its own
 	 * chunk sections) it never throws.
 	 */
-	private abstract static class ThrowingModel implements BlockStateModel, FabricBlockStateModel {
+	private abstract static class ThrowingModel implements BlockStateModel {
 		private final BlockStateModel wrapped;
 		private final String name;
 		private final AtomicBoolean threw = new AtomicBoolean();
@@ -431,7 +434,6 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			return wrapped.particleIcon();
 		}
 
-		@Override
 		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
 			((FabricBlockStateModel) wrapped).emitQuads(emitter, level, pos, state, random, cullTest);
 			// Only through Fabricated's seam: another mod's renderer hooks (Forgified Fabric API's) aren't Fabricated's to guard.
@@ -488,7 +490,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	 * wrapped model, so this class keeps Fabric's renderer. Logs once when Fabricated calls its emitter for a chunk
 	 * section after the model it wraps threw (to draw it, or to make its parts from its quads).
 	 */
-	private static final class WrapperCheckModel implements BlockStateModel, FabricBlockStateModel {
+	private static final class WrapperCheckModel implements BlockStateModel {
 		private static final AtomicBoolean KEPT = new AtomicBoolean();
 		private final ThrowingModel wrapped;
 
@@ -506,7 +508,6 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			return wrapped.particleIcon();
 		}
 
-		@Override
 		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
 			boolean afterThrow = wrapped.threw();
 			wrapped.emitQuads(emitter, level, pos, state, random, cullTest);
