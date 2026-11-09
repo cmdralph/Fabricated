@@ -33,6 +33,7 @@
     "NamespacedWrapperEarlyWriteMixin": [],
     "NamespacedWrapperEntryAddedMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperPendingHoldersMixin": [],
+    "PlayerListViewMixin": [],
     "ResourcePackLoaderKnownPackMixin": [],
     "TagFileRemoveMixin": ["fabric-tag-api-v1"]
   }
