@@ -21,9 +21,9 @@ public final class NestedTestMod implements ModInitializer {
 		String pkg = NestedTestMod.class.getPackageName();
 		long copies = module.getLayer() == null ? 0 : module.getLayer().modules().stream().filter(m -> m.getPackages().contains(pkg)).count();
 		if ("fabricated_forge_nested".equals(module.getName()) && copies == 1) {
-			LOGGER.info("FABRICATED-FORGE-TEST nested jar loaded once OK");
+			LOGGER.info("FABRICATED-TEST nested jar loaded once OK");
 		} else {
-			LOGGER.error("FABRICATED-FORGE-TEST nested jar: its class is in module {}, and {} module(s) of its layer have its package",
+			LOGGER.error("FABRICATED-TEST nested jar: its class is in module {}, and {} module(s) of its layer have its package",
 					module.getName(), copies);
 		}
 	}

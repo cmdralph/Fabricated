@@ -1,0 +1,12 @@
+{
+  "multipart": [
+    {
+      "apply": {
+        "fabric:type": "fabricated_testmod_frapi:nested_check",
+        "model": {
+          "model": "minecraft:block/stone"
+        }
+      }
+    }
+  ]
+}

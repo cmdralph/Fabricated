@@ -1,0 +1,17 @@
+{
+  "multipart": [
+    {
+      "apply": {
+        "model": "minecraft:block/cobblestone"
+      }
+    },
+    {
+      "apply": {
+        "fabric:type": "fabricated_testmod_frapi:broken_part_check",
+        "model": {
+          "model": "minecraft:block/stone"
+        }
+      }
+    }
+  ]
+}
