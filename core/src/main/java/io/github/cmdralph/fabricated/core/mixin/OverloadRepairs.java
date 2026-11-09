@@ -124,11 +124,16 @@ final class OverloadRepairs extends PreflightPart {
 	 * code), at that overload; returns a description of each move. An {@code @Inject} whose points are there but whose
 	 * captured locals aren't (the method only calls the overload now) moves the same way. A handler that takes the
 	 * method's parameters gets them from a bridge taking the overload's, when the method only passes its own parameters
-	 * on with one value it works out ({@link #insertedParameter}, as {@code MappedRegistry.register} with an id). Its
-	 * {@code @Local}s must find their locals in the overload ({@link #localsInOverload}). Where the overload makes a call
-	 * the injector names through an overload of that call taking one more argument, the points count as found there as
-	 * {@link CallRepairs#pointsThroughOverloads} would point them, and the call repairs, which run later, point them so
-	 * (OVERLOAD-1).
+	 * on with one value it works out ({@link #insertedParameter}, as {@code MappedRegistry.register} with an id), or, an
+	 * {@code @Inject}'s, in order followed by defaults. Its {@code @Local}s must find their locals in the overload
+	 * ({@link #localsInOverload}). Where the overload makes a call the injector names through an overload of that call
+	 * taking one more argument, the points count as found there as {@link CallRepairs#pointsThroughOverloads} would point
+	 * them, and the call repairs, which run later, point them so (OVERLOAD-1). An injection at the end of a constructor
+	 * nothing calls any more ({@link ConstructorRepairs#keptConstructorDelegate}), or an {@code @Inject}'s at the returns
+	 * of a method the platform deprecated for the one it calls ({@link #deprecatedDelegate}), moves to the end of that
+	 * one. Not one at its start, which may cancel the method to do its work another way, there where the platform's code
+	 * calls the other one in its own way: Indigo's block renderer hook would draw a Fabric model in each of the calls
+	 * NeoForge 21.1 makes per render type, where Fabricated draws it once itself (FRAPI-5).
 	 */
 	List<String> overloadRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
@@ -200,26 +205,38 @@ final class OverloadRepairs extends PreflightPart {
 				// model hook takes the model's id so, which NeoForge 21.1's overload takes first too, MODEL-4).
 				int prefix = inject || captured >= 0 || sameParameters ? 0 : capturedPrefix(handler, chosen);
 				if (prefix > 0 && inserted < prefix) continue;
+				// Or, where the method passes its parameters on in order and then defaults, an @Inject handler taking exactly
+				// them gets the overload's first ones: NeoForge 21.1's HumanoidArmorLayer.renderArmorPiece passes six zeros
+				// for the limb animation's values (Figura's armour hooks, PRE-20).
+				boolean forwarded = inject && captured >= 0 && inserted < 0 && ConstructorRepairs.forwardsItsParameters(chosen, overload)
+						&& ConstructorRepairs.takesExactly(handler, chosen);
 				List<Runnable> locals = LocalRepairs.localsFit(handler, overload) ? List.of() : localsInOverload(handler, overload, inserted, found, ctx);
-				if (locals == null || captured >= 0 && (found != ats || inserted < 0 || selectors.size() != 1 || (mixin.access & Opcodes.ACC_INTERFACE) != 0)) continue;
+				if (locals == null || captured >= 0 && (found != ats || inserted < 0 && !forwarded || selectors.size() != 1
+						|| (mixin.access & Opcodes.ACC_INTERFACE) != 0)) continue;
 				locals.forEach(Runnable::run);
 				if (captured >= 0) {
-					bridges.add(HandlerBridges.insertedParameterBridge(mixin.name, handler, injector, captured, Type.getArgumentTypes(chosen.desc).length,
-							overload, inserted, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
+					String name = HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated");
+					bridges.add(forwarded ? HandlerBridges.bridge(mixin.name, handler, injector, chosen, overload, name)
+							: HandlerBridges.insertedParameterBridge(mixin.name, handler, injector, captured, Type.getArgumentTypes(chosen.desc).length, overload,
+									inserted, name));
 				}
 				how = localsGone ? ", which " + loader + " reduced to a call to " : replacement != null ? ", which " + loader + " deprecated for "
 						: split ? ", the code of which there " + loader + " split off into " : ", whose code " + loader + " moved into ";
 			} else {
-				// The injection points exist, but in a constructor nothing calls any more: its end is the end of the one it calls.
-				overload = ConstructorRepairs.keptConstructorDelegate(chosen, target, vanillaClass(target.name));
+				// The injection points exist, but in a constructor nothing calls any more, or in a method the platform deprecated
+				// for the one it calls (an @Inject's, at all of its returns): its end is the end of the one it calls.
+				boolean constructor = chosen.name.equals("<init>");
+				ClassNode vanilla = vanillaClass(target.name);
+				overload = constructor ? ConstructorRepairs.keptConstructorDelegate(chosen, target, vanilla)
+						: inject && atReturns(ats) ? deprecatedDelegate(chosen, target, vanilla) : null;
 				if (overload == null || !slices.isEmpty() || !ConstructorRepairs.atEndOnly(ats) || !LocalRepairs.localsFit(handler, overload)) continue;
 				if (takesParameters) {
-					// The handler gets the constructor's own parameters from a bridge taking all of the other one's.
+					// The handler gets the method's own parameters from a bridge taking all of the other one's.
 					if (selectors.size() != 1 || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || !ConstructorRepairs.forwardsItsParameters(chosen, overload)
 							|| !ConstructorRepairs.takesExactly(handler, chosen)) continue;
 					bridges.add(HandlerBridges.bridge(mixin.name, handler, injector, chosen, overload, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
 				}
-				how = ", which " + loader + " keeps only to call ";
+				how = constructor ? ", which " + loader + " keeps only to call " : ", which " + loader + " deprecated for ";
 			}
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
@@ -498,11 +515,11 @@ final class OverloadRepairs extends PreflightPart {
 		Type[] params = Type.getArgumentTypes(method.desc);
 		if (args.length == 0 || !args[args.length - 1].getDescriptor().equals(MixinNames.CALLBACK_INFO_RETURNABLE)
 				|| args.length != 1 && !Arrays.equals(Arrays.copyOf(args, args.length - 1), params)) return List.of();
-		boolean deprecated = (method.access & Opcodes.ACC_DEPRECATED) != 0 || Annotations.find(method, "Ljava/lang/Deprecated;") != null;
 		ClassNode vanilla = vanillaClass(target.name);
 		MethodNode vanillaMethod = vanilla == null ? null : PreflightAsm.declared(vanilla, method.name, method.desc);
-		if (!deprecated || vanillaMethod == null || (vanillaMethod.access & Opcodes.ACC_DEPRECATED) != 0
-				|| Annotations.find(vanillaMethod, "Ljava/lang/Deprecated;") != null || target.nestHostClass != null) return List.of();
+		if (!PreflightAsm.deprecated(method) || vanillaMethod == null || PreflightAsm.deprecated(vanillaMethod) || target.nestHostClass != null) {
+			return List.of();
+		}
 		List<ClassNode> nest = new ArrayList<>(List.of(target));
 		if (target.nestMembers != null) {
 			for (String member : target.nestMembers) {
@@ -770,7 +787,7 @@ final class OverloadRepairs extends PreflightPart {
 	 * {@code BoneMealItem.growCrop}'s code is in {@code applyBonemeal} there, which also takes the player. Null otherwise.
 	 */
 	static MethodNode replacementOf(MethodNode method, ClassNode target) {
-		if ((method.access & Opcodes.ACC_DEPRECATED) == 0 && Annotations.find(method, "Ljava/lang/Deprecated;") == null) return null;
+		if (!PreflightAsm.deprecated(method)) return null;
 		MethodNode found = null;
 		for (AbstractInsnNode insn : method.instructions) {
 			if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(target.name) || CallRepairs.insertedArgument(method.desc, call.desc) < 0) continue;
@@ -780,6 +797,35 @@ final class OverloadRepairs extends PreflightPart {
 			found = callee;
 		}
 		return found;
+	}
+
+	/**
+	 * The method of its class that {@code method}, which the platform marks deprecated, hands everything to: its body
+	 * passes its parameters in order and then defaults to that one and returns its result
+	 * ({@link ConstructorRepairs#forwardsItsParameters}), and the platform added that one
+	 * ({@link ConstructorRepairs#platformAdded}). The platform's code calls it in {@code method}'s place, so an injection
+	 * at the end of {@code method} runs only where something else still calls that, while the end of the other one is
+	 * the same moment for both: NeoForge 21.1 keeps {@code HumanoidArmorLayer.renderArmorPiece} as a call of an overload
+	 * that also takes the limb animation's values, which its {@code render} calls instead (Figura's armour hooks,
+	 * PRE-20). Vanilla's own deprecated methods that pass their parameters on call a method vanilla has. Null otherwise.
+	 */
+	static MethodNode deprecatedDelegate(MethodNode method, ClassNode target, ClassNode vanilla) {
+		if (method.name.startsWith("<") || !PreflightAsm.deprecated(method)) return null;
+		MethodInsnNode call = null;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof MethodInsnNode m) call = m;
+		}
+		MethodNode delegate = call == null || !call.owner.equals(target.name) ? null : PreflightAsm.declared(target, call.name, call.desc);
+		return delegate != null && ConstructorRepairs.forwardsItsParameters(method, delegate) && ConstructorRepairs.platformAdded(method, delegate, vanilla)
+				? delegate : null;
+	}
+
+	/** Whether every injection point is {@code RETURN} with no ordinal: all of the method's returns. */
+	private static boolean atReturns(List<AnnotationNode> ats) {
+		for (AnnotationNode at : ats) {
+			if (!(Annotations.value(at, "value") instanceof String v) || !v.equalsIgnoreCase("RETURN") || Annotations.value(at, "ordinal") != null) return false;
+		}
+		return true;
 	}
 
 	/** The one other overload of the same name {@code method} calls, or null (none, or several). */

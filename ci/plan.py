@@ -165,6 +165,9 @@ def why_not(row, platform, version=None):
     return f"not on {version}" if row[platform].strip() else f"{platform}'s test mods have no such check"
 
 
+PIN = re.compile(r"\{(\w+)(?:\.([\w-]+))?\}")
+
+
 def runs(root, platform, version, part, extended, names=()):
     """The part's runs for the version, in the manifest's order, with the version's pins filled into their mods."""
     pins = target(root, platform, version)
@@ -181,7 +184,11 @@ def runs(root, platform, version, part, extended, names=()):
             continue
         if names and row["run"] not in names:
             continue
-        row["mods"] = re.sub(r"\{(\w+)(?:\.([\w-]+))?\}", fill, row["mods"])
+        filled = [fill(m) for m in PIN.finditer(row["mods"])]
+        # A run of pinned builds the version pins none of has nothing to run (an empty list would fetch the corpus).
+        if not all(filled):
+            continue
+        row["mods"] = PIN.sub(fill, row["mods"])
         result.append(row)
     return result
 
@@ -196,8 +203,10 @@ def parts(root, platform, version, extended):
     found = {}
     for row in read_table(HERE / "runs.tsv"):
         if applies(row, platform, version) and (row["extended"] != "yes" or extended):
-            found.setdefault(row["part"], set()).add(row["side"])
-    return {part: " ".join(sorted(sides, reverse=True)) for part, sides in found.items()}
+            found.setdefault(row["part"], set())
+    for part, sides in found.items():
+        sides.update(row["side"] for row in runs(root, platform, version, part, extended))
+    return {part: " ".join(sorted(sides, reverse=True)) for part, sides in found.items() if sides}
 
 
 def git(*args):
