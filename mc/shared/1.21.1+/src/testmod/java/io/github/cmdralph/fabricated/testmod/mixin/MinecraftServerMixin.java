@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import io.github.cmdralph.fabricated.testmod.TestMod;
 import net.minecraft.server.MinecraftServer;
 
-/** Proves Fabric mixins are applied: logs once after the first server tick. */
+/** Proves Fabric mixins are applied: logs once after the first server tick, and checks the test item is still registered. */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
 	@Unique
@@ -20,6 +20,7 @@ public abstract class MinecraftServerMixin {
 		if (!fabricatedTest$logged) {
 			fabricatedTest$logged = true;
 			TestMod.LOGGER.info("FABRICATED-TEST mixin OK");
+			TestMod.registryEntryKept();
 		}
 	}
 }

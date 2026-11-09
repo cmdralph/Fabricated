@@ -47,7 +47,7 @@
     ],
     "voicechat": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}VoiceChat"]
   },
-  "mixins": ["fabricated-testmod.mixins.json"],
+  "mixins": ["fabricated-testmod.mixins.json", "fabricated-testmod-mixinsemantics.mixins.json"],
   "languageAdapters": {
     "fabricated-test-early": "io.github.cmdralph.fabricated.testmod.EarlyAdapter"
   },

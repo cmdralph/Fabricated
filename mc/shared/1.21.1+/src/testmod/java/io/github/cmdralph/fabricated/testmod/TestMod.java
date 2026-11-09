@@ -61,6 +61,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	public static final String NEOFORGE_NAMESPACE = "fabricated_neoforge_test";
 	/** Set when a pack repository's sources were made immutable (PackRepositoryMixin), as FrozenLib leaves them (PACK-1). */
 	public static volatile boolean immutablePackSources;
+	private static Item testItem;
 
 	/** A registry vanilla's own code adds to the root while mods start, which works on Fabric (REG-3: Wover's). */
 	private static void lateRegistry() {
@@ -210,6 +211,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		if (BuiltInRegistries.ITEM.getKey(item).equals(ITEM_ID)) {
 			LOGGER.info("FABRICATED-TEST registry OK");
 		}
+		testItem = item;
 		BootstrapContent.register();
 		lateRegistry();
 		creativeTab(item);
@@ -302,6 +304,11 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 			if (spawnEggs >= 0 && index > spawnEggs) LOGGER.info("FABRICATED-TEST creative tab order OK");
 			else LOGGER.error("FABRICATED-TEST creative tab order FAILED: the test tab is at {}, the spawn eggs at {}", index, spawnEggs);
 		});
+	}
+
+	/** At the end of the server's first tick (MinecraftServerMixin): the test item is still its id's entry, the registry frozen. */
+	public static void registryEntryKept() {
+		if (testItem != null && TestCompat.value(BuiltInRegistries.ITEM, ITEM_ID) == testItem) LOGGER.info("FABRICATED-TEST registry entry kept OK");
 	}
 
 	@Override
