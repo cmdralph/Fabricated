@@ -1777,6 +1777,10 @@ What else differs on Forge, for Fabric mods in general:
   3.6.6's on Forge 47 (its `mods.toml`). Their Forge builds work.
 - **Jars built for Fabric and NeoForge at once** list their nested jars for NeoForge too. Fabricated hides that list
   from Forge's jar-in-jar locator and reads the jar itself, so each nested mod loads once, translated (JIJ-1).
+- **Placeholders for Sinytra Connector:** a Fabric jar whose `META-INF/mods.toml` only tells Forge to install Connector
+  (`connector:placeholder`, as Origins 1.10.2's has) loads as the Fabric mod it is: Fabricated's mod locator keeps it
+  from Forge's mods-folder scan (MULTI-2, UNVERIFIED in the game). Any other jar with both loaders' metadata is
+  Forge's.
 - **Other copies of Fabric's parts:** a Fabric API module another Forge mod provides (one bundling Fabric API's modules)
   is that mod's, and Fabricated's copy, its mixins and its Forge hooks stand down, as on NeoForge (all five, server run
   with stand-ins; PROVIDER-1). Sinytra Connector and a second Fabricated jar are refused, the launch stopping with
