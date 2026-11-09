@@ -16,6 +16,7 @@ import io.github.cmdralph.fabricated.api.FabricatedApi;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
+import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.core.runtime.FabricLoaderRuntime;
 
 /** Fabricated's {@link FabricatedApi}, built from the pipeline's report once discovery is done. */
@@ -147,7 +148,8 @@ public final class FabricatedApiImpl implements FabricatedApi {
 	/**
 	 * Called once the Fabric entrypoints have run: records which mods failed and runs the waiting actions, in order.
 	 *
-	 * @param onError told about an action that threw; the others still run
+	 * @param onError told about an action that threw, whatever it threw (a checked exception Kotlin code throws, an
+	 *                assertion), but the JVM's own failure ({@link EntrypointRunner#fatalCause}); the others still run
 	 */
 	public void markEntrypointsComplete(Set<String> failed, BiConsumer<Runnable, Throwable> onError) {
 		List<Runnable> actions;
@@ -160,8 +162,10 @@ public final class FabricatedApiImpl implements FabricatedApi {
 		for (Runnable action : actions) {
 			try {
 				action.run();
-			} catch (RuntimeException | LinkageError e) {
-				onError.accept(action, e);
+			} catch (Throwable t) {
+				VirtualMachineError fatal = EntrypointRunner.fatalCause(t);
+				if (fatal != null) throw fatal;
+				onError.accept(action, t);
 			}
 		}
 	}

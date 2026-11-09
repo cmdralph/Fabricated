@@ -12,8 +12,9 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 
 /**
- * Fabric's fuels in vanilla's fuel table, which Forge 47 reads its burn times from as the data packs' tags load
- * (FUEL-1, see {@link FabricFuels}): upstream's own hook at the same point, left out with the rest of its furnace mixin.
+ * Fabric's fuels in vanilla's fuel table, which Forge 47 and 52 read their burn times from as the data packs' tags load
+ * (FUEL-1, FUEL-2, see {@link FabricFuels}): upstream's own hook at the same point, left out with the rest of its
+ * furnace mixin.
  */
 @Mixin(AbstractFurnaceBlockEntity.class)
 abstract class FurnaceFuelTableMixin {

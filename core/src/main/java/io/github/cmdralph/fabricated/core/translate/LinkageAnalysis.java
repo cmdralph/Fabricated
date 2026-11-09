@@ -199,7 +199,7 @@ public final class LinkageAnalysis {
 					byte[] data = archive.read(name);
 					if (data != null) mixinAdditions(data, added);
 				}
-			} catch (IOException | RuntimeException | StackOverflowError e) {
+			} catch (IOException | RuntimeException | StackOverflowError | OutOfMemoryError e) {
 				// The mod is reported by check() if it cannot be read; nothing to add here.
 			}
 		}
@@ -347,7 +347,7 @@ public final class LinkageAnalysis {
 		ClassNode node = new ClassNode();
 		try {
 			new ClassReader(data).accept(node, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-		} catch (RuntimeException | StackOverflowError e) {
+		} catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
 			return null;
 		}
 		return node;

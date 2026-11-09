@@ -12,6 +12,7 @@ import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.entity.SleepEvents;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
+import io.github.cmdralph.fabricated.forge.interaction.InteractionEvents;
 import io.github.cmdralph.fabricated.forge.keymapping.KeyMappingBridge;
 import io.github.cmdralph.fabricated.forge.loot.LootCompat;
 import io.github.cmdralph.fabricated.forge.resource.FabricDefaultPacks;
@@ -88,6 +89,8 @@ public final class FabricatedMod {
 		if (state.isFabricMod(ModIds.toNeoForgeId(TransferBridge.MODULE))) TransferBridge.register();
 		// Fabric's sleep time event where Forge asks its own (SLEEP-2).
 		if (ours(state, "fabric-entity-events-v1")) SleepEvents.register();
+		// Fabric API's attack block and use entity callbacks, passed through, from Forge's interaction events (INTERACT-1).
+		if (ours(state, "fabric-events-interaction-v0")) InteractionEvents.register();
 		// /fabricated, in the server's commands and, on a client, in its own, which only its player runs.
 		MinecraftForge.EVENT_BUS.addListener((RegisterCommandsEvent event) -> FabricatedCommands.register(event.getDispatcher(), state, false));
 		if (!FMLLoader.getDist().isDedicatedServer()) {

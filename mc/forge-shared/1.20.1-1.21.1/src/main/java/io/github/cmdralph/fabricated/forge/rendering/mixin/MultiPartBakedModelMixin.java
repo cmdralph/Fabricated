@@ -17,9 +17,10 @@ import net.minecraft.client.resources.model.MultiPartBakedModel;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Lets a vanilla multipart model say whether one of its parts is a Fabric model (Forge 47): then Fabric's renderer draws
- * the whole block, the vanilla parts too, as upstream's own mixin on it does (see {@link FabricBlockRendering}). A part
- * whose drawing threw makes Forge's renderer draw the whole block (FRAPI rule 8): Fabric's would ask that part again.
+ * Lets a vanilla multipart model say whether one of its parts is a Fabric model (Forge 47 and 52): then Fabric's
+ * renderer draws the whole block, the vanilla parts too, as upstream's own mixin on it does (see
+ * {@link FabricBlockRendering}). A part whose drawing threw makes Forge's renderer draw the whole block (FRAPI rule 8):
+ * Fabric's would ask that part again.
  */
 @Mixin(MultiPartBakedModel.class)
 abstract class MultiPartBakedModelMixin implements FabricBlockRendering.Composite {

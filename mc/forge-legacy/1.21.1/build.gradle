@@ -11,5 +11,22 @@ dependencies {
     compileOnly "io.github.llamalad7:mixinextras-common:${project.mixinextras_version}"
     testmodCompileOnly "io.github.llamalad7:mixinextras-common:${project.mixinextras_version}"
     // The pass-through modules the in-game mod calls besides those its plan lists (an unlisted module passes through).
-    compileOnly fabricApi(['fabric-api-lookup-api-v1', 'fabric-block-api-v1', 'fabric-registry-sync-v0', 'fabric-transfer-api-v1'])
+    compileOnly fabricApi(['fabric-api-lookup-api-v1', 'fabric-block-api-v1', 'fabric-content-registries-v0', 'fabric-item-api-v1',
+            'fabric-registry-sync-v0', 'fabric-renderer-api-v1', 'fabric-renderer-indigo', 'fabric-transfer-api-v1'])
+}
+
+// Forge Config API Port's Forge half, which the in-game mod provides (CFG-4): the test mod uses it as a Fabric mod does.
+// It names the port's copy of NeoForge's config types, which the port's jar holds: a stand-in compiles against it.
+sourceSets {
+    integrationstubs {
+        java.srcDir 'src/integrationstubs/java'
+    }
+}
+def configPortApiJar = tasks.register('configPortApiJar', Jar) {
+    archiveFileName = 'forgeconfigapiport-api.jar'
+    destinationDirectory = layout.buildDirectory.dir('configportapi')
+    from(sourceSets.main.output) { include 'fuzs/**' }
+}
+dependencies {
+    testmodCompileOnly files(configPortApiJar)
 }

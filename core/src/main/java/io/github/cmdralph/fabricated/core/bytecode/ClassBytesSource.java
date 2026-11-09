@@ -16,7 +16,8 @@ public interface ClassBytesSource {
 
 	/**
 	 * The class parsed as a tree, or {@code null} when this source doesn't have it or it can't be read (a corrupt or
-	 * hostile class file is treated as absent; callers report the consequence).
+	 * hostile class file is treated as absent; callers report the consequence). A hostile class may nest annotations
+	 * without end (a stack overflow) or, for ASM before 9.9, claim an attribute larger than an array holds (SEC-6).
 	 *
 	 * @param parsingOptions {@link ClassReader} options, e.g. {@link ClassReader#SKIP_CODE}
 	 */
@@ -27,7 +28,7 @@ public interface ClassBytesSource {
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, parsingOptions);
 			return node;
-		} catch (IOException | RuntimeException | StackOverflowError e) {
+		} catch (IOException | RuntimeException | StackOverflowError | OutOfMemoryError e) {
 			return null;
 		}
 	}

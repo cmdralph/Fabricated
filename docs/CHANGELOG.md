@@ -3,6 +3,35 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-09: Forge 52 at parity (task 3), the security and robustness review (task 5)
+
+- **Forge 52 (1.21.1)**: ITEM-1, INTERACT-1, FRAPI-11, CFG-4, FUEL-2, LAMBDA-10 and PACK-10 fixed, HUD-5 closed (no
+  fault), FLUID-4's hook moved to upstream's point. Most of the code is Forge 47's or Forge 61's, moved into
+  `mc/forge-shared` rather than copied. Open: MODEL-5 (a Fabric mod's own model loaders) and CI-8 (test-mod checks not
+  yet ported). Verified locally: Forge 47's and Forge 52's server and client parts pass with 0 FAIL.
+- **Security**: SEC-6 (P1, a class claiming a huge attribute made ASM before 9.9 throw `OutOfMemoryError` out of
+  discovery; now one mod is disabled), SEC-7 (an action waiting for the entrypoints that throws stops no other),
+  SEC-8 (the no-network test sees method references and class literals, and scans the API), SEC-9 (CI's one
+  non-GitHub action pinned to a commit), SEC-10 (P1 on NeoForge, a Fabric jar's `module-info.class` could stop every
+  mod loading; it is left out, as Fabric's class path ignores it) and CACHE-4 (Forge's language provider jar was
+  deleted from the cache every seventh launch). Open: CACHE-5 (old copies of jars left without Fabric Loader's API
+  are never deleted). Each fix has a regression test; CACHE-4's was checked on a Forge 52 server run.
+
+## 2026-11-09: Hooks at the start of a method NeoForge deprecated for an overload its class calls in its place (ARMOR-1)
+
+- **ARMOR-1** (P1), fixed: Fabric API's armour renderers never ran on NeoForge 21.1. Their hook is at the start of
+  `HumanoidArmorLayer.renderArmorPiece`, which NeoForge deprecated for an overload that `render` calls four times where
+  vanilla's calls the method four times, and PRE-20 moved only the hooks at such a method's returns. A hook at its
+  start now moves to the overload's start, through PRE-20's bridge, where the platform's class calls the overload in
+  place of each of vanilla's calls of the method: both private, as many calls in the same methods, each inside as many
+  loops. `ModelBlockRenderer.tesselateBlock`, which other classes call once per render type, doesn't qualify, so
+  Indigo's hook there stays (FRAPI-5). The 1.21.1 renderer API test mod registers an armour renderer for a helmet an
+  armour stand wears (`fapi-armor-renderer`). Read in the game jars, the rule holds for 2, 9 and 8 of the methods
+  NeoForge 21.1, 21.11 and 26.1.2 deprecated so; Fabric API's injectors name only `renderArmorPiece`, while the
+  Fabric builds of Sodium (1.21.11, 26.1.2) and Iris (1.21.11) CI pins get a hook each moved that ran nowhere before.
+  Verified locally: the 1.21.1 client part (the armour renderer check failing without the change) and server part,
+  the clients with Fabric API on 1.21.11 and 26.1.2, and those Sodium and Iris runs pass.
+
 ## 2026-11-09: Injectors into a method NeoForge deprecated for an overload (PRE-20), Biomes O' Plenty and Porting Lib's GUI utilities rechecked (task 4)
 
 - **PRE-20** (P2), fixed: pre-flight disabled Figura on the 1.21.1 advanced corpus client (extended run 42624614743).

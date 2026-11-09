@@ -18,8 +18,10 @@ import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
  * game's own handlers ({@code MouseHandler.onPress}, {@code KeyboardHandler.keyPress}), as GLFW would. The test mod's
  * listeners refuse each, so the screen sees none of them, and all four must be asked. Forge 47's patch made the mouse
  * lambdas take {@code this}, where Mixin 0.8.5 refuses upstream's static handlers, and reordered the key lambda's
- * captured values; pre-flight bridges both (LAMBDA-7). The screen's tick event, which starts it, is upstream's hook into
- * the lambda Forge's {@code Minecraft.tick} creates in vanilla's place (LAMBDA-6).
+ * captured values; pre-flight bridges both (LAMBDA-7). Forge 52 makes the screen's calls in its own hooks, where the
+ * in-game mod wraps the mouse ones and pre-flight points upstream's key hooks (LAMBDA-10). The screen's tick event,
+ * which starts it, is upstream's hook into the lambda Forge 47's {@code Minecraft.tick} creates in vanilla's place
+ * (LAMBDA-6).
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeScreenClient {

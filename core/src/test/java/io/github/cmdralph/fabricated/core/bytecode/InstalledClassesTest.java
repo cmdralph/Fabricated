@@ -16,6 +16,7 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 
 import io.github.cmdralph.fabricated.core.archive.Hashing;
+import io.github.cmdralph.fabricated.core.testutil.TestJars;
 
 class InstalledClassesTest {
 	@Test
@@ -77,5 +78,15 @@ class InstalledClassesTest {
 		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("hostile", "evil/M"::equals,
 				name -> name.equals("evil/M") ? hostile : null, () -> List.of("evil/M"))));
 		assertNull(installed.addedMember("net/minecraft/Foo", "x", "I", true));
+	}
+
+	/** So is one whose attribute claims more bytes than an array holds, which ASM 9.8 and older allocate first (SEC-6). */
+	@Test
+	void aMixinClassClaimingMoreThanAnArrayHoldsIsSkipped() {
+		byte[] hostile = TestJars.classWithAnOversizedAttribute("evil/M");
+		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("hostile", "evil/M"::equals,
+				name -> name.equals("evil/M") ? hostile : null, () -> List.of("evil/M"))));
+		assertNull(installed.addedMember("net/minecraft/Foo", "x", "I", true));
+		assertNull(installed.readNode("evil/M", 0));
 	}
 }

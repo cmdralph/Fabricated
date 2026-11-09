@@ -10,6 +10,9 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.objectweb.asm.Attribute;
+import org.objectweb.asm.ByteVector;
+import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
@@ -73,5 +76,27 @@ public final class TestJars {
 		mv.visitEnd();
 		cw.visitEnd();
 		return cw.toByteArray();
+	}
+
+	/**
+	 * {@link #emptyClass} with a last attribute of its own whose length says {@link Integer#MAX_VALUE} bytes: ASM before
+	 * 9.9 (the tests' 9.8) allocates an unknown attribute's length before reading it, an {@link OutOfMemoryError} on any
+	 * heap; the JVM and later ASM refuse the class (SEC-6).
+	 */
+	public static byte[] classWithAnOversizedAttribute(String internalName) {
+		ClassWriter cw = new ClassWriter(0);
+		new ClassReader(emptyClass(internalName, "java/lang/Object")).accept(cw, 0);
+		cw.visitAttribute(new Attribute("Fabricated") {
+			@Override
+			protected ByteVector write(ClassWriter classWriter, byte[] code, int codeLength, int maxStack, int maxLocals) {
+				return new ByteVector().putInt(0);
+			}
+		});
+		byte[] data = cw.toByteArray();
+		// The class ends with that attribute: its u4 length, then its four bytes.
+		int length = data.length - 8;
+		data[length] = 0x7f;
+		data[length + 1] = data[length + 2] = data[length + 3] = (byte) 0xff;
+		return data;
 	}
 }

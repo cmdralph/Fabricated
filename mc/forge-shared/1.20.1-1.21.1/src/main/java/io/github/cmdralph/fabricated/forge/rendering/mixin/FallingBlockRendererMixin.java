@@ -21,8 +21,9 @@ import net.minecraftforge.client.model.data.ModelData;
 
 /**
  * Sends falling blocks whose model is a Fabric model through Fabric's renderer (see {@link FabricBlockRendering}):
- * Forge 47 draws them once per render type (as its moving block type), with its own {@code tesselateBlock}, which
- * upstream's hook isn't on. The call is Forge's overload, which keeps its name in SRG's: only the method is remapped.
+ * Forge 47 and 52 draw them once per render type (as its moving block type), with Forge's own {@code tesselateBlock},
+ * which upstream's hook isn't on. The call is Forge's overload, which on Forge 47 keeps its name in SRG's: only the
+ * method is remapped.
  */
 @Mixin(FallingBlockRenderer.class)
 abstract class FallingBlockRendererMixin {

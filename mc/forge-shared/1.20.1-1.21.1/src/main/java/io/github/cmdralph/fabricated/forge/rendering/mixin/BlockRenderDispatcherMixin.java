@@ -20,10 +20,11 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.client.model.data.ModelData;
 
 /**
- * Sends the blocks Forge 47's block renderer draws one at a time, whose model is a Fabric model, through Fabric's
- * renderer (see {@link FabricBlockRendering}): the breaking overlay, and the blocks drawn through {@code renderBatched}
- * (other mods'; chunk sections already sent theirs). Upstream's hook is on vanilla's {@code tesselateBlock}, which these
- * no longer call. The methods and the call are Forge's overloads, which keep their names in SRG's: none is remapped.
+ * Sends the blocks Forge 47's and 52's block renderer draws one at a time, whose model is a Fabric model, through
+ * Fabric's renderer (see {@link FabricBlockRendering}): the breaking overlay, and the blocks drawn through
+ * {@code renderBatched} (other mods'; chunk sections already sent theirs). Upstream's hook is on vanilla's
+ * {@code tesselateBlock}, which these no longer call. The methods and the call are Forge's overloads, which on Forge 47
+ * keep their names in SRG's: none is remapped.
  */
 @Mixin(BlockRenderDispatcher.class)
 abstract class BlockRenderDispatcherMixin {
