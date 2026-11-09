@@ -805,6 +805,45 @@ class PipelineTest {
 	}
 
 	/**
+	 * SEC-6: a class whose attribute says it is 2 GiB long makes ASM 9.8 and older throw an {@link OutOfMemoryError} as
+	 * it reads it, which went past every catch around a mod and stopped the game. As one jar's mixin (which another
+	 * mod's pre-flight reads too) and as another's plain class (remapped on 1.21.x, read by the linkage check on 26.x),
+	 * it disables its own mod, if any, and no other.
+	 */
+	@Test
+	void aClassAskingForMoreMemoryThanAnArrayHoldsStopsNoOtherMod(@TempDir Path game) throws Exception {
+		String tiny = "v1\tofficial\tintermediary\nCLASS\ta\tnet/minecraft/class_1\n";
+		MappingTable table = MappingComposer.compose(new StringReader(tiny), new StringReader("net.minecraft.world.Thing -> a:\n"));
+		for (Namespace ns : Namespace.values()) {
+			Path dir = Files.createDirectories(game.resolve(ns.name()));
+			Path mods = Files.createDirectories(dir.resolve("mods"));
+			Path good = TestJars.create().fabricModJson(TestJars.modJson("good-mod", "1.0", "\"mixins\":[\"good.mixins.json\"]"))
+					.text("good.mixins.json", "{\"required\":true,\"package\":\"com.good.mixin\",\"mixins\":[\"ThingMixin\"]}")
+					.bytes("com/good/mixin/ThingMixin.class", mixinClass("com/good/mixin/ThingMixin", "tick"))
+					.write(mods.resolve("good.jar"));
+			Path mixin = TestJars.create().fabricModJson(TestJars.modJson("hostile-mixin", "1.0", "\"mixins\":[\"hostile.mixins.json\"]"))
+					.text("hostile.mixins.json", "{\"required\":true,\"package\":\"com.hostile.mixin\",\"mixins\":[\"ThingMixin\"]}")
+					.bytes("com/hostile/mixin/ThingMixin.class", TestJars.classWithAnOversizedAttribute("com/hostile/mixin/ThingMixin"))
+					.write(mods.resolve("hostile-mixin.jar"));
+			Path plain = TestJars.create().fabricModJson(TestJars.modJson("hostile-class", "1.0", ""))
+					.bytes("com/hostile/Plain.class", TestJars.classWithAnOversizedAttribute("com/hostile/Plain"))
+					.write(mods.resolve("hostile-class.jar"));
+
+			Pipeline.Result result = Pipeline.run(input(dir, List.of(good, mixin, plain), ns, Map.of(TARGET, targetClass()),
+					(cache, path) -> new Pipeline.Mappings(() -> table, "test-hash"), List.of()));
+
+			String report = ns + ": " + result.report().render();
+			Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+			// Remapped on 1.21.x, the plain class disables its mod too; on 26.x the linkage check reports it unreadable, as
+			// any corrupt class, which the JVM and the platform's ASM refuse to load.
+			assertEquals(ns == Namespace.INTERMEDIARY ? Set.of("good-mod") : Set.of("good-mod", "hostile-class"), loaded, report);
+			Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("hostile-mixin")).findFirst().orElseThrow();
+			assertTrue(row.status() == Report.Status.DISABLED && row.detail().contains("more memory than"), report);
+			assertTrue(ns == Namespace.INTERMEDIARY || report.contains("hostile-class: ? -> missing class unreadable class file"), report);
+		}
+	}
+
+	/**
 	 * A launch whose translations all come from the cache doesn't read the mapping table; a mod asking to map a name
 	 * then has it read (PERF-2).
 	 */

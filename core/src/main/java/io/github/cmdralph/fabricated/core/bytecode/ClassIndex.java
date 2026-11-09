@@ -118,8 +118,8 @@ public final class ClassIndex {
 			}
 			return new ClassInfo(collector.superName, List.copyOf(interfaces),
 					Collections.unmodifiableMap(collector.methods), Collections.unmodifiableMap(collector.fields));
-		} catch (RuntimeException | StackOverflowError e) {
-			// Corrupt class files are treated as absent; callers report the consequence.
+		} catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
+			// Corrupt class files are treated as absent (ClassBytesSource.readNode); callers report the consequence.
 			return MISSING;
 		}
 	}
