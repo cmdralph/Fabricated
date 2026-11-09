@@ -188,12 +188,12 @@ for the first time.
 | Forge 47, client corpus | Porting Lib's GUI utilities disabled by pre-flight: a `@ModifyArgs` call in `GuiGraphics` Forge changed | Not repaired (CORPUS-93): Forge gathers the tooltip components itself, which the module ports; Create's Forge build is the way |
 | Forge 47, corpus | ModernFix names Fabric Loader's error GUI (`net.fabricmc.loader.impl.gui`), which Fabricated doesn't provide | No change: only lambdas `ModernFixPreLaunchFabric.onPreLaunch` never calls name it (read in 5.25.2+mc1.20.1) |
 | Every version | Fabric Language Kotlin names Fabric Loader's old `LanguageAdapter` (CORPUS-38) | Open, no mod seen needing it |
-| Forge 64 to 66, advanced server | Debugify's `CactusBlockMixin` (a MixinExtras expression with `@Local` definitions) fails Mixin's injection check in `Blocks.<clinit>`, which pre-flight passed: the server stops | Open |
+| Forge 64 to 66, advanced server | Debugify's `CactusBlockMixin` (a MixinExtras expression with `@Local` definitions) fails Mixin's injection check in `Blocks.<clinit>`, which pre-flight passed: the server stops | Fixed (PRE-21), verified on a local Forge 66 server; the next extended run confirms it |
 | Forge 61, advanced server | FrozenLib's mutable shadow of `MobCategory`'s `$VALUES`, where Forge extends the enum: `EntityType.<clinit>` throws | Open |
 | Forge 61 to 66, advanced client | ReplayMod's mixin plugin adds configs while Mixin selects, which Forge's Mixin gives no environment: the client stops at launch | Open |
 | Forge 47, advanced corpus | Origins' Fabric jar carries Connector's placeholder `mods.toml`, which Forge reads as a Forge mod needing Connector: Forge refuses the launch | Open |
-| Forge 64 to 66, client corpus | ShulkerBoxTooltip's `BundleMouseActionsMixin` (`@WrapOperation`s sharing locals in a method with `double` locals) fails verification when the menu opens (in the first round too) | Open |
-| Forge 64 to 66, advanced client | Emotecraft disabled: pre-flight fails an `@Inject` naming two methods, one of which exists, where Mixin needs one | Open |
+| Forge 64 to 66, client corpus | ShulkerBoxTooltip's `BundleMouseActionsMixin` (`@WrapOperation`s sharing locals in a method with `double` locals) fails verification when the menu opens (in the first round too) | Fixed (PRE-22): the wrapper Forge's Mixin would store over a shared local, and those sharing it, are left out; verified on a local Forge 66 client |
+| Forge 64 to 66, advanced client | Emotecraft disabled: pre-flight fails an `@Inject` naming two methods, one of which exists, where Mixin needs one | Fixed (PRE-23), verified on a local Forge 66 client |
 | Forge 47, advanced corpus | ReplayMod's 1.20.1 jar rejected for a duplicate directory entry (`assets/`) | Open |
 | Forge 47, advanced corpus | Carpet disabled, and hooks of five mods left out, at `ServerPlayer.changeDimension`, for which Forge 47 has an overload taking a teleporter; `StructureTemplate.processBlockInfos` likewise | Open |
 | Forge 61 to 66 | Constructor hooks at points other than a return left out (FrozenLib, Wover, ImmediatelyFast, owo), where CTOR-4 serves Forge 47 alone; calls of `Screen.extractRenderStateWithTooltipAndSubtitles` on Forge 64 to 66 (Architectury, FancyMenu, SpruceUI), which HOOK-2 serves on NeoForge alone | Open |
@@ -211,6 +211,8 @@ Candidates, each waiting for a mod or a report that needs it:
 - Per-mod `skipMixins` and `skipEntrypoints` in the compatibility plan (`compat-plan.json`), with the first entry that
   needs them.
 - EMI's plugins, once EMI has builds for these versions.
+- Wrappers PRE-22 leaves out kept instead: a mixin's wrappers reordered so a long or double is stored before the
+  locals they share are, where they wrap different instructions (ShulkerBoxTooltip's bundle preview on Forge).
 - Fabric Loader's old `LanguageAdapter` interface (CORPUS-38), if a mod needs it.
 
 ## Unverified
