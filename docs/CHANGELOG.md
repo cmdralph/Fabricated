@@ -15,7 +15,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   non-GitHub action pinned to a commit), SEC-10 (P1 on NeoForge, a Fabric jar's `module-info.class` could stop every
   mod loading; it is left out, as Fabric's class path ignores it) and CACHE-4 (Forge's language provider jar was
   deleted from the cache every seventh launch). Open: CACHE-5 (old copies of jars left without Fabric Loader's API
-  are never deleted). Each fix has a regression test, CACHE-4's a Forge 52 server run.
+  are never deleted). Each fix has a regression test; CACHE-4's was checked on a Forge 52 server run.
 
 ## 2026-11-09: Hooks at the start of a method NeoForge deprecated for an overload its class calls in its place (ARMOR-1)
 
