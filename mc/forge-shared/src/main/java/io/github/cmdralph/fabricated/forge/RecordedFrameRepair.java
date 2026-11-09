@@ -38,7 +38,7 @@ import io.github.cmdralph.fabricated.loader.FabricatedState;
  *
  * <p>A class no Fabric mod's mixin targets is left alone, and so is a method Mixin counts right, so Forge mods' mixins see
  * Mixin's frames as on Forge without Fabricated; a Forge mod's injector in a method this records again sees the locals
- * there are, as Fabric's Mixin would. Which mixins target the class is the class metadata's own record
+ * there are. Which mixins target the class is the class metadata's own record
  * ({@code ClassInfo.getMixins()}, package-private in Mixin, where each mixin adds itself as Mixin prepares it): Mixin takes
  * each config it selects out of {@code Mixins.getConfigs()}, so that set no longer has them as mixins apply. Where the
  * record can't be read, nothing is recorded again.
