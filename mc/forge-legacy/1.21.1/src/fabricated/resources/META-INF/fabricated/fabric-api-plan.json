@@ -69,6 +69,16 @@
       ],
       "reason": "Forge 52 loads the game's options before it loads mods, so upstream's hook at the return of the options' load, which enables Fabric mods' built-in packs that are enabled by default the first time the game sees them, ran before the Fabric mods' entrypoints registered those packs: it enabled none and dropped the packs it had kept. Fabricated's in-game mod does the hook's work once the entrypoints have run, before the game selects its packs (CORPUS-104, as on Forge 47)."
     },
+    "fabric-screen-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-screen-api-v1.mixins.json:MouseMixin#beforeMouseClickedEvent",
+        "fabric-screen-api-v1.mixins.json:MouseMixin#afterMouseClickedEvent",
+        "fabric-screen-api-v1.mixins.json:MouseMixin#beforeMouseReleasedEvent",
+        "fabric-screen-api-v1.mixins.json:MouseMixin#afterMouseReleasedEvent"
+      ],
+      "reason": "Forge 52's mouse handler calls a screen's mouseClicked and mouseReleased through Forge's event factory (ForgeEventFactoryClient.onScreenMouseClicked, onScreenMouseReleased), where upstream's hooks look for the calls in the handler's lambdas: pre-flight left them out, and with them upstream's scroll hooks, which share a field with them, so no ScreenMouseEvents event ran. The click and release hooks are left out, so the scroll hooks apply (Forge's handler keeps that call), and Fabricated's mixin wraps the calls in Forge's event factory instead, as on Forge 61 to 66 (LAMBDA-10)."
+    },
     "fabric-tag-api-v1": {
       "plan": "passthrough",
       "skipMixins": [

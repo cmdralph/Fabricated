@@ -8,7 +8,8 @@
     "fabricated-forge-frapi.mixins.json": ["fabric-renderer-api-v1"],
     "fabricated-forge-interaction.mixins.json": ["fabric-events-interaction-v0"],
     "fabricated-forge-item.mixins.json": ["fabric-item-api-v1"],
-    "fabricated-forge-loot.mixins.json": ["fabric-loot-api-v3"]
+    "fabricated-forge-loot.mixins.json": ["fabric-loot-api-v3"],
+    "fabricated-forge-screen.mixins.json": ["fabric-screen-api-v1"]
   },
   "mixins": {
     "BiomeClimateAccessor": [],
