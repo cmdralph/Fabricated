@@ -940,6 +940,13 @@ public final class MixinPreflight extends PreflightPart {
 			}
 		}
 
+		String replaced = platformFieldReplaced(mixin, target, ctx);
+		if (replaced != null) {
+			ctx.classLevel("Its static initializer replaces " + targetDotted + "." + replaced + ": " + loader + " goes on keeping its own object"
+							+ ", so the game, reading the mixin's, would miss what " + loader + " adds to it later",
+					"The feature this mixin serves doesn't work on this " + loader + ".");
+		}
+
 		for (MethodNode method : mixin.methods) {
 			AnnotationNode shadow = Annotations.find(method, MixinNames.SHADOW);
 			if (shadow != null) {
@@ -1545,6 +1552,51 @@ public final class MixinPreflight extends PreflightPart {
 							+ ": its point does not occur in " + String.join(", ", new TreeSet<>(without)) + " in " + target.name.replace('/', '.'),
 					ctx.changer(true) + " changed " + (without.size() == 1 ? "that method" : "those methods") + "; the mod needs an update or this mixin must be skipped.");
 		}
+	}
+
+	/**
+	 * The target's static field a mixin's static initializer assigns (a {@code @Shadow @Mutable} one), where the platform's
+	 * patch has the target's own initializer take the platform's object for it, with that object's source
+	 * ({@code "TYPE_BY_STATE, which is GameData.getBlockStatePointOfInterestTypeMap"}); null otherwise. NeoForge's and
+	 * Forge's {@code PoiTypes.TYPE_BY_STATE} is the map their registry callbacks keep as point-of-interest types are
+	 * registered: Lithium's copy of it into a faster map left every type registered after the class loaded unknown to
+	 * {@code PoiTypes.forState} on Forge (POI-2).
+	 */
+	private String platformFieldReplaced(ClassNode mixin, ClassNode target, Context ctx) {
+		MethodNode targetInit = PreflightAsm.declared(target, "<clinit>", "()V");
+		if (PreflightAsm.declared(mixin, "<clinit>", "()V") == null || targetInit == null || targetInit.instructions == null) return null;
+		Map<String, String> shadows = new HashMap<>();
+		for (FieldNode field : mixin.fields) {
+			if ((field.access & Opcodes.ACC_STATIC) == 0 || Annotations.find(field, MixinNames.SHADOW) == null
+					|| Annotations.find(field, MixinNames.MUTABLE) == null) continue;
+			shadows.put(field.name + ":" + field.desc, MemberRef.parse(ctx.resolve(field.name)).nameOr(field.name));
+		}
+		if (shadows.isEmpty()) return null;
+		// The checks read mixins without their code: only such a mixin's is read.
+		ClassNode code = modClasses.readNode(mixin.name, ClassReader.SKIP_FRAMES);
+		MethodNode init = code == null ? null : PreflightAsm.declared(code, "<clinit>", "()V");
+		if (init == null || init.instructions == null) return null;
+		for (AbstractInsnNode insn : init.instructions) {
+			if (!(insn instanceof FieldInsnNode put) || put.getOpcode() != Opcodes.PUTSTATIC || !put.owner.equals(mixin.name)) continue;
+			String name = shadows.get(put.name + ":" + put.desc);
+			String source = name == null ? null : platformValue(targetInit, target.name, name, put.desc);
+			if (source != null) return name + ", which is " + source;
+		}
+		return null;
+	}
+
+	/** The platform's method or field whose value {@code init} stores in {@code owner.name}, named; null for any other value. */
+	private static String platformValue(MethodNode init, String owner, String name, String desc) {
+		for (AbstractInsnNode insn : init.instructions) {
+			if (!(insn instanceof FieldInsnNode put) || put.getOpcode() != Opcodes.PUTSTATIC || !put.owner.equals(owner) || !put.name.equals(name)
+					|| !put.desc.equals(desc)) continue;
+			AbstractInsnNode value = put.getPrevious();
+			while (value != null && value.getOpcode() < 0) value = value.getPrevious();
+			String from = value instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESTATIC ? call.owner + "." + call.name
+					: value instanceof FieldInsnNode get && get.getOpcode() == Opcodes.GETSTATIC ? get.owner + "." + get.name : null;
+			if (from != null && MixinNames.isPlatformCode(from)) return from.substring(from.lastIndexOf('/') + 1).replace('$', '.');
+		}
+		return null;
 	}
 
 	/**
