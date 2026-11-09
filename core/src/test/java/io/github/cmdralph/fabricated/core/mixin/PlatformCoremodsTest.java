@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.core.mixin;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -422,12 +423,33 @@ class PlatformCoremodsTest {
 		}
 		// Forge 47's 1.20.1 is described on its branch; another version's transformers aren't known (each version has its
 		// own branch and list, 26.1.2's not 26.1's), so the game is as its jars have it.
-		for (String version : List.of("1.20.1", "1.21.1", "1.21.10", "1.21.110", "26.1", "26.1.1", "26.2.1", "26.10", "26.4", "27.1")) {
+		for (String version : List.of("1.20.1", "1.21.10", "1.21.110", "26.1", "26.1.1", "26.2.1", "26.10", "26.4", "27.1")) {
 			assertSame(PlatformCoremods.NONE, PlatformCoremods.forge(version), version);
 			assertSame(PlatformCoremods.NONE, PlatformDescriptor.FORGE.coremods(version), version);
 		}
 		assertSame(PlatformCoremods.NONE, PlatformCoremods.forge(null));
 		assertEquals(22, PlatformDescriptor.NEOFORGE.coremods("1.21.1").redirectedClasses());
+	}
+
+	@Test
+	void forge52PointsTheCallAtItsEventHookInEveryMethodOfItsListedClassesAndSkipsTheGettersShape() throws Exception {
+		// Forge 52's finalize_spawn_targets.json: NeoForge 21.1's 22 classes and the trial spawner, every method of each.
+		PlatformCoremods coremods = PlatformCoremods.forge("1.21.1");
+		assertEquals(23, coremods.redirectedClasses());
+		assertEquals(23, PlatformDescriptor.FORGE.coremods("1.21.1").redirectedClasses());
+		PlatformCoremods.Redirect trial = coremods.redirectsIn("net/minecraft/world/level/block/entity/trialspawner/TrialSpawner").getFirst();
+		assertNull(trial.methods());
+		Map<String, byte[]> game = game();
+		for (String spawner : List.of(SPAWNER, PATROLS)) {
+			MethodInsnNode call = calls(coremods.over(game::get).read(spawner)).getFirst();
+			assertEquals(Opcodes.INVOKESTATIC, call.getOpcode(), spawner);
+			assertEquals(FORGE_HOOKS + ".onFinalizeSpawn" + FINALIZE_HOOK, call.owner + "." + call.name + call.desc, spawner);
+		}
+		// Its field_to_method.js leaves a method of the getter's descriptor reading the field, as NeoForge's transformer does.
+		byte[] biome = biome(true, true);
+		byte[] onForge52 = coremods.over(Map.of(BIOME, biome)::get).read(BIOME);
+		assertTrue(readsField(onForge52, "climate"));
+		assertEquals(BIOME + ".getModifiedClimateSettings()" + CLIMATE, callByMethod(onForge52).get("hasPrecipitation"));
 	}
 
 	@Test

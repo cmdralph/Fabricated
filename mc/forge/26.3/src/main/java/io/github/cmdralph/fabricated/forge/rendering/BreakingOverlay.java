@@ -22,7 +22,8 @@ import net.minecraft.util.RandomSource;
  * The renderer API's breaking overlay hook on 26.3, for a Fabric model, through Fabricated's guard (FRAPI rule 8): the
  * model's quads into a mesh, with the same arguments as upstream's hook, submitted with the overlay's parts. A model
  * that throws, or is broken, gives its parts instead ({@link FabricBlockRendering#emit}). The mesh is this class's own,
- * one per thread (the render thread), so a transform a model left pushed reaches no other block: the guard pops it.
+ * one per thread (the render thread), and a transform a model left pushed reaches no other block (the guard's
+ * {@link FabricBlockRendering#restore}).
  */
 public final class BreakingOverlay {
 	/** The overlay draws the whole model: no face is culled. */

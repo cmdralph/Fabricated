@@ -2,12 +2,15 @@ package io.github.cmdralph.fabricated.forge.rendering;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.fabricmc.fabric.api.client.renderer.v1.Renderer;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.MutableQuadView;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadTransform;
 import net.fabricmc.fabric.api.client.renderer.v1.model.FabricBlockStateModel;
@@ -35,8 +38,10 @@ import net.minecraftforge.client.model.data.ModelDataManager;
  * (or, for the overlay, a guarded copy of upstream's hook) around each of those calls; nothing else changes.
  *
  * <p>A model class that threw is drawn from the parts it gives from then on (not a class wrapping it:
- * {@link FrapiFailures#putDown}), and a transform it left pushed on the emitter is popped, so no other block gets it.
- * A vanilla multipart or weighted model with such a class among its parts draws its other parts as before.
+ * {@link FrapiFailures#putDown}), and a transform it left pushed reaches no other block: it is popped from Indigo's
+ * emitter, and a model drawn into another renderer's (Sodium's) draws into an emitter of Fabricated's, which passes
+ * each quad on and is dropped after a throw ({@link Forwarding}). A vanilla multipart or weighted model with such a
+ * class among its parts draws its other parts as before.
  *
  * <p>Where Forge asks a block model's particle material with its model data, and upstream's hooks asking Fabric's
  * level-aware one don't reach (the screen effect inside a block, a block marker, a block's breaking particles),
@@ -49,9 +54,10 @@ import net.minecraftforge.client.model.data.ModelDataManager;
  * overload, drops the model data Forge's compiler asked the block's model for.
  *
  * <p>The healthy path reads a {@code ClassValue} and, for a composite model, an int it keeps; it allocates nothing.
- * Models without an emitter of their own (vanilla's and Forge mods') are called as before, without a guard: their
- * quads come from their parts, as on Forge's own renderer. Called on chunk worker threads at once: the state here is
- * immutable, or confined to one thread.
+ * Into another renderer's emitter than Indigo's, a Fabric model's quads are copied once more. Models without an emitter
+ * of their own (vanilla's and Forge mods') are called as before, without a guard: their quads come from their parts, as
+ * on Forge's own renderer. Called on chunk worker threads at once: the state here is immutable, or confined to one
+ * thread.
  */
 public final class FabricBlockRendering {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -130,6 +136,8 @@ public final class FabricBlockRendering {
 	 * ones of the models being drawn around it (a part may draw a model), removed when it is done.
 	 */
 	private static final ThreadLocal<List<BlockStateModelPart>> DEFAULT_PARTS = ThreadLocal.withInitial(ArrayList::new);
+	/** Each thread's {@link Forwarding}, made again after a throw. */
+	private static final ThreadLocal<Forwarding> FORWARDING = ThreadLocal.withInitial(Forwarding::new);
 
 	private FabricBlockRendering() {
 	}
@@ -195,8 +203,8 @@ public final class FabricBlockRendering {
 	/**
 	 * A model's quads into Fabric's emitter, where upstream's code calls {@code model.emitQuads} with the same arguments.
 	 * A Fabric model (or a composite holding one) that throws is put down ({@link FrapiFailures#putDown}), the transforms
-	 * it left pushed are popped, and the block is drawn from its parts this time: the quads it emitted before the throw
-	 * stay. A model class marked broken is drawn from its parts at once.
+	 * it left pushed are dropped ({@link #restore}), and the block is drawn from its parts this time: the quads it emitted
+	 * before the throw stay. A model class marked broken is drawn from its parts at once.
 	 */
 	public static void emit(BlockStateModel model, QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
 			Predicate<@Nullable Direction> cullTest, String where) {
@@ -210,14 +218,17 @@ public final class FabricBlockRendering {
 			return;
 		}
 		int depth = depth(emitter);
+		Forwarding forwarding = depth < 0 ? Forwarding.to(emitter) : null;
 		try {
-			((FabricBlockStateModel) model).emitQuads(emitter, level, pos, state, random, cullTest);
+			((FabricBlockStateModel) model).emitQuads(forwarding == null ? emitter : forwarding.emitter, level, pos, state, random, cullTest);
 		} catch (VirtualMachineError e) {
 			throw e;
 		} catch (Throwable t) {
 			restore(emitter, depth);
 			markBroken(model, t, where + " at " + pos, state);
 			emitInstead(model, emitter, level, pos, state, random, cullTest, where);
+		} finally {
+			if (forwarding != null) forwarding.target = null;
 		}
 	}
 
@@ -268,9 +279,11 @@ public final class FabricBlockRendering {
 	public static void emitParts(BlockStateModel model, QuadEmitter emitter, RandomSource random, Predicate<@Nullable Direction> cullTest, String where, BlockState state) {
 		List<BlockStateModelPart> parts = PARTS.get();
 		int depth = depth(emitter);
+		Forwarding forwarding = depth < 0 ? Forwarding.to(emitter) : null;
+		QuadEmitter into = forwarding == null ? emitter : forwarding.emitter;
 		try {
 			model.collectParts(random, parts);
-			for (int i = 0; i < parts.size(); i++) ((FabricBlockStateModelPart) parts.get(i)).emitQuads(emitter, cullTest);
+			for (int i = 0; i < parts.size(); i++) ((FabricBlockStateModelPart) parts.get(i)).emitQuads(into, cullTest);
 		} catch (VirtualMachineError e) {
 			throw e;
 		} catch (Throwable t) {
@@ -278,6 +291,7 @@ public final class FabricBlockRendering {
 			FrapiFailures.partsThrew(model.getClass(), t, where, state);
 		} finally {
 			parts.clear();
+			if (forwarding != null) forwarding.target = null;
 		}
 	}
 
@@ -324,19 +338,50 @@ public final class FabricBlockRendering {
 		}
 	}
 
-	/** How many transforms are pushed on the emitter; -1 if it isn't Indigo's (then none can be popped). */
+	/** How many transforms are pushed on the emitter; -1 if it isn't Indigo's (a guarded draw then uses {@link Forwarding}). */
 	public static int depth(QuadEmitter emitter) {
 		return emitter instanceof TransformDepth transforms ? transforms.fabricated$transformDepth() : -1;
 	}
 
-	/** Pops the transforms a model left pushed on the emitter, down to {@code depth}. */
+	/**
+	 * After a throw: pops the transforms a model left pushed on Indigo's emitter, down to {@code depth}; for another
+	 * renderer's ({@code depth} -1), drops the thread's {@link Forwarding} the model drew into, with what it left there.
+	 */
 	public static void restore(QuadEmitter emitter, int depth) {
-		if (depth < 0) return;
+		if (depth < 0) {
+			FORWARDING.remove();
+			return;
+		}
 		try {
 			while (depth(emitter) > depth) emitter.popTransform();
 			emitter.clear();
 		} catch (RuntimeException e) {
 			LOGGER.warn("Could not reset Fabric's emitter after a block model threw: later blocks it draws may be transformed wrongly", e);
+		}
+	}
+
+	/**
+	 * One thread's emitter for a guarded draw into another renderer's emitter than Indigo's (Sodium's), whose transforms
+	 * Fabricated can't count: the model draws into this one, which passes each finished quad on to that emitter (the
+	 * renderer API's {@code copyFrom} and {@code emit}), so the transforms it pushes stay here. A throw drops this one
+	 * ({@link #restore}). Quads only arrive while a draw has set {@link #target}.
+	 */
+	private static final class Forwarding implements Consumer<MutableQuadView> {
+		final QuadEmitter emitter = Renderer.get().quadEmitter(this);
+		@Nullable QuadEmitter target;
+
+		/** The thread's, passing quads on to {@code target}; a draw inside another's (not seen) gets one of its own. */
+		static Forwarding to(QuadEmitter target) {
+			Forwarding forwarding = FORWARDING.get();
+			if (forwarding.target != null) forwarding = new Forwarding();
+			forwarding.target = target;
+			return forwarding;
+		}
+
+		@Override
+		public void accept(MutableQuadView quad) {
+			target.copyFrom(quad);
+			target.emit();
 		}
 	}
 }
