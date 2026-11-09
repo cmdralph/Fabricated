@@ -3,8 +3,12 @@
   "minVersion": "0.8",
   "package": "io.github.cmdralph.fabricated.forgetest.mixin",
   "compatibilityLevel": "JAVA_21",
-  "client": ["HudHooksMixin", "MouseHandlerInvoker"],
+  "mixins": ["CommandsMixin", "LanguageReaderMixin", "LivingEntityCapturedDropsMixin", "MinecraftServerArgsMixin", "MinecraftServerWrapMixin", "MobBucketItemAccessor"],
+  "client": ["HudHooksMixin", "MouseHandlerInvoker", "ParticleEngineProvidersAccessor"],
   "injectors": {
     "defaultRequire": 1
+  },
+  "mixinextras": {
+    "minVersion": "0.5.0"
   }
 }

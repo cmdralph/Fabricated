@@ -85,6 +85,11 @@ public final class ForgeTestMod implements ModInitializer {
 		return new BlockPos(spawn.getX() + dx, y, spawn.getZ() + dz);
 	}
 
+	/** Where a check shared with Forge 52 builds (mc/forge-shared), as Forge 52's test mod puts it: 30 below the top of the world. */
+	static BlockPos testSite(ServerLevel level, int dx, int dz) {
+		return testSite(level, dx, level.getMaxBuildHeight() - 30, dz);
+	}
+
 	/**
 	 * Whether another mod provides the Fabric API module (Forgified Fabric API), in place of Fabric API's jar or Fabricated:
 	 * the module's answers are then that mod's. A module of Fabricated's plan says so in Fabricated's API; one Fabricated

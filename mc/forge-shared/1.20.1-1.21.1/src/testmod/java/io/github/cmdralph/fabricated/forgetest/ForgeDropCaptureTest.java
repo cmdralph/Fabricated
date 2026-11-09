@@ -1,10 +1,9 @@
 package io.github.cmdralph.fabricated.forgetest;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import java.lang.reflect.InvocationTargetException;
@@ -16,15 +15,14 @@ import java.util.List;
 import net.fabricmc.loader.api.FabricLoader;
 
 /**
- * The forge-legacy test mod's part for a Fabric mod's port of Forge's drop capture (CORPUS-105). Porting Lib's hook at
- * the return of {@code LivingEntity.dropAllDeathLoot} takes the drops that Forge's capture
- * ({@code captureDrops}, which Porting Lib adds under Forge's name on Fabric) holds, and adds them to the level. The test
- * mod's own such hook stands in for it ({@code LivingEntityCapturedDropsMixin}). At the first server tick, a pig dies
- * ({@code die}). The hook must find the pig's drops still captured after Forge's own drops event, and each of
- * them must be in the level once the hook added it. Forge 47 used to take them first: the hook found none, and Porting
- * Lib's threw. Where Porting Lib's entity module is installed (the corpus runs), its hook runs first and takes them, so
- * the test mod's finds none. Forge's method is called reflectively, by its own name: a Fabric mod doesn't compile
- * against Forge.
+ * The forge-legacy test mods' part for a Fabric mod's port of Forge's drop capture (CORPUS-105). Porting Lib's hook at
+ * the return of {@code LivingEntity.dropAllDeathLoot} takes the drops that Forge's capture ({@code captureDrops}, which
+ * Porting Lib adds under Forge's name on Fabric) holds, and adds them to the level. The test mod's own such hook stands
+ * in for it ({@code LivingEntityCapturedDropsMixin}). At the first server tick, a pig dies ({@code die}). The hook must
+ * find the pig's drops still captured after Forge's own drops event, and each of them must be in the level once the
+ * hook added it. Forge 47 and 52 take them first: the hook found none, and Porting Lib's threw. Where Porting Lib's
+ * entity module is installed (the corpus runs), its hook runs first and takes them, so the test mod's finds none.
+ * Forge's method is called reflectively, by its own name: a Fabric mod doesn't compile against Forge.
  */
 public final class ForgeDropCaptureTest {
 	private static final Method CAPTURE_DROPS;
@@ -59,11 +57,12 @@ public final class ForgeDropCaptureTest {
 
 	/** At the first server tick, on the overworld. */
 	public static void check(ServerLevel level) {
-		if (!(BuiltInRegistries.ENTITY_TYPE.get(new ResourceLocation("minecraft", "pig")).create(level) instanceof LivingEntity pig)) {
+		LivingEntity pig = EntityType.PIG.create(level);
+		if (pig == null) {
 			ForgeTestMod.LOGGER.error("FABRICATED-TEST drop capture FAILED: could not create a pig");
 			return;
 		}
-		BlockPos site = ForgeTestMod.testSite(level, 24, 284, 8);
+		BlockPos site = ForgeTestMod.testSite(level, 24, 8);
 		pig.setPos(site.getX() + 0.5, site.getY(), site.getZ() + 0.5);
 		dying = pig;
 		try {

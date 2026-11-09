@@ -10,9 +10,12 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.capabilities.ICapabilityProvider;
@@ -27,22 +30,35 @@ import net.minecraftforge.eventbus.api.EventPriority;
  * registration event ({@link ForgeCommandTest}), the interaction module's block break events ({@link ForgeBlockBreakTest}), the entity
  * events module's sleep events ({@link ForgeSleepTest}), the registry sync module's aliases
  * ({@link ForgeRegistryAliasTest}) and entry added events ({@link ForgeRegistryEntryAddedTest}), Forge Config API Port's
- * Fabric API ({@link ForgeConfigPortTest}) and a Fabric mod's stable registry entries ({@link ForgePackTest}).
+ * Fabric API ({@link ForgeConfigPortTest}), a Fabric mod's stable registry entries ({@link ForgePackTest}), the entity
+ * events module's damage events ({@link ForgeDamageTest}), the resource conditions module's load conditions
+ * ({@link ForgeConditionsTest}), ingredients on the network ({@link ForgeIngredientCodecTest}), and Forge 47's checks
+ * the two share (mc/forge-shared/1.20.1-1.21.1): Fabric mods' language files ({@link ForgeLanguageTest}), their port
+ * of Forge's drop capture ({@link ForgeDropCaptureTest}), their accessor of a mob bucket's entity type
+ * ({@link ForgeMobBucketTest}), and the content registries module's fuels ({@link ForgeFuelTest}) and oxidizable
+ * blocks ({@link ForgeOxidizableTest}); on a client, Fabric mods' accessor of the particle engine's providers
+ * ({@link ForgeParticleClient}).
  */
 public final class ForgeTestMod implements ModInitializer {
 	/** The namespace of the content and data of Forge's half. */
 	static final String NAMESPACE = "fabricated-forge-testmod";
 	public static final Logger LOGGER = TestMod.LOGGER;
+	/** The item {@link #onInitialize} registers, as Fabric mods register theirs: straight into the registry. */
+	static Item testItem;
 
 	@Override
 	public void onInitialize() {
+		testItem = Registry.register(BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(NAMESPACE, "test_item"), new Item(new Item.Properties()));
 		ForgeLootProviderTest.register();
 		run("command listener", "fabric-command-api-v2", ForgeCommandTest::register);
 		run("registry aliases", "fabric-registry-sync-v0", ForgeRegistryAliasTest::register);
 		run("registry entry added events", "fabric-registry-sync-v0", ForgeRegistryEntryAddedTest::register);
 		run("block break listeners", "fabric-events-interaction-v0", ForgeBlockBreakTest::register);
 		run("sleep listeners", "fabric-entity-events-v1", ForgeSleepTest::register);
+		run("damage listeners", "fabric-entity-events-v1", ForgeDamageTest::register);
 		run("config port", null, ForgeConfigPortTest::register);
+		run("fuel registration", "fabric-content-registries-v0", ForgeFuelTest::register);
+		run("oxidizable blocks", "fabric-content-registries-v0", ForgeOxidizableTest::check);
 		ServerTickEvents.END_SERVER_TICK.register(new ServerTickEvents.EndTick() {
 			private boolean checked;
 
@@ -65,9 +81,19 @@ public final class ForgeTestMod implements ModInitializer {
 		run("registry alias check", "fabric-registry-sync-v0", ForgeRegistryAliasTest::check);
 		run("block break check", "fabric-events-interaction-v0", () -> ForgeBlockBreakTest.check(level));
 		run("sleep check", "fabric-entity-events-v1", () -> ForgeSleepTest.check(level));
+		run("damage check", "fabric-entity-events-v1", () -> ForgeDamageTest.check(level));
 		run("config port check", null, ForgeConfigPortTest::check);
 		run("mod pack data check", null, () -> ForgePackTest.check(server));
-		if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) run("colour provider check", "fabric-rendering-v1", ForgeColorTest::check);
+		run("load conditions check", "fabric-resource-conditions-api-v1", () -> ForgeConditionsTest.check(server));
+		run("ingredient check", null, () -> ForgeIngredientCodecTest.check(server));
+		run("language files check", null, ForgeLanguageTest::check);
+		run("drop capture check", null, () -> ForgeDropCaptureTest.check(level));
+		run("mob bucket accessor check", null, ForgeMobBucketTest::check);
+		run("fuel check", "fabric-content-registries-v0", ForgeFuelTest::check);
+		if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) {
+			run("colour provider check", "fabric-rendering-v1", ForgeColorTest::check);
+			run("particle providers check", null, ForgeParticleClient::check);
+		}
 	}
 
 	/** Runs a part where its Fabric API module is loaded (any for null), logging what it throws as its failure. */

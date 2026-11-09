@@ -5,9 +5,9 @@ import net.minecraft.locale.Language;
 /**
  * CORPUS-100: a Fabric mod's language file is read on the server by vanilla's reader, where Fabric mods' hooks into it
  * apply (owo-lib's lets its files hold rich text), and its strings are in the server's language. Forge 47's server read
- * every mod's language file with its own copy of the reader, which no Fabric mod hooks, and refused owo's whole file.
- * The test mod's hook into vanilla's reader ({@code LanguageReaderMixin}) watches for its key, which only its own
- * language file has.
+ * every mod's language file with its own copy of the reader, which no Fabric mod hooks, and refused owo's whole file;
+ * Forge 52's needs no fix. The test mod's hook into vanilla's reader ({@code LanguageReaderMixin}) watches for its key,
+ * which only its own language file has.
  */
 public final class ForgeLanguageTest {
 	public static final String KEY = "fabricated-forge-testmod.language";

@@ -83,9 +83,10 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p>With Continuity installed, glass's model is wrapped after every other wrapper, Continuity's included
  * ({@link ConnectedCheckModel}), to check that its connected textures reach the chunk section.
  *
- * <p>A model whose {@code loader} key names a loader in this mod's namespace must deserialize, the key left to the mod
- * as on Fabric, where the game ignores it (CORPUS-62: Moonlight reads it for Supplementaries' models), and one naming a
- * loader NeoForge doesn't know in its own namespace must still fail, as on NeoForge.
+ * <p>A model whose {@code loader} key names a loader in this mod's namespace, in each form the platform reads, must
+ * deserialize, the key left to the mod as on Fabric, where the game ignores it (CORPUS-62, MODEL-5: Moonlight reads it
+ * for Supplementaries' models), and one naming a loader the platform doesn't know in its own namespace must still fail,
+ * as on the platform.
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
 	private static final ResourceLocation GLASS = ResourceLocation.withDefaultNamespace("glass");
@@ -175,19 +176,20 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 	private static void checkModelLoaderKey(Minecraft client) {
 		List<String> failed = new ArrayList<>();
-		// The test mod's id is fabricated-testmod-frapi, so its NeoForge id and its namespace are fabricated_testmod_frapi.
-		for (String loader : List.of("\"fabricated_testmod_frapi:own_loader\"", "{\"id\": \"fabricated_testmod_frapi:own_loader\"}")) {
+		// The test mod's id is fabricated-testmod-frapi, so its platform id and its namespace are fabricated_testmod_frapi.
+		for (String loader : FrapiPlatform.loaderKeys("fabricated_testmod_frapi:own_loader")) {
 			try {
 				BlockModel.fromString("{\"parent\": \"minecraft:block/stone\", \"loader\": " + loader + "}");
 			} catch (RuntimeException e) {
 				failed.add("a model naming its own loader " + loader + " failed: " + e);
 			}
 		}
+		String unknown = FrapiPlatform.NAMESPACE + ":fabricated_no_such_loader";
 		try {
-			BlockModel.fromString("{\"parent\": \"minecraft:block/stone\", \"loader\": \"neoforge:fabricated_no_such_loader\"}");
-			failed.add("a model naming a loader NeoForge doesn't know in its namespace didn't fail");
+			BlockModel.fromString("{\"parent\": \"minecraft:block/stone\", \"loader\": \"" + unknown + "\"}");
+			failed.add("a model naming a loader the platform doesn't know in its namespace (" + unknown + ") didn't fail");
 		} catch (JsonParseException expected) {
-			// As on NeoForge.
+			// As on the platform.
 		}
 		if (failed.isEmpty()) FrapiTestMod.LOGGER.info("FABRICATED-TEST model loader key of a Fabric mod's own OK");
 		else FrapiTestMod.LOGGER.error("FABRICATED-TEST model loader key of a Fabric mod's own FAILED: {}", String.join("; ", failed));

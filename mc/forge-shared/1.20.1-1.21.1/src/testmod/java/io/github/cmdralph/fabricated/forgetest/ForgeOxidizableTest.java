@@ -1,20 +1,19 @@
 package io.github.cmdralph.fabricated.forgetest;
 
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.WeatheringCopper;
 import java.util.Map;
 
 import net.fabricmc.fabric.api.registry.OxidizableBlocksRegistry;
 
 /**
- * The forge-legacy test mod's part for fabric-content-registries-v0's oxidizable blocks (CORPUS-91, INTERFACE-1; with
+ * The forge-legacy test mods' part for fabric-content-registries-v0's oxidizable blocks (CORPUS-91, INTERFACE-1; with
  * Fabric API's jar only): a pair {@code OxidizableBlocksRegistry} registers must be in vanilla's oxidation map
  * ({@code WeatheringCopper.NEXT_BY_BLOCK}, {@code NEXT_BY_BLOCK}), which stays immutable unless upstream's
- * {@code OxidizableMixin} made it a mutable copy. That mixin is an {@code @Inject} in an interface mixin, of which Forge
- * 47's Mixin applies none; Fabricated applies it, as Create's copper needs. The pair, two sandstone blocks no copper
- * becomes, is taken out again once checked.
+ * {@code OxidizableMixin} made it a mutable copy. That mixin is an {@code @Inject} in an interface mixin, of which
+ * Forge 47's Mixin applies none; Fabricated applies it, as Create's copper needs. The pair, two sandstone blocks no
+ * copper becomes, is taken out again once checked.
  */
 public final class ForgeOxidizableTest {
 	private ForgeOxidizableTest() {
@@ -22,8 +21,8 @@ public final class ForgeOxidizableTest {
 
 	/** From the main entrypoint, where Create registers its copper; only with Fabric API's content registries module. */
 	public static void check() {
-		Block less = block("cut_sandstone");
-		Block more = block("smooth_sandstone");
+		Block less = Blocks.CUT_SANDSTONE;
+		Block more = Blocks.SMOOTH_SANDSTONE;
 		Map<Block, Block> next = WeatheringCopper.NEXT_BY_BLOCK.get();
 		try {
 			OxidizableBlocksRegistry.registerOxidizableBlockPair(less, more);
@@ -38,9 +37,5 @@ public final class ForgeOxidizableTest {
 		} finally {
 			if (next.get(less) == more) next.remove(less);
 		}
-	}
-
-	private static Block block(String path) {
-		return BuiltInRegistries.BLOCK.get(new ResourceLocation("minecraft", path));
 	}
 }

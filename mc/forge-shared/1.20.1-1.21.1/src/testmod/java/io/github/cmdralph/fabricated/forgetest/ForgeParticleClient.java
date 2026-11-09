@@ -9,9 +9,9 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
 
 /**
- * The particle engine's providers by their type's raw id, as Porting Lib's accessor reads them where Forge 47 keeps them
- * by the type's id: the accessor invokes the in-game mod's bridge, a view of Forge's map, which must hold the flame's
- * provider under the flame's raw id (CORPUS-37). The shared suite's particle check is the test mod's
+ * The particle engine's providers by their type's raw id, as Porting Lib's accessor reads them where Forge 47 and 52
+ * keep them by the type's id: the accessor invokes the in-game mod's bridge, a view of Forge's map, which must hold the
+ * flame's provider under the flame's raw id (CORPUS-37). The shared suite's particle check is the test mod's
  * {@code ParticleClientTest}.
  */
 @Environment(EnvType.CLIENT)

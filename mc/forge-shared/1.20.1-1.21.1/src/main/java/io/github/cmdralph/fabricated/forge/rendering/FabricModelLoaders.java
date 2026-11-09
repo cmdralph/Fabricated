@@ -16,11 +16,11 @@ import net.minecraftforge.client.model.geometry.GeometryLoaderManager;
 import net.minecraftforge.fml.ModList;
 
 /**
- * Which block models' {@code loader} Forge 47 reads (CORPUS-92, CORPUS-102). Forge reads that key in every block model,
- * and fails the model when no loader of that name is in its own registry. On Fabric, vanilla ignores the key, and a
- * Fabric mod reads its own loaders through its hook into vanilla's model reader (Moonlight's for Supplementaries'
- * loaders, Porting Lib's for {@code porting_lib:obj} and the rest). Forge's reader calls vanilla's first, so those hooks
- * have run when Forge looks the loader up.
+ * Which block models' {@code loader} Forge 47 and 52 read (CORPUS-92, CORPUS-102, MODEL-5). Forge reads that key in
+ * every block model, and fails the model when no loader of that name is in its own registry. On Fabric, vanilla ignores
+ * the key, and a Fabric mod reads its own loaders through its hook into vanilla's model reader (Moonlight's for
+ * Supplementaries' loaders, Porting Lib's for {@code porting_lib:obj} and the rest). Forge's reader calls vanilla's
+ * first, so those hooks have run when Forge looks the loader up.
  *
  * <p>So Forge reads a loader it has, and one named in a Forge mod's namespace (or Forge's, or the game's), whose
  * failure is that mod's, as without Fabricated. Any other loader, in a Fabric mod's namespace or no loaded mod's, is
