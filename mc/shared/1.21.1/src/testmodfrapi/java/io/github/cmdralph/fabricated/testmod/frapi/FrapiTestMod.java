@@ -16,9 +16,13 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ArmorItem;
+import net.minecraft.world.item.ArmorMaterials;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -43,6 +47,9 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
  * in the hotbar), and puts one in an item frame on the first block and one on the ground beside the frame, which no
  * one can pick up and which never despawns (drawn as an item in a frame and as a dropped item). With Continuity installed,
  * a glass wall goes above the blocks, for its connected textures.
+ *
+ * <p>Beside the item frame goes an armour stand wearing the test helmet, for which {@link FrapiClientTestMod} registers a
+ * Fabric armour renderer (ARMOR-1).
  */
 public final class FrapiTestMod implements ModInitializer {
 	static final Logger LOGGER = LoggerFactory.getLogger("fabricated-testmod-frapi");
@@ -65,6 +72,8 @@ public final class FrapiTestMod implements ModInitializer {
 	static Item tintedItem;
 	/** An item whose model {@link FrapiClientTestMod} makes a Fabric model. */
 	static Item fabricItem;
+	/** A helmet {@link FrapiClientTestMod} gives a Fabric armour renderer. */
+	static Item armorItem;
 	/** A block whose Fabric model wraps one that throws ({@link FrapiClientTestMod}). */
 	private static Block wrappedBlock;
 
@@ -89,6 +98,8 @@ public final class FrapiTestMod implements ModInitializer {
 		Block brokenNestedBlock = register("broken_nested_block");
 		wrappedBlock = register("wrapped_broken_block");
 		fabricItem = Registry.register(BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(NAMESPACE, "fabric_item"), new Item(new Item.Properties()));
+		armorItem = Registry.register(BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(NAMESPACE, "armor_check"),
+				new ArmorItem(ArmorMaterials.IRON, ArmorItem.Type.HELMET, new Item.Properties()));
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> server.execute(() -> {
 			Direction facing = listener.player.getDirection();
 			BlockPos front = listener.player.blockPosition().relative(facing, 2).above();
@@ -110,6 +121,7 @@ public final class FrapiTestMod implements ModInitializer {
 			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {}, broken model blocks above them, wrapped broken model"
 					+ " block at {}, piston at {})", front, nested, wrapped, pistonPower.above());
 			placeItems(level, listener.player, front, facing);
+			placeArmorStand(level, listener.player.blockPosition().relative(facing).relative(facing.getClockWise()), facing);
 			if (FabricLoader.getInstance().isModLoaded("continuity")) placeGlass(level, front.above(2), facing.getClockWise());
 		}));
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
@@ -150,6 +162,20 @@ public final class FrapiTestMod implements ModInitializer {
 		drop.setNoGravity(true);
 		world.addFreshEntity(drop);
 		LOGGER.info("FABRICATED-TEST frapi items placed (in hand, in a frame at {}, dropped at {})", framePos, dropPos);
+	}
+
+	/**
+	 * An armour stand at {@code pos}, beside the item frame and facing the player, wearing the test helmet: it doesn't fall
+	 * and can't be hurt.
+	 */
+	private static void placeArmorStand(ServerLevel world, BlockPos pos, Direction facing) {
+		ArmorStand stand = new ArmorStand(world, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
+		stand.setYRot(facing.getOpposite().toYRot());
+		stand.setNoGravity(true);
+		stand.setInvulnerable(true);
+		stand.setItemSlot(EquipmentSlot.HEAD, new ItemStack(armorItem));
+		world.addFreshEntity(stand);
+		LOGGER.info("FABRICATED-TEST frapi armour stand placed at {}", pos);
 	}
 
 	/**

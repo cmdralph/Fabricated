@@ -13,6 +13,7 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.mixin.InjectionPoints.Verdict;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
 
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -20,6 +21,7 @@ import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
@@ -131,9 +133,11 @@ final class OverloadRepairs extends PreflightPart {
 	 * them, and the call repairs, which run later, point them so (OVERLOAD-1). An injection at the end of a constructor
 	 * nothing calls any more ({@link ConstructorRepairs#keptConstructorDelegate}), or an {@code @Inject}'s at the returns
 	 * of a method the platform deprecated for the one it calls ({@link #deprecatedDelegate}), moves to the end of that
-	 * one. Not one at its start, which may cancel the method to do its work another way, there where the platform's code
-	 * calls the other one in its own way: Indigo's block renderer hook would draw a Fabric model in each of the calls
-	 * NeoForge 21.1 makes per render type, where Fabricated draws it once itself (FRAPI-5).
+	 * one. One at such a method's start, which may cancel the method to do its work another way, moves to the start of
+	 * that one only where the platform's class calls it in place of each of vanilla's calls of the method
+	 * ({@link #calledInItsPlace}): Fabric API's armour renderers in {@code HumanoidArmorLayer.renderArmorPiece}
+	 * (ARMOR-1), not Indigo's block renderer hook, which would draw a Fabric model in each of the calls NeoForge 21.1
+	 * makes per render type, where Fabricated draws it once itself (FRAPI-5).
 	 */
 	List<String> overloadRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
@@ -171,6 +175,7 @@ final class OverloadRepairs extends PreflightPart {
 			if (chosen == null) continue;
 			MethodNode overload;
 			String how;
+			String why = "";
 			List<AnnotationNode> found;
 			Verdict inChosen = InjectionPoints.pointsIn(ats, slices, chosen, ctx);
 			boolean localsGone = inject && inChosen == Verdict.FOUND && MixinPreflight.missingLocal(handler, List.of(chosen)) != null;
@@ -224,12 +229,16 @@ final class OverloadRepairs extends PreflightPart {
 						: split ? ", the code of which there " + loader + " split off into " : ", whose code " + loader + " moved into ";
 			} else {
 				// The injection points exist, but in a constructor nothing calls any more, or in a method the platform deprecated
-				// for the one it calls (an @Inject's, at all of its returns): its end is the end of the one it calls.
+				// for the one it calls (an @Inject's, at all of its returns, or at its start where the platform's class calls
+				// that one in its place): its end, or its start, is that of the one it calls.
 				boolean constructor = chosen.name.equals("<init>");
+				boolean atStart = inject && !constructor && atStart(ats);
 				ClassNode vanilla = vanillaClass(target.name);
 				overload = constructor ? ConstructorRepairs.keptConstructorDelegate(chosen, target, vanilla)
-						: inject && atReturns(ats) ? deprecatedDelegate(chosen, target, vanilla) : null;
-				if (overload == null || !slices.isEmpty() || !ConstructorRepairs.atEndOnly(ats) || !LocalRepairs.localsFit(handler, overload)) continue;
+						: inject && (atStart || atReturns(ats)) ? deprecatedDelegate(chosen, target, vanilla) : null;
+				if (overload == null || !slices.isEmpty() || !atStart && !ConstructorRepairs.atEndOnly(ats) || !LocalRepairs.localsFit(handler, overload)
+						|| atStart && !calledInItsPlace(chosen, overload, target, vanilla)) continue;
+				if (atStart) why = ", as its class calls it in place of each of vanilla's calls of the first";
 				if (takesParameters) {
 					// The handler gets the method's own parameters from a bridge taking all of the other one's.
 					if (selectors.size() != 1 || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || !ConstructorRepairs.forwardsItsParameters(chosen, overload)
@@ -241,7 +250,7 @@ final class OverloadRepairs extends PreflightPart {
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
 			values.set(i, overload.name + overload.desc);
-			moved.add(chosen.name + chosen.desc + how + overload.name + overload.desc + "; the injector is pointed there");
+			moved.add(chosen.name + chosen.desc + how + overload.name + overload.desc + "; the injector is pointed there" + why);
 		}
 		return moved;
 	}
@@ -826,6 +835,81 @@ final class OverloadRepairs extends PreflightPart {
 			if (!(Annotations.value(at, "value") instanceof String v) || !v.equalsIgnoreCase("RETURN") || Annotations.value(at, "ordinal") != null) return false;
 		}
 		return true;
+	}
+
+	/** Whether every injection point is {@code HEAD}, not shifted: the method's start. */
+	private static boolean atStart(List<AnnotationNode> ats) {
+		for (AnnotationNode at : ats) {
+			if (!(Annotations.value(at, "value") instanceof String v) || !v.equalsIgnoreCase("HEAD") || Annotations.value(at, "shift") != null) return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Whether the platform's class calls {@code overload}, which {@code method} only passes its parameters on to
+	 * ({@link #deprecatedDelegate}), in place of each of vanilla's calls of {@code method} (in {@code vanilla}, its class
+	 * there), so that {@code overload} starts where, and as often as, vanilla's {@code method} did: {@code method} is
+	 * private in vanilla's class and {@code overload} in the platform's, so no other class calls them but the classes of
+	 * their nests, which are counted too; each method there calls them (the platform's {@code method} or
+	 * {@code overload}, as the one calls the other) as many times as vanilla's calls {@code method}, at least once in
+	 * all, each call inside as many backward jumps (loops); and no method handle names them, which may be called from
+	 * anywhere. NeoForge 21.1's {@code HumanoidArmorLayer.render} calls the overload of {@code renderArmorPiece} taking
+	 * the limb animation's values four times, where vanilla's calls {@code renderArmorPiece} four times (ARMOR-1).
+	 * {@code ModelBlockRenderer.tesselateBlock} is public, for the other classes that call it (NeoForge 21.1's section
+	 * compiler, once per render type of a block), so Indigo's hook at its start stays (FRAPI-5).
+	 */
+	private boolean calledInItsPlace(MethodNode method, MethodNode overload, ClassNode target, ClassNode vanilla) {
+		MethodNode before = vanilla == null ? null : PreflightAsm.declared(vanilla, method.name, method.desc);
+		if (before == null || (before.access & Opcodes.ACC_PRIVATE) == 0 || (overload.access & Opcodes.ACC_PRIVATE) == 0) return false;
+		java.util.Map<String, List<Integer>> made = callsByMethod(vanilla, method, method, this::vanillaClass);
+		return made != null && !made.isEmpty() && made.equals(callsByMethod(target, method, overload, this::gameTarget));
+	}
+
+	/**
+	 * The calls of {@code method} or {@code overload} of {@code node} that the methods of {@code node} (but
+	 * {@code method}) and of its nest members make, by class and method: each call's count of backward jumps around it,
+	 * in order. Null where {@code node} is another class's nest member, a nest member can't be read, or a method handle
+	 * names either method.
+	 */
+	private static java.util.Map<String, List<Integer>> callsByMethod(ClassNode node, MethodNode method, MethodNode overload,
+			java.util.function.Function<String, ClassNode> classes) {
+		if (node.nestHostClass != null) return null;
+		List<ClassNode> nest = new ArrayList<>(List.of(node));
+		for (String member : node.nestMembers == null ? List.<String>of() : node.nestMembers) {
+			ClassNode read = classes.apply(member);
+			if (read == null) return null;
+			nest.add(read);
+		}
+		Predicate<String> named = nameAndDesc -> nameAndDesc.equals(method.name + method.desc) || nameAndDesc.equals(overload.name + overload.desc);
+		java.util.Map<String, List<Integer>> calls = new java.util.TreeMap<>();
+		for (ClassNode c : nest) {
+			for (MethodNode m : c.methods) {
+				if (c == node && m.name.equals(method.name) && m.desc.equals(method.desc)) continue;
+				List<Integer> jumps = new ArrayList<>();
+				for (int i = 0; i < m.instructions.size(); i++) {
+					AbstractInsnNode insn = m.instructions.get(i);
+					Object[] constants = insn instanceof InvokeDynamicInsnNode indy ? indy.bsmArgs
+							: insn instanceof LdcInsnNode ldc ? new Object[] {ldc.cst} : new Object[0];
+					for (Object constant : constants) {
+						if (constant instanceof Handle handle && handle.getOwner().equals(node.name) && named.test(handle.getName() + handle.getDesc())) {
+							return null;
+						}
+					}
+					if (insn instanceof MethodInsnNode call && call.owner.equals(node.name) && named.test(call.name + call.desc)) jumps.add(backwardJumpsAround(m, i));
+				}
+				if (!jumps.isEmpty()) calls.put(c.name + "." + m.name + m.desc, jumps);
+			}
+		}
+		return calls;
+	}
+
+	/** How many jumps of {@code method} after the instruction at {@code index} go back to it or before it. */
+	private static int backwardJumpsAround(MethodNode method, int index) {
+		int jumps = 0;
+		for (int i = index + 1; i < method.instructions.size(); i++) {
+			if (method.instructions.get(i) instanceof JumpInsnNode jump && method.instructions.indexOf(jump.label) <= index) jumps++;
+		}
+		return jumps;
 	}
 
 	/** The one other overload of the same name {@code method} calls, or null (none, or several). */

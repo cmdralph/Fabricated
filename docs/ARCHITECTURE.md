@@ -258,7 +258,11 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    doesn't depend on the method's parameters, or gets them from a bridge: where the method passes on one value it works
    out, or (an `@Inject`'s) its parameters in order followed by defaults. An `@Inject` at the end of a method the
    platform deprecated for an overload it added, which the method only calls so, moves to the end of that one, as the
-   platform's code calls it in the method's place (PRE-20). Each repair is a warning in the report; anything ambiguous is left to
+   platform's code calls it in the method's place (PRE-20). One at the start of such a method, which may cancel it,
+   moves to the start of that one only where the platform's class calls it in place of each of vanilla's calls of the
+   method: both private, as many calls in the same methods, inside as many loops (ARMOR-1: Fabric API's armour
+   renderers, not Indigo's hook in `ModelBlockRenderer.tesselateBlock`, which other classes call once per render type,
+   FRAPI-5). Each repair is a warning in the report; anything ambiguous is left to
    fail. Two changes only turn a crash into a missing effect, never the reverse: an `@Inject` whose local capture
    fails hard skips itself instead when NeoForge's locals differ, and in a config with a plugin (which may disable
    mixins at runtime) a mixin pre-flight proves would crash is left out instead of disabling the mod.
