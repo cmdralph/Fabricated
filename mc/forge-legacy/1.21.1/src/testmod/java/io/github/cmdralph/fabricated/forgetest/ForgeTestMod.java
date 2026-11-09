@@ -5,6 +5,7 @@ import java.util.function.BiConsumer;
 import org.slf4j.Logger;
 
 import io.github.cmdralph.fabricated.testmod.TestMod;
+import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -64,6 +65,7 @@ public final class ForgeTestMod implements ModInitializer {
 		run("registry alias check", "fabric-registry-sync-v0", ForgeRegistryAliasTest::check);
 		run("block break check", "fabric-events-interaction-v0", () -> ForgeBlockBreakTest.check(level));
 		run("sleep check", "fabric-entity-events-v1", () -> ForgeSleepTest.check(level));
+		if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) run("colour provider check", "fabric-rendering-v1", ForgeColorTest::check);
 	}
 
 	/** Runs a part where its Fabric API module is loaded (any for null), logging what it throws as its failure. */

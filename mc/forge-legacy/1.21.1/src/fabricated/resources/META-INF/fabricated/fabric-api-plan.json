@@ -43,6 +43,16 @@
       "version": "1.0.3",
       "reason": "Shipped by Fabricated: upstream's builder and accessor mixins as they are; its loading hooks are replaced by Forge's LootTableLoadEvent (REPLACE and MODIFY, once per table) and Fabricated's hook on the reload of the reloadable registries (ALL_LOADED), as on Forge 61 to 65. A table's source is decided from the id of the pack its file comes from (mods' data is a pack per mod file on Forge), where upstream reads fabric-resource-loader-v0's pack sources."
     },
+    "fabric-rendering-v1": {
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-rendering-v1.mixins.json:BlockColorsMixin#get",
+        "fabric-rendering-v1.mixins.json:BlockColorsMixin#blockColors",
+        "fabric-rendering-v1.mixins.json:ItemColorsMixin#get",
+        "fabric-rendering-v1.mixins.json:ItemColorsMixin#itemColors"
+      ],
+      "reason": "Forge 52 keeps block and item colour providers in maps by registry holder under the names of vanilla's IdMappers by id, which upstream's colour provider lookups shadow, so pre-flight turned the module off: Fabricated's in-game mod looks providers up in Forge's maps instead of upstream's methods (COLOR-1, COLOR-3)."
+    },
     "fabric-registry-sync-v0": {
       "plan": "passthrough",
       "skipMixins": [
