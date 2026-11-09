@@ -25,8 +25,10 @@ import org.objectweb.asm.tree.MethodNode;
  *
  * <p>Forge 61's and 64's {@code ScreenEffectRenderer.renderScreenEffect} has four argument slots, appends three locals
  * ({@code PoseStack}, {@code Player}, a pair), then chops one: Mixin counted 4 + 4 - 4 and dropped the {@code PoseStack}
- * Resourceful Lib's {@code @Local} takes, so the client crashed ("Found 0 candidate variables"). Fabric's Mixin records each
- * frame's own size, so the mod works there.
+ * Resourceful Lib's {@code @Local} takes, so the client crashed ("Found 0 candidate variables"). Fabric's Mixin, which
+ * NeoForge runs, records and counts the frames the same way from its behaviour 0.10.0 (its {@code FrameData.rawSize},
+ * without the floor, is read only at 0.9.2: FRAME-1); the mod works on Fabric, where vanilla's method appends and chops one
+ * local at a time, which Mixin overcounts but drops no local of.
  *
  * <p>The repair (Fabricated's Mixin extension on Forge) records the frames of a method Mixin would count wrong
  * ({@link #counted}) again, from the method with its frames expanded ({@link #withExpandedFrames}): Mixin records an
