@@ -3,7 +3,6 @@ package io.github.cmdralph.fabricated.testmod;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -15,7 +14,7 @@ import net.minecraft.world.item.Items;
  * NeoForge's own {@code remove}. With Fabric API's tag module passed through, its mixin must leave NeoForge's list alone.
  */
 public final class TagRemovalTest implements ModInitializer {
-	private static final TagKey<Item> REMOVAL = TagKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath("fabricated_testmod", "removal"));
+	private static final TagKey<Item> REMOVAL = TagKey.create(Registries.ITEM, TestCompat.id("fabricated_testmod", "removal"));
 
 	@Override
 	public void onInitialize() {

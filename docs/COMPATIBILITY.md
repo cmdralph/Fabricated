@@ -23,7 +23,7 @@ isn't supported says why, in the notes under the matrix.
 | Mixins: pre-flight, its repairs, MixinExtras | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Access wideners, class tweakers, injected interfaces, `@Environment` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | `config/fabricated.json` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| The `/fabricated` command | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 |
+| The `/fabricated` command | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Refusals with an error naming the jars (Sinytra Connector, two Fabricated jars) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | **Fabric API** | | | | | | | | | | | |
 | Every module of the official jar loads, server and client | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ⏳ 3 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 |
@@ -32,13 +32,13 @@ isn't supported says why, in the notes under the matrix.
 | Registries, registry sync, resource and data packs, load conditions | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ⏳ 3 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
 | Item, block, entity, interaction and lifecycle events | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ⏳ 3 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
 | Fabric fluids as the platform's fluid types | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Biome modifications: features, spawns, climate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ◐ 16 |
+| Biome modifications: features, spawns, climate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Transfer API and the platform's item and fluid handlers, on blocks and in items | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 5 | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Team Reborn Energy and the platform's energy | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 |
 | Client modules: key mappings, HUD, screens, client commands | ✅ | ◐ 7 | ✅ | ✅ | ✅ | ◐ 7 | ⏳ 3 | ◐ 7 | ✅ | ✅ | ✅ |
 | Fabric mods' hooks inside the HUD method | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 8 | ⏳ 3 | ◐ 8 | ◐ 8 | ◐ 8 | ◐ 8 |
 | Mod Menu config screens in the platform's mod list | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 |
+| Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ⏳ 3 | ⏳ 3 | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 |
 | Platform mods' properties as Fabric custom values, and the reverse | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ⏳ 3 | ⚪ | ⚪ | ⚪ | ⚪ |
 | **Fabric's renderer API and models** | | | | | | | | | | | |
 | Model loading: plugins, modifiers, Fabric model formats | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
@@ -50,7 +50,7 @@ isn't supported says why, in the notes under the matrix.
 | Level-aware particle sprites | ⚪ | ⚪ | ◐ 11 | ◐ 11 | ◐ 11 | ⚪ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Another registered renderer (Sodium's, Forgified Fabric API's) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | **Other mods** | | | | | | | | | | | |
-| Forgified Fabric API beside Fabricated | ✅ 12 | — | ✅ 12 | ✅ 12 | — | ✅ 12 | ⏳ 3 | ❌ 13 | ❌ 13 | ❌ 13 | ❌ 13 |
+| Forgified Fabric API beside Fabricated | ✅ 12 | — | ✅ 12 | ✅ 12 | — | ◐ 12 | ⏳ 3 | ❌ 13 | ❌ 13 | ❌ 13 | ❌ 13 |
 | Sodium and Iris for the platform | ✅ | ✅ | ✅ | ✅ | ✅ | — 14 | — 14 | — 14 | — 14 | — 14 | — 14 |
 | The Fabric builds of Sodium and Iris, with a shader pack | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Essential's Fabric build | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
@@ -60,7 +60,7 @@ isn't supported says why, in the notes under the matrix.
 | Continuity (connected textures through the renderer API) | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ ⏳ 4 | ⏳ 3 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 |
 | Popular Fabric mods (the corpora) | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ⏳ 3 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 |
 | **Tests** | | | | | | | | | | | |
-| One test-mod suite for every loader with this Minecraft version | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 17 | ⏳ 3 | ✅ 18 | ✅ 18 | ✅ 18 | ✅ 18 |
+| One test-mod suite for every loader with this Minecraft version | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 16 | ⏳ 3 | ✅ 16 | ✅ 16 | ✅ 16 | ✅ 16 |
 
 Notes:
 
@@ -90,18 +90,18 @@ Notes:
     (PART-5).
 12. Forgified Fabric API's modules are used as they are, and Fabricated's copies of them stand down. What its modules do
     differently is theirs (*Mods that bring Fabric API or Fabric Loader*). It has no build for NeoForge 1.21.11 or 26.3.
+    On Forge 47, a registry a Fabric initializer makes and a `DynamicRegistries` registry don't work with it yet
+    (PROVIDER-20, PROVIDER-21, task 3).
 13. Forgified Fabric API's builds for these versions are NeoForge's, and a jar carrying its own copy of Fabric Loader
     is refused.
 14. Sodium and Iris have no Forge builds for these versions.
 15. CI runs two corpora of popular Fabric mods on a server and a client, as informational runs: every server starts, and
     every client reaches its world but where a mod's own behaviour holds it (`roadmap.md`, CORPUS-66). Per-mod results
     are in *Fabric mods tested*.
-16. A mob spawn a Fabric mod adds through `BiomeModifications` doesn't reach the biome Forge 66 reads; features and the
-    climate do (BIOME-4, task 3).
-17. Forge 47 runs its own test mods, which log the shared suite's lines where a check is the same; the shared checks
-    Fabric API 0.92 and Minecraft 1.20.1 allow but it doesn't run yet are task 3's.
-18. The shared suite runs, with Forge's half of it; each shared check Forge doesn't pass yet is listed in `ci/checks.tsv`
+16. The shared suite runs, with Forge's half of it; each shared check Forge doesn't pass yet is listed in `ci/checks.tsv`
     with its reason, and is a cell of this matrix.
+17. Modrinth has Forge builds of WTHIT and Simple Voice Chat for these versions, which CI checks; JEI, REI and Jade have
+    none, so their plugins are converted the same way but unchecked on Forge.
 
 ## How CI tests it
 

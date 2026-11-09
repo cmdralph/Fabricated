@@ -19,12 +19,12 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
 
-/** 1.21.1 part of the CI test mod: exercises Fabricated's native fabric-registry-sync-v0. */
+/** 1.20.1 and 1.21.1 part of the CI test mod: exercises fabric-registry-sync-v0 (Fabricated's native module on NeoForge 21.1). */
 public final class RegistrySyncTest implements ModInitializer {
 	/**
 	 * Whether fabric-registry-sync-v0 is Fabricated's. Another mod's (Forgified Fabric API's) is checked for what Fabric
 	 * mods need of it: the registry made, its entries and their callback, NeoForge's sync flag. It keeps no attributes in
-	 * {@code RegistryAttributeHolder}, and has no aliases on 1.21.1.
+	 * {@code RegistryAttributeHolder}, and has no aliases on 1.20.1 and 1.21.1.
 	 */
 	private static final boolean OWN = !TestMod.providedByAnotherMod("fabric-registry-sync-v0");
 	private static final ResourceKey<Registry<String>> CUSTOM = ResourceKey.createRegistryKey(id("custom"));
@@ -32,7 +32,7 @@ public final class RegistrySyncTest implements ModInitializer {
 	private static final ResourceKey<Registry<String>> TRACKED = ResourceKey.createRegistryKey(id("tracked"));
 
 	private static ResourceLocation id(String path) {
-		return ResourceLocation.fromNamespaceAndPath("fabricated_testmod", path);
+		return TestCompat.id("fabricated_testmod", path);
 	}
 
 	@Override
@@ -64,7 +64,7 @@ public final class RegistrySyncTest implements ModInitializer {
 			if (!OWN) TestMod.LOGGER.info("FABRICATED-TEST registry sync: attributes and aliases SKIPPED: fabric-registry-sync-v0 is another mod's");
 		} else {
 			TestMod.LOGGER.error("FABRICATED-TEST registry sync: custom registry FAILED (registered={}, added={}, fabricRegistry={}, synced={})",
-					BuiltInRegistries.REGISTRY.containsKey(CUSTOM.location()), added.get(), custom instanceof FabricRegistry, TestPlatform.syncs(custom));
+					BuiltInRegistries.REGISTRY.containsKey(CUSTOM.location()), added.get(), OWN && custom instanceof FabricRegistry, TestPlatform.syncs(custom));
 		}
 
 		// A synced data-pack registry, loaded from data/fabricated_testmod/fabricated_testmod/dynamic/.

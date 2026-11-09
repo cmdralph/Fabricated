@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.BiFunction;
+import java.util.regex.Pattern;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
@@ -430,7 +431,10 @@ final class MixinRepairs extends PreflightPart {
 
 	/** The registry class the platform freezes before Fabric mods' main entrypoints (REG-8). */
 	static final String MAPPED_REGISTRY = "net/minecraft/core/MappedRegistry";
-	static final String FREEZE = "freeze()Lnet/minecraft/core/Registry;";
+	static final String FREEZE = "freeze";
+	static final String FREEZE_DESC = "()Lnet/minecraft/core/Registry;";
+	/** A method's name where the game runs with SRG's member names (Forge 47): {@code m_<number>_}. */
+	private static final Pattern SRG_METHOD = Pattern.compile("m_\\d+_");
 	/** The in-game check of a freeze before the main entrypoints (the loader's {@code EarlyFreeze}, on every platform). */
 	static final String EARLY_FREEZE = "io/github/cmdralph/fabricated/loader/EarlyFreeze";
 
@@ -449,7 +453,7 @@ final class MixinRepairs extends PreflightPart {
 		// Class files before Java 6 have no stack map frames, which the check's jump would need here.
 		if ((mixin.version & 0xFFFF) < Opcodes.V1_6) return List.of();
 		if (handler.instructions.size() == 0 || Type.getReturnType(handler.desc) != Type.VOID_TYPE) return List.of();
-		if (PreflightAsm.selectedMethods(injector, target, ctx).stream().noneMatch(m -> FREEZE.equals(m.name + m.desc))) return List.of();
+		if (PreflightAsm.selectedMethods(injector, target, ctx).stream().noneMatch(MixinRepairs::isFreeze)) return List.of();
 		// A frame where the handler's code starts already (a loop at its start) stays the one there, after the check.
 		AbstractInsnNode first = handler.instructions.getFirst();
 		while (first != null && first.getOpcode() < 0 && !(first instanceof FrameNode)) first = first.getNext();
@@ -464,6 +468,14 @@ final class MixinRepairs extends PreflightPart {
 		handler.instructions.insert(check);
 		handler.maxStack = Math.max(handler.maxStack, 1);
 		return List.of("");
+	}
+
+	/**
+	 * Whether the method is the registry's freeze: by its name, or where the game runs with SRG's member names (Forge 47),
+	 * which give it a number, as {@code MappedRegistry}'s one method that takes nothing and returns a registry.
+	 */
+	private static boolean isFreeze(MethodNode method) {
+		return FREEZE_DESC.equals(method.desc) && (FREEZE.equals(method.name) || SRG_METHOD.matcher(method.name).matches());
 	}
 
 	/** The client's options, which NeoForge 21.1 and Forge create before they load mods, and Fabric after Fabric mods' entrypoints (ENTRY-2). */

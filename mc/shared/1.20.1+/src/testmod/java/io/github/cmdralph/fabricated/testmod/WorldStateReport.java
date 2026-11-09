@@ -49,7 +49,7 @@ final class WorldStateReport {
 
 	private static void reportServer(MinecraftServer server, int chunkX, int chunkZ) {
 		Object players = call(server.getPlayerList(), "getPlayers");
-		Object player = players instanceof List<?> list && !list.isEmpty() ? list.getFirst() : null;
+		Object player = players instanceof List<?> list && !list.isEmpty() ? list.get(0) : null;
 		Object chunks = call(call(player, "level"), "getChunkSource");
 		TestMod.LOGGER.info("FABRICATED-TEST server state: tick {}, paused {}, players {} ({} counted, a {}) in the list {} of server {}, player's chunk {} {} on the server {}, server chunks loaded {}",
 				call(server, "getTickCount"), call(server, "isPaused"), players instanceof List<?> list ? list.size() : players,

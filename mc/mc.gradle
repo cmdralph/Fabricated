@@ -75,14 +75,23 @@ def renamedJava = { String sourceSet, List<File> dirs ->
 }
 def sharedJava = { String sourceSet -> renamedJava(sourceSet, sharedSources.collect { rootProject.file("$it/src/$sourceSet/java") }) }
 
-// The Fabric test mods' sources every platform's project for a Minecraft version builds, in mc/shared/<group>, as the
-// version's `testmod_sources` property lists the groups. A group is named by the versions it serves: every version from
-// 1.21.1 (1.21.1+), 1.21.1 and 1.21.11 (1.21.x), 1.21.11 and later (1.21.11+), 26.x, 26.1.2 and 26.2 (26.1-26.2), 26.2 and
-// later (26.2+), or one version (1.21.1, 1.21.11, 26.1.2, 26.3). They are Fabric mods' code. What a check asks of the
-// platform, and the checks of the platform's own hooks, are the platform's half of the test mods: in its shared folders
-// and the version's own (src/testmod, src/testmodfrapi), with TestPlatform and FrapiPlatform, which every platform's half
-// has, so the shared checks compile against each platform's.
-def testSources = (project.findProperty('testmod_sources') ?: '').split(',')*.trim().findAll { it }.collect { "mc/shared/${it}" } + sharedSources
+// The Fabric test mods' sources every platform's project for a Minecraft version builds, in mc/shared/<group>: each group
+// whose name says it serves the version. A group serves every version from one on (1.21.1+), one line (1.21.x, 26.x), the
+// versions from one to another (26.1-26.2), or one version (1.21.1), its bounds compared to as many parts as they have.
+// They are Fabric mods' code. What a check asks of the platform, and the checks of the platform's own hooks, are the
+// platform's half of the test mods: in its shared folders and the version's own (src/testmod, src/testmodfrapi), with
+// TestPlatform and FrapiPlatform, which every platform's half has, so the shared checks compile against each platform's.
+def versionParts = { String version -> version.tokenize('.')*.toInteger() }
+def serves = { String group ->
+    def version = versionParts(mcVersion)
+    def from = { String bound -> def parts = versionParts(bound); (0..<parts.size()).collect { (version[it] ?: 0) <=> parts[it] }.find { it != 0 } ?: 0 }
+    def range = group =~ /^([\d.]+)(\+|\.x|-([\d.]+))?$/
+    if (!range.matches()) return false
+    def (low, kind, high) = [range.group(1), range.group(2), range.group(3)]
+    kind == '+' ? from(low) >= 0 : kind == '.x' ? from(low) == 0 : high ? from(low) >= 0 && from(high) <= 0 : versionParts(low) == version
+}
+def testSources = rootProject.file('mc/shared').listFiles().findAll { it.isDirectory() && serves(it.name) }*.name.sort()
+        .collect { "mc/shared/${it}" } + sharedSources
 def testJava = { String sourceSet -> renamedJava(sourceSet, testSources.collect { rootProject.file("$it/src/$sourceSet/java") }) }
 
 // NeoForge's loader classes come in two variants, as the version's `loader_variant` property names it: those of FML 10
@@ -469,8 +478,7 @@ if ((testSources.collect { rootProject.file(it) } + [projectDir]).any { new File
 // mods compile against all of Fabric API, as a Fabric mod does. In the game's names, Mojang's: as published where the
 // game is unobfuscated (26.x), and remapped from Intermediary's by core's own remapper where it isn't
 // (remapFabricApi). fabricApi(modules) gives those modules' jars so, and fabricApi() all of them, to a version's own
-// build script too; fabricApiAsPublished(modules) gives them as published, for code compiled in Intermediary's names, as
-// Fabric mods for an obfuscated version are: a test mod compiled so says it with testmod_namespace=INTERMEDIARY.
+// build script too.
 def fabricApiPlan = new groovy.json.JsonSlurper().parse(file('src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json'))
 def fabricApiRelease = configurations.detachedConfiguration(dependencies.create("net.fabricmc.fabric-api:fabric-api:${fabricApiPlan.fabricApiVersion}"))
 // The modules' own jars (every module's for null), not the release's jar, which nests them.
@@ -481,10 +489,11 @@ def publishedModules = { Collection<String> modules ->
         }
     }.artifacts
 }
-ext.fabricApiAsPublished = { Collection<String> modules = null -> publishedModules(modules).artifactFiles }
+def fabricApiAsPublished = { Collection<String> modules = null -> publishedModules(modules).artifactFiles }
 if (project.namespace == 'INTERMEDIARY') {
     // Mojang's mappings of the game: the platform's (mojangMappings, a provider of the file), else those ModDevGradle's
-    // NeoForm run downloads for the game (NeoForge's and legacy Forge's builds), written out where the task is told.
+    // NeoForm run downloads for the game (NeoForge's and legacy Forge's builds), written out where the task is told; kept
+    // as mojangMappings for the platform's script.
     def mojangMappings = project.findProperty('mojangMappings')
     if (mojangMappings == null) {
         def written = layout.buildDirectory.file('mojang/client_mappings.txt')
@@ -492,6 +501,7 @@ if (project.namespace == 'INTERMEDIARY') {
             additionalResults.put('node.downloadClientMappings.output.output', written.get().asFile)
         }.map { written.get() }
     }
+    ext.mojangMappings = mojangMappings
     // core's remapper, run by remapFabricApi on core's classes: build time only.
     sourceSets {
         fabricapiremap {
@@ -527,6 +537,6 @@ if (project.namespace == 'INTERMEDIARY') {
 dependencies {
     compileOnly fabricApi(fabricApiPlan.modules.findAll { it.value.plan == 'passthrough' }.keySet())
     integrationstubsCompileOnly fabricApi(['fabric-transfer-api-v1'])
-    testmodCompileOnly(project.findProperty('testmod_namespace') == 'INTERMEDIARY' ? fabricApiAsPublished() : fabricApi())
+    testmodCompileOnly fabricApi()
     testmodfrapiCompileOnly fabricApi()
 }

@@ -9,17 +9,15 @@ import net.fabricmc.fabric.api.biome.v1.BiomeSelectors;
 import net.fabricmc.fabric.api.biome.v1.ModificationPhase;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.core.Registry;
-import net.minecraft.core.RegistrationInfo;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 
 /**
- * CI test mod part for Fabricated's native fabric-biome-api-v1 (1.21.1, BIOME-1): Fabric biome modifications must
+ * CI test mod part for Fabricated's native fabric-biome-api-v1 (1.20.1 and 1.21.1, BIOME-1): Fabric biome modifications must
  * reach the biome NeoForge reads. A mob spawn added to plains and a changed temperature, checked once the server has
  * started; and a sky colour, the only change to the desert, which must then be sent to clients rather than read from
  * their own copy (NeoForge does this itself for the biomes its modifiers change).
@@ -32,11 +30,11 @@ public final class BiomeTest implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		EntityType<?> fox = BuiltInRegistries.ENTITY_TYPE.get(ResourceLocation.withDefaultNamespace("fox"));
+		EntityType<?> fox = BuiltInRegistries.ENTITY_TYPE.get(TestCompat.id("minecraft", "fox"));
 		BiomeModifications.addSpawn(BiomeSelectors.includeByKey(Biomes.PLAINS), MobCategory.CREATURE, fox, 5, 1, 2);
-		BiomeModifications.create(ResourceLocation.fromNamespaceAndPath("fabricated_testmod", "warmer_plains"))
+		BiomeModifications.create(TestCompat.id("fabricated_testmod", "warmer_plains"))
 				.add(ModificationPhase.REPLACEMENTS, BiomeSelectors.includeByKey(Biomes.PLAINS), context -> context.getWeather().setTemperature(TEMPERATURE));
-		BiomeModifications.create(ResourceLocation.fromNamespaceAndPath("fabricated_testmod", "desert_sky"))
+		BiomeModifications.create(TestCompat.id("fabricated_testmod", "desert_sky"))
 				.add(ModificationPhase.REPLACEMENTS, BiomeSelectors.includeByKey(Biomes.DESERT), context -> context.getEffects().setSkyColor(SKY_COLOR));
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
@@ -50,7 +48,7 @@ public final class BiomeTest implements ModInitializer {
 			if (plains.getBaseTemperature() != TEMPERATURE) failed.add("temperature " + plains.getBaseTemperature());
 			int sky = desert.getSkyColor();
 			if (sky != SKY_COLOR) failed.add("sky colour " + Integer.toHexString(sky));
-			if (biomes.registrationInfo(Biomes.DESERT).flatMap(RegistrationInfo::knownPackInfo).isPresent()) failed.add("desert still read from the known pack");
+			if (TestCompat.fromKnownPack(biomes, Biomes.DESERT)) failed.add("desert still read from the known pack");
 			if (failed.isEmpty()) {
 				TestMod.LOGGER.info("FABRICATED-TEST biome modifications OK");
 			} else {
