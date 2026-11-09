@@ -108,6 +108,50 @@ final class DetachedSupers {
 	}
 
 	/**
+	 * SUPER-2: whether a mixin makes a virtual call of an array's method ({@code shapes.clone()}). SpongePowered's Mixin,
+	 * which Forge runs, looks up the class of each virtual call's owner as it binds the calls of a mixin whose superclass
+	 * isn't its target's or is a mixin, or whose target's superclass has mixins too
+	 * ({@code MixinTargetContext.transformMethodRef}); it finds none for an array, and the target fails to load with a
+	 * NullPointerException. Fabric's Mixin skips arrays ({@code MemberRef.ownerIsMixin}). Whether the other mods' mixins
+	 * give the target's superclass mixins isn't known here, so every such call is rewritten ({@link #objectOwnedArrayCalls}).
+	 * MoreCulling's {@code BlockStateBase_cullShapeMixin} clones an array of shapes: on Forge 52 the client stopped as it
+	 * first loaded a block state.
+	 */
+	static boolean callsArrayMethods(ClassNode mixin) {
+		for (MethodNode method : mixin.methods) {
+			if (method.instructions == null) continue;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKEVIRTUAL && call.owner.startsWith("[")) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * {@code data}, a mixin, with its virtual calls of an array's methods naming {@code Object} as their owner, the class
+	 * that declares them: the JVM resolves the same method, and its verifier lets an array call {@code Object}'s protected
+	 * {@code clone} (SUPER-2, {@link #callsArrayMethods}). The result type and the frames stay as they are.
+	 */
+	static byte[] objectOwnedArrayCalls(byte[] data) {
+		ClassWriter writer = new ClassWriter(0);
+		new ClassReader(data).accept(new ClassVisitor(Opcodes.ASM9, writer) {
+			@Override
+			public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+				return new MethodVisitor(Opcodes.ASM9, super.visitMethod(access, name, descriptor, signature, exceptions)) {
+					@Override
+					public void visitMethodInsn(int opcode, String owner, String method, String desc, boolean itf) {
+						boolean arrayCall = opcode == Opcodes.INVOKEVIRTUAL && owner.startsWith("[");
+						super.visitMethodInsn(opcode, arrayCall ? "java/lang/Object" : owner, method, desc, itf);
+					}
+				};
+			}
+		}, 0);
+		return writer.toByteArray();
+	}
+
+	/**
 	 * A class's generic signature with {@code newSuper} as its superclass, or null: for no signature, or where the old
 	 * superclass takes type arguments, which the new one doesn't (Mixin then reads the class's raw types).
 	 */

@@ -256,6 +256,82 @@ final class OverloadRepairs extends PreflightPart {
 	}
 
 	/**
+	 * Points an {@code @Inject} at a method its target class no longer declares, where vanilla's class overrode it, at the
+	 * overload the platform's class overrides in its place (PRE-24). The platform added the overload to the superclass,
+	 * whose method now only passes its parameters, with a value it works out or defaults ({@link #insertedParameter},
+	 * {@link ConstructorRepairs#forwardsItsParameters}), on to it, a virtual call of the instance; the class moved vanilla's
+	 * override into an override of the overload. So each call of the method on the class runs the class's overload once,
+	 * where it ran vanilla's override, with the same parameters, and the overload's start and returns are the method's.
+	 * Forge 47 has no {@code ServerPlayer.changeDimension(ServerLevel)}: {@code Entity}'s calls
+	 * {@code changeDimension(level, level.getPortalForcer())}, which {@code ServerPlayer} overrides with vanilla's code and
+	 * Forge's event, as {@code ItemEntity}, {@code AbstractVillager} and {@code ThrownEnderpearl} do theirs; Carpet's,
+	 * Balm's, FrozenLib's, GlitchCore's and Polymer's dimension change hooks name the method. The platform's own calls of
+	 * the overload, which Fabric makes through the method (a teleporter of Forge's, a target of Fabric API's), run the
+	 * hooks too. Vanilla's classes (VANILLA-1) must show the move: vanilla's class declares the method, and neither it nor
+	 * the superclass declaring the method there has the overload. A handler taking the method's parameters gets them from
+	 * a bridge taking the overload's. One injector, without captured locals or a slice, in a class mixin, whose points
+	 * are all in the overload. Returns a description of the move, or nothing.
+	 */
+	List<String> inheritedOverloadRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+			List<MethodNode> bridges) {
+		if (!injector.desc.equals(MixinNames.INJECT) || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || (target.access & Opcodes.ACC_INTERFACE) != 0
+				|| Annotations.value(injector, "locals") != null || !Annotations.list(Annotations.value(injector, "slice")).isEmpty()
+				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
+				|| !(selectors.get(0) instanceof String raw) || target.superName == null) return List.of();
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		Type[] args = Type.getArgumentTypes(handler.desc);
+		if (ats.isEmpty() || args.length == 0 || !PreflightAsm.isCallbackInfo(args[args.length - 1])) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null || ref.name().startsWith("<") || PreflightAsm.addsMethod(mixin, ref)) return List.of();
+		for (MethodNode m : target.methods) {
+			if (ref.matchesMethod(m.name, m.desc)) return List.of();
+		}
+		// Vanilla's override, as Mixin would have picked it there.
+		ClassNode vanillaTarget = vanillaClass(target.name);
+		MethodNode overridden = null;
+		for (MethodNode m : vanillaTarget == null ? List.<MethodNode>of() : vanillaTarget.methods) {
+			if (ref.matchesMethod(m.name, m.desc)) {
+				overridden = m;
+				break;
+			}
+		}
+		if (overridden == null || (overridden.access & (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) != 0) return List.of();
+		// What the class inherits in its place, a class's method passing everything on to the overload, a virtual call.
+		PreflightClasses.Code inherited = declaration(target.superName, overridden.name, overridden.desc);
+		ClassNode owner = inherited == null ? null : codeOf(inherited.owner());
+		MethodNode method = inherited == null ? null : inherited.method();
+		if (owner == null || (owner.access & Opcodes.ACC_INTERFACE) != 0 || (method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) != 0) return List.of();
+		MethodInsnNode call = null;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof MethodInsnNode m) call = m;
+		}
+		if (call == null || call.getOpcode() != Opcodes.INVOKEVIRTUAL || call.name.startsWith("<") || !isSubtype(target.name, call.owner)) return List.of();
+		MethodNode overload = PreflightAsm.declared(target, call.name, call.desc);
+		if (overload == null || (overload.access & (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE | Opcodes.ACC_ABSTRACT)) != 0
+				|| !Type.getReturnType(overload.desc).equals(Type.getReturnType(overridden.desc))) return List.of();
+		int inserted = insertedParameter(method, overload);
+		boolean forwarded = inserted < 0 && ConstructorRepairs.forwardsItsParameters(method, overload);
+		if (inserted < 0 && !forwarded) return List.of();
+		ClassNode vanillaOwner = vanillaClass(inherited.owner());
+		if (vanillaOwner == null || PreflightAsm.declared(vanillaOwner, overridden.name, overridden.desc) == null
+				|| PreflightAsm.declared(vanillaOwner, overload.name, overload.desc) != null
+				|| PreflightAsm.declared(vanillaTarget, overload.name, overload.desc) != null) return List.of();
+		if (InjectionPoints.pointsIn(ats, List.of(), overload, ctx) != Verdict.FOUND) return List.of();
+		if (args.length > 1) {
+			if (!ConstructorRepairs.takesExactly(handler, method)) return List.of();
+			String name = HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated");
+			bridges.add(forwarded ? HandlerBridges.bridge(mixin.name, handler, injector, method, overload, name)
+					: HandlerBridges.insertedParameterBridge(mixin.name, handler, injector, 0, Type.getArgumentTypes(method.desc).length, overload, inserted, name));
+		}
+		@SuppressWarnings("unchecked")
+		List<Object> values = (List<Object>) selectors;
+		values.set(0, overload.name + overload.desc);
+		return List.of(overridden.name + overridden.desc + ", which " + loader + "'s " + target.name.replace('/', '.') + " no longer overrides: the "
+				+ inherited.owner().replace('/', '.') + " method it inherits only passes its parameters on to " + overload.name + overload.desc
+				+ ", which it overrides with vanilla's code; the injector is pointed there");
+	}
+
+	/**
 	 * Points an {@code @Inject} that captures locals ({@code locals}) in a method NeoForge reduced to a call of an
 	 * overload taking one more parameter ({@link #insertedParameter}) at that overload, through a bridge taking the
 	 * overload's parameters, the callback info and its locals there as Mixin passes them

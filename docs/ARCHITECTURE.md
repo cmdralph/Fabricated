@@ -245,6 +245,12 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    * In a config with a plugin, which may disable mixins at runtime, an injector that would crash the game is **left out** instead: only its handler, as Mixin itself drops an injector that may fail. A problem with the whole mixin leaves out the mixin, with the mixins depending on its interfaces. Mixins the plugin adds at runtime (`getMixins()`, listed in no config) are found among the classes of the config's package, get the same repairs, and are checked the same way; only their failing injectors are left out, since the plugin may never add them.
    * Otherwise `required` or default-require mixins that **would fail** cause the **whole mod to be disabled before launch**, with a report like *"`examplemod`: mixin `ExampleMixin` targets `ItemStack#getTooltipLines` → `INVOKE List.add`, which NeoForge removed. Ask the author for a NeoForge build, or set `skipMixins` if this mixin is cosmetic."*
    * Non-required mixins that would fail produce a warning only.
+
+   The configs checked are those the mod's metadata lists and those its code adds to Mixin itself
+   (`Mixins.addConfiguration`, as ReplayMod's plugin adds eight of its ten) by a constant name, which translation reads
+   in its classes (MIXCFG-1). The mod's call reads such a config by name, as rewritten in the overlay; the descriptor
+   doesn't list it, as the mod's code decides whether it is added. A config added by a name the code computes, or one
+   the jar doesn't hold, is reported unchecked.
 5. **User overrides:** `skipMixins` drops entries from the cached copy of the mixin config JSON, never the original.
    An entry `"config.json:Name#member"` instead writes a copy of that mixin class without the methods or fields of
    that name (a handler, or a `@Shadow` of a field NeoForge replaced) into the overlay jar; pre-flight checks the copy.
@@ -537,7 +543,7 @@ Unknown keys produce a warning. Invalid values fall back to defaults with a warn
 
 | Threat | Mitigation |
 |---|---|
-| Path traversal / zip-slip | Entry names are validated, not rewritten: a jar with an empty, absolute, `.` or `..` segment, a backslash, a drive letter, a control character (NUL included) or a duplicate name is rejected. Nothing is extracted under an entry's name: nested jars go to the cache as `nested/<sha256>.jar`, and the cache root is checked to resolve inside the real game directory. |
+| Path traversal / zip-slip | Entry names are validated, not rewritten: a jar with an empty, absolute, `.` or `..` segment, a backslash, a drive letter, a control character (NUL included) or a duplicate name is rejected. The one repeat accepted is a directory's entry whose every copy declares no content (SEC-11): it has nothing two readers could see differently, and a directory is never read; each copy counts against the entry limit. Nothing is extracted under an entry's name: nested jars go to the cache as `nested/<sha256>.jar`, and the cache root is checked to resolve inside the real game directory. |
 | Decompression bombs | Caps on jar size, entry size, total uncompressed size, entry count and compression ratio, and on what nested jars extract to the cache, per top-level jar and per launch (§3.3). Declared sizes are checked when the jar is opened; reads count the bytes actually inflated, and refuse an entry that inflates past the size its header declares. |
 | Malformed JSON / huge metadata | 1 MiB cap and strict types. Parse errors are per-mod. |
 | Code execution during translation | Bytes-only processing (ASM `ClassReader`). No mod class is loaded, no service loading from mod jars, no scripting. |
