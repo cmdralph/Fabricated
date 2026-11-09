@@ -21,7 +21,8 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * 1.20.1 and 1.21.1 part of the CI test mod: exercises fabric-block-api-v1 (Fabricated's native module on NeoForge 21.1):
- * the trapdoor climbing tag and appearance through Fabric's interface; these versions' API has nothing more.
+ * the trapdoor climbing tag where the version's Fabric API has it (1.21.1's), and appearance through Fabric's
+ * interface; these versions' API has nothing more.
  */
 public final class BlockApiTest implements ModInitializer {
 	static ResourceLocation id(String path) {
@@ -32,7 +33,7 @@ public final class BlockApiTest implements ModInitializer {
 	public void onInitialize() {
 		ResourceKey<Block> key = ResourceKey.create(Registries.BLOCK, id("climbable_block"));
 		BlockBehaviour.Properties properties = BlockBehaviour.Properties.of();
-		// In data/fabric/tags/block/can_climb_trapdoor_above.json.
+		// In data/fabric/tags/block/can_climb_trapdoor_above.json, where the version's Fabric API has the tag.
 		Block climbable = Registry.register(BuiltInRegistries.BLOCK, key, new Block(properties));
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
@@ -40,7 +41,7 @@ public final class BlockApiTest implements ModInitializer {
 			List<String> failed = new ArrayList<>();
 			BlockState trapdoor = BuiltInRegistries.BLOCK.get(TestCompat.id("minecraft", "oak_trapdoor")).defaultBlockState();
 			BlockState stone = BuiltInRegistries.BLOCK.get(TestCompat.id("minecraft", "stone")).defaultBlockState();
-			if (!climbable.makesOpenTrapdoorAboveClimbable(climbable.defaultBlockState(), level, BlockPos.ZERO, trapdoor)
+			if (TestCompat.TRAPDOOR_CLIMBING_TAG && !climbable.makesOpenTrapdoorAboveClimbable(climbable.defaultBlockState(), level, BlockPos.ZERO, trapdoor)
 					|| stone.getBlock().makesOpenTrapdoorAboveClimbable(stone, level, BlockPos.ZERO, trapdoor)) failed.add("trapdoor_tag");
 			if (((FabricBlockState) stone).getAppearance(level, BlockPos.ZERO, Direction.UP, null, null) != stone) failed.add("appearance");
 			TestMod.report("block api", failed, "fabric-block-api-v1", Map.of("trapdoor_tag",
