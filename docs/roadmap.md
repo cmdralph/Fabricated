@@ -179,7 +179,7 @@ corpus run passes on every version (informational), and every gate holds but one
 | NeoForge 1.21.1, advanced client | Figura disabled by pre-flight: its armor layer hooks don't occur in NeoForge's `HumanoidArmorLayer.renderArmorPiece` | Task 4 |
 | NeoForge 1.21.11, advanced corpus | Biomes O' Plenty's Fabric build disabled by pre-flight: its `Entity.updateFluidOnEyes` redirect doesn't occur in NeoForge's method | Task 4 |
 | Forge 47, client corpus | Porting Lib's GUI utilities disabled by pre-flight: a `@ModifyArgs` call in `GuiGraphics` Forge changed | Task 4 |
-| Forge 47, corpus | ModernFix names Fabric Loader's error GUI (`net.fabricmc.loader.impl.gui`), which Fabricated doesn't provide | Task 4 |
+| Forge 47, corpus | ModernFix names Fabric Loader's error GUI (`net.fabricmc.loader.impl.gui`), which Fabricated doesn't provide | No change: only lambdas `ModernFixPreLaunchFabric.onPreLaunch` never calls name it (read in 5.25.2+mc1.20.1) |
 | Every version | Fabric Language Kotlin names Fabric Loader's old `LanguageAdapter` (CORPUS-38) | Open, no mod seen needing it |
 | Forge 47 and 61 to 66 | The advanced corpus doesn't run on Forge | Task 4 |
 
