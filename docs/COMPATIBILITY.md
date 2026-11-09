@@ -1849,6 +1849,21 @@ What else differs on Forge, for Fabric mods in general:
   enum's values array, as FrozenLib's `MobCategory` mixin has, loses `@Mutable`, so Forge's enum extender, which runs
   after Mixin and finds the array only while it is final, still finds it, and makes it writable for the mod (ENUM-8,
   checked on a Forge 66 server with FrozenLib 3.0.3). Mixin's own `@Mutable` had stopped the game as the enum loaded.
+- **Overrides Forge moved to an overload:** Forge 47's `ServerPlayer` has no `changeDimension(ServerLevel)` of its own:
+  `Entity`'s passes the level's portal forcer on to `changeDimension(ServerLevel, ITeleporter)`, which `ServerPlayer`
+  overrides with vanilla's code. A Fabric mod's hook into the method moves to that override, which every dimension
+  change of a player runs once, Forge's teleporters' included (PRE-24: Carpet, Balm, FrozenLib, GlitchCore and Polymer;
+  checked on a Forge 47 server with Carpet 1.4.112).
+- **A local picked by its ordinal:** a `@ModifyVariable` picking a boolean, byte, char or short by its ordinal among
+  those in scope gets the ordinal vanilla's local has in Forge's code, where Forge's patch declares one of the type
+  elsewhere, and is left out where that can't be told and the ordinal is past the locals Mixin can see (PRE-25: Apoli's
+  tool check in `ServerPlayerGameMode.destroyBlock` on Forge 47, which had stopped a server with Origins; checked on a
+  Forge 47 server with Origins 1.10.2). FrozenLib 1.9.3's gravity hook in `AbstractMinecart.tick`, a `@Local double` by
+  its type, still stops a Forge 47 server: Forge 47's Mixin counts locals past their scope there (PRE-26, open).
+- **Constructor heads:** Forge 61 to 66's Mixin takes `@At("CTOR_HEAD")`, and `HEAD` with a static handler, only marked
+  unsafe, which Fabric's Mixin's points are by default: pre-flight marks them, and a hook it moves into another
+  constructor, as it marks call points there (CTOR-7: FrozenLib's, ImmediatelyFast's and Wover's hooks; FrozenLib's
+  and Wover's checked on a Forge 66 server). On Forge 47, whose Mixin has neither, pre-flight leaves such hooks out.
 - **Mixin configs a mod adds itself:** Forge 52's and 61 to 66's Mixin (SpongePowered's 0.8.7) gives a config added
   by name alone (`Mixins.addConfiguration`, as ReplayMod's plugin adds most of its configs) no environment, and stopped
   the game reading it; the mod's calls give the default one, as Fabric's Mixin does (LOADER-6). On every platform

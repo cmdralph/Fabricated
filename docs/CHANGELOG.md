@@ -3,6 +3,29 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-09: The advanced corpus's left-out hooks on Forge: dimension changes, Apoli's tool check and constructor heads (PRE-24, PRE-25, CTOR-7)
+
+- **PRE-24** (P1), fixed: Forge 47 moved `ServerPlayer`'s `changeDimension(ServerLevel)` into an override of the
+  overload taking a teleporter, which `Entity`'s method calls; Carpet was disabled and five mods' dimension change
+  hooks left out. An injector into an override the platform moved so goes to the overload's override.
+- **PRE-25** (P0), fixed: Apoli's `@ModifyVariable` takes the second boolean in scope at `ItemStack.mineBlock` in
+  `destroyBlock`, which Forge 47's patch leaves the only one there; Mixin injected nothing and a Forge 47 server with
+  Origins stopped. Pre-flight now reports a modifier whose ordinal is past the locals Mixin can see, and gives it
+  vanilla's local's ordinal where vanilla's code tells.
+- **CTOR-7** (P1), fixed: on Forge 61 to 66, `CTOR_HEAD`, `HEAD` with a static handler, and a hook a repair moves into
+  another constructor are marked unsafe, as Fabric's Mixin takes them (FrozenLib, ImmediatelyFast, Wover); a constructor
+  point that finds nothing is reported missing (owo's, as on NeoForge).
+- **PRE-26** open: FrozenLib 1.9.3's `@Local double` in `AbstractMinecart.tick` stops a Forge 47 server, whose Mixin
+  counts locals past their scope.
+- Not repaired, with the evidence in `roadmap.md`: the Forge 47 hooks at `StructureTemplate.placeEntities`, which Forge
+  replaced with its own entity processing; the Forge 64 to 66 screen render wrappers, where Forge's call doesn't take
+  the screen; piston stickiness, block breaking wrappers and item checks the platform asks its extensions instead.
+- Verified: the core unit tests, CI's script tests and the mixin inventory; Forge 47 and Forge 66 build. Locally, a
+  Forge 47 server with Fabric API, Carpet, Origins, Balm, GlitchCore and Polymer starts and stops normally (95 checks
+  pass, none fails), Carpet loaded and every dimension change hook and Apoli's applied; a Forge 66 server with FrozenLib
+  3.0.3 and WorldWeaver applies FrozenLib's and Wover's constructor hooks and starts. The Forge 47 server part (7 runs,
+  407 checks) and client part (2 runs, 142 checks) pass, none failing.
+
 ## 2026-11-09: ReplayMod 1.20.1 on Forge 47: the configs a mod adds from its code checked, its jar accepted (MIXCFG-1, SEC-11)
 
 - **MIXCFG-1** (P0), fixed: pre-flight checked only the mixin configs a mod's metadata lists, so the eight ReplayMod adds
