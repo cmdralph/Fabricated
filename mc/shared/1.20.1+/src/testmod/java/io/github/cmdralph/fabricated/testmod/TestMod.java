@@ -342,7 +342,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	 * every item that failed is one {@code providersAnswers} names: the provider answers it differently, as its source
 	 * reads (PROVIDER-8), and the check logs SKIPPED with the items and why, as a check of the provider's module.
 	 */
-	static void report(String check, List<String> failed, String module, Map<String, String> providersAnswers) {
+	public static void report(String check, List<String> failed, String module, Map<String, String> providersAnswers) {
 		if (failed.isEmpty()) {
 			LOGGER.info("FABRICATED-TEST {} OK", check);
 		} else if (providedByAnotherMod(module) && providersAnswers.keySet().containsAll(failed)) {

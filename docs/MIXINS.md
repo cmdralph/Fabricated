@@ -1576,8 +1576,9 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
 | mixins | FluidTypeMixin | 1.20.1 (1.20.1) | n.m.world.level.material.Fluid | @WrapOperation → fabricated$fabricFluidType | "getFluidType" | INVOKE `L…/ForgeHooks;getVanillaFluidType(L…/Fluid;)L…/FluidType;` | — | default |
-| mixins | LivingEntityDropCaptureMixin | 1.20.1 (1.20.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @WrapOperation → fabricated$keepDropsCaptured | "dropAllDeathLoot" | INVOKE `L…/ForgeHooks;onLivingDrops(L…/LivingEntity;L…/DamageSource;L…/Collection;IZ)Z` | — | default |
-| mixins | LivingEntityDropCaptureMixin | 1.20.1 (1.20.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @Inject → fabricated$addCapturedDrops | "dropAllDeathLoot" | RETURN | — | default |
+| mixins | LivingEntityDropCaptureMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @Inject → fabricated$captureAfterForgesEvent (Forge 47's or Forge 52's event, whichever the method asks) | "dropAllDeathLoot" | INVOKE `L…/ForgeHooks;onLivingDrops(L…/LivingEntity;L…/DamageSource;L…/Collection;IZ)Z` shift=AFTER remap=false, INVOKE `L…/ForgeEventFactory;onLivingDrops(L…/LivingEntity;L…/DamageSource;L…/Collection;Z)Z` shift=AFTER remap=false | — | default |
+| mixins | LivingEntityDropCaptureMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @WrapWithCondition → fabricated$keepDropsCaptured | "dropAllDeathLoot" | INVOKE `L…/Collection;forEach(L…/Consumer;)V` remap=false | — | default |
+| mixins | LivingEntityDropCaptureMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @Inject → fabricated$addCapturedDrops | "dropAllDeathLoot" | RETURN | — | default |
 | mixins | LivingEntityFluidTravelMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.world.entity.LivingEntity | @WrapOperation → fabricated$throughFabricFluid | "travel" | INVOKE `L…/LivingEntity;isInFluidType(L…/FluidState;)Z` | — | default |
 | mixins | MappedRegistryPendingHoldersMixin | mc/forge-shared (1.20.1) | n.m.core.MappedRegistry | @Inject → fabricated$beforeFreeze; implements PendingHolders; adds methods fabricated$keepPendingHolders, fabricated$restorePendingHolders; @Shadow unregisteredIntrusiveHolders, key; @Unique fields fabricated$pendingHolders | "freeze" | HEAD | — | default |
 | mixins | MappedRegistryPendingHoldersMixin | mc/forge-shared (1.20.1) | n.m.core.MappedRegistry | @Inject → fabricated$afterFreeze | "freeze" | RETURN | — | default |
@@ -1614,7 +1615,7 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | PackRepositorySourcesMixin | 1.20.1 (1.20.1) | n.m.server.packs.repository.PackRepository | @Inject → fabricated$keepSourcesMutable (a set a Fabric mod made immutable is made mutable again before Forge adds a pack finder, PACK-1); @Shadow f_10497_ | "addPackFinder" remap=false | HEAD | — | default |
 | mixins | PlayerListViewMixin | 1.20.1 (1.20.1) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, as POLY-1 and POLY-2); @Shadow f_11196_ | "getPlayers" | RETURN | — | default |
 | client | ParticleEngineProvidersBridgeMixin | 1.20.1 (1.20.1) | n.m.client.particle.ParticleEngine | no injectors; adds methods fabricated$get$f_107293_; @Shadow f_107293_; @Unique fields fabricated$providersById | | | | |
-| client | ExtendedBlockModelDeserializerMixin | 1.20.1 (1.20.1) | forge.client.model.ExtendedBlockModelDeserializer | @WrapOperation → fabricated$fabricLoader | "deserialize(Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lnet/minecraft/client/renderer/block/model/BlockModel;" | INVOKE `L…/ExtendedBlockModelDeserializer;deserializeGeometry(L…/JsonDeserializationContext;L…/JsonObject;)L…/IUnbakedGeometry;` | — | default |
+| client | ExtendedBlockModelDeserializerMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | forge.client.model.ExtendedBlockModelDeserializer | @WrapOperation → fabricated$fabricLoader | "deserialize(Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lnet/minecraft/client/renderer/block/model/BlockModel;" | INVOKE `L…/ExtendedBlockModelDeserializer;deserializeGeometry(L…/JsonDeserializationContext;L…/JsonObject;)L…/IUnbakedGeometry;` | — | default |
 | client | GuiHudSeamsMixin | 1.20.1 (1.20.1) | n.m.client.gui.Gui | no injectors; implements HudSeams; adds methods fabricated$startHud, fabricated$start$m_280421_, fabricated$end$m_280421_; @Unique fields fabricated$hudGoesOn | | | | |
 | client | ForgeGuiHudSeamsMixin | 1.20.1 (1.20.1) | forge.client.gui.overlay.ForgeGui (`targets`) | @Inject → fabricated$atHudStart | "m_280421_" | HEAD cancellable=true | — | default |
 | client | ForgeGuiHudSeamsMixin | 1.20.1 (1.20.1) | forge.client.gui.overlay.ForgeGui (`targets`) | @Inject → fabricated$atHudEnd | "m_280421_" | TAIL | — | default |
@@ -1669,14 +1670,14 @@ Written in Mojang's names; the test mod's jar names them in Intermediary's, its 
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| mixins | CommandsMixin | 1.20.1 (1.20.1) | n.m.commands.Commands | @Inject → fabricatedForgeTest$beforeSetConsumer; @Unique fields fabricatedForgeTest$logged, fabricatedForgeTest$constructionLogged | "<init>" | INVOKE `L…/CommandDispatcher;setConsumer(L…/ResultConsumer;)V` remap=false | — | default |
-| mixins | CommandsMixin | 1.20.1 (1.20.1) | n.m.commands.Commands | @Inject → fabricatedForgeTest$afterDispatcher | "<init>" | INVOKE `L…/CommandDispatcher;<init>()V` shift=BY by=2 | — | default |
-| mixins | LanguageReaderMixin | 1.20.1 (1.20.1) | n.m.locale.Language | @ModifyVariable → fabricatedForgeTest$watch | "loadFromJson(Ljava/io/InputStream;Ljava/util/function/BiConsumer;)V" | HEAD | — | default |
-| mixins | LivingEntityCapturedDropsMixin | 1.20.1 (1.20.1) | n.m.world.entity.LivingEntity prio=1500 | @Inject → fabricatedForgeTest$takeCapturedDrops | "dropAllDeathLoot" | RETURN | — | default |
-| mixins | MinecraftServerArgsMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @ModifyArgs → fabricatedForgeTest$tickChildrenArgs; @Unique fields fabricatedForgeTest$modified | "tickServer" | INVOKE `L…/MinecraftServer;tickChildren(L…/BooleanSupplier;)V` | — | default |
+| mixins | CommandsMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.commands.Commands | @Inject → fabricatedForgeTest$beforeSetConsumer; @Unique fields fabricatedForgeTest$logged, fabricatedForgeTest$constructionLogged | "<init>" | INVOKE `L…/CommandDispatcher;setConsumer(L…/ResultConsumer;)V` remap=false | — | default |
+| mixins | CommandsMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.commands.Commands | @Inject → fabricatedForgeTest$afterDispatcher | "<init>" | INVOKE `L…/CommandDispatcher;<init>()V` shift=BY by=2 | — | default |
+| mixins | LanguageReaderMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.locale.Language | @ModifyVariable → fabricatedForgeTest$watch | "loadFromJson(Ljava/io/InputStream;Ljava/util/function/BiConsumer;)V" | HEAD | — | default |
+| mixins | LivingEntityCapturedDropsMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.world.entity.LivingEntity prio=1500 | @Inject → fabricatedForgeTest$takeCapturedDrops | "dropAllDeathLoot" | RETURN | — | default |
+| mixins | MinecraftServerArgsMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.server.MinecraftServer | @ModifyArgs → fabricatedForgeTest$tickChildrenArgs; @Unique fields fabricatedForgeTest$modified | "tickServer" | INVOKE `L…/MinecraftServer;tickChildren(L…/BooleanSupplier;)V` | — | default |
 | mixins | MinecraftServerMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @Inject → fabricatedForgeTest$afterTick (runs Forge 47's half's checks); @Shadow overworld, getLevel, getCommands, getRecipeManager; @Unique fields fabricatedForgeTest$checked | "tickServer" | TAIL | — | default |
-| mixins | MinecraftServerWrapMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @WrapMethod → fabricatedForgeTest$wrapTick; @Unique fields fabricatedForgeTest$wrapped | "tickServer" |  | — | default |
-| mixins | MobBucketItemAccessor | 1.20.1 (1.20.1) | n.m.world.item.MobBucketItem | @Accessor → fabricatedtest$type | "field_7991" remap=false |  | — | default |
+| mixins | MinecraftServerWrapMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.server.MinecraftServer | @WrapMethod → fabricatedForgeTest$wrapTick; @Unique fields fabricatedForgeTest$wrapped | "tickServer" |  | — | default |
+| mixins | MobBucketItemAccessor | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.world.item.MobBucketItem | @Accessor → fabricatedtest$type | "field_7991" remap=false |  | — | default |
 | mixins | PotionBrewingAccessor | 1.20.1 (1.20.1) | n.m.world.item.alchemy.PotionBrewing | @Accessor → fabricatedtest$potionMixes | "POTION_MIXES" |  | — | default |
 | mixins | PotionBrewingMixAccessor | 1.20.1 (1.20.1) | n.m.world.item.alchemy.PotionBrewing$Mix | @Accessor → fabricatedtest$from | "field_8962" remap=false |  | — | default |
 | mixins | PotionBrewingMixAccessor | 1.20.1 (1.20.1) | n.m.world.item.alchemy.PotionBrewing$Mix | @Accessor → fabricatedtest$to | "field_8961" remap=false |  | — | default |
@@ -1684,7 +1685,7 @@ Written in Mojang's names; the test mod's jar names them in Intermediary's, its 
 | client | HudHooksMixin | 1.20.1 (1.20.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheEnd | "render" | TAIL | — | default |
 | client | McRuntimeTestMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedForgeTest$holdForServerChecks | "tickHook" | HEAD cancellable=true | — | default |
 | client | MouseHandlerInvoker | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.MouseHandler | @Invoker → fabricatedtest$onPress | "onPress" |  | — | default |
-| client | ParticleEngineProvidersAccessor | 1.20.1 (1.20.1) | n.m.client.particle.ParticleEngine | @Accessor → fabricatedtest$providers | "field_3835" remap=false |  | — | default |
+| client | ParticleEngineProvidersAccessor | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.particle.ParticleEngine | @Accessor → fabricatedtest$providers | "field_3835" remap=false |  | — | default |
 
 ### `mc/forge-legacy/1.20.1/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json`
 
@@ -1694,17 +1695,18 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.testmod.frapi.mixin` 
 |---|---|---|---|---|---|---|---|---|
 | client | McRuntimeTestHoldMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedFrapiTest$holdForMovingBlocks | "tickHook" | HEAD cancellable=true | — | default |
 
-## Forge 52 (`forge-legacy`): 50 mixins in 14 configs
+## Forge 52 (`forge-legacy`): 62 mixins in 14 configs
 
 Minecraft 1.21.1, in Mojang's names without a refmap, as on Forge 61 to 66. The mixins come from `mc/forge-shared` and its
 groups, as the source column says, but `NamespacedWrapperAliasMixin`, over 1.21.1's lookups, `LoadingRegistriesMixin`, on
 1.21.1's tagless wrapper of the registries, `LiquidBlockRendererSpritesMixin`, Forge 52's fluid sprites (FLUID-4), the
 item hooks Forge 52 names its own way (ITEM-1), the renderer seams in its section compiler and piston renderer and on
-1.21.1's weighted model (FRAPI-11), and its screen input hook (LAMBDA-10).
+1.21.1's weighted model (FRAPI-11), its screen input hook (LAMBDA-10), its ingredient codec, of which Forge 52 keeps no
+vanilla form (NET-13), and the bridges of the fields it replaced, named after Mojang's names of them (ACC-5).
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 19, client 1 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 22, client 3 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.1 | mixins 4 | 1 | true | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 1.21.1 | mixins 2 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
@@ -1717,7 +1719,7 @@ item hooks Forge 52 names its own way (ITEM-1), the renderer seams in its sectio
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-content.mixins.json` | `io.github.cmdralph.fabricated.forge.content.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 1.21.1 | client 6 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-screen.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.mixin` | 1.21.1 | client 1 | 1 | — | none |
-| `mc/forge-legacy/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.1 | client 2 | 1 | — | none |
+| `mc/forge-legacy/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.1 | mixins 6, client 3 | 1 | — | none |
 
 ### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json`
 
@@ -1742,15 +1744,22 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | BuiltInRegistriesInvoker | mc/forge-shared (1.21.1) | n.m.core.registries.BuiltInRegistries | @Invoker → fabricated$freeze | "freeze" |  | — | default |
 | mixins | GameDataFreezeMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.registries.GameData | @Inject → fabricated$freezeBuiltInRegistries | "freezeData" | HEAD | — | default |
 | mixins | TagFileRemoveMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.tags.TagFile | @Inject → fabricated$readFabricRemove; @Shadow @Mutable CODEC | "<clinit>" | TAIL | — | default |
+| mixins | IngredientNetworkCodecMixin | 1.21.1 (1.21.1) | n.m.world.item.crafting.Ingredient | @Inject → fabricated$sendAsUpstream (a Fabric mod's own ingredient in 1.21.1's vanilla form, which Forge 52 keeps no codec of, NET-13); @Shadow @Mutable CONTENTS_STREAM_CODEC | "<clinit>" | TAIL | — | default |
 | mixins | ForgePayloadEncodeMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.network.protocol.common.custom.CustomPacketPayload$1 (`targets`) | @WrapOperation → fabricated$writeForgePayload | "writeCap" | INVOKE `L…/StreamCodec;encode(L…/Object;L…/Object;)V` | — | default |
 | mixins | ResourcePackLoaderKnownPackMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.resource.ResourcePackLoader | @ModifyArg → fabricated$knownPack (a Fabric mod's pack gets Fabric API's known-pack identity, PACK-10) | "findPacks" | INVOKE `L…/PackLocationInfo;<init>(L…/String;L…/Component;L…/PackSource;L…/Optional;)V` index=3 | 0 | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.1) | n.m.world.item.BucketItem | @WrapOperation → fabricated$delegateIfRegistered; @Shadow @Mutable fluidSupplier | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | INVOKE `L…/IForgeRegistry;getDelegateOrThrow(L…/Object;)L…/Holder$Reference;` | — | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.1) | n.m.world.item.BucketItem | @Inject → fabricated$fluidItselfIfUnregistered | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | TAIL | — | default |
 | mixins | PlayerListViewMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, POLY-2) | "getPlayers" | RETURN | — | default |
+| mixins | LivingEntityDropCaptureMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @Inject → fabricated$captureAfterForgesEvent (Forge 47's or Forge 52's event, whichever the method asks) | "dropAllDeathLoot" | INVOKE `L…/ForgeHooks;onLivingDrops(L…/LivingEntity;L…/DamageSource;L…/Collection;IZ)Z` shift=AFTER remap=false, INVOKE `L…/ForgeEventFactory;onLivingDrops(L…/LivingEntity;L…/DamageSource;L…/Collection;Z)Z` shift=AFTER remap=false | — | default |
+| mixins | LivingEntityDropCaptureMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @WrapWithCondition → fabricated$keepDropsCaptured | "dropAllDeathLoot" | INVOKE `L…/Collection;forEach(L…/Consumer;)V` remap=false | — | default |
+| mixins | LivingEntityDropCaptureMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @Inject → fabricated$addCapturedDrops | "dropAllDeathLoot" | RETURN | — | default |
+| mixins | MobBucketItemBridgeMixin | 1.21.1 (1.21.1) | n.m.world.item.MobBucketItem | no injectors; adds methods fabricated$get$type (named after Mojang's name of the field, ACC-5); @Shadow getFishType | | | | |
 | mixins | BiomeWeatherWriteMixin | mc/forge-shared/1.21.1+ (1.21.1) | fapi.impl.biome.modification.BiomeModificationContextImpl$WeatherContextImpl (`targets`) (@Pseudo) | @Redirect → fabricated$setClimate (the climate into the field and Forge's biome info, BIOME-3) | "setPrecipitation", "setTemperature", "setTemperatureModifier", "setDownfall" | FIELD `L…/Biome;climateSettings:L…/Biome$ClimateSettings;` opcode=PUTFIELD | — | default |
 | mixins | BiomeClimateAccessor | mc/forge-shared/1.21.1+ (1.21.1) | n.m.world.level.biome.Biome | @Accessor @Mutable → fabricated$setClimateSettings | "climateSettings" |  | — | default |
 | mixins | ModifiableBiomeInfoAccessor | mc/forge-shared/1.21.1+ (1.21.1) | forge.common.world.ModifiableBiomeInfo | @Accessor @Mutable → fabricated$setOriginalBiomeInfo; @Accessor → fabricated$setModifiedBiomeInfo | "originalBiomeInfo", "modifiedBiomeInfo" |  | — | default |
 | client | LiquidBlockRendererSpritesMixin | 1.21.1 (1.21.1) | n.m.client.renderer.block.LiquidBlockRenderer (priority 1100: after upstream's hook at the same point) | @ModifyVariable → fabricated$overlaySlot | "tesselate" | INVOKE `L…/LiquidBlockRenderer;isNeighborSameFluid(L…/FluidState;L…/FluidState;)Z`, the first `TextureAtlasSprite[]` local | — | default |
+| client | ExtendedBlockModelDeserializerMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | forge.client.model.ExtendedBlockModelDeserializer | @WrapOperation → fabricated$fabricLoader | "deserialize(Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lnet/minecraft/client/renderer/block/model/BlockModel;" | INVOKE `L…/ExtendedBlockModelDeserializer;deserializeGeometry(L…/JsonDeserializationContext;L…/JsonObject;)L…/IUnbakedGeometry;` | — | default |
+| client | ParticleEngineProvidersBridgeMixin | 1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | no injectors; adds methods fabricated$get$providers (named after Mojang's name of the field, ACC-5); @Shadow providers; @Unique fields fabricated$providersById | | | | |
 
 ### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json`
 
@@ -1903,8 +1912,16 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forgetest.mixin` · r
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
+| mixins | CommandsMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.commands.Commands | @Inject → fabricatedForgeTest$beforeSetConsumer; @Unique fields fabricatedForgeTest$logged, fabricatedForgeTest$constructionLogged | "<init>" | INVOKE `L…/CommandDispatcher;setConsumer(L…/ResultConsumer;)V` remap=false | — | default |
+| mixins | CommandsMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.commands.Commands | @Inject → fabricatedForgeTest$afterDispatcher | "<init>" | INVOKE `L…/CommandDispatcher;<init>()V` shift=BY by=2 | — | default |
+| mixins | LanguageReaderMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.locale.Language | @ModifyVariable → fabricatedForgeTest$watch | "loadFromJson(Ljava/io/InputStream;Ljava/util/function/BiConsumer;)V" | HEAD | — | default |
+| mixins | LivingEntityCapturedDropsMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.entity.LivingEntity prio=1500 | @Inject → fabricatedForgeTest$takeCapturedDrops | "dropAllDeathLoot" | RETURN | — | default |
+| mixins | MinecraftServerArgsMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.server.MinecraftServer | @ModifyArgs → fabricatedForgeTest$tickChildrenArgs; @Unique fields fabricatedForgeTest$modified | "tickServer" | INVOKE `L…/MinecraftServer;tickChildren(L…/BooleanSupplier;)V` | — | default |
+| mixins | MinecraftServerWrapMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.server.MinecraftServer | @WrapMethod → fabricatedForgeTest$wrapTick; @Unique fields fabricatedForgeTest$wrapped | "tickServer" |  | — | default |
+| mixins | MobBucketItemAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.item.MobBucketItem | @Accessor → fabricatedtest$type | "field_7991" remap=false |  | — | default |
 | client | HudHooksMixin | 1.21.1 (1.21.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheStart; @Unique fields fabricatedForgeTest$started, fabricatedForgeTest$endedCancelled, fabricatedForgeTest$endReported | "render" | HEAD cancellable=true | — | default |
 | client | HudHooksMixin | 1.21.1 (1.21.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheEnd | "render" | TAIL | — | default |
 | client | MouseHandlerInvoker | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.MouseHandler | @Invoker → fabricatedtest$onPress | "onPress" |  | — | default |
+| client | ParticleEngineProvidersAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Accessor → fabricatedtest$providers | "field_3835" remap=false |  | — | default |
 
 ---

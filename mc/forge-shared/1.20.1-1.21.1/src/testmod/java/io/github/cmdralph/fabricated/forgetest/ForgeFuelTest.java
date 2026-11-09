@@ -1,0 +1,43 @@
+package io.github.cmdralph.fabricated.forgetest;
+
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import io.github.cmdralph.fabricated.testmod.TestMod;
+import net.fabricmc.fabric.api.registry.FuelRegistry;
+
+/**
+ * The forge-legacy test mods' part for fabric-content-registries-v0's fuel registry (FUEL-1, FUEL-2; with Fabric API's
+ * jar only): the test item, registered as a fuel through {@code FuelRegistry}, must be in vanilla's fuel table
+ * ({@code getFuel}, which Fabricated's in-game mod adds Fabric's fuels to, as upstream's hook, left out on Forge 47 and
+ * 52, did) and a fuel to the furnace ({@code isFuel}), which Forge answers from its own burn times, read from that
+ * table as the data packs' tags load. Where another mod provides the module (Forgified Fabric API), the table is that
+ * mod's to fill ({@link TestMod#report}).
+ */
+public final class ForgeFuelTest {
+	/** Ticks: an odd value no vanilla fuel has. */
+	static final int BURN_TIME = 1234;
+	private static final String NOT_IN_TABLE = "the test item isn't in vanilla's fuel table";
+
+	private ForgeFuelTest() {
+	}
+
+	/** From the main entrypoint, once the test item is registered; only with Fabric API's content registries module. */
+	static void register() {
+		FuelRegistry.INSTANCE.add(ForgeTestMod.testItem, BURN_TIME);
+	}
+
+	/** At the first server tick, the data packs' tags loaded. */
+	public static void check() {
+		Integer burnTime = AbstractFurnaceBlockEntity.getFuel().get(ForgeTestMod.testItem);
+		List<String> failed = new ArrayList<>();
+		if (burnTime == null) failed.add(NOT_IN_TABLE);
+		else if (burnTime != BURN_TIME) failed.add("vanilla's fuel table gives the test item " + burnTime + " ticks");
+		if (!AbstractFurnaceBlockEntity.isFuel(new ItemStack(ForgeTestMod.testItem))) failed.add("the test item isn't a fuel to the furnace");
+		TestMod.report("fuel registry", failed, "fabric-content-registries-v0", Map.of(NOT_IN_TABLE,
+				"its FuelRegistry gives burn times through Forge's FurnaceFuelBurnTimeEvent, not vanilla's fuel table"));
+	}
+}
