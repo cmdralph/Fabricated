@@ -255,7 +255,10 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    parameters its handler takes when NeoForge's build declares another overload of that name first (Mixin picks the
    first). An injector whose method NeoForge turned into a delegate to a
    new overload holding the code is pointed at that overload when every injection point is there and the handler
-   doesn't depend on the method's parameters. Each repair is a warning in the report; anything ambiguous is left to
+   doesn't depend on the method's parameters, or gets them from a bridge: where the method passes on one value it works
+   out, or (an `@Inject`'s) its parameters in order followed by defaults. An `@Inject` at the end of a method the
+   platform deprecated for an overload it added, which the method only calls so, moves to the end of that one, as the
+   platform's code calls it in the method's place (PRE-20). Each repair is a warning in the report; anything ambiguous is left to
    fail. Two changes only turn a crash into a missing effect, never the reverse: an `@Inject` whose local capture
    fails hard skips itself instead when NeoForge's locals differ, and in a config with a plugin (which may disable
    mixins at runtime) a mixin pre-flight proves would crash is left out instead of disabling the mod.
@@ -445,7 +448,7 @@ versions is decided at compile time by which source folders it compiles, plus tw
   test parses the shipped file.
 * **Mixin differences in Fabric mods** are repaired by core's pre-flight against the running game's bytecode
   (`MixinPreflight.repairs`: overloads NeoForge reordered or moved code into, constructors NeoForge kept for
-  vanilla's signature, calls and constructor calls made through a subtype or given one more argument (through bridge
+  vanilla's signature and methods it deprecated for an overload, calls and constructor calls made through a subtype or given one more argument (through bridge
   handlers that pass a handler's MixinExtras sugar on), renumbered lambdas, calls moved into a lambda of the method, calls the patch moved into methods of its own (at vanilla's place of the call), hard local captures, locals taken by a slot the build keeps them in elsewhere, accessors of members
   NeoForge added, accessors of fields the platform retyped through the in-game mod's bridges), not by per-version tables. The injector repairs run in one order (`MixinRepairs`), each from its
   family's class (`LambdaRepairs`, `OverloadRepairs`, `CallRepairs`, `ConstructorRepairs`, `LocalRepairs`). Enum mixins into

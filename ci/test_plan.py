@@ -10,7 +10,7 @@ PROPERTIES = {
     ("neoforge", "1.21.1"): "neoforge_version=21.1.265\njava_version=21\nci_plugin_hosts=jei@a rei@b\n",
     ("neoforge", "1.21.11"): "neoforge_version=21.11.45\njava_version=21\n",
     ("neoforge", "26.1.2"): "neoforge_version=26.1.2.116\njava_version=25\nci_renderers=sodium@x iris@y\n",
-    ("forge", "26.3"): "forge_version=66.1.0\njava_version=25\n",
+    ("forge", "26.3"): "forge_version=66.1.0\njava_version=25\nci_plugin_hosts=wthit@w\n",
 }
 
 
@@ -150,6 +150,11 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(sorted(plan.parts(root, "forge", "26.3", False)), ["client", "mods", "server"])
         self.assertEqual([r["run"] for r in plan.runs(root, "forge", "26.3", "mods", False)], ["client-plugins"])
         self.assertEqual(sorted(plan.parts(root, "forge", "26.3", True)), ["client", "corpus", "mods", "server"])
+
+    def test_a_run_of_pinned_builds_the_version_pins_none_of_is_left_out(self):
+        root = tree("neoforge")
+        self.assertNotIn("client-plugins", [r["run"] for r in plan.runs(root, "neoforge", "1.21.11", "mods", False)])
+        self.assertIn("client-plugins", [r["run"] for r in plan.runs(root, "neoforge", "1.21.1", "mods", False)])
 
 
 class ManifestTest(unittest.TestCase):
