@@ -9,18 +9,23 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadTransform;
 import net.fabricmc.fabric.api.client.renderer.v1.model.FabricBlockStateModel;
 import net.fabricmc.fabric.api.client.renderer.v1.model.FabricBlockStateModelPart;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
+import net.minecraft.client.renderer.block.ModelBlockRenderer;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.client.extensions.IForgeBlockStateModel;
 import net.minecraftforge.client.model.data.ModelData;
+import net.minecraftforge.client.model.data.ModelDataManager;
 
 /**
  * FRAPI rule 8 on Forge 64 to 66: where Fabric's renderer API calls a block model's emitter, a Fabric model that throws
@@ -36,6 +41,12 @@ import net.minecraftforge.client.model.data.ModelData;
  * <p>Where Forge asks a block model's particle material with its model data, and upstream's hooks asking Fabric's
  * level-aware one don't reach (the screen effect inside a block, a block marker, a block's breaking particles),
  * Fabricated's mixins ask Fabric's for a Fabric model ({@link #levelAwareParticle}, PART-4).
+ *
+ * <p>A model without an emitter of its own draws through Fabricated's default emitter ({@link #emitDefault}): one that
+ * reads Forge's model data (a Forge mod's level-aware model), drawn by Fabric's renderer as a block's model or inside a
+ * Fabric model, emits the parts Forge's renderer would draw, those for its model data, asked with the level. Upstream's
+ * default emitter collects the parts without it, and upstream's chunk section hook, which pre-flight points at Forge's
+ * overload, drops the model data Forge's compiler asked the block's model for.
  *
  * <p>The healthy path reads a {@code ClassValue} and, for a composite model, an int it keeps; it allocates nothing.
  * Models without an emitter of their own (vanilla's and Forge mods') are called as before, without a guard: their
@@ -94,8 +105,31 @@ public final class FabricBlockRendering {
 			}
 		}
 	};
+	/** Whether a model class reads Forge's model data: it gives its own {@code getModelData}, or its own parts for model data. */
+	private static final ClassValue<Boolean> FORGE_MODEL_DATA = new ClassValue<>() {
+		@Override
+		protected Boolean computeValue(Class<?> type) {
+			try {
+				return type.getMethod("getModelData", BlockAndTintGetter.class, BlockPos.class, BlockState.class, ModelData.class)
+						.getDeclaringClass() != IForgeBlockStateModel.class
+						|| type.getMethod("collectParts", RandomSource.class, List.class, ModelData.class).getDeclaringClass() != IForgeBlockStateModel.class;
+			} catch (NoSuchMethodException | LinkageError e) {
+				return false; // a type its methods name is missing (MODEL_CLASSES warns of it): upstream's default
+			}
+		}
+	};
+	/** Leaves are drawn opaque when the player turned their transparency off, as upstream's default emitter does. */
+	private static final QuadTransform OPAQUE = quad -> {
+		quad.chunkLayer(ChunkSectionLayer.SOLID);
+		return true;
+	};
 	/** Each thread's list for a broken model's parts (the failure path only). */
 	private static final ThreadLocal<List<BlockStateModelPart>> PARTS = ThreadLocal.withInitial(ArrayList::new);
+	/**
+	 * Each thread's parts for {@link #emitDefault}, reused for every model it draws: a model's are those added after the
+	 * ones of the models being drawn around it (a part may draw a model), removed when it is done.
+	 */
+	private static final ThreadLocal<List<BlockStateModelPart>> DEFAULT_PARTS = ThreadLocal.withInitial(ArrayList::new);
 
 	private FabricBlockRendering() {
 	}
@@ -184,6 +218,33 @@ public final class FabricBlockRendering {
 			restore(emitter, depth);
 			markBroken(model, t, where + " at " + pos, state);
 			emitInstead(model, emitter, level, pos, state, random, cullTest, where);
+		}
+	}
+
+	/**
+	 * The renderer API's default {@code emitQuads}, of a model without its own ({@code BlockStateModelDefaultMixin}), as
+	 * upstream's: its parts, its leaves opaque where the player turned their transparency off. A model reading Forge's
+	 * model data gives the parts for its model data, which it is asked with the level and the data Forge keeps for the
+	 * block, as Forge's chunk section compiler asks it.
+	 */
+	public static void emitDefault(BlockStateModel model, QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
+			Predicate<@Nullable Direction> cullTest) {
+		boolean opaque = ModelBlockRenderer.forceOpaque(Minecraft.getInstance().options.cutoutLeaves().get(), state);
+		if (opaque) emitter.pushTransform(OPAQUE);
+		List<BlockStateModelPart> parts = DEFAULT_PARTS.get();
+		int first = parts.size();
+		try {
+			if (FORGE_MODEL_DATA.get(model.getClass())) {
+				ModelDataManager manager = level.getModelDataManager();
+				model.collectParts(random, parts, model.getModelData(level, pos, state, manager == null ? ModelData.EMPTY : manager.getAtOrEmpty(pos)));
+			} else {
+				model.collectParts(random, parts);
+			}
+			for (int i = first; i < parts.size(); i++) ((FabricBlockStateModelPart) parts.get(i)).emitQuads(emitter, cullTest);
+		} finally {
+			// Not subList(first, size).clear(): that allocates, for every block drawn so.
+			while (parts.size() > first) parts.removeLast();
+			if (opaque) emitter.popTransform();
 		}
 	}
 
