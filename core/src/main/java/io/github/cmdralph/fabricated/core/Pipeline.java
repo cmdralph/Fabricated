@@ -638,7 +638,7 @@ public final class Pipeline {
 				if (data == null || own == null) return data;
 				try {
 					return own.get().remapClass(data, name);
-				} catch (MappingException | RuntimeException | StackOverflowError e) {
+				} catch (MappingException | RuntimeException | StackOverflowError | OutOfMemoryError e) {
 					// Not verified then; translating the mod reports it. Another mod's pre-flight reads this jar's classes.
 					return null;
 				}
@@ -939,6 +939,11 @@ public final class Pipeline {
 					// ASM parses nested annotation values recursively: a hostile class can nest them without end.
 					failures.put(c, new TranslationException("The jar is unsafe or corrupt: a class is nested too deeply to read",
 							"Remove " + c.id() + " or get it from a trusted source.", List.of(), e));
+				} catch (OutOfMemoryError e) {
+					// ASM before 9.9 allocates the length an attribute claims before reading it: a 2 GiB array for a class
+					// of a few bytes, which the VM refuses, leaving the heap as it was (SEC-6).
+					failures.put(c, new TranslationException("The jar is unsafe or corrupt, or needs more memory than the game has to translate: " + e,
+							"Remove " + c.id() + " or get it from a trusted source; a very large mod may need more memory for the game.", List.of(), e));
 				} catch (RuntimeException e) {
 					failures.put(c, new TranslationException("Unexpected error: " + e,
 							"Report this to Fabricated with logs/fabric-bridge-report.txt (it has the stack trace).", List.of(), e));

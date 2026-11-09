@@ -805,6 +805,79 @@ class PipelineTest {
 	}
 
 	/**
+	 * SEC-6: a class whose attribute says it is 2 GiB long makes ASM 9.8 and older throw an {@link OutOfMemoryError} as
+	 * it reads it, which went past every catch around a mod and stopped the game. As one jar's mixin (which another
+	 * mod's pre-flight reads too) and as another's plain class (remapped on 1.21.x, read by the linkage check on 26.x),
+	 * it disables its own mod, if any, and no other.
+	 */
+	@Test
+	void aClassAskingForMoreMemoryThanAnArrayHoldsStopsNoOtherMod(@TempDir Path game) throws Exception {
+		String tiny = "v1\tofficial\tintermediary\nCLASS\ta\tnet/minecraft/class_1\n";
+		MappingTable table = MappingComposer.compose(new StringReader(tiny), new StringReader("net.minecraft.world.Thing -> a:\n"));
+		for (Namespace ns : Namespace.values()) {
+			Path dir = Files.createDirectories(game.resolve(ns.name()));
+			Path mods = Files.createDirectories(dir.resolve("mods"));
+			Path good = TestJars.create().fabricModJson(TestJars.modJson("good-mod", "1.0", "\"mixins\":[\"good.mixins.json\"]"))
+					.text("good.mixins.json", "{\"required\":true,\"package\":\"com.good.mixin\",\"mixins\":[\"ThingMixin\"]}")
+					.bytes("com/good/mixin/ThingMixin.class", mixinClass("com/good/mixin/ThingMixin", "tick"))
+					.write(mods.resolve("good.jar"));
+			Path mixin = TestJars.create().fabricModJson(TestJars.modJson("hostile-mixin", "1.0", "\"mixins\":[\"hostile.mixins.json\"]"))
+					.text("hostile.mixins.json", "{\"required\":true,\"package\":\"com.hostile.mixin\",\"mixins\":[\"ThingMixin\"]}")
+					.bytes("com/hostile/mixin/ThingMixin.class", TestJars.classWithAnOversizedAttribute("com/hostile/mixin/ThingMixin"))
+					.write(mods.resolve("hostile-mixin.jar"));
+			Path plain = TestJars.create().fabricModJson(TestJars.modJson("hostile-class", "1.0", ""))
+					.bytes("com/hostile/Plain.class", TestJars.classWithAnOversizedAttribute("com/hostile/Plain"))
+					.write(mods.resolve("hostile-class.jar"));
+
+			Pipeline.Result result = Pipeline.run(input(dir, List.of(good, mixin, plain), ns, Map.of(TARGET, targetClass()),
+					(cache, path) -> new Pipeline.Mappings(() -> table, "test-hash"), List.of()));
+
+			String report = ns + ": " + result.report().render();
+			Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+			// Remapped on 1.21.x, the plain class disables its mod too; on 26.x the linkage check reports it unreadable, as
+			// any corrupt class, which the JVM and the platform's ASM refuse to load.
+			assertEquals(ns == Namespace.INTERMEDIARY ? Set.of("good-mod") : Set.of("good-mod", "hostile-class"), loaded, report);
+			Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("hostile-mixin")).findFirst().orElseThrow();
+			assertTrue(row.status() == Report.Status.DISABLED && row.detail().contains("more memory than"), report);
+			assertTrue(ns == Namespace.INTERMEDIARY || report.contains("hostile-class: ? -> missing class unreadable class file"), report);
+		}
+	}
+
+	/**
+	 * SEC-10: Fabric's class path ignores a jar's module descriptor, where NeoForge's loader makes the jar the module it
+	 * describes, whose layer then fails to resolve if it requires a module nobody has (FML 12, read in its classes).
+	 * The descriptors, at the root and a multi-release jar's, are left out, as the jars without one load.
+	 */
+	@Test
+	void aJarsModuleDescriptorIsLeftOutAsFabricsClassPathIgnoresIt(@TempDir Path game) throws Exception {
+		ClassWriter descriptor = new ClassWriter(0);
+		descriptor.visit(Opcodes.V17, Opcodes.ACC_MODULE, "module-info", null, null, null);
+		org.objectweb.asm.ModuleVisitor module = descriptor.visitModule("hostile.mod", 0, null);
+		module.visitRequire("java.base", Opcodes.ACC_MANDATED, null);
+		module.visitRequire("nobody.has.this", 0, null);
+		module.visitEnd();
+		descriptor.visitEnd();
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path described = TestJars.create().fabricModJson(TestJars.modJson("described", "1.0", ""))
+				.bytes("module-info.class", descriptor.toByteArray())
+				.bytes("META-INF/versions/17/module-info.class", descriptor.toByteArray())
+				.bytes("com/described/A.class", TestJars.emptyClass("com/described/A", "java/lang/Object"))
+				.write(mods.resolve("described.jar"));
+		Path plain = TestJars.create().fabricModJson(TestJars.modJson("plain", "1.0", ""))
+				.bytes("com/plain/A.class", TestJars.emptyClass("com/plain/A", "java/lang/Object"))
+				.write(mods.resolve("plain.jar"));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(described, plain), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null, List.of()));
+
+		Map<String, PackageGuard.Decision> packages = result.mods().stream().collect(Collectors.toMap(m -> m.translated().candidate().id(), Pipeline.LoadedMod::packages));
+		assertTrue(packages.get("described").hides("module-info.class") && packages.get("described").hides("META-INF/versions/17/module-info.class"),
+				result.report().render());
+		assertFalse(packages.get("described").hides("com/described/A.class"));
+		assertEquals(Set.of(), packages.get("plain").hiddenFiles(), "a jar without one is left as it is");
+		assertTrue(result.report().render().contains("has a module descriptor"), result.report().render());
+	}
+
+	/**
 	 * A launch whose translations all come from the cache doesn't read the mapping table; a mod asking to map a name
 	 * then has it read (PERF-2).
 	 */
@@ -2872,15 +2945,32 @@ class PipelineTest {
 		api.afterEntrypoints(() -> {
 			throw new IllegalStateException("broken action");
 		});
+		// What else an action can throw (SEC-7): a checked exception Java doesn't see (Kotlin's), an assertion.
+		api.afterEntrypoints(() -> PipelineTest.<RuntimeException>sneakyThrow(new java.io.IOException("undeclared")));
+		api.afterEntrypoints(() -> {
+			throw new AssertionError("asserted");
+		});
 		api.afterEntrypoints(() -> ran.add("third"));
 		assertTrue(ran.isEmpty(), "waits for the entrypoints");
 		List<Throwable> errors = new ArrayList<>();
 		api.markEntrypointsComplete(Set.of("good-mod"), (action, error) -> errors.add(error));
 		assertEquals(List.of("first", "third"), ran, "a throwing action does not stop the others");
-		assertEquals(1, errors.size());
+		assertEquals(3, errors.size());
+		// The JVM's own failure is no action's, as for entrypoints (EntrypointRunner.fatalCause).
+		FabricatedApiImpl waiting = new FabricatedApiImpl(in.fabricatedVersion(), in.fabricApiPlan(), result.report(), result.runtime(), true);
+		waiting.afterEntrypoints(() -> {
+			throw new OutOfMemoryError("heap");
+		});
+		assertThrows(OutOfMemoryError.class, () -> waiting.markEntrypointsComplete(Set.of(), (action, error) -> errors.add(error)));
 		assertEquals(FabricMod.Status.FAILED, api.fabricMod("good-mod").orElseThrow().status());
 		api.afterEntrypoints(() -> ran.add("late"));
 		assertEquals("late", ran.getLast(), "runs right away once the entrypoints ran");
+	}
+
+	/** Throws {@code t} where the compiler doesn't see it, as Kotlin code throws a checked exception. */
+	@SuppressWarnings("unchecked")
+	private static <T extends Throwable> void sneakyThrow(Throwable t) throws T {
+		throw (T) t;
 	}
 
 	@Test
