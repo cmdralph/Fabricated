@@ -15,6 +15,8 @@
     "fabricated-forge-screen-chars.mixins.json": ["fabric-screen-api-v1"]
   },
   "mixins": {
+    "BiomeClimateAccessor": [],
+    "BiomeWeatherWriteMixin": ["fabric-biome-api-v1"],
     "BucketItemEarlyFluidMixin": [],
     "BuiltInRegistriesFreezeMixin": [],
     "BuiltInRegistriesInvoker": [],
@@ -26,6 +28,7 @@
     "IngredientNetworkCodecMixin": [],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
+    "ModifiableBiomeInfoAccessor": [],
     "NamespacedWrapperAliasMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperEarlyWriteMixin": [],
     "NamespacedWrapperEntryAddedMixin": ["fabric-registry-sync-v0"],
