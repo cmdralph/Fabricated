@@ -6,17 +6,18 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.world.item.crafting.Ingredient;
 
 /**
- * A Fabric mod's own ingredient on the network on Forge 61 to 66 (CORPUS-85). Forge's patch makes
+ * A Fabric mod's own ingredient on the network on Forge 52 and 61 to 66 (CORPUS-85, NET-13). Forge's patch makes
  * {@code Ingredient.CONTENTS_STREAM_CODEC} write each ingredient through its {@code serializer()}, which throws for a
  * subclass that doesn't override it. A Fabric mod's subclass never does, because Fabric has no such method: Fabric
  * API's custom ingredients ({@code CustomIngredientImpl}) are one. So its recipe sync threw on any recipe with one, and
  * the player's connection to the world they joined dropped.
  *
- * <p>Such an ingredient is written as vanilla writes it: a marker, then vanilla's form through the codec Forge keeps
- * for vanilla's ingredients ({@code VANILLA_CONTENTS_STREAM_CODEC}). That codec is the one Fabric API wraps with its
- * custom ingredient form, as it wraps vanilla's {@code CONTENTS_STREAM_CODEC} on Fabric, so a Fabric API custom
- * ingredient goes as Fabric API sends it. Without the marker, Forge's reader would take the -1 that starts Fabric
- * API's form for its own. Every other ingredient is left to Forge's codec, and so are the bytes it writes.
+ * <p>Such an ingredient is written as vanilla writes it: a marker, then vanilla's form, wrapped with Fabric API's
+ * custom ingredient form as Fabric API wraps vanilla's {@code CONTENTS_STREAM_CODEC} on Fabric, so a Fabric API custom
+ * ingredient goes as Fabric API sends it. Forge 61 to 66 keep vanilla's codec for vanilla's ingredients
+ * ({@code VANILLA_CONTENTS_STREAM_CODEC}), which Fabric API's mixin wraps; Forge 52 keeps none, and the in-game mod
+ * makes vanilla's and wraps it. Without the marker, Forge's reader would take the -1 that starts Fabric API's form for
+ * its own. Every other ingredient is left to Forge's codec, and so are the bytes it writes.
  *
  * <p>Only a class of a Fabric mod's module that doesn't override {@code serializer()} is sent this way. A Forge mod's
  * subclass without one still gets Forge's error.
@@ -25,7 +26,7 @@ public final class FabricIngredientCodec {
 	/**
 	 * The VarInt that starts a Fabric mod's ingredient in vanilla's form. Neither reader uses it: Forge's custom
 	 * ingredients start with -1, Fabric API's custom form also starts with -1, and vanilla's holder set starts with 0 (a
-	 * tag) or with its number of items plus 1.
+	 * tag) or with its number of items plus 1 (1.21.1's item list with its number of items).
 	 */
 	static final int VANILLA_FORM = -2;
 
@@ -61,7 +62,7 @@ public final class FabricIngredientCodec {
 
 	/**
 	 * @param forge   Forge's {@code CONTENTS_STREAM_CODEC}
-	 * @param vanilla Forge's {@code VANILLA_CONTENTS_STREAM_CODEC}, as Fabric API's mixin made it when it's installed
+	 * @param vanilla vanilla's form, with Fabric API's custom form around it when Fabric API is installed
 	 * @return Forge's codec, writing a Fabric mod's ingredient in vanilla's form after {@link #VANILLA_FORM} and reading
 	 *         that back
 	 */

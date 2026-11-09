@@ -3,6 +3,22 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-09: Fabric mods' own model loaders on Forge 52, and Forge 47's and Forge 61 to 66's own checks on it (MODEL-5, CI-8)
+
+- **MODEL-5** (P2), fixed: Forge 52 failed a block model naming a Fabric mod's own loader, as Forge 47 did before
+  CORPUS-92; Forge 47's model loader code serves it from `mc/forge-shared/1.20.1-1.21.1`, and the renderer test mod's
+  key check asks each platform's forms (`FrapiPlatform`). The client's no-failed check gates on every forge-legacy
+  version.
+- **CI-8**: Forge 47's own checks and Forge 61 to 66's network ingredient, load condition and damage event checks run
+  on Forge 52, shared in `mc/forge-shared` (through the shared `TestCompat` where 1.21.1 names things otherwise). They
+  found NET-13 (P1, a Fabric mod's own ingredient and Fabric API's custom ones threw in Forge 52's network codec, as
+  CORPUS-85 on Forge 61 to 66), DROP-1 (P1, Forge 52 took a dying entity's drops before Porting Lib's hook, as
+  CORPUS-105) and ACC-5 (P1, no bridges of the fields Forge 52 replaced, as CORPUS-37 and CORPUS-94), each fixed with
+  Forge 47's or Forge 61's code; the language file check needs no fix there. Open in CI-8: a brewing recipe and a
+  recipe condition check in 1.21.1's APIs.
+- Verified locally: Forge 52's and Forge 47's server and client parts, and Forge 66's server part, pass with 0 FAIL;
+  without the fixes the Forge 52 runs fail the drop capture check and disable the test mod over its accessors.
+
 ## 2026-11-09: Forge 52 at parity (task 3), the security and robustness review (task 5)
 
 - **Forge 52 (1.21.1)**: ITEM-1, INTERACT-1, FRAPI-11, CFG-4, FUEL-2, LAMBDA-10 and PACK-10 fixed, HUD-5 closed (no

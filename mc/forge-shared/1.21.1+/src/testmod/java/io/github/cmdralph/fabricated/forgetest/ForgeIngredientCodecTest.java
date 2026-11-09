@@ -7,9 +7,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
+import io.github.cmdralph.fabricated.testmod.TestCompat;
 import io.netty.buffer.Unpooled;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -22,10 +22,11 @@ import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraftforge.common.crafting.ingredients.CompoundIngredient;
 
 /**
- * The forge test mod's part for ingredients on the network, as Fabric API's recipe sync writes a recipe's slots:
- * through vanilla's {@code Ingredient.CONTENTS_STREAM_CODEC} and {@code Ingredient.OPTIONAL_CONTENTS_STREAM_CODEC}.
+ * The Forge test mods' part for ingredients on the network, as Fabric API's recipe sync writes a recipe's slots:
+ * through vanilla's {@code Ingredient.CONTENTS_STREAM_CODEC} and, from 1.21.2,
+ * {@code Ingredient.OPTIONAL_CONTENTS_STREAM_CODEC} ({@code TestCompat.slot}).
  * <ul>
- * <li>An empty slot (CORPUS-83). Forge's patch threw writing the empty one. It must go as vanilla's empty item list
+ * <li>An empty slot (CORPUS-83). Forge 61's patch threw writing the empty one. It must go as vanilla's empty item list
  * and come back empty, and an item's and a tag's ingredients must come back as they went, Forge's codec reading
  * them.</li>
  * <li>A Fabric mod's own ingredient, a subclass without Forge's {@code serializer()} (CORPUS-85). Forge's patch threw
@@ -49,14 +50,14 @@ public final class ForgeIngredientCodecTest {
 	private static void checkEmptySlots(MinecraftServer server) {
 		List<String> failed = roundTrips(server, buf -> {
 			List<String> found = new ArrayList<>();
-			StreamCodec<RegistryFriendlyByteBuf, List<Optional<Ingredient>>> slots = Ingredient.OPTIONAL_CONTENTS_STREAM_CODEC.apply(ByteBufCodecs.list());
+			StreamCodec<RegistryFriendlyByteBuf, List<Optional<Ingredient>>> slots = TestCompat.slot().apply(ByteBufCodecs.list());
 			Ingredient stone = Ingredient.of(Items.STONE);
-			Ingredient planks = Ingredient.of(BuiltInRegistries.ITEM.getOrThrow(ItemTags.PLANKS));
-			Ingredient.OPTIONAL_CONTENTS_STREAM_CODEC.encode(buf, Optional.empty());
+			Ingredient planks = TestCompat.ingredient(ItemTags.PLANKS);
+			TestCompat.slot().encode(buf, Optional.empty());
 			int empty = buf.readableBytes();
-			if (empty != 1 || buf.getByte(0) != 1) found.add("an empty slot is written as " + empty + " byte(s), not vanilla's empty list");
+			if (empty != 1 || buf.getByte(0) != TestCompat.EMPTY_SLOT) found.add("an empty slot is written as " + empty + " byte(s), not vanilla's empty list");
 			slots.encode(buf, List.of(Optional.of(stone), Optional.empty(), Optional.of(planks)));
-			if (Ingredient.OPTIONAL_CONTENTS_STREAM_CODEC.decode(buf).isPresent()) found.add("an empty slot is read back as an ingredient");
+			if (TestCompat.slot().decode(buf).isPresent()) found.add("an empty slot is read back as an ingredient");
 			List<Optional<Ingredient>> read = slots.decode(buf);
 			if (read.size() != 3) {
 				found.add("three slots are read back as " + read.size());
@@ -82,7 +83,7 @@ public final class ForgeIngredientCodecTest {
 			Ingredient read = Ingredient.CONTENTS_STREAM_CODEC.decode(buf);
 			if (!matchesOnly(read, Items.STONE)) found.add("the mod's ingredient is read back as " + read);
 			Ingredient compound = CompoundIngredient.of(Ingredient.of(Items.DIRT), own);
-			StreamCodec<RegistryFriendlyByteBuf, List<Optional<Ingredient>>> slots = Ingredient.OPTIONAL_CONTENTS_STREAM_CODEC.apply(ByteBufCodecs.list());
+			StreamCodec<RegistryFriendlyByteBuf, List<Optional<Ingredient>>> slots = TestCompat.slot().apply(ByteBufCodecs.list());
 			slots.encode(buf, List.of(Optional.of(own), Optional.empty(), Optional.of(compound)));
 			List<Optional<Ingredient>> slotsRead = slots.decode(buf);
 			if (slotsRead.size() != 3) {
@@ -122,8 +123,8 @@ public final class ForgeIngredientCodecTest {
 			Ingredient.CONTENTS_STREAM_CODEC.encode(buf, stoneOrDirt);
 			Ingredient read = Ingredient.CONTENTS_STREAM_CODEC.decode(buf);
 			if (!isCustom(custom, read) || !matchesOnly(read, Items.STONE, Items.DIRT)) found.add("a custom ingredient is read back as " + read);
-			Ingredient.OPTIONAL_CONTENTS_STREAM_CODEC.encode(buf, Optional.of(stoneOrDirt));
-			Optional<Ingredient> slot = Ingredient.OPTIONAL_CONTENTS_STREAM_CODEC.decode(buf);
+			TestCompat.slot().encode(buf, Optional.of(stoneOrDirt));
+			Optional<Ingredient> slot = TestCompat.slot().decode(buf);
 			if (!slot.map(i -> isCustom(custom, i) && matchesOnly(i, Items.STONE, Items.DIRT)).orElse(false)) found.add("a custom ingredient's slot is read back as " + slot);
 			return found;
 		});

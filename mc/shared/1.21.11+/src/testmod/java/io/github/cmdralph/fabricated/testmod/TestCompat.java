@@ -11,12 +11,20 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.RegistrationInfo;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.block.Block;
@@ -34,6 +42,12 @@ public final class TestCompat {
 	 * its source reads (PROVIDER-8); null where it doesn't.
 	 */
 	static final @Nullable String PROVIDERS_DEFAULT_PACK = null;
+
+	/**
+	 * The first byte of an empty recipe slot on the network ({@link #slot}): the holder set codec's length prefix of an
+	 * empty item list.
+	 */
+	public static final int EMPTY_SLOT = 1;
 
 	private TestCompat() {
 	}
@@ -59,8 +73,13 @@ public final class TestCompat {
 		return registries.lookupOrThrow(key);
 	}
 
-	static @Nullable Entity create(EntityType<?> type, Level level) {
+	public static @Nullable Entity create(EntityType<?> type, Level level) {
 		return type.create(level, EntitySpawnReason.TRIGGERED);
+	}
+
+	/** Hurts the entity as the game does, on the server; whether it was hurt. */
+	public static boolean hurt(LivingEntity entity, ServerLevel level, DamageSource source, float amount) {
+		return entity.hurtServer(level, source, amount);
 	}
 
 	/** The highest block y in the level. */
@@ -88,5 +107,15 @@ public final class TestCompat {
 	/** The lifecycle the registry gave the entry, null for none. */
 	public static <T> @Nullable Lifecycle lifecycle(Registry<T> registry, ResourceKey<T> key) {
 		return registry.registrationInfo(key).map(RegistrationInfo::lifecycle).orElse(null);
+	}
+
+	/** An ingredient of the tag's items. */
+	public static Ingredient ingredient(TagKey<Item> tag) {
+		return Ingredient.of(BuiltInRegistries.ITEM.getOrThrow(tag));
+	}
+
+	/** A recipe's slot on the network, as a recipe's codec writes its slots, an empty one as an empty item list. */
+	public static StreamCodec<RegistryFriendlyByteBuf, Optional<Ingredient>> slot() {
+		return Ingredient.OPTIONAL_CONTENTS_STREAM_CODEC;
 	}
 }
