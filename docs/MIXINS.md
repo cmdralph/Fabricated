@@ -1692,11 +1692,12 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.testmod.frapi.mixin` 
 |---|---|---|---|---|---|---|---|---|
 | client | McRuntimeTestHoldMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedFrapiTest$holdForMovingBlocks | "tickHook" | HEAD cancellable=true | — | default |
 
-## Forge 52 (`forge-legacy`): 36 mixins in 10 configs
+## Forge 52 (`forge-legacy`): 35 mixins in 9 configs
 
 Minecraft 1.21.1, in Mojang's names without a refmap, as on Forge 61 to 66. The mixins come from `mc/forge-shared` and its
 groups, as the source column says, but `NamespacedWrapperAliasMixin`, over 1.21.1's lookups, `LoadingRegistriesMixin`, on
 1.21.1's tagless wrapper of the registries, and `LiquidBlockRendererSpritesMixin`, Forge 52's fluid sprites (FLUID-4).
+Its test mod's `fabricated-forge-testmod.mixins.json` lists none: the recorded frames check is the shared test mod's.
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1709,7 +1710,6 @@ groups, as the source column says, but `NamespacedWrapperAliasMixin`, over 1.21.
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-color.mixins.json` | `io.github.cmdralph.fabricated.forge.color.mixin` | 1.21.1 | client 2 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.21.1 | client 1 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.21.1 | client 4 | 1 | — | none |
-| `mc/forge-legacy/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
 
 ### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json`
 
@@ -1844,13 +1844,5 @@ Versions: 1.21.1 · package `net.fabricmc.fabric.mixin.client.particle` · requi
 | client | ParticleManagerAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Accessor → getParticleAtlasTexture | "textureAtlas" |  | — | default |
 | client | ParticleManagerAccessor$SimpleSpriteProviderAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine$MutableSpriteSet (`targets`) | @Accessor → getSprites | "sprites" |  | — | default |
 | client | ParticleManagerMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Inject → onRegisterDefaultFactories | "registerProviders()V" | RETURN | — | default |
-
-### `mc/forge-legacy/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json`
-
-Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forgetest.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
-
-| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
-|---|---|---|---|---|---|---|---|---|
-| mixins | ForgeRecordedFramesMixin | mc/forge-shared (1.21.1) | io.github.cmdralph.fabricated.forgetest.ForgeRecordedFramesTest$Probe | @ModifyVariable → fabricatedForgeTest$kept | "probe" | INVOKE `L…/String;valueOf(L…/Object;)L…/String;` | — | default |
 
 ---
