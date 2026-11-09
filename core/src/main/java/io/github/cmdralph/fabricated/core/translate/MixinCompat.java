@@ -71,6 +71,7 @@ public final class MixinCompat {
 			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false),
 			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false));
 	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
+	private static final Pattern MINECRAFT = Pattern.compile("(\\d+)\\.(\\d+)(?:\\.(\\d+))?");
 
 	private MixinCompat() {
 	}
@@ -150,6 +151,34 @@ public final class MixinCompat {
 	public static int lastCompatibilityLevel(String runtimeMixinVersion) {
 		Upstream upstream = upstream(runtimeMixinVersion);
 		return upstream == null ? 0 : upstream.lastLevel();
+	}
+
+	/**
+	 * The Java release a Minecraft version runs on, at the least: 17 up to 1.20.4, 21 from 1.20.5 on, 25 on 26.x; 0 for a
+	 * version not known here.
+	 */
+	public static int minecraftJava(String minecraftVersion) {
+		if (minecraftVersion == null) return 0;
+		Matcher m = MINECRAFT.matcher(minecraftVersion);
+		if (!m.matches()) return 0;
+		int major = Integer.parseInt(m.group(1)), minor = Integer.parseInt(m.group(2));
+		int patch = m.group(3) == null ? 0 : Integer.parseInt(m.group(3));
+		if (major >= 26) return 25;
+		if (major != 1 || minor < 18) return 0;
+		return minor > 20 || minor == 20 && patch >= 5 ? 21 : 17;
+	}
+
+	/**
+	 * The compatibility level a mixin config declaring {@code declared} ({@code JAVA_n}) can load at: Mixin stops the game
+	 * reading a level it doesn't know (LEVEL-1) or one above the running Java (LEVEL-2), so the level is lowered to the
+	 * last the running Mixin knows and to the Java the Minecraft version runs on. Mixin checks the language features a
+	 * mixin uses against the level, and only logs a mixin class compiled for a newer Java. {@code declared} when it can
+	 * load as it is, or when neither bound is known here.
+	 */
+	public static int loadableLevel(int declared, String runtimeMixinVersion, String minecraftVersion) {
+		int bound = lastCompatibilityLevel(runtimeMixinVersion), java = minecraftJava(minecraftVersion);
+		if (bound == 0 || java != 0 && java < bound) bound = java;
+		return bound == 0 ? declared : Math.min(declared, bound);
 	}
 
 	/**
