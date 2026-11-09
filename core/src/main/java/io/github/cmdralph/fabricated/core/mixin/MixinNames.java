@@ -69,6 +69,8 @@ final class MixinNames {
 
 	/** NeoForge's marker for the enums only its own enum extension system may extend. */
 	static final String EXTENSIBLE_ENUM = "net/neoforged/fml/common/asm/enumextension/IExtensibleEnum";
+	/** Forge's marker of an enum it makes extensible, whose enum extender writes its {@code create} factories (ENUM-8). */
+	static final String FORGE_EXTENSIBLE_ENUM = "net/minecraftforge/common/IExtensibleEnum";
 
 	static final String MODIFY_VARIABLE = "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;";
 

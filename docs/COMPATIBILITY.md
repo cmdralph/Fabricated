@@ -1840,6 +1840,10 @@ What else differs on Forge, for Fabric mods in general:
   declared as the other mixin declares the field, and Mixin merges the two into one field, as on Fabric (CORPUS-74:
   the test mod's tick counter, all five, server run); one that can't be (a static shadow of an instance field, a
   writable one of a final field) disables its mod, or leaves its mixin out where it can.
+- **Mixins adding constants to an enum Forge makes extensible:** a mod's `@Mutable` shadow (or accessor) of such an
+  enum's values array, as FrozenLib's `MobCategory` mixin has, loses `@Mutable`, so Forge's enum extender, which runs
+  after Mixin and finds the array only while it is final, still finds it, and makes it writable for the mod (ENUM-8,
+  UNVERIFIED in the game). Mixin's own `@Mutable` had stopped the game as the enum loaded.
 - **Two mixins' unique fields of one name:** for the same reason, Forge's Mixin renames a private `@Unique` field only
   when its class declares one of that name, not when another mixin adds it, and two mixins' fields became one, where
   Fabric's Mixin keeps a field each: Fabric API's screen mixin and SpruceUI's both keep `tickingScreen` in `Minecraft`,
