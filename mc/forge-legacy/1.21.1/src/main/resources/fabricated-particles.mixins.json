@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.fabricmc.fabric.mixin.client.particle",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "BlockDustParticleMixin",
+    "ParticleManagerAccessor",
+    "ParticleManagerAccessor$SimpleSpriteProviderAccessor",
+    "ParticleManagerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

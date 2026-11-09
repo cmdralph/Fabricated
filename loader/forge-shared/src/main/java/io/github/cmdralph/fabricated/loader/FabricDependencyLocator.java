@@ -268,7 +268,7 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 					info.build(), !FMLLoader.isProduction(), gameClasses, ForgeStack.gameFiles(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, mods, forgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath, minecraft.getFilePath()),
-					new String[0], ForgeStack.descriptor());
+					new String[0], ForgeStack.descriptor(mcVersion));
 
 			result = Pipeline.run(input).alsoProvidedElsewhere(providedModules);
 			loaderCopiesLeftOut.forEach(n -> result.report().line("Fabric API providers", n));

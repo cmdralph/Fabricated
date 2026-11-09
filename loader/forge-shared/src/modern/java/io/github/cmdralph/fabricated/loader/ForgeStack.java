@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -21,20 +22,23 @@ import io.github.cmdralph.fabricated.core.Pipeline;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
+import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.remap.MappingComposer;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.remap.OfficialClasses;
+import io.github.cmdralph.fabricated.core.translate.ModsTomlWriter;
 import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
 
 /**
- * What Forge 61 to 66 do below the game where Forge 47 does otherwise ({@code loader/forge-shared/src/fml47}): their
- * securemodules, upstream Mixin 0.8.7, and the game in Mojang's names, as their installer leaves it (docs/PORTING.md
- * §4.1, read in the forge branch's server smoke): in {@code <libraries>/net/minecraft/<side>/<mc>/},
- * {@code <side>-<mc>-unpacked.jar} is vanilla as Mojang's bundler holds it (obfuscated on 1.21.11, in Mojang's names on
- * 26.x), and on 1.21.11 {@code -official.jar} is vanilla in Mojang's names and {@code -mappings.tsrg} Mojang's mappings.
- * Forge's own jar is among the same libraries, and is the path of the {@code minecraft} mod file.
+ * What Forge 52 and 61 to 66 do below the game where Forge 47 does otherwise ({@code loader/forge-shared/src/fml47}):
+ * their securemodules (2.2.24 on Forge 52 and 61), upstream Mixin 0.8.7, and the game in Mojang's names, as their
+ * installer leaves it (docs/PORTING.md §4.1, read in the forge branch's server smoke, and in Forge 52's install profile,
+ * which names the same files): in {@code <libraries>/net/minecraft/<side>/<mc>/}, {@code <side>-<mc>-unpacked.jar} is
+ * vanilla as Mojang's bundler holds it (obfuscated on 1.21.1 and 1.21.11, in Mojang's names on 26.x), and on 1.21.1 and
+ * 1.21.11 {@code -official.jar} is vanilla in Mojang's names and {@code -mappings.tsrg} Mojang's mappings. Forge's own
+ * jar is among the same libraries, and is the path of the {@code minecraft} mod file.
  */
 final class ForgeStack {
 	/** securemodules takes a mod file's manifest from its last path, and searches that first: the overlay goes last. */
@@ -43,9 +47,27 @@ final class ForgeStack {
 	private ForgeStack() {
 	}
 
-	/** Forge's ({@link PlatformDescriptor#FORGE}). */
-	static PlatformDescriptor descriptor() {
-		return PlatformDescriptor.FORGE;
+	/**
+	 * Forge 52's descriptor (Minecraft 1.21.1): Forge's, with a mod's pack metadata in 1.21.1's form. Forge 52 builds each
+	 * mod's pack with vanilla's {@code Pack.readPackMetadata} (its {@code ResourcePackLoader}), which gives no pack for
+	 * metadata without a {@code pack_format}, the field 1.21.1 requires where 1.21.9 and later read {@code min_format} and
+	 * {@code max_format}: 1.21.1's data pack format, with its resource pack format among those supported, as a mod's pack
+	 * holds both.
+	 */
+	private static final PlatformDescriptor FORGE_52 = new PlatformDescriptor.Forge() {
+		@Override
+		public byte[] packMetadata(ModsTomlWriter.Spec spec) {
+			Map<String, Object> pack = new LinkedHashMap<>();
+			pack.put("description", spec.displayName());
+			pack.put("pack_format", 48);
+			pack.put("supported_formats", List.of(34, 48));
+			return (Json.write(Map.of("pack", pack), true) + "\n").getBytes(StandardCharsets.UTF_8);
+		}
+	};
+
+	/** Forge's ({@link PlatformDescriptor#FORGE}), or for Forge 52's Minecraft 1.21.1 {@link #FORGE_52}. */
+	static PlatformDescriptor descriptor(String minecraftVersion) {
+		return "1.21.1".equals(minecraftVersion) ? FORGE_52 : PlatformDescriptor.FORGE;
 	}
 
 	/** The files of the game a Fabric mod reads through the {@code minecraft} mod container: the {@code minecraft} mod file. */

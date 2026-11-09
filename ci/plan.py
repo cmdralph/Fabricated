@@ -4,9 +4,10 @@ ci/checks.tsv).
 
 A branch holds one platform's version folders, mc/<platform>/<version> with a gradle.properties (main NeoForge's, forge
 and forge-legacy theirs). A path belongs to a platform when it is in mc/<platform>/, loader/<platform>/ or ci/<platform>/,
-or is mc/platform-<platform>.gradle; mc/forge-shared, loader/forge-shared, ci/forge-shared and mc/forge-mixinextras.gradle
-belong to both Forge platforms. Documentation, release.yml and the CurseForge upload touch no version. Anything else is
-shared and touches every version the tree holds.
+or is mc/platform-<platform>.gradle; mc/forge-shared, loader/forge-shared, ci/forge-shared, mc/forge-mixinextras.gradle
+and mc/platform-forge.gradle (ForgeGradle's build, which forge-legacy's 1.21.1 applies too) belong to both Forge
+platforms. Documentation, release.yml and the CurseForge upload touch no version. Anything else is shared and touches
+every version the tree holds.
 
 The versions a change touches: per touched platform, the versions whose own folders changed when nothing else of the
 platform did, else every version. The fast job boots one: the version whose folder alone changed, else the newest.
@@ -38,7 +39,7 @@ PLATFORMS = ("neoforge", "forge", "forge-legacy")
 BASE = {"neoforge": "main", "forge": "forge", "forge-legacy": "forge-legacy"}
 BASE_REFS = tuple(f"refs/heads/{branch}" for branch in BASE.values())
 LOADER_PROPERTY = {"neoforge": "neoforge_version", "forge": "forge_version", "forge-legacy": "forge_version"}
-FORGE_SHARED = ("mc/forge-shared/", "loader/forge-shared/", "ci/forge-shared/", "mc/forge-mixinextras.gradle")
+FORGE_SHARED = ("mc/forge-shared/", "loader/forge-shared/", "ci/forge-shared/", "mc/forge-mixinextras.gradle", "mc/platform-forge.gradle")
 NO_TARGET = re.compile(r"^(docs/|.*\.md$|\.github/workflows/release\.yml$|ci/curseforge)")
 FABRIC_API_PLAN = "src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json"
 # Values a plan hands to a shell or a cache key: a branch's files decide them, so they are checked.
@@ -164,6 +165,9 @@ def why_not(row, platform, version=None):
     return f"not on {version}" if row[platform].strip() else f"{platform}'s test mods have no such check"
 
 
+PIN = re.compile(r"\{(\w+)(?:\.([\w-]+))?\}")
+
+
 def runs(root, platform, version, part, extended, names=()):
     """The part's runs for the version, in the manifest's order, with the version's pins filled into their mods."""
     pins = target(root, platform, version)
@@ -180,7 +184,11 @@ def runs(root, platform, version, part, extended, names=()):
             continue
         if names and row["run"] not in names:
             continue
-        row["mods"] = re.sub(r"\{(\w+)(?:\.([\w-]+))?\}", fill, row["mods"])
+        filled = [fill(m) for m in PIN.finditer(row["mods"])]
+        # A run of pinned builds the version pins none of has nothing to run (an empty list would fetch the corpus).
+        if not all(filled):
+            continue
+        row["mods"] = PIN.sub(fill, row["mods"])
         result.append(row)
     return result
 
@@ -195,8 +203,10 @@ def parts(root, platform, version, extended):
     found = {}
     for row in read_table(HERE / "runs.tsv"):
         if applies(row, platform, version) and (row["extended"] != "yes" or extended):
-            found.setdefault(row["part"], set()).add(row["side"])
-    return {part: " ".join(sorted(sides, reverse=True)) for part, sides in found.items()}
+            found.setdefault(row["part"], set())
+    for part, sides in found.items():
+        sides.update(row["side"] for row in runs(root, platform, version, part, extended))
+    return {part: " ".join(sorted(sides, reverse=True)) for part, sides in found.items() if sides}
 
 
 def git(*args):

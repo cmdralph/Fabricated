@@ -7,6 +7,7 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.GamePackages;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
 
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
@@ -122,6 +123,11 @@ final class PreflightAsm {
 			if (m.name.equals(name) && m.desc.equals(desc)) return m;
 		}
 		return null;
+	}
+
+	/** Whether {@code method} is marked deprecated. */
+	static boolean deprecated(MethodNode method) {
+		return (method.access & Opcodes.ACC_DEPRECATED) != 0 || Annotations.find(method, "Ljava/lang/Deprecated;") != null;
 	}
 
 	static String simpleName(String desc) {

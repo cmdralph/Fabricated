@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.testmod;
 
+import java.util.Optional;
 import java.util.function.Consumer;
 
 import org.jspecify.annotations.Nullable;
@@ -7,6 +8,7 @@ import org.jspecify.annotations.Nullable;
 import com.mojang.serialization.Lifecycle;
 
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.minecraft.core.Holder;
 import net.minecraft.core.RegistrationInfo;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
@@ -19,10 +21,15 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 
-/** Game calls the shared test mod parts make, as Minecraft 1.21.1 names them. */
-final class TestCompat {
+/**
+ * Game calls the shared test mod parts make, as Minecraft 1.21.1 names them. Public for the checks of Forge's own hooks
+ * (mc/forge-shared), in another package.
+ */
+public final class TestCompat {
 	/**
 	 * Why another mod's fabric-resource-loader-v0 leaves a built-in resource pack its mod enables by default unselected, as
 	 * its source reads (PROVIDER-8); null where it doesn't.
@@ -43,8 +50,13 @@ final class TestCompat {
 		return ResourceLocation.fromNamespaceAndPath(namespace, path);
 	}
 
-	static <T> T value(Registry<T> registry, ResourceLocation id) {
+	public static <T> T value(Registry<T> registry, ResourceLocation id) {
 		return registry.get(id);
+	}
+
+	/** The entry's holder in the registry, if it has one. */
+	public static <T> Optional<Holder.Reference<T>> holder(Registry<T> registry, ResourceKey<T> key) {
+		return registry.getHolder(key);
 	}
 
 	static ResourceLocation location(ResourceKey<?> key) {
@@ -69,8 +81,13 @@ final class TestCompat {
 		return properties;
 	}
 
-	static Item.Properties withId(Item.Properties properties, ResourceKey<Item> key) {
+	public static Item.Properties withId(Item.Properties properties, ResourceKey<Item> key) {
 		return properties;
+	}
+
+	/** A block entity type of these blocks, without a data fixer type. */
+	static <T extends BlockEntity> BlockEntityType<T> blockEntityType(BlockEntityType.BlockEntitySupplier<T> factory, Block... blocks) {
+		return BlockEntityType.Builder.of(factory, blocks).build(null);
 	}
 
 	static <T extends Entity> EntityType<T> build(EntityType.Builder<T> builder, ResourceKey<EntityType<?>> key) {
