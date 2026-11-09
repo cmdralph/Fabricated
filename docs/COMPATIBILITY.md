@@ -46,10 +46,10 @@ their sections below) and fixes the roadmap lists, each named in `ci/neoforge/sm
 configuration task with the integrated server, an extended menu opens with its data, a Mod Menu config screen
 factory is registered with NeoForge, and no test mod check reports a failure.
 
-CI also starts the client with the full Fabric API jar. The run itself is informational, but the checks CI then makes
-in its log are gates: Fabric's renderer API, model formats and client modules on 26.x, model loading and the renderer
-API on 1.21.11, the renderer API and client modules on 1.21.1. It joins its world and passes every client check on every
-version. On 26.x every Fabric API
+CI also starts the client with the full Fabric API jar, a gate since task 7: it joins its world and passes every client
+check on every version. The checks CI then makes in its log are gates too: Fabric's renderer API, model formats and
+client modules on 26.x, model loading and the renderer API on 1.21.11, the renderer API and client modules on 1.21.1.
+On 26.x every Fabric API
 module loads on the client, the renderer API, Indigo and model loading included, and on 1.21.11 too. That run checks on
 1.21.11 that a model file of a Fabric type is read by its Fabric deserializer and that Fabric block models are drawn in
 chunk sections. On the dedicated server no Fabric API module is disabled.
@@ -94,7 +94,7 @@ How to read the table:
 | fabric-entity-events-v1 | native | native | native | native | native |
 | fabric-events-interaction-v0 | native | native | native | native | native |
 | fabric-dimensions-v1 | loads | loads | loads | loads | loads |
-| fabric-loot-api-v3 | native (v2 loads too) | native | native | native | native |
+| fabric-loot-api-v3 | native (v2 loads too) | native (v2 loads too) | native | native | native |
 | fabric-resource-conditions-api-v1 | loads | loads | loads | loads | loads |
 | fabric-tag-api-v1 | loads | loads | loads | loads | loads |
 | fabric-advancement-api-v1 | — | — | — | loads | loads |
@@ -115,6 +115,8 @@ How to read the table:
 | fabric-renderer-api-v1, fabric-renderer-indigo | client (see below) | client (see below) | client (see below) | client (see below) | client (see below) |
 | fabric-data-generation-api-v1 (its classes; it generates nothing unless `fabric-api.datagen` is set; its tag appender mixins, and on 26.3 its loot sub-provider mixins, are left out) | loads | loads | loads | loads | loads |
 | fabric-gametest-api-v1, client-gametest | unsupported | unsupported | unsupported | unsupported | unsupported |
+| 0.116's deprecated modules: fabric-command-api-v1, fabric-commands-v0, fabric-rendering-data-attachment-v1 | loads | — | — | — | — |
+| 0.116's client-only modules: fabric-client-tags-api-v1 and the deprecated fabric-blockrenderlayer-v1, fabric-keybindings-v0, fabric-renderer-registries-v1, fabric-rendering-v0 | client; load on the client | — | — | — | — |
 
 ### Minecraft 1.21.1
 
@@ -830,7 +832,8 @@ every block through that renderer, so Fabric block models show in the world. Fab
   (`sodium:options`, see *Custom values* below).
 
 CI runs Sodium and Iris for NeoForge (from Modrinth) with Fabric API and a Fabric model test mod on 26.1.2, 26.2 and
-26.3, and checks each of these. Shaders weren't enabled in that run. A Fabric addon's mixins into Sodium are checked
+26.3, and checks each of these, as gates (the run's own smoke checks too since task 7); a second run with CI's shader
+pack is a gate since task 7 as well. A Fabric addon's mixins into Sodium are checked
 against the installed Sodium for NeoForge before the game starts, like mixins into the game: one that needs Sodium's
 Fabric-only classes, or members its NeoForge build lacks, is reported and the addon disabled instead of crashing.
 
@@ -839,13 +842,14 @@ one (`fabric-renderer-api-v1:contains_renderer`, read in its 1.21.11 source), so
 renderer API had no renderer: Fabric block models stayed invisible and a Fabric mod building a mesh would fail. Once
 the client initializers ran, Fabricated registers Indigo's renderer when none registered (on every version; Indigo's
 own hooks stay off then), and Sodium draws a Fabric block model from the parts Fabricated makes from its quads.
-CI's informational 1.21.11 run with Sodium for NeoForge saw the test model and the multipart part with it meshed in
-Sodium's own section level (run 374; run 372, without the fallback, had no parts).
+CI's 1.21.11 run with Sodium for NeoForge, a gate since task 7, sees the test model and the multipart part with it
+meshed in Sodium's own section level (first in run 374; run 372, without the fallback, had no parts).
 
 **Their Fabric builds** (NeoForge and Forge, every version; on Forge, `docs/FORGE.md`).
 Sodium's Fabric build loads by default, and Iris's with it. CI runs them with Fabric API and the renderer test mod on
 every version Modrinth has them for, as a gate: the client reaches a world, every renderer check passes under them,
-and Sodium's renderer draws the Fabric block models. The same client with CI's minimal shader pack is informational.
+and Sodium's renderer draws the Fabric block models. The same client with CI's minimal shader pack is a gate too since
+task 7, as is the NeoForge builds' on 26.x: every smoke check passes and Iris uses the pack.
 On 1.21.1 Iris's particle hook, a `@Redirect` of a read of `ParticleEngine.RENDER_ORDER` in `render`, would have
 nothing to redirect: NeoForge 21.1's `render` goes over the keys of its particles' map instead, as Forge 47's does, so
 pre-flight points the hook at that loop (IRIS-1).
@@ -882,8 +886,8 @@ translated mod. Jade's per-mod settings (the `jade` custom value) reach Jade for
   it after them); EMI and Jade create a plugin again on each reload.
 - A plugin that calls a viewer's Fabric-only API (`mezz.jei.api.fabric`, EMI's `FabricEmiStack`) fails at that call.
 - CI runs the NeoForge builds of JEI, REI, Jade, WTHIT and Simple Voice Chat (from Modrinth, where one exists for the
-  version) with the test mod's plugins (informational). EMI has no NeoForge build for these versions (UNVERIFIED), so only its mapping is
-  unit-tested.
+  version) with the test mod's plugins, as a gate: each must create and call its plugin. EMI has no NeoForge build for
+  these versions (UNVERIFIED), so only its mapping is unit-tested.
 
 ### Custom values
 
@@ -1011,7 +1015,8 @@ provided straight and nested, a copy of Fabric Loader's API with its language lo
 library; every check gates); with the newest Forgified Fabric API, Kotlin for Forge and Fabric Language Kotlin from
 Modrinth on a server with the test mods (the server must start; with Forgified Fabric API's resource loader it must
 take the test mod's built-in pack, and with its registry sync the test mod's initializer must make its registry); with
-Forgified Fabric API and Sodium on a 1.21.1 client (informational); and with a stand-in for Connector and a second
+Forgified Fabric API and Sodium on a 1.21.1 client (a gate since task 7: it reaches its world, and no module layer
+refuses a package the two share); and with a stand-in for Connector and a second
 Fabricated jar, each of which must stop the launch with Fabricated's error and no module error. Every server and client
 run also makes a registry the way Forgified Fabric API's builder does, in a Fabric initializer (PROVIDER-6).
 
@@ -1319,20 +1324,30 @@ CI checks Fabricated's own test mods as gates on every version. Real mods run in
 Modrinth in CI (never redistributed):
 
 - **A corpus of popular Fabric mods** (`ci/mod-corpus.txt`: libraries, interface, rendering, performance and content
-  mods, with their dependencies), on a server and a client, on every version (the Forge branches run it too). Informational: each run's report lists
-  which load and why the others are disabled. Known problems are tracked as CORPUS-n in
+  mods, with their dependencies), on a server and a client, on every version (the Forge branches run it too).
+  Informational, as two of their clients don't hold yet (below): each run's report lists which load and why the others
+  are disabled. Known problems are tracked as CORPUS-n in
   [roadmap.md](roadmap.md#findings), and fixed ones in [FINDINGS.md](FINDINGS.md).
 - **An advanced corpus of Fabric mods with deep hooks** (`ci/mod-corpus-advanced.txt`: world generation, gameplay
   systems, camera, sound, replays, server tools), on a server and a client of its own, so that one stopping the game
   can't hide the main corpus's results. Informational, as the main corpus is.
-- **On 1.21.1** both corpora still stop (runs 40683010866 and 40691316584): the main server at Moonlight (CORPUS-44),
-  the main client at LambDynamicLights (CORPUS-45), the advanced runs past module resolution (CORPUS-46).
-- **Sodium and Iris for NeoForge** with Fabric API and the renderer test mod on 26.x: gated (see *Renderer mods*).
-  Their Fabric builds run with `loadUnsupported`, informational: since the constructor repair they reach a world and
-  mesh Fabric models on 26.1.2 and 26.3.
+- **On v0.6.0-beta's release head** every corpus server starts, and every corpus client but 1.21.1's advanced one
+  reaches its world: that one stays on Origins' screen (CORPUS-66). A client with Xaero's World Map can also hang as
+  mc-runtime-test stops it (CORPUS-48, on 26.2 and 26.3 in extended runs 42533784185 and 42535987817). Both are the
+  mods' own.
+- **Sodium and Iris for NeoForge** with Fabric API and the renderer test mod: gated on 26.x, with and without CI's
+  shader pack, and Sodium alone on 1.21.11 (see *Renderer mods*). Their Fabric builds load by default and are gated on
+  every version, with and without the shader pack. Sodium Extra and Reese's Sodium Options (Fabric addons) next to
+  Sodium for NeoForge: gated on 26.1.2 and 26.2; informational on 26.3, where their builds ask for a newer Sodium than
+  the one CI pins.
+- **Continuity** (connected textures through Fabric's renderer API, with its default resource pack): gated on every
+  version it has a build for; its connected textures reach a chunk section.
+- **Forgified Fabric API's renderer** beside Fabricated's seams, where Modrinth has a build of it (1.21.1, 26.1.2 and
+  26.2): gated; every test block comes through its renderer, none through Fabricated's.
 - **The NeoForge builds of JEI, REI, Jade, WTHIT and Simple Voice Chat**, pinned per version, with the test mod's
   plugins declared the Fabric way: gated. Each creates and calls its plugin on every version (WTHIT has no 26.3 build).
-- **OneConfig and PolyPlus** (Fabric only), informational, where Modrinth has builds for the version. Their nested
+- **OneConfig and PolyPlus** (Fabric only), gated where Modrinth has builds for the version (every version since task
+  7): the client reaches its world with no Fabric mod disabled. Their nested
   Kotlin, Compose and MixinSquared jars split packages between jars, which Fabricated now serves from one module.
 
 To report a result for another mod, see [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-a-compatibility-result).

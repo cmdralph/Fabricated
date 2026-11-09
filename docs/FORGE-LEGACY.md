@@ -73,14 +73,14 @@ How to read it: as the NeoForge table, and
 | fabric-permission-api-v1 | — | loads | loads | loads | — |
 | fabric-recipe-api-v1 | loads | loads | loads | loads | loads |
 | fabric-registry-sync-v0 | loads, part | loads, part | loads, part | loads, part | loads, part |
-| fabric-renderer-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-renderer-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
 | fabric-renderer-indigo | loads, part | loads | loads | loads | loads, part |
 | fabric-renderer-registries-v1 | — | — | — | — | loads |
 | fabric-rendering-data-attachment-v1 | — | — | — | — | loads |
 | fabric-rendering-fluids-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
 | fabric-rendering-v0 | — | — | — | — | loads |
 | fabric-rendering-v1 | loads, part | loads | loads | loads | loads, part |
-| fabric-resource-conditions-api-v1 | loads, part | loads | loads | loads | loads, part |
+| fabric-resource-conditions-api-v1 | loads, part | loads | loads | loads | loads |
 | fabric-resource-loader-v0 | loads | loads | loads | loads | loads, part |
 | fabric-resource-loader-v1 | loads, part | loads, part | loads, part | loads, part | — |
 | fabric-screen-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
@@ -294,18 +294,16 @@ by the server runs (the colours, screens, key mappings and config screens by the
   Continuity's wrap others). A transform it left pushed is popped, so it never reaches another block. The renderer test
   mod checks each of these with a model that throws in a chunk section, as a multipart model's part, inside a model
   wrapping it, and on Forge 61 to 66 as a minecart's block. The outline Fabric's renderer draws around a glowing falling
-  block is checked on Forge 65; on Forge 66 it isn't seen yet. Fabricated's guards apply only with Fabric's renderer API
+  block is checked on Forge 65 and, since task 7, on Forge 66. Fabricated's guards apply only with Fabric's renderer API
   installed (they name its types), and the two that sit in methods upstream replaces (blocks drawn as entities, and the
   breaking overlay on Forge 64) apply after upstream's replacement.
 
 What else differs on Forge, for Fabric mods in general:
 
 - **Covered by Forge itself:** upstream's fix for emerald trades with other mods' villager types, as Forge 61 to 66
-  skip the same check and give no trade for a type without one, upstream's DataFixerUpper hooks for a dimension whose
-  chunk generator type no mod registers, as Forge's patch to the same schema keeps the generator's data (all five), and
-  upstream's fix for the breaking overlay's flicker on renderer API models (`OverlayVertexConsumer`), as Forge 47 picks
-  the overlay's direction the same stable way (its `stabilizeDirectionGetNearest` option, on by default). The report
-  lists those hooks as left out or skipped.
+  skip the same check and give no trade for a type without one, and upstream's DataFixerUpper hooks for a dimension
+  whose chunk generator type no mod registers, as Forge's patch to the same schema keeps the generator's data (all
+  five). The report lists those hooks as left out or skipped.
 - **Loading errors:** when Forge refuses a mod file or a dependency is missing, it loads only Minecraft and Forge to
   show the error. Fabricated then leaves the game's classes alone, so Forge's own error is what the player sees
   (LOADERR-1). Forge itself refuses two Fabric jars in the corpus: JEI's on Forge 61 to 66 (its module-info) and YACL
@@ -337,7 +335,7 @@ What else differs on Forge, for Fabric mods in general:
   item a Forge item's handler turns into, and lets a second insertion into a Forge item handler in one transaction
   miss the first, each simulated on the handler as it stands (PROVIDER-15). A stand-in nesting a copy as Forgified
   Fabric API does is a gate, and so is the server with Forgified Fabric API itself, its newest build, since it passed
-  two extended runs in a row (CI-1); the client with it is informational, in extended runs. The test mod takes those
+  two extended runs in a row (CI-1), and the client with it, in extended runs, since task 7. The test mod takes those
   answers as the provider's there and checks the rest.
 - **Default method bridges:** where an interface a Fabric mod's mixin adds to a game class brings a second default
   method beside one Forge's own interfaces give it (`IForgeLivingEntity.self()` on `LivingEntity`, `IForgeEntity`'s
