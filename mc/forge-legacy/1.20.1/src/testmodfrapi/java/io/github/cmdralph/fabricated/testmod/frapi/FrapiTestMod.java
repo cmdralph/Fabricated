@@ -30,8 +30,8 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 /**
  * Fabric's renderer API on Forge 47 (task 4, R5), as the renderer test mod checks it on NeoForge 21.1: registers the
  * test blocks, whose models {@link FrapiClientTestMod} makes Fabric models, and the test item. Only the Fabric API jar
- * provides the renderer API: it joins CI's client run with Fabric API. Written in Mojang's names (Fabric API 0.92's
- * renderer types are too many for Intermediary stand-ins) and reobfuscated to Forge 47's (mc/platform-forge-legacy.gradle).
+ * provides the renderer API: it joins CI's client run with Fabric API. Written in Mojang's names (the game classes its
+ * models extend are too many for Intermediary stand-ins) and reobfuscated to Forge 47's (mc/platform-forge-legacy.gradle).
  *
  * <p>Once a player is in the world it places, in front of them, a block whose model is a Fabric model and one whose
  * vanilla multipart model has a Fabric model as its part, so the client meshes them into a chunk section, and above them
@@ -44,9 +44,6 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
  * <p>It also gives the player an item whose model is a Fabric model, held in their main hand (drawn in hand and in the
  * hotbar), and puts one in an item frame on the first block and one on the ground beside the frame, which no one can pick
  * up and which never despawns (drawn as an item in a frame and as a dropped item).
- *
- * <p>Set up from the server's tick rather than a join event: the networking module's join event names a packet sender,
- * one more stand-in for nothing the renderer checks need.
  */
 public final class FrapiTestMod implements ModInitializer {
 	static final Logger LOGGER = LoggerFactory.getLogger("fabricated-testmod-frapi");
