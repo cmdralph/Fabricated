@@ -25,8 +25,9 @@ import net.minecraftforge.eventbus.api.EventPriority;
  * the first server tick runs the checks of the server: the interface the test mod's class tweaker injects, Fabricated's
  * loot hooks standing down for another mod's loot module ({@link ForgeLootProviderTest}), the command module's
  * registration event ({@link ForgeCommandTest}), the interaction module's block break events ({@link ForgeBlockBreakTest}), the entity
- * events module's sleep events ({@link ForgeSleepTest}), and the registry sync module's aliases
- * ({@link ForgeRegistryAliasTest}) and entry added events ({@link ForgeRegistryEntryAddedTest}).
+ * events module's sleep events ({@link ForgeSleepTest}), the registry sync module's aliases
+ * ({@link ForgeRegistryAliasTest}) and entry added events ({@link ForgeRegistryEntryAddedTest}), and Forge Config API
+ * Port's Fabric API ({@link ForgeConfigPortTest}).
  */
 public final class ForgeTestMod implements ModInitializer {
 	/** The namespace of the content and data of Forge's half. */
@@ -41,6 +42,7 @@ public final class ForgeTestMod implements ModInitializer {
 		run("registry entry added events", "fabric-registry-sync-v0", ForgeRegistryEntryAddedTest::register);
 		run("block break listeners", "fabric-events-interaction-v0", ForgeBlockBreakTest::register);
 		run("sleep listeners", "fabric-entity-events-v1", ForgeSleepTest::register);
+		run("config port", null, ForgeConfigPortTest::register);
 		ServerTickEvents.END_SERVER_TICK.register(new ServerTickEvents.EndTick() {
 			private boolean checked;
 
@@ -63,6 +65,7 @@ public final class ForgeTestMod implements ModInitializer {
 		run("registry alias check", "fabric-registry-sync-v0", ForgeRegistryAliasTest::check);
 		run("block break check", "fabric-events-interaction-v0", () -> ForgeBlockBreakTest.check(level));
 		run("sleep check", "fabric-entity-events-v1", () -> ForgeSleepTest.check(level));
+		run("config port check", null, ForgeConfigPortTest::check);
 		if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) run("colour provider check", "fabric-rendering-v1", ForgeColorTest::check);
 	}
 
