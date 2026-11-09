@@ -51,11 +51,11 @@ public final class TestCompat {
 		return registry.get(key);
 	}
 
-	static Identifier location(ResourceKey<?> key) {
+	public static Identifier location(ResourceKey<?> key) {
 		return key.identifier();
 	}
 
-	static <T> Registry<T> registry(RegistryAccess registries, ResourceKey<? extends Registry<? extends T>> key) {
+	public static <T> Registry<T> registry(RegistryAccess registries, ResourceKey<? extends Registry<? extends T>> key) {
 		return registries.lookupOrThrow(key);
 	}
 
@@ -86,7 +86,7 @@ public final class TestCompat {
 	}
 
 	/** The lifecycle the registry gave the entry, null for none. */
-	static <T> @Nullable Lifecycle lifecycle(Registry<T> registry, ResourceKey<T> key) {
+	public static <T> @Nullable Lifecycle lifecycle(Registry<T> registry, ResourceKey<T> key) {
 		return registry.registrationInfo(key).map(RegistrationInfo::lifecycle).orElse(null);
 	}
 }

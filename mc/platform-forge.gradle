@@ -71,7 +71,7 @@ testmodDescriptor.testmod << [entrypoints: [main: ['io.github.cmdralph.fabricate
         jars: [[file: 'META-INF/jars/fabricated-forge-nested.jar']]]
 // sharedSources holds GStrings, which no String equals.
 def sharedSourcePaths = sharedSources*.toString()
-// Forge's half of the renderer test mod, where the version has one (Forge 61 to 66; not Forge 52, which has no renderer seam).
+// Forge's half of the renderer test mod, where the version has one (Forge 61 to 66, not Forge 52).
 def forgeFrapiClient = 'src/testmodfrapi/java/io/github/cmdralph/fabricated/testmod/frapi/ForgeFrapiClient.java'
 if (([projectDir] + sharedSourcePaths.collect { rootProject.file(it) }).any { new File(it, forgeFrapiClient).isFile() }) {
     testmodDescriptor.testmodfrapi << [entrypoints: [client: ['io.github.cmdralph.fabricated.testmod.frapi.ForgeFrapiClient']]]

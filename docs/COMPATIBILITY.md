@@ -30,23 +30,23 @@ isn't supported says why, in the notes under the matrix.
 | Networking: play and configuration payloads | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Networking: login queries | ❌ 3 | ❌ 3 | ❌ 3 | ❌ 3 | ❌ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 |
 | Registries, registry sync, resource and data packs, load conditions | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
-| Item, block, entity, interaction and lifecycle events | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ◐ 18 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
+| Item, block, entity, interaction and lifecycle events | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
 | Fabric fluids as the platform's fluid types | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Biome modifications: features, spawns, climate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Transfer API and the platform's item and fluid handlers, on blocks and in items | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 5 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Team Reborn Energy and the platform's energy | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 |
-| Client modules: key mappings, HUD, screens, client commands | ✅ | ◐ 7 | ✅ | ✅ | ✅ | ◐ 7 | ◐ 19 | ◐ 7 | ✅ | ✅ | ✅ |
-| Fabric mods' hooks inside the HUD method | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 8 | ◐ 19 | ◐ 8 | ◐ 8 | ◐ 8 | ◐ 8 |
+| Client modules: key mappings, HUD, screens, client commands | ✅ | ◐ 7 | ✅ | ✅ | ✅ | ◐ 7 | ◐ 7 | ◐ 7 | ✅ | ✅ | ✅ |
+| Fabric mods' hooks inside the HUD method | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 8 | ✅ | ◐ 8 | ◐ 8 | ◐ 8 | ◐ 8 |
 | Mod Menu config screens in the platform's mod list | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ✅ | ⚪ | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 |
 | Platform mods' properties as Fabric custom values, and the reverse | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | **Fabric's renderer API and models** | | | | | | | | | | | |
-| Model loading: plugins, modifiers, Fabric model formats | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 20 | ✅ | ✅ | ✅ | ✅ |
-| Fabric block models in chunk sections, and nested in vanilla models | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ 20 | ✅ | ✅ | ✅ | ✅ |
-| Moving blocks and the breaking overlay | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ 20 | ✅ | ✅ | ✅ | ✅ |
+| Model loading: plugins, modifiers, Fabric model formats | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 18 | ✅ | ✅ | ✅ | ✅ |
+| Fabric block models in chunk sections, and nested in vanilla models | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Moving blocks and the breaking overlay | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Fabric item models | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Blocks drawn as entities (a minecart's block) | ◐ 10 | ✅ | ✅ | ✅ | ✅ | ◐ 10 | ⚪ | ✅ | ✅ | ✅ | ✅ |
-| A model that throws is drawn by the platform from then on | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ 20 | ✅ | ✅ | ✅ | ✅ |
+| A model that throws is drawn by the platform from then on | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Level-aware particle sprites | ⚪ | ⚪ | ◐ 11 | ◐ 11 | ◐ 11 | ⚪ | ⚪ | ✅ | ✅ | ✅ | ✅ |
 | Another registered renderer (Sodium's, Forgified Fabric API's) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ✅ | ✅ | ✅ | ✅ |
 | **Other mods** | | | | | | | | | | | |
@@ -80,7 +80,7 @@ Notes:
 6. Fabricated bridges Team Reborn's energy library, when a Fabric mod brings it, to NeoForge's energy capability on
    blocks and items, both ways; CI found no build of the library for these versions to check it with.
 7. NeoForge 1.21.11's test mod compiles against stand-ins without these modules, so it doesn't check them; on Forge
-   1.20.1 and 1.21.11 the checks cover the HUD callback, key bindings and screen input only.
+   1.20.1, 1.21.1 and 1.21.11 the checks cover the HUD callback, key bindings and screen input only.
 8. A Fabric mod's mixin inside vanilla's HUD method that wraps or redirects one of its calls applies but never runs:
    Forge's HUD layers skip that code (on Forge 1.20.1 only hooks at the method's start and end run).
 9. WTHIT has no build for 26.3; the other plugin hosts are checked.
@@ -100,15 +100,8 @@ Notes:
     with its reason, and is a cell of this matrix.
 17. Modrinth has Forge builds of WTHIT and Simple Voice Chat for these versions, which CI checks; JEI, REI and Jade have
     none, so their plugins are converted the same way but unchecked on Forge 61 to 66 (on Forge 47 CI checks all five).
-18. On Forge 1.21.1, *Unsupported on Forge*'s hooks, and Forge 52's own hooks of an item's equipment slot, crafting
-    remainder, enchanting and creator mod, and of attacking a block and using an entity, don't ask Fabric's yet, nor
-    are a Fabric mod's fuels Forge's furnace fuels (ITEM-1, INTERACT-1, FUEL-2).
-19. On Forge 1.21.1 the checks cover key bindings, the HUD callback, colour providers and the config screens; a Fabric
-    mod's hooks inside the HUD method and Fabric's screen input events have no Forge 52 seam or bridge yet, and no
-    check (HUD-5, LAMBDA-10).
-20. Fabricated's renderer seams aren't on Forge 52 yet: Fabric item models and model loading plugins work, Fabric
-    block models in chunk sections, moving blocks, the breaking overlay and the fallback for a model that throws don't
-    (FRAPI-11).
+18. On Forge 1.21.1 a block model whose `loader` names a Fabric mod's own loader fails as Forge reads it, where
+    vanilla ignores the key and the mod's hook reads it (MODEL-5).
 
 ## How CI tests it
 
@@ -1429,8 +1422,8 @@ Forge 61 to 66 (Minecraft 1.21.11 to 26.3) build from the `forge` branch, and Fo
 from `forge-legacy`. All use the same engine as NeoForge; what Forge's code changes is below. Forge 52 runs the game in
 Mojang's names, with the discovery services, the ForgeGradle build and most of the in-game mod Forge 61 to 66 have
 (`mc/forge-shared`'s version groups), and Forge 47's EventBus 6 wiring; its column in the table below is its local
-server and client runs with Fabric API's jar on Forge 52.1.21 (2026-11-09), and its gaps are in the support matrix's
-notes 18 to 20.
+server and client runs with Fabric API's jar on Forge 52.1.21 (2026-11-09), and its own gap is the support matrix's
+note 18.
 
 CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh` start one with the
 test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same two ways. Every
@@ -1880,8 +1873,11 @@ What else differs on Forge, for Fabric mods in general:
   the Fabric mod's Forge container under the port's file name, its values readable right after registering, as with
   the port, and Forge loads, watches, syncs and unloads it as its mods' own, the port's events firing from Forge's.
   The test mod registers a config so and checks it each server run (PLAT-6: the descriptor had NeoForge's list until
-  task 5). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods itself; Fabric mods' Mod Menu
-  entrypoints give it their config screens (above).
+  task 5). On Forge 52 the port's version for 1.21.1 copies NeoForge's config system and Forge's config classes: its
+  jar loads as on Fabric for its NeoForge half, and the in-game mod provides its Forge half (`ForgeConfigRegistry`,
+  `ForgeModConfigEvents` of `fabric.api.forge.v4`) on Forge's config system the same way, the jar's copy of that
+  package left out for it (CFG-4); its test mod checks it as Forge 47's does. **Mod Menu**'s Fabric build isn't loaded
+  on Forge, which lists mods itself; Fabric mods' Mod Menu entrypoints give it their config screens (above).
 - **Enum extensions:** a Fabric mod adding enum constants with Mixin's enum extensions (Farmer's Delight Refabricated)
   is disabled on Forge 61 to 66, whose Mixin 0.8.7 predates them (CORPUS-36).
 - **The corpus runs** (informational; extended runs 41385577023 and 41386136422 on task 3's code) load 87 to 106
@@ -1926,12 +1922,8 @@ instead. Unless a task is named, nothing is planned for them yet.
   hooks in at a field, a constant or a jump, or at a call cancels, captures locals or takes arguments the called
   method doesn't, applies but never runs: Forge 61 to 66 skip that code, and on Forge 47 only hooks at the method's
   start and end run (HUD-4, above). Mixins into the methods that draw each part, which Forge's layers call, run.
-- **Forge 52 (1.21.1), until its bridges are ported.** Its own item hooks (equipment slot, crafting remainder,
-  enchanting table, creator mod) and an item's built components after Fabric's `MODIFY` (ITEM-1); `AttackBlockCallback`
-  and `UseEntityCallback` (INTERACT-1); Fabric's fuels in Forge's furnace (FUEL-2); hooks at the HUD method's start and
-  end, and Fabric's screen input events (HUD-5, LAMBDA-10, unchecked); Fabric block models in chunk sections, moving
-  blocks and the breaking overlay (FRAPI-11); a Fabric mod's own pack's known-pack identity (PACK-10, unchecked);
-  Forge Config API Port's Fabric API (CFG-4).
+- **Model loaders (Forge 52).** A block model whose `loader` names a loader in a Fabric mod's namespace fails as Forge
+  52 reads it (MODEL-5); on Forge 47 such a model is read as on Fabric (CORPUS-92).
 - **Data generation only.** Removing entries through a Fabric tag appender, Fabric's key sort orders in generated files,
   and, by version, the advancement builder's Fabric interface and vanilla's block loot provider limited to vanilla's
   blocks; a Fabric model provider also writes item definitions for other mods' block items.
