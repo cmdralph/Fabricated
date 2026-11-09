@@ -16,6 +16,7 @@
     "CraftingHelperFabricConditionsMixin": [],
     "CraftingHelperFabricIngredientsMixin": ["fabric-recipe-api-v1"],
     "ExtendedBlockModelDeserializerMixin": [],
+    "FabricRegistryBuilderRootMixin": [],
     "FluidTypeMixin": [],
     "ForgeGuiHudSeamsMixin": [],
     "ForgeRegistryEntryAddedMixin": ["fabric-registry-sync-v0"],

@@ -11,6 +11,7 @@
     "LivingEntityFluidTravelMixin",
     "MappedRegistryPendingHoldersMixin",
     "MappedRegistryEarlyWriteMixin",
+    "FabricRegistryBuilderRootMixin",
     "NamespacedWrapperPendingHoldersMixin",
     "NamespacedWrapperAliasMixin",
     "NamespacedWrapperEntryAddedMixin",

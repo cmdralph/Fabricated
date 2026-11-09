@@ -161,7 +161,13 @@ public final class FabricatedMod {
 			opened.forEach(ForgeRegistry::freeze);
 		}
 		report(state, failures, "main");
-		if (ours(state, "fabric-registry-sync-v0")) addDynamicRegistries();
+		if (ours(state, "fabric-registry-sync-v0")) {
+			addDynamicRegistries();
+		} else {
+			// Those the initializers made through another mod's registry sync, which hands Forge only those it had before
+			// them (Forgified Fabric API's, PROVIDER-21).
+			ProviderRegistries.addLateDataPackRegistries("fabric-registry-sync-v0", problem -> state.report().line("Registries", problem));
+		}
 		// Then the failures in the report and Forge's warnings, and what waited for the initializers (see EntrypointOutcome).
 		List<EntrypointRunner.Failure> all = new ArrayList<>(preLaunch);
 		all.addAll(failures);
