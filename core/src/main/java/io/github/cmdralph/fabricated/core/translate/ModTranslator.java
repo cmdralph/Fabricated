@@ -630,6 +630,8 @@ public final class ModTranslator {
 
 		List<MixinEntry> allConfigs = new ArrayList<>(md.compatHints().mixinsOr(md.mixins()));
 		allConfigs.addAll(generatedConfigs);
+		List<MixinEntry> added = addedConfigs(allConfigs, entries, files, findings, notes);
+		allConfigs.addAll(added);
 		for (MixinEntry entry : allConfigs) {
 			if (!entry.environment().matches(side)) continue;
 			byte[] data = generatedConfigs.contains(entry) ? overlay.get(entry.config()) : files.read(entry.config());
@@ -727,7 +729,7 @@ public final class ModTranslator {
 				if (node.interfaces.isEmpty()) continue;
 				for (String target : targets) addBridges(DefaultBridge.of(target, node.interfaces, classes), node.interfaces, bridges, notes);
 			}
-			specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
+			if (!added.contains(entry)) specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
 		pluginMixins(entries, configs, refmaps, preflight, relocated, !override.ignorePreflight(), translated, overlay, findings);
 		if (!ducks.isEmpty()) {
@@ -785,6 +787,46 @@ public final class ModTranslator {
 		}
 		computed.forEach((owner, owned) -> EnumExtensions.argumentsClasses(owner, owned).forEach((name, bytes) -> overlay.put(name + ".class", bytes)));
 		return specs;
+	}
+
+	/**
+	 * The mixin configs the mod's code adds to Mixin itself by constant names ({@link AddedMixinConfigs}), which its jar
+	 * holds and {@code listed} doesn't list (ReplayMod adds eight of its ten from its mixin plugin): pre-flight checks them
+	 * as listed ones, and the mod's call reads them, as rewritten in the overlay, by name (MIXCFG-1). They stay unlisted
+	 * in the descriptor: the mod's code decides whether and when it adds them, and the platform would add a listed one in
+	 * any case. A config the jar doesn't hold, and those added by names the mod's code computes, are reported: their
+	 * mixins reach Mixin unchecked.
+	 */
+	private static List<MixinEntry> addedConfigs(List<MixinEntry> listed, Collection<String> entries, FileView files, List<PreflightFinding> findings,
+			List<String> notes) throws ArchiveException {
+		Map<String, String> adders = new TreeMap<>();
+		for (String name : entries) {
+			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
+			byte[] data = files.read(name);
+			AddedMixinConfigs.Added added = data == null ? null : AddedMixinConfigs.added(data);
+			if (added == null) continue;
+			String dotted = name.substring(0, name.length() - ".class".length()).replace('/', '.');
+			for (String config : added.names()) adders.putIfAbsent(config, dotted);
+			if (added.computed()) {
+				findings.add(new PreflightFinding(Severity.WARN, "Mixins.addConfiguration", dotted, "Adds mixin configs to Mixin by names its code"
+						+ " computes, which pre-flight can't read: their mixins aren't checked", ""));
+			}
+		}
+		for (MixinEntry entry : listed) adders.remove(entry.config());
+		List<MixinEntry> checked = new ArrayList<>();
+		for (Map.Entry<String, String> e : adders.entrySet()) {
+			if (files.read(e.getKey()) == null) {
+				findings.add(new PreflightFinding(Severity.WARN, e.getKey(), null, "Added to Mixin by " + e.getValue() + ", but not in the mod's jar:"
+						+ " its mixins aren't checked", ""));
+			} else {
+				checked.add(new MixinEntry(e.getKey(), net.fabricmc.loader.api.metadata.ModEnvironment.UNIVERSAL));
+			}
+		}
+		if (!checked.isEmpty()) {
+			notes.add("Its code adds mixin configs to Mixin itself, which its metadata doesn't list; checked as listed ones: "
+					+ checked.stream().map(MixinEntry::config).collect(Collectors.joining(", ")) + " (MIXCFG-1)");
+		}
+		return checked;
 	}
 
 	/**

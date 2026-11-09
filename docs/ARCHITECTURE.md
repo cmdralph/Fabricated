@@ -245,6 +245,12 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    * In a config with a plugin, which may disable mixins at runtime, an injector that would crash the game is **left out** instead: only its handler, as Mixin itself drops an injector that may fail. A problem with the whole mixin leaves out the mixin, with the mixins depending on its interfaces. Mixins the plugin adds at runtime (`getMixins()`, listed in no config) are found among the classes of the config's package, get the same repairs, and are checked the same way; only their failing injectors are left out, since the plugin may never add them.
    * Otherwise `required` or default-require mixins that **would fail** cause the **whole mod to be disabled before launch**, with a report like *"`examplemod`: mixin `ExampleMixin` targets `ItemStack#getTooltipLines` → `INVOKE List.add`, which NeoForge removed. Ask the author for a NeoForge build, or set `skipMixins` if this mixin is cosmetic."*
    * Non-required mixins that would fail produce a warning only.
+
+   The configs checked are those the mod's metadata lists and those its code adds to Mixin itself
+   (`Mixins.addConfiguration`, as ReplayMod's plugin adds eight of its ten) by a constant name, which translation reads
+   in its classes (MIXCFG-1). The mod's call reads such a config by name, as rewritten in the overlay; the descriptor
+   doesn't list it, as the mod's code decides whether it is added. A config added by a name the code computes, or one
+   the jar doesn't hold, is reported unchecked.
 5. **User overrides:** `skipMixins` drops entries from the cached copy of the mixin config JSON, never the original.
    An entry `"config.json:Name#member"` instead writes a copy of that mixin class without the methods or fields of
    that name (a handler, or a `@Shadow` of a field NeoForge replaced) into the overlay jar; pre-flight checks the copy.
