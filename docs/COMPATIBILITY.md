@@ -11,56 +11,56 @@ isn't supported says why, in the notes under the matrix.
 
 | | NeoForge 1.21.1 | NeoForge 1.21.11 | NeoForge 26.1.2 | NeoForge 26.2 | NeoForge 26.3 | Forge 1.20.1 | Forge 1.21.1 | Forge 1.21.11 | Forge 26.1.2 | Forge 26.2 | Forge 26.3 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Loader build CI pins | 21.1.265 | 21.11.45 | 26.1.2.116 | 26.2.0.90 | 26.3.0.95 | 47.4.28 | 52.1 ⏳ 3 | 61.2.4 | 64.1.5 | 65.1.5 | 66.1.0 |
-| Fabric API CI pins | 0.116.17 | 0.141.6 | 0.155.3 | 0.161.0 | 0.164.0 | 0.92.12 | 0.116.17 ⏳ 3 | 0.141.6 | 0.155.3 | 0.161.0 | 0.164.0 |
-| Fabric mods' names | Intermediary, remapped | Intermediary, remapped | Mojang | Mojang | Mojang | Intermediary, remapped to SRG | Intermediary, remapped ⏳ 3 | Intermediary, remapped | Mojang | Mojang | Mojang |
+| Loader build CI pins | 21.1.265 | 21.11.45 | 26.1.2.116 | 26.2.0.90 | 26.3.0.95 | 47.4.28 | 52.1.21 | 61.2.4 | 64.1.5 | 65.1.5 | 66.1.0 |
+| Fabric API CI pins | 0.116.17 | 0.141.6 | 0.155.3 | 0.161.0 | 0.164.0 | 0.92.12 | 0.116.17 | 0.141.6 | 0.155.3 | 0.161.0 | 0.164.0 |
+| Fabric mods' names | Intermediary, remapped | Intermediary, remapped | Mojang | Mojang | Mojang | Intermediary, remapped to SRG | Intermediary, remapped | Intermediary, remapped | Mojang | Mojang | Mojang |
 | **Loading** | | | | | | | | | | | |
-| Discovery, translation, the cache, the report | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| `main`, `client`, `server` and custom entrypoints | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| `preLaunch` | ◐ 1 | ◐ 1 | ◐ 1 | ◐ 1 | ◐ 1 | ◐ 1 | ⏳ 3 | ◐ 1 | ◐ 1 | ◐ 1 | ◐ 1 |
-| Fabric Loader's public API | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Dependencies, nested jars, packages shared by mods | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Mixins: pre-flight, its repairs, MixinExtras | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Access wideners, class tweakers, injected interfaces, `@Environment` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| `config/fabricated.json` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| The `/fabricated` command | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Refusals with an error naming the jars (Sinytra Connector, two Fabricated jars) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
+| Discovery, translation, the cache, the report | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `main`, `client`, `server` and custom entrypoints | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `preLaunch` | ◐ 1 | ◐ 1 | ◐ 1 | ◐ 1 | ◐ 1 | ◐ 1 | ◐ 1 | ◐ 1 | ◐ 1 | ◐ 1 | ◐ 1 |
+| Fabric Loader's public API | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Dependencies, nested jars, packages shared by mods | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Mixins: pre-flight, its repairs, MixinExtras | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Access wideners, class tweakers, injected interfaces, `@Environment` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `config/fabricated.json` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| The `/fabricated` command | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Refusals with an error naming the jars (Sinytra Connector, two Fabricated jars) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Fabric API** | | | | | | | | | | | |
-| Every module of the official jar loads, server and client | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ⏳ 3 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 |
-| Networking: play and configuration payloads | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Networking: login queries | ❌ 3 | ❌ 3 | ❌ 3 | ❌ 3 | ❌ 3 | ⚪ ⏳ 3 | ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 |
-| Registries, registry sync, resource and data packs, load conditions | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ⏳ 3 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
-| Item, block, entity, interaction and lifecycle events | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ⏳ 3 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
-| Fabric fluids as the platform's fluid types | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Biome modifications: features, spawns, climate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Transfer API and the platform's item and fluid handlers, on blocks and in items | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 5 | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
+| Every module of the official jar loads, server and client | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 |
+| Networking: play and configuration payloads | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Networking: login queries | ❌ 3 | ❌ 3 | ❌ 3 | ❌ 3 | ❌ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 |
+| Registries, registry sync, resource and data packs, load conditions | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
+| Item, block, entity, interaction and lifecycle events | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ◐ 18 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
+| Fabric fluids as the platform's fluid types | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Biome modifications: features, spawns, climate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Transfer API and the platform's item and fluid handlers, on blocks and in items | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 5 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Team Reborn Energy and the platform's energy | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 |
-| Client modules: key mappings, HUD, screens, client commands | ✅ | ◐ 7 | ✅ | ✅ | ✅ | ◐ 7 | ⏳ 3 | ◐ 7 | ✅ | ✅ | ✅ |
-| Fabric mods' hooks inside the HUD method | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 8 | ⏳ 3 | ◐ 8 | ◐ 8 | ◐ 8 | ◐ 8 |
-| Mod Menu config screens in the platform's mod list | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ✅ | ⏳ 3 | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 |
-| Platform mods' properties as Fabric custom values, and the reverse | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ⏳ 3 | ⚪ | ⚪ | ⚪ | ⚪ |
+| Client modules: key mappings, HUD, screens, client commands | ✅ | ◐ 7 | ✅ | ✅ | ✅ | ◐ 7 | ◐ 19 | ◐ 7 | ✅ | ✅ | ✅ |
+| Fabric mods' hooks inside the HUD method | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 8 | ◐ 19 | ◐ 8 | ◐ 8 | ◐ 8 | ◐ 8 |
+| Mod Menu config screens in the platform's mod list | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ✅ | ⚪ | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 |
+| Platform mods' properties as Fabric custom values, and the reverse | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | **Fabric's renderer API and models** | | | | | | | | | | | |
-| Model loading: plugins, modifiers, Fabric model formats | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Fabric block models in chunk sections, and nested in vanilla models | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Moving blocks and the breaking overlay | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Fabric item models | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Blocks drawn as entities (a minecart's block) | ◐ 10 | ✅ | ✅ | ✅ | ✅ | ◐ 10 | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| A model that throws is drawn by the platform from then on | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Level-aware particle sprites | ⚪ | ⚪ | ◐ 11 | ◐ 11 | ◐ 11 | ⚪ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Another registered renderer (Sodium's, Forgified Fabric API's) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
+| Model loading: plugins, modifiers, Fabric model formats | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 20 | ✅ | ✅ | ✅ | ✅ |
+| Fabric block models in chunk sections, and nested in vanilla models | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ 20 | ✅ | ✅ | ✅ | ✅ |
+| Moving blocks and the breaking overlay | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ 20 | ✅ | ✅ | ✅ | ✅ |
+| Fabric item models | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Blocks drawn as entities (a minecart's block) | ◐ 10 | ✅ | ✅ | ✅ | ✅ | ◐ 10 | ⚪ | ✅ | ✅ | ✅ | ✅ |
+| A model that throws is drawn by the platform from then on | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ 20 | ✅ | ✅ | ✅ | ✅ |
+| Level-aware particle sprites | ⚪ | ⚪ | ◐ 11 | ◐ 11 | ◐ 11 | ⚪ | ⚪ | ✅ | ✅ | ✅ | ✅ |
+| Another registered renderer (Sodium's, Forgified Fabric API's) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ✅ | ✅ | ✅ | ✅ |
 | **Other mods** | | | | | | | | | | | |
-| Forgified Fabric API beside Fabricated | ✅ 12 | — | ✅ 12 | ✅ 12 | — | ✅ 12 | ⏳ 3 | ❌ 13 | ❌ 13 | ❌ 13 | ❌ 13 |
+| Forgified Fabric API beside Fabricated | ✅ 12 | — | ✅ 12 | ✅ 12 | — | ✅ 12 | ❌ 13 | ❌ 13 | ❌ 13 | ❌ 13 | ❌ 13 |
 | Sodium and Iris for the platform | ✅ | ✅ | ✅ | ✅ | ✅ | — 14 | — 14 | — 14 | — 14 | — 14 | — 14 |
-| The Fabric builds of Sodium and Iris, with a shader pack | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Essential's Fabric build | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| malilib, MiniHUD, Tweakeroo, Litematica | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Flashback | ✅ | ✅ | ✅ | ✅ | ✅ | — | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| OneConfig and PolyPlus | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ ⏳ 4 | ⏳ 3 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 |
-| Continuity (connected textures through the renderer API) | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ ⏳ 4 | ⏳ 3 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 |
-| Popular Fabric mods (the corpora) | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ⏳ 3 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 |
+| The Fabric builds of Sodium and Iris, with a shader pack | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ✅ | ✅ | ✅ | ✅ |
+| Essential's Fabric build | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ✅ | ✅ | ✅ | ✅ |
+| malilib, MiniHUD, Tweakeroo, Litematica | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ✅ | ✅ | ✅ | ✅ |
+| Flashback | ✅ | ✅ | ✅ | ✅ | ✅ | — | ⚪ | ✅ | ✅ | ✅ | ✅ |
+| OneConfig and PolyPlus | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ ⏳ 4 | ⚪ | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 |
+| Continuity (connected textures through the renderer API) | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ ⏳ 4 | ⚪ | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 |
+| Popular Fabric mods (the corpora) | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ⚪ | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 |
 | **Tests** | | | | | | | | | | | |
-| One test-mod suite for every loader with this Minecraft version | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 16 | ⏳ 3 | ✅ 16 | ✅ 16 | ✅ 16 | ✅ 16 |
+| One test-mod suite for every loader with this Minecraft version | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 16 | ✅ 16 | ✅ 16 | ✅ 16 | ✅ 16 | ✅ 16 |
 
 Notes:
 
@@ -100,6 +100,15 @@ Notes:
     with its reason, and is a cell of this matrix.
 17. Modrinth has Forge builds of WTHIT and Simple Voice Chat for these versions, which CI checks; JEI, REI and Jade have
     none, so their plugins are converted the same way but unchecked on Forge 61 to 66 (on Forge 47 CI checks all five).
+18. On Forge 1.21.1, *Unsupported on Forge*'s hooks, and Forge 52's own hooks of an item's equipment slot, crafting
+    remainder, enchanting and creator mod, and of attacking a block and using an entity, don't ask Fabric's yet, nor
+    are a Fabric mod's fuels Forge's furnace fuels (ITEM-1, INTERACT-1, FUEL-2).
+19. On Forge 1.21.1 the checks cover key bindings, the HUD callback, colour providers and the config screens; a Fabric
+    mod's hooks inside the HUD method and Fabric's screen input events have no Forge 52 seam or bridge yet, and no
+    check (HUD-5, LAMBDA-10).
+20. Fabricated's renderer seams aren't on Forge 52 yet: Fabric item models and model loading plugins work, Fabric
+    block models in chunk sections, moving blocks, the breaking overlay and the fallback for a model that throws don't
+    (FRAPI-11).
 
 ## How CI tests it
 
@@ -1416,8 +1425,12 @@ modules that cascade from it.
 
 ## Forge
 
-Forge 61 to 66 (Minecraft 1.21.11 to 26.3) build from the `forge` branch, and Forge 47 (1.20.1) from `forge-legacy`.
-Both use the same engine as NeoForge; what Forge's code changes is below.
+Forge 61 to 66 (Minecraft 1.21.11 to 26.3) build from the `forge` branch, and Forge 47 (1.20.1) and Forge 52 (1.21.1)
+from `forge-legacy`. All use the same engine as NeoForge; what Forge's code changes is below. Forge 52 runs the game in
+Mojang's names, with the discovery services, the ForgeGradle build and most of the in-game mod Forge 61 to 66 have
+(`mc/forge-shared`'s version groups), and Forge 47's EventBus 6 wiring; its column in the table below is its local
+server and client runs with Fabric API's jar on Forge 52.1.21 (2026-11-09), and its gaps are in the support matrix's
+notes 18 to 20.
 
 CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh` start one with the
 test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same two ways. Every
@@ -1436,72 +1449,72 @@ How to read it: as the NeoForge table, and
 - **disabled**: the client run turns it off (the game goes on without it); the server loads it where it isn't
   client-only. No module is disabled on any Forge version.
 
-| Module | 1.21.11 (Forge 61) | 26.1.2 (Forge 64) | 26.2 (Forge 65) | 26.3 (Forge 66) | 1.20.1 (Forge 47) |
-|---|---|---|---|---|---|
-| fabric-advancement-api-v1 | — | — | loads | loads, part | — |
-| fabric-api-base | native | native | native | native | native |
-| fabric-api-lookup-api-v1 | loads | loads | loads | loads | loads |
-| fabric-biome-api-v1 | loads | loads | loads | loads | native |
-| fabric-block-api-v1 | loads | loads | loads, part | loads, part | loads |
-| fabric-block-getter-api-v2 | — | loads | loads | loads | — |
-| fabric-block-view-api-v2 | loads | — | — | — | loads |
-| fabric-blockrenderlayer-v1 | — | — | — | — | loads |
-| fabric-client-tags-api-v1 | — | — | — | — | loads |
-| fabric-command-api-v1 | — | — | — | — | loads |
-| fabric-command-api-v2 | loads | loads | loads | loads | loads |
-| fabric-commands-v0 | — | — | — | — | loads |
-| fabric-containers-v0 | — | — | — | — | loads |
-| fabric-content-registries-v0 | loads | loads, part | loads, part | loads, part | loads, part |
-| fabric-convention-tags-v1 | loads | — | — | — | loads |
-| fabric-convention-tags-v2 | loads | loads | loads | loads | — |
-| fabric-crash-report-info-v1 | loads | loads | loads | loads | loads |
-| fabric-creative-tab-api-v1 | — | loads | loads | loads | — |
-| fabric-data-attachment-api-v1 | loads | loads | loads | loads | loads |
-| fabric-data-generation-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
-| fabric-debug-api-v1 | — | loads | loads | loads | — |
-| fabric-dimensions-v1 | loads, part | loads, part | loads, part | loads, part | native |
-| fabric-entity-events-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
-| fabric-events-interaction-v0 | loads, part | loads, part | loads, part | loads, part | loads, part |
-| fabric-events-lifecycle-v0 | — | — | — | — | loads |
-| fabric-game-rule-api-v1 | loads | loads | loads | loads | loads |
-| fabric-item-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
-| fabric-item-group-api-v1 | loads | — | — | — | loads |
-| fabric-key-binding-api-v1 | native | — | — | — | native |
-| fabric-key-mapping-api-v1 | — | native | native | native | — |
-| fabric-keybindings-v0 | — | — | — | — | loads |
-| fabric-lifecycle-events-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
-| fabric-loot-api-v2 | loads | — | — | — | native |
-| fabric-loot-api-v3 | native | native | native | native | — |
-| fabric-loot-tables-v1 | — | — | — | — | native |
-| fabric-menu-api-v1 | — | loads | loads | loads | — |
-| fabric-message-api-v1 | loads | loads | loads | loads | loads |
-| fabric-mining-level-api-v1 | — | — | — | — | loads |
-| fabric-model-loading-api-v1 | loads | loads | loads | loads | loads |
-| fabric-models-v0 | — | — | — | — | loads |
-| fabric-networking-api-v1 | loads | loads | loads | loads | loads |
-| fabric-networking-v0 | — | — | — | — | loads |
-| fabric-object-builder-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
-| fabric-particles-v1 | loads, part | loads | loads | loads | native |
-| fabric-permission-api-v1 | — | loads | loads | loads | — |
-| fabric-recipe-api-v1 | loads | loads | loads | loads | loads |
-| fabric-registry-sync-v0 | loads, part | loads, part | loads, part | loads, part | loads, part |
-| fabric-renderer-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
-| fabric-renderer-indigo | loads, part | loads | loads | loads | loads, part |
-| fabric-renderer-registries-v1 | — | — | — | — | loads |
-| fabric-rendering-data-attachment-v1 | — | — | — | — | loads |
-| fabric-rendering-fluids-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
-| fabric-rendering-v0 | — | — | — | — | loads |
-| fabric-rendering-v1 | loads, part | loads | loads | loads | loads, part |
-| fabric-resource-conditions-api-v1 | loads, part | loads | loads | loads | loads |
-| fabric-resource-loader-v0 | loads | loads | loads | loads | loads, part |
-| fabric-resource-loader-v1 | loads, part | loads, part | loads, part | loads, part | — |
-| fabric-screen-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
-| fabric-screen-handler-api-v1 | loads | — | — | — | loads |
-| fabric-serialization-api-v1 | loads | loads | loads | loads | — |
-| fabric-sound-api-v1 | loads | loads | loads | loads | loads, part |
-| fabric-tag-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
-| fabric-transfer-api-v1 | loads | loads | loads | loads | loads |
-| fabric-transitive-access-wideners-v1 | loads | loads | loads | loads | loads |
+| Module | 1.21.11 (Forge 61) | 26.1.2 (Forge 64) | 26.2 (Forge 65) | 26.3 (Forge 66) | 1.20.1 (Forge 47) | 1.21.1 (Forge 52) |
+|---|---|---|---|---|---|---|
+| fabric-advancement-api-v1 | — | — | loads | loads, part | — | — |
+| fabric-api-base | native | native | native | native | native | native |
+| fabric-api-lookup-api-v1 | loads | loads | loads | loads | loads | loads |
+| fabric-biome-api-v1 | loads | loads | loads | loads | native | loads |
+| fabric-block-api-v1 | loads | loads | loads, part | loads, part | loads | loads |
+| fabric-block-getter-api-v2 | — | loads | loads | loads | — | — |
+| fabric-block-view-api-v2 | loads | — | — | — | loads | loads |
+| fabric-blockrenderlayer-v1 | — | — | — | — | loads | loads |
+| fabric-client-tags-api-v1 | — | — | — | — | loads | loads |
+| fabric-command-api-v1 | — | — | — | — | loads | loads |
+| fabric-command-api-v2 | loads | loads | loads | loads | loads | loads |
+| fabric-commands-v0 | — | — | — | — | loads | loads |
+| fabric-containers-v0 | — | — | — | — | loads | — |
+| fabric-content-registries-v0 | loads | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-convention-tags-v1 | loads | — | — | — | loads | loads |
+| fabric-convention-tags-v2 | loads | loads | loads | loads | — | loads |
+| fabric-crash-report-info-v1 | loads | loads | loads | loads | loads | loads |
+| fabric-creative-tab-api-v1 | — | loads | loads | loads | — | — |
+| fabric-data-attachment-api-v1 | loads | loads | loads | loads | loads | loads |
+| fabric-data-generation-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-debug-api-v1 | — | loads | loads | loads | — | — |
+| fabric-dimensions-v1 | loads, part | loads, part | loads, part | loads, part | native | loads, part |
+| fabric-entity-events-v1 | loads, part | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-events-interaction-v0 | loads, part | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-events-lifecycle-v0 | — | — | — | — | loads | — |
+| fabric-game-rule-api-v1 | loads | loads | loads | loads | loads | loads |
+| fabric-item-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-item-group-api-v1 | loads | — | — | — | loads | loads |
+| fabric-key-binding-api-v1 | native | — | — | — | native | native |
+| fabric-key-mapping-api-v1 | — | native | native | native | — | — |
+| fabric-keybindings-v0 | — | — | — | — | loads | loads |
+| fabric-lifecycle-events-v1 | loads, part | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-loot-api-v2 | loads | — | — | — | native | loads |
+| fabric-loot-api-v3 | native | native | native | native | — | native |
+| fabric-loot-tables-v1 | — | — | — | — | native | — |
+| fabric-menu-api-v1 | — | loads | loads | loads | — | — |
+| fabric-message-api-v1 | loads | loads | loads | loads | loads | loads |
+| fabric-mining-level-api-v1 | — | — | — | — | loads | — |
+| fabric-model-loading-api-v1 | loads | loads | loads | loads | loads | loads |
+| fabric-models-v0 | — | — | — | — | loads | — |
+| fabric-networking-api-v1 | loads | loads | loads | loads | loads | loads |
+| fabric-networking-v0 | — | — | — | — | loads | — |
+| fabric-object-builder-api-v1 | loads, part | loads, part | loads, part | loads, part | loads | loads, part |
+| fabric-particles-v1 | loads, part | loads | loads | loads | native | native |
+| fabric-permission-api-v1 | — | loads | loads | loads | — | — |
+| fabric-recipe-api-v1 | loads | loads | loads | loads | loads | loads, part |
+| fabric-registry-sync-v0 | loads, part | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-renderer-api-v1 | loads, part | loads, part | loads, part | loads, part | loads | loads |
+| fabric-renderer-indigo | loads, part | loads | loads | loads | loads, part | loads, part |
+| fabric-renderer-registries-v1 | — | — | — | — | loads | loads |
+| fabric-rendering-data-attachment-v1 | — | — | — | — | loads | loads |
+| fabric-rendering-fluids-v1 | loads, part | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-rendering-v0 | — | — | — | — | loads | loads |
+| fabric-rendering-v1 | loads, part | loads | loads | loads | loads, part | loads, part |
+| fabric-resource-conditions-api-v1 | loads, part | loads | loads | loads | loads | loads |
+| fabric-resource-loader-v0 | loads | loads | loads | loads | loads, part | loads, part |
+| fabric-resource-loader-v1 | loads, part | loads, part | loads, part | loads, part | — | — |
+| fabric-screen-api-v1 | loads, part | loads, part | loads, part | loads, part | loads | loads, part |
+| fabric-screen-handler-api-v1 | loads | — | — | — | loads | loads |
+| fabric-serialization-api-v1 | loads | loads | loads | loads | — | — |
+| fabric-sound-api-v1 | loads | loads | loads | loads | loads, part | loads, part |
+| fabric-tag-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-transfer-api-v1 | loads | loads | loads | loads | loads | loads |
+| fabric-transitive-access-wideners-v1 | loads | loads | loads | loads | loads | loads |
 
 
 On top of the modules, the in-game mod bridges these to Forge, or makes Fabric API's hooks for them apply, each checked
@@ -1911,6 +1924,12 @@ instead. Unless a task is named, nothing is planned for them yet.
   hooks in at a field, a constant or a jump, or at a call cancels, captures locals or takes arguments the called
   method doesn't, applies but never runs: Forge 61 to 66 skip that code, and on Forge 47 only hooks at the method's
   start and end run (HUD-4, above). Mixins into the methods that draw each part, which Forge's layers call, run.
+- **Forge 52 (1.21.1), until its bridges are ported.** Its own item hooks (equipment slot, crafting remainder,
+  enchanting table, creator mod) and an item's built components after Fabric's `MODIFY` (ITEM-1); `AttackBlockCallback`
+  and `UseEntityCallback` (INTERACT-1); Fabric's fuels in Forge's furnace (FUEL-2); hooks at the HUD method's start and
+  end, and Fabric's screen input events (HUD-5, LAMBDA-10, unchecked); Fabric block models in chunk sections, moving
+  blocks and the breaking overlay (FRAPI-11); a Fabric mod's own pack's known-pack identity (PACK-10, unchecked);
+  Forge Config API Port's Fabric API (CFG-4).
 - **Data generation only.** Removing entries through a Fabric tag appender, Fabric's key sort orders in generated files,
   and, by version, the advancement builder's Fabric interface and vanilla's block loot provider limited to vanilla's
   blocks; a Fabric model provider also writes item definitions for other mods' block items.
