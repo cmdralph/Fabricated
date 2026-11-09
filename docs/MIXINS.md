@@ -1126,6 +1126,49 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.damage.mixin` 
 | mixins | LivingEntityDamageMixin | common (1.21.11) | n.m.world.entity.LivingEntity | @WrapOperation → fabricated$noteDamageDealt | "hurtServer" | INVOKE `L…/LivingEntity;applyItemBlocking(L…/ServerLevel;L…/DamageSource;F)F` | — | default |
 | mixins | LivingEntityDamageMixin | common (1.21.11) | n.m.world.entity.LivingEntity | @Inject → fabricated$afterDamage | "hurtServer" | TAIL | — | default |
 
+### `mc/forge/1.21.11/src/main/resources/fabricated-forge-item.mixins.json`
+
+Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.item.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | ItemForgeHooksMixin | 1.21.11 (1.21.11) | n.m.world.item.Item | no injectors; adds methods getEquipmentSlot, canApplyAtEnchantingTable, getCreatorModId (Forge's item hooks, answered from Fabric's item API) | | | | |
+| mixins | ItemRecipeRemainderMixin | 1.21.11 (1.21.11) | n.m.world.item.Item | no injectors; adds method getCraftingRemainder(ItemStack) (Forge's, answered from Fabric's getRecipeRemainder) | | | | |
+| mixins | ItemBuiltComponentsMixin | 1.21.11 (1.21.11) | n.m.world.item.Item | @Inject → fabricated$buildAgainOnceChanged; @Shadow components, builtComponents; @Unique fields fabricated$builtFrom | "components()Lnet/minecraft/core/component/DataComponentMap;" | HEAD | — | default |
+
+### `mc/forge/common26/src/main/resources/fabricated-forge-item.mixins.json`
+
+Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.forge.item.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | ItemForgeHooksMixin | common26 (26.1.2, 26.2, 26.3) | n.m.world.item.Item | no injectors; adds methods getEquipmentSlot, canApplyAtEnchantingTable, getCreatorModId (Forge's item hooks, answered from Fabric's item API) | | | | |
+
+### `mc/forge/common/src/main/resources/fabricated-forge-block.mixins.json`
+
+Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.forge.block.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | BlockForgeHooksMixin | common (1.21.11, 26.1.2, 26.2, 26.3) | n.m.world.level.block.Block | no injectors; adds method makesOpenTrapdoorAboveClimbable (Forge's ladder rule, or a block in Fabric's trapdoor tag) | | | | |
+
+### `mc/forge/common26late/src/main/resources/fabricated-forge-block-late.mixins.json`
+
+Versions: 26.2, 26.3 · package `io.github.cmdralph.fabricated.forge.block.late.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | BlockEnchantPowerMixin | common26late (26.2, 26.3) | n.m.world.level.block.Block | no injectors; adds method getEnchantPowerBonus (Fabric's provided enchantment power for a block in the power-provider tag) | | | | |
+| mixins | LiquidBlockFlowMixin | common26late (26.2, 26.3) | n.m.world.level.block.LiquidBlock | @WrapOperation → fabricated$allowFlow | "onPlace", "neighborChanged" | INVOKE `L…/FluidInteractionRegistry;canInteract(L…/Level;L…/BlockPos;)Z` | — | require=2 |
+
+### `mc/forge/26.3/src/main/resources/fabricated-forge-biome.mixins.json`
+
+Versions: 26.3 · package `io.github.cmdralph.fabricated.forge.biome.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | ModifiableBiomeInfoAttributesMixin | 26.3 (26.3) | n.mf.common.world.ModifiableBiomeInfo (remap=false) | @Inject → fabricated$keepAttributes | "applyBiomeModifiers" | HEAD | — | default |
+
 ### `mc/forge/1.21.11/src/main/resources/fabricated-forge-frapi.mixins.json`
 
 Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.rendering.mixin` · required=true · defaultRequire=1 · plugin=`FrapiMixinPlugin` · overwrites.requireAnnotations=—
@@ -1145,6 +1188,7 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.rendering.mixi
 | client | ScreenEffectParticleMixin | 1.21.11 (1.21.11) | n.m.client.renderer.ScreenEffectRenderer | @Inject → fabricated$keepOverlayBlock; @Unique fields fabricated$overlay, fabricated$overlayLevel | "getOverlayBlock" | RETURN | — | default |
 | client | ScreenEffectParticleMixin | 1.21.11 (1.21.11) | n.m.client.renderer.ScreenEffectRenderer | @WrapOperation → fabricated$levelAwareSprite | "renderScreenEffect" | INVOKE `L…/BlockModelShaper;getParticleIcon(L…/BlockState;)L…/TextureAtlasSprite;` | — | default |
 | client | TerrainParticleSpriteMixin | 1.21.11 (1.21.11) | n.m.client.particle.TerrainParticle | @WrapOperation → fabricated$levelAwareSprite | "updateSprite" | INVOKE `L…/BlockModelShaper;getParticleIcon(L…/BlockState;L…/Level;L…/BlockPos;)L…/TextureAtlasSprite;` | — | default |
+| client | BlockStateModelDefaultMixin | 1.21.11 (1.21.11) | n.m.client.renderer.block.model.BlockStateModel | no injectors; adds the default method emitQuads (a model without its own collects its parts with Forge's model data and the level) | | | | |
 
 ### `mc/forge/1.21.11/src/main/resources/fabricated-forge-loot.mixins.json`
 
@@ -1244,6 +1288,7 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 |---|---|---|---|---|---|---|---|---|
 | mixins | ServerPlayerGameModeBreakMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeBreak; @Shadow level, player | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayer;preventsBlockDrops()Z` cancellable=true | — | default |
 | mixins | ServerPlayerGameModeBreakMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.level.ServerPlayerGameMode | @WrapOperation → fabricated$afterBreak | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;removeBlock(L…/BlockPos;Z)Z` | — | default |
+| mixins | ForgeHooksUseOnMixin | common (1.21.11, 26.1.2, 26.2, 26.3) | n.mf.common.ForgeHooks | @WrapOperation → fabricated$useOnEvent | "onPlaceItemIntoWorld" | INVOKE `L…/Item;useOn(L…/UseOnContext;)L…/InteractionResult;` | — | default |
 
 ### `mc/forge/common/src/main/resources/fabricated-forge-screen.mixins.json`
 
@@ -1363,6 +1408,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.forge.ren
 | client | BlockMarkerParticleMixin | common26 (26.1.2,26.2,26.3) | n.m.client.particle.BlockMarker | @Redirect → fabricated$levelAwareMaterial | "<init>(Lnet/minecraft/client/multiplayer/ClientLevel;DDDLnet/minecraft/world/level/block/state/BlockState;)V" | INVOKE `L…/BlockStateModel;particleMaterial(L…/ModelData;)L…/Material$Baked;` | — | default |
 | client | TerrainParticleSpriteMixin | common26 (26.1.2,26.2,26.3) | n.m.client.particle.TerrainParticle | @WrapOperation → fabricated$levelAwareMaterial | "updateSprite" | INVOKE `L…/BlockStateModel;particleMaterial(L…/ModelData;)L…/Material$Baked;` @Local | — | default |
 | client | ParticleLevelAccessor | common26 (26.1.2,26.2,26.3) | n.m.client.particle.Particle | @Accessor → fabricated$level | "level" |  | — | default |
+| client | BlockStateModelDefaultMixin | common26 (26.1.2, 26.2, 26.3) | n.m.client.renderer.block.model.BlockStateModel | no injectors; adds the default method emitQuads (a model without its own collects its parts with Forge's model data and the level) | | | | |
 
 ### `mc/forge/common26/src/main/resources/fabricated-forge-screen-chars.mixins.json`
 
