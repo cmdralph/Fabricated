@@ -4,7 +4,8 @@
 // loader/forge-shared for both Forge platforms). The platform is the folder the version's folder is in: neoforge, forge
 // or forge-legacy.
 //
-// Each version project produces build/libs/fabricated-<version>+mc<minecraft>.jar in the root project:
+// Each version project produces build/libs/fabricated-<loader>-<version>+mc<minecraft>.jar in the root project, the
+// loader neoforge, or forge for both Forge platforms:
 //   - the "loader" source set (the loader's discovery services) plus :core and :fabric-loader-api, which run
 //     in the loader's early-services class loader, and
 //   - META-INF/fabricated/game-mod.jar, Fabricated's in-game mod (main source set: common code,
@@ -322,7 +323,7 @@ def gameModJar = tasks.register('gameModJar', Jar) {
 def fabricatedJar = tasks.register('fabricatedJar', Jar) {
     group = 'build'
     description = 'Builds the Fabricated jar for Minecraft ' + mcVersion
-    archiveBaseName = 'fabricated'
+    archiveBaseName = platform == 'neoforge' ? 'fabricated-neoforge' : 'fabricated-forge'
     archiveVersion = releaseName
     destinationDirectory = rootProject.layout.buildDirectory.dir('libs')
     duplicatesStrategy = DuplicatesStrategy.FAIL

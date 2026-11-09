@@ -36,7 +36,7 @@ automatically if it is not installed.
 
 # One Minecraft version on NeoForge: the jar players install, plus the Fabric test mods
 ./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods
-# -> build/libs/fabricated-<version>+mc26.2.jar and mc/neoforge/26.2/build/testmods/*.jar
+# -> build/libs/fabricated-neoforge-<version>+mc26.2.jar and mc/neoforge/26.2/build/testmods/*.jar
 
 # The Forge platforms build on their branches (forge, forge-legacy), the same way: a build configures the platform
 # folders the branch holds.

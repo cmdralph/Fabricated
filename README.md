@@ -28,7 +28,7 @@ says what works on each loader and Minecraft version, and what Forge doesn't sup
 
 | Branch | Platform | Minecraft | Jars |
 |---|---|---|---|
-| [`main`](https://github.com/cmdralph/Fabricated/tree/main) | NeoForge | 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-<version>+mc<minecraft>.jar` |
+| [`main`](https://github.com/cmdralph/Fabricated/tree/main) | NeoForge | 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-neoforge-<version>+mc<minecraft>.jar` |
 | [`forge`](https://github.com/cmdralph/Fabricated/tree/forge) | Minecraft Forge 61 to 66 | 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-forge-<version>+mc<minecraft>.jar` |
 | [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) | Forge 47 | 1.20.1 | `fabricated-forge-<version>+mc1.20.1.jar` |
 
@@ -107,7 +107,7 @@ starts.
 ## Installing
 
 1. Install NeoForge for your Minecraft version with the official installer (client or server).
-2. Download the Fabricated jar for **your exact Minecraft version**: `fabricated-<version>+mc<minecraft>.jar`.
+2. Download the Fabricated jar for **your exact Minecraft version**: `fabricated-neoforge-<version>+mc<minecraft>.jar`.
 3. Put it in the `mods` folder.
 4. Put your Fabric mods in the same `mods` folder. If they need Fabric API, add the **official Fabric API
    jar** for your Minecraft version. Fabricated doesn't include or download it, and only loads the parts
@@ -212,7 +212,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ```bash
 ./gradlew -Pfabricated.coreOnly=true build          # unit tests, no Minecraft needed
-./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods   # build/libs/fabricated-0.6.0+mc26.2.jar
+./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods   # build/libs/fabricated-neoforge-0.6.0+mc26.2.jar
 ```
 
 ## Design and research
