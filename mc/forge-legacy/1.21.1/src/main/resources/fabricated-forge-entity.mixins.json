@@ -1,0 +1,10 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "io.github.cmdralph.fabricated.forge.entity.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["LivingEntitySleepMixin"],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -1,0 +1,15 @@
+plugins {
+    id 'java'
+    id 'net.minecraftforge.gradle'
+}
+
+apply from: rootProject.file('mc/mc.gradle')
+
+dependencies {
+    // Forge 52 ships no MixinExtras: the in-game mod's own mixins use the injectors of the copy it nests
+    // (mc/forge-mixinextras.gradle), and the test mod's compile against it too.
+    compileOnly "io.github.llamalad7:mixinextras-common:${project.mixinextras_version}"
+    testmodCompileOnly "io.github.llamalad7:mixinextras-common:${project.mixinextras_version}"
+    // The pass-through modules the in-game mod calls besides those its plan lists (an unlisted module passes through).
+    compileOnly fabricApi(['fabric-api-lookup-api-v1', 'fabric-registry-sync-v0', 'fabric-transfer-api-v1'])
+}
