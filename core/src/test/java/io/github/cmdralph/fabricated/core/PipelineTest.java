@@ -2182,7 +2182,7 @@ class PipelineTest {
 			assertNull(overlay.read("older.mixins.json"), "a level that Mixin knows is the jar's own");
 		}
 		assertTrue(forge.report().render().contains("rules: Its mixin config rules.mixins.json declares compatibility level JAVA_25, which Forge's"
-				+ " Mixin 0.8.7+Jenkins-b123.git-0 doesn't know; it loads at JAVA_21"), forge.report().render());
+				+ " Mixin 0.8.7+Jenkins-b123.git-0 on Minecraft 26.2 can't set; it loads at JAVA_21"), forge.report().render());
 
 		Path neoForgeGame = Files.createDirectories(game.resolve("neoforge"));
 		Pipeline.Result neoForge = Pipeline.run(input(neoForgeGame, List.of(rules), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));

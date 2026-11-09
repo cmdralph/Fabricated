@@ -2,7 +2,7 @@
   "fabric:load_conditions": [
     {
       "condition": "fabric:all_mods_loaded",
-      "values": ["fabricated-forge-testmod"]
+      "values": ["fabricated-testmod"]
     }
   ],
   "criteria": {

@@ -49,7 +49,7 @@ public final class ForgeDamageTest {
 		// The pig's type by id: 26.3 moved the entity type constants out of EntityType.
 		EntityType<?> pigType = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.withDefaultNamespace("pig"));
 		if (!(pigType.create(level, EntitySpawnReason.TRIGGERED) instanceof LivingEntity pig)) {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST damage events: could not create a pig");
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST damage events: could not create a pig");
 			return;
 		}
 		pig.setPos(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
@@ -66,9 +66,9 @@ public final class ForgeDamageTest {
 		target = null;
 		pig.discard();
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST damage events OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST damage events OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST damage events: {}", String.join("; ", failed));
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST damage events: {}", String.join("; ", failed));
 		}
 	}
 }

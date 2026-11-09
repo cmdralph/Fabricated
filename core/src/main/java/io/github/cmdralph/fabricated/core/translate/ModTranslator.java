@@ -1639,18 +1639,18 @@ public final class ModTranslator {
 	}
 
 	/**
-	 * A mixin config declaring a compatibility level the running Mixin doesn't know would stop the game as Mixin reads it
-	 * (LEVEL-1: Fabric API for 26.x declares JAVA_25; Forge 64 to 66 run Mixin 0.8.7, whose levels end at JAVA_21). It
-	 * declares the last that Mixin knows instead: Mixin checks the language features a mixin uses against the level, and
-	 * only logs a mixin class compiled for a newer Java. Returns the config as it will load.
+	 * A mixin config declaring a compatibility level the running Mixin doesn't know (LEVEL-1: Fabric API for 26.x declares
+	 * JAVA_25 and Forge 64 to 66 run Mixin 0.8.7, whose levels end at JAVA_21), or one above the Java the game runs on
+	 * (LEVEL-2: a JAVA_21 config on Forge 47's Java 17), would stop the game as Mixin reads it. It declares the level it can
+	 * load at instead ({@link MixinCompat#loadableLevel}). Returns the config as it will load.
 	 */
 	private MixinConfigFile checkCompatibilityLevel(String configName, MixinConfigFile config, List<String> notes) {
-		int last = MixinCompat.lastCompatibilityLevel(env.runtimeMixinVersion());
 		int declared = MixinCompat.compatibilityLevel(config.tree().get("compatibilityLevel"));
-		if (last == 0 || declared <= last) return config;
+		int level = MixinCompat.loadableLevel(declared, env.runtimeMixinVersion(), env.minecraftVersion());
+		if (level == declared) return config;
 		notes.add("Its mixin config " + configName + " declares compatibility level JAVA_" + declared + ", which " + env.descriptor().loaderName()
-				+ "'s Mixin " + env.runtimeMixinVersion() + " doesn't know; it loads at JAVA_" + last + ", the last that Mixin knows");
-		return config.withCompatibilityLevel("JAVA_" + last);
+				+ "'s Mixin " + env.runtimeMixinVersion() + " on Minecraft " + env.minecraftVersion() + " can't set; it loads at JAVA_" + level);
+		return config.withCompatibilityLevel("JAVA_" + level);
 	}
 
 	/**

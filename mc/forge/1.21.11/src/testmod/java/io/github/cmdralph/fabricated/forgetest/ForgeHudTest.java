@@ -25,9 +25,9 @@ public final class ForgeHudTest {
 
 	/** From the client entrypoint, with Fabric API's rendering module. */
 	public static void register() {
-		HudElementRegistry.attachElementAfter(VanillaHudElements.CHAT, Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "after_chat"),
+		HudElementRegistry.attachElementAfter(VanillaHudElements.CHAT, Identifier.fromNamespaceAndPath(ForgeTestMod.NAMESPACE, "after_chat"),
 				(graphics, tickCounter) -> ForgeHudChecks.passed("hud element after chat"));
-		HudElementRegistry.attachElementBefore(VanillaHudElements.HOTBAR, Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "before_hotbar"),
+		HudElementRegistry.attachElementBefore(VanillaHudElements.HOTBAR, Identifier.fromNamespaceAndPath(ForgeTestMod.NAMESPACE, "before_hotbar"),
 				(graphics, tickCounter) -> ForgeHudChecks.passed("hud element before the hotbar"));
 		HudRenderCallback.EVENT.register((graphics, tickCounter) -> {
 			if (!(Minecraft.getInstance().screen instanceof LevelLoadingScreen)) ForgeHudChecks.passed("hud render callback");

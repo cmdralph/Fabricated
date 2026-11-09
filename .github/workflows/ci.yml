@@ -1,0 +1,389 @@
+name: CI
+
+# The one build and test workflow, the same on every branch. A branch holds one platform's version folders
+# (mc/<platform>/<version>), and the plan job (ci/plan.py) reads which, and what the change touched.
+# - A push to a working branch: the unit tests, and beside them the fast job, one touched version built and booted on a
+#   server; neither where an open pull request into main, forge or forge-legacy runs the full matrix on that push.
+# - A pull request into one of them: the full matrix for what it touches (a version's own folder, that version; anything
+#   shared, every version). A run by hand and the release workflow's call (workflow_call: inputs.ref, every version).
+# - A push to one of them, a merge whose pull request passed the full matrix: what it changed is built and the caches
+#   filled, which only these pushes write; everything else reads them.
+# The full matrix builds each version once and runs its parts (ci/runs.tsv: server, client, mods, with "extended"
+# corpus) in jobs of their own; the harness checks every run against ci/checks.tsv. With "extended" more runs join, each
+# a gate once it held on two extended runs in a row (CI-1). Documentation alone runs no pull request.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main, forge, forge-legacy]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+    inputs:
+      extended:
+        description: Also the extended runs (other people's Fabric mods; the newest loader build and the mod corpora, informational)
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      ref:
+        description: The full commit SHA to check out and test
+        type: string
+        required: true
+      extended:
+        description: Also the extended runs
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# A newer push or pull request update cancels the run it replaces. A call from the release workflow is never cancelled:
+# its group is its own, keyed on the commit it tests.
+concurrency:
+  group: ${{ inputs.ref && format('ci-call-{0}-{1}', github.run_id, inputs.ref) || format('ci-{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ !inputs.ref }}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      fast: ${{ steps.plan.outputs.fast }}
+      boot: ${{ steps.plan.outputs.boot }}
+      boot_key: ${{ steps.plan.outputs.boot_key }}
+      core: ${{ steps.plan.outputs.core }}
+      targets: ${{ steps.plan.outputs.targets }}
+      tests: ${{ steps.plan.outputs.tests }}
+      game: ${{ steps.plan.outputs.game }}
+      save: ${{ steps.plan.outputs.save }}
+      extended: ${{ steps.plan.outputs.extended }}
+      platforms: ${{ steps.plan.outputs.platforms }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          # A pull request's merge commit and its first parent, the base it merges into.
+          fetch-depth: 2
+      # The token reads contents only: where GitHub doesn't answer, there is no pull request, and the fast job runs.
+      - name: Whether an open pull request runs the full matrix on this push
+        id: covered
+        if: github.event_name == 'push' && !inputs.ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json baseRefName \
+            --jq '[.[] | select(.baseRefName == "main" or .baseRefName == "forge" or .baseRefName == "forge-legacy")] | length' \
+            2>/dev/null || echo 0)
+          echo "covered=$([ "${open:-0}" != 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BEFORE: ${{ github.event.before }}
+          EXTENDED: ${{ inputs.extended == true }}
+          COVERED: ${{ steps.covered.outputs.covered }}
+          CALLED_REF: ${{ inputs.ref }}
+        run: python3 -I ci/plan.py ci | tee -a "$GITHUB_STEP_SUMMARY"
+
+  core:
+    name: Unit tests
+    needs: plan
+    if: needs.plan.outputs.core == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: core
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_INSTANCE: core
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      # Gradle's home changes with the build files only: a merge that leaves them as they are writes no new entry. Set
+      # for the rest of the job, setup-gradle's saving at its end included.
+      - name: Key Gradle's cache by the build files
+        run: echo "GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION=${{ hashFiles('*.gradle', '*/build.gradle', 'gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}" >> "$GITHUB_ENV"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ needs.plan.outputs.save != 'true' }}
+          # The release's jars and tests start from an empty Gradle home.
+          cache-disabled: ${{ inputs.ref != '' }}
+      # docs/MIXINS.md lists every mixin: one added without its row fails here.
+      - name: Every mixin has its row in docs/MIXINS.md
+        run: python3 -I scripts/check-mixin-inventory.py
+      - name: CI's own scripts
+        run: python3 -B -m unittest discover -s ci -p 'test_*.py'
+      - name: Build and test the Minecraft-independent modules
+        run: ./gradlew -Pfabricated.coreOnly=true build --stacktrace
+      - name: Upload the test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports-${{ needs.plan.outputs.platforms }}
+          path: |
+            core/build/reports/tests
+            fabric-loader-api/build/reports/tests
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # A push to a working branch: one touched version built and booted on a server, beside the unit tests.
+  fast:
+    name: Fast check (${{ needs.plan.outputs.boot_key }})
+    needs: plan
+    if: needs.plan.outputs.fast == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PLATFORM: ${{ fromJSON(needs.plan.outputs.boot).platform }}
+      MC: ${{ fromJSON(needs.plan.outputs.boot).minecraft }}
+      GAME_JAVA: ${{ fromJSON(needs.plan.outputs.boot).java }}
+      # The base branch's entry for the version (setup-gradle's cache key).
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: build
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_INSTANCE: ${{ needs.plan.outputs.boot_key }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # Forge 47 runs on 17, ForgeGradle and 26.x on 25, the rest on 21 (the default here).
+          java-version: |
+            17
+            25
+            21
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Build Fabricated and the test mods
+        run: ci/build.sh "$PLATFORM" "$MC" -Porg.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64,JAVA_HOME_25_X64
+      - name: Restore the server's install
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/smoke-cache/server
+          key: install-server-${{ env.PLATFORM }}-${{ env.MC }}-${{ fromJSON(needs.plan.outputs.boot).loader }}-v1
+      - name: Restore the pinned downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/smoke-cache/downloads
+          key: downloads-${{ env.PLATFORM }}-${{ env.MC }}-${{ fromJSON(needs.plan.outputs.boot).pins }}-v1
+          restore-keys: downloads-${{ env.PLATFORM }}-${{ env.MC }}-
+      - name: Server with the test mods
+        run: |
+          JAVA_HOME="$(printenv "JAVA_HOME_${GAME_JAVA}_X64")"
+          export JAVA_HOME PATH="$JAVA_HOME/bin:$PATH"
+          ci/smoke.sh "$PLATFORM" "$MC" server server
+      - name: Upload the server's logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ env.PLATFORM }}-${{ env.MC }}-fast
+          path: |
+            ${{ runner.temp }}/smoke/server/logs
+            ${{ runner.temp }}/smoke/server/crash-reports
+            ${{ runner.temp }}/smoke/server/*.out
+            ${{ runner.temp }}/smoke/server/*.txt
+            ${{ runner.temp }}/smoke/*.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Each version once: its jar (the release's artifact) and test mods, which every part of its tests runs. Its parts
+  # start once every version's build ended, so this job does nothing else, but on a push to a base branch fill the
+  # caches its parts read.
+  build:
+    name: Build ${{ matrix.platform }} ${{ matrix.minecraft }}
+    needs: plan
+    if: needs.plan.outputs.targets != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.targets) }}
+    env:
+      PLATFORM: ${{ matrix.platform }}
+      MC: ${{ matrix.minecraft }}
+      SAVE: ${{ needs.plan.outputs.save }}
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: build
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_INSTANCE: ${{ matrix.platform }}-${{ matrix.minecraft }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            25
+            21
+      - name: Key Gradle's cache by the build files
+        run: echo "GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION=${{ hashFiles('*.gradle', '*/build.gradle', 'mc/*.gradle', 'gradle.properties', format('mc/{0}/{1}/gradle.properties', matrix.platform, matrix.minecraft), 'gradle/wrapper/gradle-wrapper.properties') }}" >> "$GITHUB_ENV"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ env.SAVE != 'true' }}
+          # The release's jars start from an empty Gradle home.
+          cache-disabled: ${{ inputs.ref != '' }}
+      - name: Build Fabricated and the test mods
+        id: build
+        run: ci/build.sh "$PLATFORM" "$MC" -Porg.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64,JAVA_HOME_25_X64
+      # The release takes exactly this file.
+      - name: Upload the jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: jar-${{ matrix.platform }}-${{ matrix.minecraft }}
+          path: ${{ steps.build.outputs.jar }}
+          if-no-files-found: error
+          overwrite: true
+      # Where the harness looks for them (the paths are kept from the repository's root).
+      - name: Upload the jar and the test mods for the tests
+        if: needs.plan.outputs.game == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.platform }}-${{ matrix.minecraft }}
+          path: |
+            ${{ steps.build.outputs.jar }}
+            ${{ steps.build.outputs.testmods }}/*.jar
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+      # A merge fills what its pull requests read: each install and the pinned downloads, where missing.
+      - name: Look up the server's install
+        id: server-install
+        if: env.SAVE == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/smoke-cache/server
+          key: install-server-${{ matrix.platform }}-${{ matrix.minecraft }}-${{ matrix.loader }}-v1
+          lookup-only: true
+      - name: Look up the client's install
+        id: client-install
+        if: env.SAVE == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/smoke-cache/client
+          key: install-client-${{ matrix.platform }}-${{ matrix.minecraft }}-${{ matrix.loader }}-v1
+          lookup-only: true
+      - name: Look up the pinned downloads
+        id: downloads
+        if: env.SAVE == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/smoke-cache/downloads
+          key: downloads-${{ matrix.platform }}-${{ matrix.minecraft }}-${{ matrix.pins }}-v1
+          lookup-only: true
+      - name: Fill the caches
+        if: env.SAVE == 'true' && (steps.server-install.outputs.cache-hit != 'true' || steps.client-install.outputs.cache-hit != 'true' || steps.downloads.outputs.cache-hit != 'true')
+        run: |
+          JAVA_HOME="$(printenv "JAVA_HOME_${{ matrix.java }}_X64")"
+          export JAVA_HOME PATH="$JAVA_HOME/bin:$PATH"
+          ci/smoke.sh "$PLATFORM" "$MC" warm
+      - name: Save the server's install
+        if: env.SAVE == 'true' && steps.server-install.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/smoke-cache/server
+          key: install-server-${{ matrix.platform }}-${{ matrix.minecraft }}-${{ matrix.loader }}-v1
+      - name: Save the client's install
+        if: env.SAVE == 'true' && steps.client-install.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/smoke-cache/client
+          key: install-client-${{ matrix.platform }}-${{ matrix.minecraft }}-${{ matrix.loader }}-v1
+      - name: Save the pinned downloads
+        if: env.SAVE == 'true' && steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/smoke-cache/downloads
+          key: downloads-${{ matrix.platform }}-${{ matrix.minecraft }}-${{ matrix.pins }}-v1
+
+  # A version's parts (ci/runs.tsv), each in a job of its own, from the build's jar and test mods.
+  test:
+    name: ${{ matrix.platform }} ${{ matrix.minecraft }} ${{ matrix.part }}
+    needs: [plan, build]
+    # Every version whose build passed: one version's failed build doesn't stop the others' tests.
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.tests != '[]' }}
+    runs-on: ubuntu-latest
+    # A part takes 3 to 25 minutes; a hung game is stopped at its own timeout, and this bounds anything else.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.tests) }}
+    env:
+      PLATFORM: ${{ matrix.platform }}
+      MC: ${{ matrix.minecraft }}
+      PART: ${{ matrix.part }}
+      EXTENDED: ${{ needs.plan.outputs.extended }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Fabricated and the test mods from the build
+        uses: actions/download-artifact@v4
+        with:
+          name: build-${{ matrix.platform }}-${{ matrix.minecraft }}
+      - name: Restore the server's install
+        if: contains(matrix.sides, 'server')
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/smoke-cache/server
+          key: install-server-${{ matrix.platform }}-${{ matrix.minecraft }}-${{ matrix.loader }}-v1
+      - name: Restore the client's install
+        if: contains(matrix.sides, 'client')
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/smoke-cache/client
+          key: install-client-${{ matrix.platform }}-${{ matrix.minecraft }}-${{ matrix.loader }}-v1
+      - name: Restore the pinned downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/smoke-cache/downloads
+          key: downloads-${{ matrix.platform }}-${{ matrix.minecraft }}-${{ matrix.pins }}-v1
+          restore-keys: downloads-${{ matrix.platform }}-${{ matrix.minecraft }}-
+      # 26.3 and later open their window with SDL3 over EGL, which needs Mesa's EGL library (not on the runner image).
+      - name: Install Mesa EGL for the client
+        if: contains(matrix.sides, 'client')
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
+      - name: The ${{ matrix.part }} runs
+        run: ci/smoke.sh "$PLATFORM" "$MC" "$PART"
+      - name: Upload the checks
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: checks-${{ matrix.platform }}-${{ matrix.minecraft }}-${{ matrix.part }}
+          path: ${{ runner.temp }}/smoke/checks-*.json
+          if-no-files-found: ignore
+          overwrite: true
+      - name: Upload the logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.platform }}-${{ matrix.minecraft }}-${{ matrix.part }}
+          path: |
+            ${{ runner.temp }}/smoke/*/logs
+            ${{ runner.temp }}/smoke/*/crash-reports
+            ${{ runner.temp }}/smoke/*/*.out
+            ${{ runner.temp }}/smoke/*/*.txt
+            ${{ runner.temp }}/smoke/*/run/logs
+            ${{ runner.temp }}/smoke/*/run/crash-reports
+            ${{ runner.temp }}/smoke/*/.fabricated/mixin-failures.json
+            ${{ runner.temp }}/smoke/*/.fabricated/cache/v1/index.json
+            ${{ runner.temp }}/smoke/*.mods/fetched.txt
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true

@@ -1,191 +1,87 @@
 package io.github.cmdralph.fabricated.forgetest;
 
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.IOException;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Arrays;
-
-import io.github.cmdralph.fabricated.api.FabricMod;
-import io.github.cmdralph.fabricated.api.Fabricated;
-import net.fabricmc.api.DedicatedServerModInitializer;
+import io.github.cmdralph.fabricated.testmod.TestMod;
 import net.fabricmc.api.EnvType;
-import net.fabricmc.api.Environment;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Registry;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.tags.TagKey;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 
 /**
- * The forge branch's Fabric test mod (docs/PORTING.md §4.1, F3 step 3): its entrypoints and its mixin each log a line
- * the server smoke looks for (ci/forge/smoke-server.sh). It uses Fabric Loader's API and, of Fabric API, only the loot
- * module Fabricated ships itself ({@link ForgeLootTest}), so it runs without Fabric API's jar; with it, it also tries the
- * object builder module's default attribute event ({@link ForgeAttributeTest}), the advancement module's modify event
- * ({@link ForgeAdvancementTest}), the command module's registration event ({@link ForgeCommandTest}), a networking
- * round trip ({@link ForgeNetworkingTest}), the interaction module's block break events ({@link ForgeBlockBreakTest})
- * and use and attack callbacks ({@link ForgeInteractionTest}), the entity events module's sleep ({@link ForgeSleepTest})
- * and damage ({@link ForgeDamageTest}) events and its effect events' command context ({@link ForgeEffectTest}), storages reaching Forge's capabilities ({@link ForgeTransferTest}), and the
- * resource conditions module's load conditions in data files and registry entries ({@link ForgeConditionsTest}), the
- * biome module's feature modifications ({@link ForgeBiomeTest}), and the registry sync module's aliases
- * ({@link ForgeRegistryAliasTest}) and entry added events ({@link ForgeRegistryEntryAddedTest}).
- * Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
+ * Forge's half of the CI test mod: the checks of Forge's own hooks, beside the shared ones (mc/shared), whose
+ * entrypoints mc/platform-forge.gradle adds to the test mod's descriptor. Its main entrypoint registers what they need;
+ * the first server tick runs the checks of the server: the interface the test mod's class tweaker injects, the frames
+ * Fabricated repairs for a Fabric mod's mixin ({@link ForgeRecordedFramesTest}), Fabricated's loot hooks standing down
+ * for another mod's loot module ({@link ForgeLootProviderTest}), the object builder module's default attribute event
+ * ({@link ForgeAttributeTest}), the command module's registration event ({@link ForgeCommandTest}), the interaction
+ * module's block break events
+ * ({@link ForgeBlockBreakTest}), the entity events module's sleep ({@link ForgeSleepTest}) and damage
+ * ({@link ForgeDamageTest}) events, the resource conditions module's load conditions in data files and registry entries
+ * ({@link ForgeConditionsTest}), a Fabric mod's stable registry entries ({@link ForgePackTest}), ingredients on the
+ * network ({@link ForgeIngredientCodecTest}), the registry sync module's aliases ({@link ForgeRegistryAliasTest}) and
+ * entry added events ({@link ForgeRegistryEntryAddedTest}), and on a client the colour providers
+ * ({@link ForgeColorTest}) and the key mapping ({@link ForgeKeyMappingTest}).
  */
-public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
-	public static final String MOD_ID = "fabricated-forge-testmod";
-	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
-	/** The test mod that fails on purpose, which only the server smoke installs (mc/shared/src/testmodbroken). */
-	private static final String THROWS = "fabricated-testmod-throws";
-	public static final Identifier ITEM_ID = Identifier.fromNamespaceAndPath(MOD_ID, "test_item");
-	/** The item {@link #onInitialize} registers, as Fabric mods register theirs: straight into the registry. */
-	public static Item testItem;
-	/** Lists stone, dirt and gravel, and removes dirt in Fabric's {@code fabric:remove} and gravel in Forge's {@code remove}. */
-	private static final TagKey<Item> REMOVAL = TagKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(MOD_ID, "removal"));
+public final class ForgeTestMod implements ModInitializer {
+	/** The namespace of the content and data of Forge's half. */
+	static final String NAMESPACE = "fabricated-forge-testmod";
+	public static final Logger LOGGER = TestMod.LOGGER;
 
 	@Override
 	public void onInitialize() {
-		String version = FabricLoader.getInstance().getModContainer(MOD_ID).map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("none");
-		LOGGER.info("FABRICATED-FORGE-TEST main entrypoint OK (version {}, Fabric Loader sees {} mods)", version, FabricLoader.getInstance().getAllMods().size());
 		ForgeRecordedFramesTest.check();
-		// Fabricated's API on Forge: what waits for the Fabric initializers runs once they have, the mod that fails on
-		// purpose (in the server smoke) known as failed.
-		Fabricated.get().ifPresent(api -> api.afterEntrypoints(() -> {
-			boolean ok = api.entrypointsComplete() && api.isFabricModLoaded(MOD_ID)
-					&& api.fabricMod(THROWS).map(m -> m.status() == FabricMod.Status.FAILED).orElse(true);
-			if (ok) LOGGER.info("FABRICATED-FORGE-TEST api after entrypoints OK");
-			else LOGGER.error("FABRICATED-FORGE-TEST api after entrypoints FAILED: complete {}, {}, {}", api.entrypointsComplete(), api.fabricMod(MOD_ID),
-					api.fabricMod(THROWS));
-		}));
-		try {
-			testItem = Registry.register(BuiltInRegistries.ITEM, ITEM_ID, new Item(new Item.Properties().setId(ResourceKey.create(Registries.ITEM, ITEM_ID))));
-			if (ITEM_ID.equals(BuiltInRegistries.ITEM.getKey(testItem))) {
-				LOGGER.info("FABRICATED-FORGE-TEST registry OK");
-			} else {
-				LOGGER.error("FABRICATED-FORGE-TEST registry gave the item another key: {}", BuiltInRegistries.ITEM.getKey(testItem));
+		ForgeLootProviderTest.register();
+		run("default attribute listener", "fabric-object-builder-api-v1", ForgeAttributeTest::register);
+		run("command listener", "fabric-command-api-v2", ForgeCommandTest::register);
+		run("registry aliases", "fabric-registry-sync-v0", ForgeRegistryAliasTest::register);
+		run("registry entry added events", "fabric-registry-sync-v0", ForgeRegistryEntryAddedTest::register);
+		run("block break listeners", "fabric-events-interaction-v0", ForgeBlockBreakTest::register);
+		run("sleep listeners", "fabric-entity-events-v1", ForgeSleepTest::register);
+		run("damage listeners", "fabric-entity-events-v1", ForgeDamageTest::register);
+		ServerTickEvents.END_SERVER_TICK.register(new ServerTickEvents.EndTick() {
+			private boolean checked;
+
+			@Override
+			public void onEndTick(MinecraftServer server) {
+				if (checked) return;
+				checked = true;
+				checkFirstTick(server);
 			}
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST registry failed", e);
-		}
-		try {
-			ForgeBootstrapContent.register();
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST content built at bootstrap failed", e);
-		}
-		try {
-			ForgeLootTest.register();
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST loot listeners not registered", e);
-		}
-		try {
-			ForgeFluidTest.register();
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST fluids not registered", e);
-		}
-		if (FabricLoader.getInstance().isModLoaded("fabric-object-builder-api-v1")) {
-			try {
-				ForgeAttributeTest.register();
-			} catch (RuntimeException | LinkageError e) {
-				LOGGER.warn("FABRICATED-FORGE-TEST default attribute listener not registered", e);
-			}
-		}
-		if (FabricLoader.getInstance().isModLoaded("fabric-advancement-api-v1")) {
-			try {
-				ForgeAdvancementTest.register();
-			} catch (RuntimeException | LinkageError e) {
-				LOGGER.warn("FABRICATED-FORGE-TEST advancement listener not registered", e);
-			}
-		}
-		if (FabricLoader.getInstance().isModLoaded("fabric-biome-api-v1")) {
-			try {
-				ForgeBiomeTest.register();
-			} catch (RuntimeException | LinkageError e) {
-				LOGGER.warn("FABRICATED-FORGE-TEST biome modification not registered", e);
-			}
-		}
-		if (FabricLoader.getInstance().isModLoaded("fabric-command-api-v2")) {
-			try {
-				ForgeCommandTest.register();
-			} catch (RuntimeException | LinkageError e) {
-				LOGGER.warn("FABRICATED-FORGE-TEST command listener not registered", e);
-			}
-		}
-		if (FabricLoader.getInstance().isModLoaded("fabric-registry-sync-v0")) {
-			try {
-				ForgeRegistryAliasTest.register();
-			} catch (RuntimeException | LinkageError e) {
-				LOGGER.warn("FABRICATED-FORGE-TEST registry aliases not added", e);
-			}
-			try {
-				ForgeRegistryEntryAddedTest.register();
-			} catch (RuntimeException | LinkageError e) {
-				LOGGER.error("FABRICATED-FORGE-TEST registry entry added events FAILED", e);
-			}
-		}
-		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
-			try {
-				ForgeNetworkingTest.register();
-			} catch (RuntimeException | LinkageError e) {
-				LOGGER.warn("FABRICATED-FORGE-TEST networking receiver not registered", e);
-			}
-		}
-		if (FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) {
-			try {
-				ForgeBlockBreakTest.register();
-				ForgeInteractionTest.register();
-			} catch (RuntimeException | LinkageError e) {
-				LOGGER.warn("FABRICATED-FORGE-TEST interaction listeners not registered", e);
-			}
-		}
-		if (FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1")) {
-			try {
-				ForgeSleepTest.register();
-				ForgeDamageTest.register();
-				ForgeEffectTest.register();
-			} catch (RuntimeException | LinkageError e) {
-				LOGGER.warn("FABRICATED-FORGE-TEST entity event listeners not registered", e);
-			}
-		}
-		try {
-			ForgeTransferTest.register();
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST storage blocks not registered", e);
+		});
+	}
+
+	/** The checks of the first server tick, each logging its own result. */
+	private static void checkFirstTick(MinecraftServer server) {
+		if ((Object) server instanceof ForgeTestMarker) LOGGER.info("FABRICATED-TEST injected interface OK");
+		else LOGGER.error("FABRICATED-TEST injected interface FAILED: the server has no ForgeTestMarker");
+		ServerLevel level = server.overworld();
+		ForgeLootProviderTest.check();
+		run("default attribute check", "fabric-object-builder-api-v1", ForgeAttributeTest::check);
+		run("load conditions check", "fabric-resource-conditions-api-v1", () -> ForgeConditionsTest.check(server));
+		run("mod pack data check", null, () -> ForgePackTest.check(server));
+		run("ingredient check", null, () -> ForgeIngredientCodecTest.check(server));
+		run("command check", "fabric-command-api-v2", () -> ForgeCommandTest.check(server));
+		run("registry alias check", "fabric-registry-sync-v0", ForgeRegistryAliasTest::check);
+		run("block break check", "fabric-events-interaction-v0", () -> ForgeBlockBreakTest.check(level));
+		run("sleep check", "fabric-entity-events-v1", () -> ForgeSleepTest.check(level));
+		run("damage check", "fabric-entity-events-v1", () -> ForgeDamageTest.check(level));
+		if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) {
+			run("colour provider check", "fabric-rendering-v1", ForgeColorTest::check);
+			run("key mapping check", null, ForgeKeyMappingTest::check);
 		}
 	}
 
-	@Override
-	public void onInitializeServer() {
-		LOGGER.info("FABRICATED-FORGE-TEST server entrypoint OK");
-		if (Arrays.stream(ForgeTestMod.class.getDeclaredMethods()).noneMatch(m -> m.getName().equals("clientOnly"))) {
-			LOGGER.info("FABRICATED-FORGE-TEST environment strip OK");
-		}
-	}
-
-	/**
-	 * Whether both removals in the test mod's item tag took their entry out (once tags are loaded): Fabric's, which the
-	 * in-game mod reads into Forge's list, and Forge's own, which Fabric API's tag module, passed through, must leave alone.
-	 */
-	public static void checkTagRemoval() {
-		boolean stone = new ItemStack(Items.STONE).is(REMOVAL);
-		boolean dirt = new ItemStack(Items.DIRT).is(REMOVAL);
-		boolean gravel = new ItemStack(Items.GRAVEL).is(REMOVAL);
-		if (stone && !dirt && !gravel) {
-			LOGGER.info("FABRICATED-FORGE-TEST tag removal OK");
-		} else {
-			LOGGER.warn("FABRICATED-FORGE-TEST tag removal not applied: stone is in the tag {}, dirt (fabric:remove) {}, gravel (remove) {}", stone, dirt, gravel);
+	/** Runs a part where its Fabric API module is loaded (any for null), logging what it throws as its failure. */
+	private static void run(String what, String module, Runnable part) {
+		if (module != null && !FabricLoader.getInstance().isModLoaded(module)) return;
+		try {
+			part.run();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.error("FABRICATED-TEST {} FAILED", what, e);
 		}
 	}
 
@@ -194,256 +90,8 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	 * the top of the world. The spawn's chunks are generated before that tick; a chunk elsewhere is generated in it, which
 	 * on a client whose spawn lay far from the origin held the integrated server up for seconds, past the end of the run.
 	 */
-	static BlockPos testSite(ServerLevel level, int dx, int dz) {
+	public static BlockPos testSite(ServerLevel level, int dx, int dz) {
 		BlockPos spawn = level.getRespawnData().pos();
 		return new BlockPos(spawn.getX() + dx, level.getMaxY() - 30, spawn.getZ() + dz);
-	}
-
-	/**
-	 * Whether vanilla reads a player's stats file, as it does when a player joins: its parser is in Gson's
-	 * {@code com.google.gson.internal}, a package Gson's module doesn't export, which the game reaches through the loader
-	 * Fabricated's class path loader goes in front of (GSON-1, GSON-2).
-	 */
-	public static void checkVanillaStats(MinecraftServer server) {
-		try {
-			Path file = Files.createTempFile("fabricated-stats", ".json");
-			Files.writeString(file, "{\"stats\":{}}");
-			// (MinecraftServer, File) up to 1.21.11, (MinecraftServer, Path) on 26.x.
-			for (Constructor<?> constructor : net.minecraft.stats.ServerStatsCounter.class.getConstructors()) {
-				if (constructor.getParameterCount() != 2) continue;
-				constructor.newInstance(server, constructor.getParameterTypes()[1] == File.class ? file.toFile() : file);
-				LOGGER.info("FABRICATED-FORGE-TEST vanilla stats read OK");
-				return;
-			}
-			LOGGER.error("FABRICATED-FORGE-TEST vanilla stats read FAILED: no ServerStatsCounter constructor");
-		} catch (InvocationTargetException e) {
-			LOGGER.error("FABRICATED-FORGE-TEST vanilla stats read FAILED: {}", e.getCause().toString());
-		} catch (IOException | ReflectiveOperationException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST vanilla stats read FAILED: {}", e.toString());
-		}
-	}
-
-	/** Whether Fabric's loot table events changed dirt's loot table and drops ({@link ForgeLootTest}), once the server ticks. */
-	public static void checkLoot(MinecraftServer server) {
-		try {
-			ForgeLootTest.check(server.overworld());
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST loot check failed", e);
-		}
-	}
-
-	/** Whether an empty optional ingredient, a shaped recipe's empty slot, goes over the network as vanilla's ({@link ForgeIngredientCodecTest}, CORPUS-83). */
-	public static void checkOptionalIngredients(MinecraftServer server) {
-		try {
-			ForgeIngredientCodecTest.check(server);
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST optional ingredient check failed", e);
-		}
-	}
-
-	/** Whether the test mod's fluids have Forge fluid types and leave entities alone ({@link ForgeFluidTest}). */
-	public static void checkFluids(MinecraftServer server) {
-		try {
-			ForgeFluidTest.check(server.overworld());
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST fluid check failed", e);
-		}
-	}
-
-	/** Whether Fabric's default attribute event changed a cow's defaults ({@link ForgeAttributeTest}; with Fabric API only). */
-	public static void checkDefaultAttributes() {
-		try {
-			ForgeAttributeTest.check();
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST default attribute check failed", e);
-		}
-	}
-
-	/** Whether Fabric's advancement modify event changed a vanilla advancement ({@link ForgeAdvancementTest}; with Fabric API only). */
-	public static void checkAdvancements(MinecraftServer server) {
-		try {
-			ForgeAdvancementTest.check(server);
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST advancement check failed", e);
-		}
-	}
-
-	/** Whether a Fabric mod's registry entries are stable, as on Fabric ({@link ForgePackTest}, PACK-5). */
-	public static void checkPackData(MinecraftServer server) {
-		try {
-			ForgePackTest.check(server);
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST mod pack data check failed", e);
-		}
-	}
-
-	/**
-	 * Whether a feature Fabric's biome modifications add to the plains is among their features, as a noise generator reads
-	 * them ({@link ForgeBiomeTest}; with Fabric API only).
-	 */
-	public static void checkBiomes(MinecraftServer server) {
-		try {
-			ForgeBiomeTest.check(server);
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST biome modification check failed", e);
-		}
-	}
-
-	/**
-	 * Whether the server loaded the data files and registry entries whose Fabric load conditions hold, and not those whose
-	 * conditions fail ({@link ForgeConditionsTest}; with Fabric API only).
-	 */
-	public static void checkConditions(MinecraftServer server) {
-		if (!FabricLoader.getInstance().isModLoaded("fabric-resource-conditions-api-v1")) return;
-		try {
-			ForgeConditionsTest.check(server);
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST load conditions check failed", e);
-		}
-	}
-
-	/** Whether the registry answers to the aliases Fabric's registry sync module added ({@link ForgeRegistryAliasTest}; with Fabric API only). */
-	public static void checkAliases() {
-		if (!FabricLoader.getInstance().isModLoaded("fabric-registry-sync-v0")) return;
-		try {
-			ForgeRegistryAliasTest.check();
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST registry alias check failed", e);
-		}
-	}
-
-	/** Whether a command registered through Fabric's command event is in the server's dispatcher ({@link ForgeCommandTest}; with Fabric API only). */
-	public static void checkCommands(MinecraftServer server) {
-		if (!FabricLoader.getInstance().isModLoaded("fabric-command-api-v2")) return;
-		try {
-			ForgeCommandTest.check(server);
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST command check failed", e);
-		}
-	}
-
-	/**
-	 * Whether Fabric's block break events fire, and a refusal holds, as a player breaks blocks ({@link ForgeBlockBreakTest};
-	 * with Fabric API only).
-	 */
-	public static void checkBlockBreaks(MinecraftServer server) {
-		if (!FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) return;
-		try {
-			ForgeBlockBreakTest.check(server.overworld());
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST block break check failed", e);
-		}
-	}
-
-	/**
-	 * Whether Fabric's use and attack callbacks are asked, and their answers honoured, as a player uses and attacks blocks,
-	 * items and entities ({@link ForgeInteractionTest}; with Fabric API only).
-	 */
-	public static void checkInteractions(MinecraftServer server) {
-		if (!FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) return;
-		try {
-			ForgeInteractionTest.check(server.overworld());
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST interaction check failed", e);
-		}
-	}
-
-	/** The rest of {@link #checkInteractions}, at every later server tick until it has run. */
-	public static void tickInteractions(MinecraftServer server) {
-		if (!FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) return;
-		try {
-			ForgeInteractionTest.tick(server.overworld());
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST interaction check failed", e);
-		}
-	}
-
-	/**
-	 * Whether Fabric's damage events are asked as an entity is hurt, and a refusal holds ({@link ForgeDamageTest}; with
-	 * Fabric API only).
-	 */
-	public static void checkDamage(MinecraftServer server) {
-		if (!FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1")) return;
-		try {
-			ForgeDamageTest.check(server.overworld());
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST damage check failed", e);
-		}
-	}
-
-	/**
-	 * Whether Fabric's effect events learn the command an effect comes from, and that one from code comes from none
-	 * ({@link ForgeEffectTest}; with Fabric API only).
-	 */
-	public static void checkEffects(MinecraftServer server) {
-		if (!FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1")) return;
-		try {
-			ForgeEffectTest.check(server);
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST effect command context check failed", e);
-		}
-	}
-
-	/**
-	 * Whether a block Fabric's sleep events admit as a bed survives an entity sleeping on it, and the occupation and
-	 * orientation events run ({@link ForgeSleepTest}; with Fabric API only).
-	 */
-	public static void checkSleeping(MinecraftServer server) {
-		if (!FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1")) return;
-		try {
-			ForgeSleepTest.check(server.overworld());
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST sleep check failed", e);
-		}
-	}
-
-	/**
-	 * Whether a Fabric mod's storages are Forge's capabilities and a Forge mod's handlers Fabric's storages
-	 * ({@link ForgeTransferTest}; with Fabric API only).
-	 */
-	public static void checkStorages(MinecraftServer server) {
-		try {
-			ForgeTransferTest.check(server.overworld());
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST storage check failed", e);
-		}
-	}
-
-	/**
-	 * Whether Fabric's colour provider registry answers from the game's block colours ({@link ForgeColorTest}), on a client
-	 * with Fabric API's rendering module.
-	 */
-	public static void checkColors() {
-		if (FabricLoader.getInstance().getEnvironmentType() != EnvType.CLIENT || !FabricLoader.getInstance().isModLoaded("fabric-rendering-v1")) return;
-		try {
-			ForgeColorTest.check();
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST colour provider check failed", e);
-		}
-	}
-
-	/** On a client, whether the test mod's key mapping works as on Fabric ({@link ForgeKeyMappingTest}, KEYMAP-3). */
-	public static void checkKeyMapping() {
-		if (FabricLoader.getInstance().getEnvironmentType() != EnvType.CLIENT) return;
-		try {
-			ForgeKeyMappingTest.check();
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST key mapping check failed", e);
-		}
-	}
-
-	/** On a client, whether the test mod's built-in pack enabled by default was switched on ({@link ForgeDefaultPackTest}, CORPUS-104). */
-	public static void checkDefaultPack() {
-		if (FabricLoader.getInstance().getEnvironmentType() != EnvType.CLIENT) return;
-		try {
-			ForgeDefaultPackTest.check();
-		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST builtin resource pack check failed", e);
-		}
-	}
-
-	/** Reserved for the client: Fabric's environment stripping takes it out of the class on a dedicated server. */
-	@Environment(EnvType.CLIENT)
-	static void clientOnly() {
 	}
 }

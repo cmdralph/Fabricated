@@ -13,8 +13,8 @@ import net.minecraft.server.MinecraftServer;
  * lambdas that take more values than vanilla's, which upstream's hooks name.
  */
 public final class ForgeConditionsTest {
-	private static final Identifier KEPT = Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "conditions_kept");
-	private static final Identifier DROPPED = Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "conditions_dropped");
+	private static final Identifier KEPT = Identifier.fromNamespaceAndPath(ForgeTestMod.NAMESPACE, "conditions_kept");
+	private static final Identifier DROPPED = Identifier.fromNamespaceAndPath(ForgeTestMod.NAMESPACE, "conditions_dropped");
 
 	private ForgeConditionsTest() {
 	}
@@ -31,9 +31,9 @@ public final class ForgeConditionsTest {
 
 	private static void report(boolean ok, String check, String kind, boolean kept, boolean dropped) {
 		if (ok) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST {} load conditions OK", check);
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST {} load conditions OK", check);
 		} else {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST {} load conditions FAILED: the {} whose conditions hold {}, the one whose conditions fail {}", check,
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST {} load conditions FAILED: the {} whose conditions hold {}, the one whose conditions fail {}", check,
 					kind, kept ? "loaded" : "didn't load", dropped ? "didn't load" : "loaded");
 		}
 	}

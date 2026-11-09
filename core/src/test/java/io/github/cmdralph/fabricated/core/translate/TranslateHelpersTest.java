@@ -238,6 +238,27 @@ class TranslateHelpersTest {
 		assertEquals(0, MixinCompat.lastCompatibilityLevel("0.8.8"), "a later release isn't known");
 		assertEquals(0, MixinCompat.lastCompatibilityLevel(null));
 
+		// LEVEL-2: Mixin also refuses a level above the running Java; the Java a Minecraft version runs on bounds it.
+		assertEquals(17, MixinCompat.minecraftJava("1.20.1"));
+		assertEquals(17, MixinCompat.minecraftJava("1.20.4"));
+		assertEquals(21, MixinCompat.minecraftJava("1.20.5"));
+		assertEquals(21, MixinCompat.minecraftJava("1.21.1"));
+		assertEquals(21, MixinCompat.minecraftJava("1.21.11"));
+		assertEquals(25, MixinCompat.minecraftJava("26.1.2"));
+		assertEquals(25, MixinCompat.minecraftJava("26.3"));
+		assertEquals(0, MixinCompat.minecraftJava("1.16.5"), "older than any version Fabricated supports");
+		assertEquals(0, MixinCompat.minecraftJava("26.1-snapshot-3"));
+		assertEquals(0, MixinCompat.minecraftJava(null));
+		assertEquals(17, MixinCompat.loadableLevel(21, "0.8.5", "1.20.1"), "Forge 47: Mixin knows JAVA_18, the game runs on Java 17");
+		assertEquals(17, MixinCompat.loadableLevel(17, "0.8.5", "1.20.1"));
+		assertEquals(8, MixinCompat.loadableLevel(8, "0.8.5", "1.20.1"));
+		assertEquals(21, MixinCompat.loadableLevel(25, "0.8.7", "26.2"), "Forge 64 to 66: Mixin's levels end at JAVA_21 (LEVEL-1)");
+		assertEquals(21, MixinCompat.loadableLevel(25, "0.8.7", "1.21.1"), "Forge 52");
+		assertEquals(25, MixinCompat.loadableLevel(25, "0.17.4+mixin.0.8.7", "26.3"), "Fabric's Mixin, on 26.x's Java 25");
+		assertEquals(21, MixinCompat.loadableLevel(25, "0.16.5+mixin.0.8.7", "1.21.11"), "Fabric's Mixin, on 1.21.11's Java 21");
+		assertEquals(0, MixinCompat.loadableLevel(0, "0.8.5", "1.20.1"), "a config declaring no level");
+		assertEquals(30, MixinCompat.loadableLevel(30, null, null), "neither bound known");
+
 		// LVT-1: every local's class looked up as a mixin applies, in SpongePowered's 0.8.5 to 0.8.7 and Fabric's before 0.17.0.
 		assertTrue(MixinCompat.readsLocalTypes("0.8.5+Jenkins-b310.git-155314e6e91465dad727e621a569906a410cd6f4"), "Forge 47");
 		assertTrue(MixinCompat.readsLocalTypes("0.8.7"), "Forge 61 to 66");

@@ -20,6 +20,6 @@ public final class ForgeHudChecks {
 	}
 
 	public static void passed(String check) {
-		if (PASSED.add(check)) ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST {} OK", check);
+		if (PASSED.add(check)) ForgeTestMod.LOGGER.info("FABRICATED-TEST {} OK", check);
 	}
 }

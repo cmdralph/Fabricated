@@ -4,29 +4,41 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Predicate;
 
 import org.jspecify.annotations.Nullable;
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin;
+import net.fabricmc.fabric.api.client.model.loading.v1.ModelModifier;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
+import net.fabricmc.fabric.api.client.renderer.v1.model.FabricBlockStateModel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.block.BlockAndTintGetter;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
 import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.client.resources.model.sprite.Material;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 
 /**
  * The terrain block's Fabric model gives a level-aware particle material ({@code FabricBlockStateModel.particleMaterial}
- * with the level), which Forge 64 to 66 ask a model with its model data instead of (PART-4): the model calls
- * {@link #asked} as it gives it, which logs once for each place the game asked from. Once the player is in the world,
+ * with the level), which Forge 64 to 66 ask a model with its model data instead of (PART-4): this check's wrapper of the
+ * model calls {@link #asked} as it gives it, which logs once for each place the game asked from. Once the player is in the world,
  * this client makes the block's breaking particles (whose sprite Forge sets again in {@code TerrainParticle.updateSprite})
  * and a block marker of it, and shows the screen effect inside it: the block is put at the player's eye on this client
  * only, at the end of each client tick until the effect asked, and taken away at the start of the next, before the
@@ -65,6 +77,9 @@ public final class ParticleSpriteCheck {
 	}
 
 	static void register() {
+		// After every other wrapper, the shared checks' included.
+		ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register(ModelModifier.WRAP_LAST_PHASE, (model, context) ->
+				BuiltInRegistries.BLOCK.getKey(context.state().getBlock()).equals(FrapiTestMod.TERRAIN_BLOCK_ID) ? new SpriteCheckModel(model) : model));
 		ClientTickEvents.START_CLIENT_TICK.register(client -> takeAway(client.level));
 		ClientTickEvents.END_CLIENT_TICK.register(ParticleSpriteCheck::put);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
@@ -99,7 +114,7 @@ public final class ParticleSpriteCheck {
 		extractions++;
 		ClientLevel level = Minecraft.getInstance().level;
 		BlockPos pos = placed;
-		if (level != null && pos != null && FrapiTestMod.terrainBlock != null && level.getBlockState(pos).is(FrapiTestMod.terrainBlock)) extractionsWithBlock++;
+		if (level != null && pos != null && level.getBlockState(pos).is(terrainBlock())) extractionsWithBlock++;
 	}
 
 	/**
@@ -167,7 +182,7 @@ public final class ParticleSpriteCheck {
 	private static void put(Minecraft client) {
 		ClientLevel level = client.level;
 		LocalPlayer player = client.player;
-		Block block = FrapiTestMod.terrainBlock;
+		Block block = terrainBlock();
 		if (level == null || player == null || block == null) return;
 		BlockState terrain = block.defaultBlockState();
 		if (!particlesMade) {
@@ -191,5 +206,49 @@ public final class ParticleSpriteCheck {
 		placed = null;
 		replaced = null;
 		if (level != null && pos != null && state != null) level.setBlockAndUpdate(pos, state);
+	}
+
+	private static @Nullable Block terrainBlock() {
+		return BuiltInRegistries.BLOCK.getOptional(FrapiTestMod.TERRAIN_BLOCK_ID).orElse(null);
+	}
+
+	/** The terrain block's model as the shared checks made it, telling this check where its particle material is asked. */
+	private record SpriteCheckModel(BlockStateModel wrapped) implements BlockStateModel, FabricBlockStateModel {
+		@Override
+		public void collectParts(RandomSource random, List<BlockStateModelPart> output) {
+			wrapped.collectParts(random, output);
+		}
+
+		@Override
+		public Material.Baked particleMaterial() {
+			askedWithoutLevel();
+			return wrapped.particleMaterial();
+		}
+
+		@Override
+		public int materialFlags() {
+			return wrapped.materialFlags();
+		}
+
+		@Override
+		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
+			((FabricBlockStateModel) wrapped).emitQuads(emitter, level, pos, state, random, cullTest);
+		}
+
+		@Override
+		public Object createGeometryKey(BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random) {
+			return ((FabricBlockStateModel) wrapped).createGeometryKey(level, pos, state, random);
+		}
+
+		@Override
+		public Material.Baked particleMaterial(BlockAndTintGetter level, BlockPos pos, BlockState state) {
+			asked(state, pos);
+			return ((FabricBlockStateModel) wrapped).particleMaterial(level, pos, state);
+		}
+
+		@Override
+		public int materialFlags(BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random) {
+			return ((FabricBlockStateModel) wrapped).materialFlags(level, pos, state, random);
+		}
 	}
 }
