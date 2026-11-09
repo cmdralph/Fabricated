@@ -1,7 +1,11 @@
 package io.github.cmdralph.fabricated.testmod;
 
 import java.util.List;
+import java.util.function.Consumer;
 
+import com.mojang.brigadier.CommandDispatcher;
+
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
@@ -13,6 +17,8 @@ import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.CommonHooks;
 import net.neoforged.neoforge.common.CreativeModeTabRegistry;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.registries.RegistryBuilder;
 
 /**
@@ -46,5 +52,10 @@ final class TestPlatform {
 	/** Whether a left click starting to break a block, as the platform's hook fires it, was cancelled. */
 	static boolean leftClickBlockCancelled(Player player, BlockPos pos) {
 		return CommonHooks.onLeftClickBlock(player, pos, Direction.UP, ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK).isCanceled();
+	}
+
+	/** Registers server commands each time the platform builds the command tree. */
+	static void registerCommands(Consumer<CommandDispatcher<CommandSourceStack>> commands) {
+		NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> commands.accept(event.getDispatcher()));
 	}
 }
