@@ -793,7 +793,9 @@ final class OverloadRepairs extends PreflightPart {
 	/**
 	 * The method NeoForge's build replaced {@code method} with: the one method of the class it calls taking its parameters
 	 * and one more, when NeoForge marks {@code method} deprecated, which vanilla's methods never are (DEPRECATED-1).
-	 * {@code BoneMealItem.growCrop}'s code is in {@code applyBonemeal} there, which also takes the player. Null otherwise.
+	 * {@code BoneMealItem.growCrop}'s code is in {@code applyBonemeal} there, which also takes the player. Where it calls
+	 * none, the one other method of its name taking them and one more: Forge 52's {@code ParticleEngine.render} calls
+	 * itself where Forge meant its overload taking a frustum, which the game calls instead (IRIS-2). Null otherwise.
 	 */
 	static MethodNode replacementOf(MethodNode method, ClassNode target) {
 		if (!PreflightAsm.deprecated(method)) return null;
@@ -804,6 +806,13 @@ final class OverloadRepairs extends PreflightPart {
 			if (callee == null || callee == found || (callee.access & Opcodes.ACC_STATIC) != (method.access & Opcodes.ACC_STATIC)) continue;
 			if (found != null) return null;
 			found = callee;
+		}
+		if (found != null) return found;
+		for (MethodNode m : target.methods) {
+			if (!m.name.equals(method.name) || CallRepairs.insertedArgument(method.desc, m.desc) < 0
+					|| (m.access & Opcodes.ACC_STATIC) != (method.access & Opcodes.ACC_STATIC)) continue;
+			if (found != null) return null;
+			found = m;
 		}
 		return found;
 	}

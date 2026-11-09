@@ -193,10 +193,15 @@ def report(summary):
     for entry in entries:
         name = f"{entry['platform']} {entry['minecraft']} {entry['run']}"
         broken = [c["description"] for c in entry.get("checks", []) if c["result"] == "fail" and c["gate"]]
-        result = entry["result"] + (" (informational)" if entry.get("gates") == "none" else "")
+        # An informational run passes whatever its checks say, so the result says how many failed (CI-11).
+        missed = [c["description"] for c in entry.get("checks", []) if c["result"] == "fail" and not c["gate"]]
+        result = entry["result"] + (f" (informational, {len(missed)} check(s) failed)" if entry.get("gates") == "none" and missed
+                                    else " (informational)" if entry.get("gates") == "none" else "")
         print(f"{name}: {result}" + (f" ({entry['detail']})" if entry.get("detail") else ""))
         for description in broken:
             print(f"  FAIL: {description}")
+        for description in missed:
+            print(f"  FAIL (informational): {description}")
         if entry["result"] in ("fail", "error") and entry.get("gates") != "none":
             failed = True
             print(f"::error title={name}::" + ("; ".join(broken) or entry.get("detail", ""))[:900])

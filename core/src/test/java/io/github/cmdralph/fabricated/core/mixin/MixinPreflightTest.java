@@ -4696,6 +4696,70 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void anInjectionIntoADeprecatedMethodThatCallsItselfIsPointedAtTheOverloadOfItsNameTakingOneMore() throws Exception {
+		// IRIS-2: Iris redirects RenderSystem.setShader in ParticleEngine.render. Forge 52 keeps vanilla's render,
+		// deprecated, calling itself where Forge meant its overload taking a frustum, which holds vanilla's code and which
+		// the game calls instead.
+		java.util.function.Function<Boolean, byte[]> target = deprecated -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor old = cw.visitMethod(Opcodes.ACC_PUBLIC | (deprecated ? Opcodes.ACC_DEPRECATED : 0), "tick", "(I)V", null, null);
+			if (deprecated) old.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+			old.visitCode();
+			old.visitVarInsn(Opcodes.ALOAD, 0);
+			old.visitVarInsn(Opcodes.ILOAD, 1);
+			old.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "tick", "(I)V", false);
+			old.visitInsn(Opcodes.RETURN);
+			old.visitMaxs(0, 0);
+			old.visitEnd();
+			MethodVisitor current = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "(ILjava/lang/Object;)V", null, null);
+			current.visitCode();
+			current.visitVarInsn(Opcodes.ILOAD, 1);
+			current.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "helper", "(I)V", false);
+			current.visitInsn(Opcodes.RETURN);
+			current.visitMaxs(0, 0);
+			current.visitEnd();
+			MethodVisitor helper = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "helper", "(I)V", null, null);
+			helper.visitCode();
+			helper.visitInsn(Opcodes.RETURN);
+			helper.visitMaxs(0, 0);
+			helper.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		byte[] mixin = mixin("com/example/mixin/Shader", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "setShader", "(I)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(REDIRECT, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "tick");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";helper(I)V");
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 2);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Shader"));
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.apply(true))::get);
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Shader", mixin));
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Shader.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.stream().anyMatch(n -> n.message().contains("tick(I)V, which NeoForge deprecated for tick(ILjava/lang/Object;)V")), notes.toString());
+		mod.put("com/example/mixin/Shader", repaired);
+		assertTrue(preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// A vanilla method (never deprecated) calling itself is no sign its code is in another of its name.
+		assertTrue(preflight(new ClassIndex(Map.of(TARGET, target.apply(false))::get), Map.of("com/example/mixin/Shader", mixin)::get,
+				ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	@Test
 	void anInjectionIntoCodeNeoForgeSplitOffNextToAnEntryPointWithoutItsEventIsPointedThere() throws Exception {
 		// SPLIT-2: architectury hooks PersistentEntitySectionManager.addEntity for its entity add event, keeping the level
 		// its duck interface is given. NeoForge's build posts its own event there, then calls addEntityWithoutEvent, which
@@ -8167,14 +8231,19 @@ class MixinPreflightTest {
 		// map instead, a map it orders by RENDER_ORDER with Forge mods' own types after. The redirect moves to that loop,
 		// and the handler's reads of the list see the map's other keys after its elements: a copy of the list keeps them.
 		// NeoForge 21.1 names its overload as vanilla's method. Forge 47 runs vanilla's code under its SRG names and its
-		// own under theirs, so there the overload, "render", is the method it deprecated vanilla's m_107336_ for.
-		keyedLoopRepair("render");
-		keyedLoopRepair("m_107336_");
+		// own under theirs, so there the overload, "render", is the method it deprecated vanilla's m_107336_ for. IRIS-2:
+		// Forge 52's vanilla render, deprecated, calls itself where Forge meant the overload, which the game calls instead.
+		keyedLoopRepair("render", false);
+		keyedLoopRepair("m_107336_", false);
+		keyedLoopRepair("render", true);
 	}
 
-	/** The IRIS-1 particle engine, its vanilla method named {@code vanilla} (deprecated where not the overload's name). */
-	private void keyedLoopRepair(String vanilla) throws Exception {
-		boolean renamed = !vanilla.equals("render");
+	/**
+	 * The IRIS-1 particle engine, its vanilla method named {@code vanilla} (deprecated where not the overload's name, or
+	 * where it calls itself, {@code callsItself}, in place of the overload).
+	 */
+	private void keyedLoopRepair(String vanilla, boolean callsItself) throws Exception {
+		boolean deprecated = !vanilla.equals("render") || callsItself;
 		String engine = "net/minecraft/client/particle/Engine";
 		String list = "Ljava/util/List;";
 		String map = "Ljava/util/Map;";
@@ -8217,13 +8286,13 @@ class MixinPreflightTest {
 		mv.visitInsn(Opcodes.ARETURN);
 		mv.visitMaxs(0, 0);
 		mv.visitEnd();
-		mv = target.visitMethod(Opcodes.ACC_PUBLIC | (renamed ? Opcodes.ACC_DEPRECATED : 0), vanilla, "(I)V", null, null);
-		if (renamed) mv.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+		mv = target.visitMethod(Opcodes.ACC_PUBLIC | (deprecated ? Opcodes.ACC_DEPRECATED : 0), vanilla, "(I)V", null, null);
+		if (deprecated) mv.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
 		mv.visitCode();
 		mv.visitVarInsn(Opcodes.ALOAD, 0);
 		mv.visitVarInsn(Opcodes.ILOAD, 1);
-		mv.visitInsn(Opcodes.ACONST_NULL);
-		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, engine, "render", overload, false);
+		if (!callsItself) mv.visitInsn(Opcodes.ACONST_NULL);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, engine, "render", callsItself ? "(I)V" : overload, false);
 		mv.visitInsn(Opcodes.RETURN);
 		mv.visitMaxs(0, 0);
 		mv.visitEnd();
@@ -8347,7 +8416,9 @@ class MixinPreflightTest {
 		@SuppressWarnings("unchecked")
 		Map<Object, Object> particles = (Map<Object, Object>) type.getField("particles").get(instance);
 		for (String held : new String[] {"terrain", "opaque", "translucent", "forge"}) particles.put(held, List.of(held + " particle"));
-		type.getMethod(vanilla, int.class).invoke(instance, 0);
+		// The game calls the overload where vanilla's method calls itself.
+		if (callsItself) type.getMethod("render", int.class, Object.class).invoke(instance, 0, null);
+		else type.getMethod(vanilla, int.class).invoke(instance, 0);
 		assertEquals(List.of("terrain", "translucent", "forge"), type.getField("rendered").get(null),
 				"the pass goes over the types the handler kept, Forge's own among them, in order; custom holds no particles");
 		java.lang.reflect.Field keys = type.getDeclaredField(mixin.fields.stream().filter(f -> Annotations.find(f, SHADOW) == null).findFirst().orElseThrow().name);
