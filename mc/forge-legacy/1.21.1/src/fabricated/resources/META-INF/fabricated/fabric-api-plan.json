@@ -29,9 +29,11 @@
       "plan": "passthrough",
       "skipMixins": [
         "fabric-events-interaction-v0.mixins.json:ServerPlayerInteractionManagerMixin#breakBlock",
-        "fabric-events-interaction-v0.mixins.json:ServerPlayerInteractionManagerMixin#onBlockBroken"
+        "fabric-events-interaction-v0.mixins.json:ServerPlayerInteractionManagerMixin#onBlockBroken",
+        "fabric-events-interaction-v0.mixins.json:ServerPlayerInteractionManagerMixin#startBlockBreak",
+        "fabric-events-interaction-v0.mixins.json:ServerPlayNetworkHandlerMixin#onPlayerInteractEntity(Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/phys/Vec3;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V"
       ],
-      "reason": "Forge's destroyBlock no longer calls Block.playerWillDestroy and Block.destroy itself, where upstream's hooks fire PlayerBlockBreakEvents.BEFORE and AFTER: both moved into a private removeBlock Forge added. Fabricated's in-game mod fires them at the same points of Forge's method instead, BEFORE (with CANCELED when refused) once the game's checks pass and AFTER once removeBlock removed the block, before the drops (BREAK-1, as on Forge 47 and 61 to 66)."
+      "reason": "Forge's destroyBlock no longer calls Block.playerWillDestroy and Block.destroy itself, where upstream's hooks fire PlayerBlockBreakEvents.BEFORE and AFTER: both moved into a private removeBlock Forge added. Fabricated's in-game mod fires them at the same points of Forge's method instead, BEFORE (with CANCELED when refused) once the game's checks pass and AFTER once removeBlock removed the block, before the drops (BREAK-1, as on Forge 47 and 61 to 66). Forge posts its own left click and entity interaction events from its code and its mods' (a fake player's click), where upstream's server hooks sit in the packet handling before them: the in-game mod fires AttackBlockCallback from Forge's LeftClickBlock and UseEntityCallback from its EntityInteractSpecific on the server, so upstream's server hooks for them are left out, which would fire the callbacks a second time (INTERACT-1, as on Forge 61 to 66). Upstream's hook for an interaction without a clicked point stays: Forge 52's EntityInteract, posted where vanilla interacts so, isn't bridged."
     },
     "fabric-key-binding-api-v1": {
       "plan": "native",
