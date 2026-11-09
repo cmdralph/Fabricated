@@ -3,6 +3,21 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-09: The Fabric builds of Sodium and Iris on Forge 52 (IRIS-2, FRAPI-13)
+
+- **IRIS-2** (P1), fixed: pre-flight disabled Iris's Fabric build on Forge 52, whose vanilla `ParticleEngine.render`,
+  deprecated, calls itself where Forge meant its overload taking a frustum, so IRIS-1's repairs found no overload to
+  move Iris's particle hooks to. `OverloadRepairs.replacementOf` now takes, where a deprecated method calls none, the
+  one method of its name taking its parameters and one more. Loaded, Iris overflowed the stack, as its particle pass
+  calls vanilla's method: Forge 52's in-game mod points that call at the overload (`ParticleEngineRenderMixin`).
+- **FRAPI-13** (P3), fixed: Sodium meshed Fabric block models on Forge 52 all along; the 1.21.1 renderer test model
+  logged its terrain line only in vanilla's chunk section level, not in Sodium's. Of what of Sodium doesn't apply
+  there, its model overwrites (left out by pre-flight) cost only speed, its hook into NeoForge's block entity walk has
+  nothing to hook, and its window hooks miss only where Forge's early window is off (its driver workarounds).
+- `client-sodium-fabric` runs on Forge 52, informational until it holds on two extended runs (CI-1). Verified locally: that run (58 checks passing, none failing) and the
+  client part on Forge 52, `client-sodium-iris` and the client part on Forge 47, `client-sodium-fabric` on NeoForge
+  1.21.1, the core unit tests and NeoForge 1.21.1's build.
+
 ## 2026-11-09: Fabric mods' own model loaders on Forge 52, and Forge 47's and Forge 61 to 66's own checks on it (MODEL-5, CI-8)
 
 - **MODEL-5** (P2), fixed: Forge 52 failed a block model naming a Fabric mod's own loader, as Forge 47 did before

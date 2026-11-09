@@ -73,7 +73,8 @@ public final class KeyedLoops {
 	 * Points a {@code @Redirect} of a read of a static list ({@code GETSTATIC}) of its target that the method it names
 	 * doesn't make, nor the overload of the same name that method calls ({@link OverloadRepairs#calledOverload}) or the
 	 * method the platform deprecated it for ({@link OverloadRepairs#replacementOf}: Forge 47 runs vanilla's code under
-	 * its SRG names, so its overload's name isn't vanilla's method's there), at the one call there to {@code keySet()}
+	 * its SRG names, so its overload's name isn't vanilla's method's there, and Forge 52's vanilla method calls itself
+	 * instead of it), at the one call there to {@code keySet()}
 	 * of a map field of the target that the platform's code goes over (its result's {@code iterator()} called at once)
 	 * and fills, in a constructor, with a map made from the list (the list read and that field the next one stored):
 	 * Forge 47's {@code ParticleEngine.render} and its particles' map, sorted by vanilla's render order with Forge's

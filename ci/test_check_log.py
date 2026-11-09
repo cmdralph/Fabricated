@@ -146,6 +146,18 @@ class EvaluatorTest(unittest.TestCase):
         self.assertIn("  FAIL: every", out.getvalue())
         self.assertIn("::error title=neoforge 26.1.2 server::every", out.getvalue())
 
+    def test_an_informational_runs_failed_checks_are_counted(self):
+        summary = self.dir / "checks.json"
+        summary.write_text(json.dumps([{"platform": "forge", "minecraft": "26.3", "run": "client-corpus", "gates": "none", "result": "pass",
+                                        "checks": [{"id": "joined", "result": "fail", "gate": False, "description": "client joined"},
+                                                   {"id": "ran", "result": "pass", "gate": False, "description": "ran"}]}]))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(check_log.report(summary), 0)
+        self.assertIn("forge 26.3 client-corpus: pass (informational, 1 check(s) failed)\n", out.getvalue())
+        self.assertIn("  FAIL (informational): client joined\n", out.getvalue())
+        self.assertNotIn("::error", out.getvalue())
+
 
 class ManifestTest(unittest.TestCase):
     """The repository's manifests: every row well formed, so a mistake fails here rather than in a game run."""
