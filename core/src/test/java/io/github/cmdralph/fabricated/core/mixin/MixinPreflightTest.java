@@ -1483,6 +1483,145 @@ class MixinPreflightTest {
 		}
 	}
 
+	private static final String PIECE = "piece(Ljava/lang/Object;I)V";
+	private static final String PIECE_ANIMATED = "piece(Ljava/lang/Object;IFF)V";
+
+	/**
+	 * {@link #TARGET} as NeoForge 21.1 makes {@code HumanoidArmorLayer}: vanilla's {@code piece(Object, int)} (its
+	 * {@code renderArmorPiece}), {@code deprecated} or not, only calls {@code piece(Object, int, float, float)} with zeros
+	 * for the limb animation's values, which holds the code (a call to {@code inner(I)Z}); or, {@code vanilla}, as vanilla
+	 * has it, without the overload.
+	 */
+	private static byte[] armorLayerLike(boolean vanilla, boolean deprecated) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor kept = cw.visitMethod(Opcodes.ACC_PRIVATE | (deprecated ? Opcodes.ACC_DEPRECATED : 0), "piece", "(Ljava/lang/Object;I)V", null, null);
+		if (deprecated) kept.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+		kept.visitCode();
+		kept.visitVarInsn(Opcodes.ALOAD, 0);
+		if (vanilla) {
+			kept.visitVarInsn(Opcodes.ILOAD, 2);
+			kept.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "inner", "(I)Z", false);
+			kept.visitInsn(Opcodes.POP);
+		} else {
+			kept.visitVarInsn(Opcodes.ALOAD, 1);
+			kept.visitVarInsn(Opcodes.ILOAD, 2);
+			kept.visitInsn(Opcodes.FCONST_0);
+			kept.visitInsn(Opcodes.FCONST_0);
+			kept.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "piece", "(Ljava/lang/Object;IFF)V", false);
+		}
+		kept.visitInsn(Opcodes.RETURN);
+		kept.visitMaxs(0, 0);
+		kept.visitEnd();
+		if (!vanilla) {
+			MethodVisitor animated = cw.visitMethod(Opcodes.ACC_PRIVATE, "piece", "(Ljava/lang/Object;IFF)V", null, null);
+			animated.visitCode();
+			animated.visitVarInsn(Opcodes.ALOAD, 0);
+			animated.visitVarInsn(Opcodes.ILOAD, 2);
+			animated.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "inner", "(I)Z", false);
+			animated.visitInsn(Opcodes.POP);
+			animated.visitInsn(Opcodes.RETURN);
+			animated.visitMaxs(0, 0);
+			animated.visitEnd();
+		}
+		MethodVisitor inner = cw.visitMethod(Opcodes.ACC_PRIVATE, "inner", "(I)Z", null, null);
+		inner.visitCode();
+		inner.visitInsn(Opcodes.ICONST_0);
+		inner.visitInsn(Opcodes.IRETURN);
+		inner.visitMaxs(0, 0);
+		inner.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * {@code @Inject}s taking the method's parameters: Figura's armour hooks in {@code HumanoidArmorLayerMixinFabric}, one
+	 * at the call to {@code inner(I)Z} (its {@code usesInnerModel}), one at the method's return, which undoes what the
+	 * first one does; and Fabric API's armour renderers' at its start ({@code ArmorFeatureRendererMixin}, cancellable).
+	 */
+	private static void armorPieceHooks(ClassWriter cw) {
+		for (String handler : List.of("onPiece", "postPiece", "renderPiece")) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, handler, "(Ljava/lang/Object;ILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V",
+					null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, PIECE);
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			if (handler.equals("onPiece")) {
+				at.visit("value", "INVOKE");
+				at.visit("target", "L" + TARGET + ";inner(I)Z");
+			} else {
+				at.visit("value", handler.equals("postPiece") ? "RETURN" : "HEAD");
+			}
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 4);
+			mv.visitEnd();
+		}
+	}
+
+	@Test
+	void injectorsTakingTheParametersOfAMethodThePlatformDeprecatedForAnOverloadMoveThereThroughBridges() throws Exception {
+		// PRE-20: NeoForge 21.1 keeps HumanoidArmorLayer.renderArmorPiece only to call an overload that also takes the
+		// limb animation's values, which render calls instead. Figura's hook at its usesInnerModel call was missing there,
+		// and its hook at the return, which restores the model parts the first one moved, would never run. A hook at its
+		// start stays, as one there may cancel the method to do its work another way (FRAPI-5's Indigo hook).
+		java.util.function.Supplier<Map<String, byte[]>> mod = () -> new HashMap<>(Map.of("com/example/mixin/Armor",
+				mixin("com/example/mixin/Armor", false, MixinPreflightTest::armorPieceHooks)));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Armor"));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, armorLayerLike(false, true))::get);
+		Map<String, byte[]> vanilla = Map.of(TARGET, armorLayerLike(true, false));
+		List<PreflightFinding> notes = new ArrayList<>();
+
+		Map<String, byte[]> classes = mod.get();
+		Map<String, byte[]> repaired = new MixinPreflight(neoForge, InstalledClasses.NONE, classes::get, ClassBytesSource.EMPTY, true, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(Set.of("com/example/mixin/Armor.class"), repaired.keySet(), notes.toString());
+		assertTrue(notes.stream().anyMatch(n -> n.message().contains("@Inject onPiece targets " + PIECE + ", whose code NeoForge moved into " + PIECE_ANIMATED)),
+				notes.toString());
+		assertTrue(notes.stream().anyMatch(n -> n.message().contains("@Inject postPiece targets " + PIECE + ", which NeoForge deprecated for " + PIECE_ANIMATED)),
+				notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Armor.class")).accept(node, 0);
+		assertTrue(node.methods.stream().noneMatch(m -> m.name.equals("renderPiece$fabricated")), "the hook at the start stays");
+		for (String handler : List.of("onPiece", "postPiece")) {
+			MethodNode bridge = node.methods.stream().filter(m -> m.name.equals(handler + "$fabricated")).findFirst().orElseThrow();
+			assertEquals("(Ljava/lang/Object;IFFLorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", bridge.desc);
+			assertEquals(List.of(PIECE_ANIMATED), Annotations.value(bridge.invisibleAnnotations.getFirst(), "method"));
+			// The bridge passes the object, the int and the callback info on, skipping the animation's values.
+			List<Integer> loads = new ArrayList<>();
+			for (AbstractInsnNode insn : bridge.instructions) {
+				if (insn instanceof VarInsnNode load) loads.add(load.var);
+			}
+			assertEquals(List.of(0, 1, 2, 5), loads);
+		}
+		classes.put("com/example/mixin/Armor", repaired.get("com/example/mixin/Armor.class"));
+		assertTrue(new MixinPreflight(neoForge, InstalledClasses.NONE, classes::get, ClassBytesSource.EMPTY, true, true, vanilla::get)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().noneMatch(f -> f.severity() != Severity.INFO),
+				"the bridges fit the overload, and the hook at the start the method itself");
+
+		// Not deprecated, or deprecated where vanilla's class has the overload too (vanilla's own), the hook at the
+		// return stays; the one at the call moves all the same.
+		Map<String, byte[]> notDeprecated = Map.of(TARGET, armorLayerLike(false, false));
+		Map<String, byte[]> deprecated = Map.of(TARGET, armorLayerLike(false, true));
+		for (List<Map<String, byte[]>> game : List.of(List.of(notDeprecated, vanilla), List.of(deprecated, deprecated))) {
+			Map<String, byte[]> own = mod.get();
+			List<PreflightFinding> stayed = new ArrayList<>();
+			byte[] bytes = new MixinPreflight(new ClassIndex(game.get(0)::get), InstalledClasses.NONE, own::get, ClassBytesSource.EMPTY, true, true,
+					game.get(1)::get).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), stayed).get("com/example/mixin/Armor.class");
+			ClassNode unmoved = new ClassNode();
+			new ClassReader(bytes).accept(unmoved, 0);
+			assertTrue(unmoved.methods.stream().anyMatch(m -> m.name.equals("onPiece$fabricated")), stayed.toString());
+			assertTrue(unmoved.methods.stream().noneMatch(m -> m.name.equals("postPiece$fabricated")), stayed.toString());
+		}
+	}
+
 	private static final String CRAFTING_HELPER = "net/neoforged/neoforge/common/crafting/CraftingHelper";
 	private static final String CODEC_DESC = "(Z)Ljava/util/List;";
 

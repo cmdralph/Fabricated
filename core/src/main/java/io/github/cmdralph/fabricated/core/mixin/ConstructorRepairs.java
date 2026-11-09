@@ -257,16 +257,22 @@ final class ConstructorRepairs extends PreflightPart {
 		if (!constructor.name.equals("<init>")) return null;
 		MethodNode delegate = thisCall(constructor, target);
 		if (delegate == null) return null;
-		boolean deprecated = (constructor.access & Opcodes.ACC_DEPRECATED) != 0 || Annotations.find(constructor, "Ljava/lang/Deprecated;") != null;
-		if (deprecated) return delegate;
+		if (PreflightAsm.deprecated(constructor)) return delegate;
+		return platformAdded(constructor, delegate, vanilla) && forwardsItsParameters(constructor, delegate) ? delegate : null;
+	}
+
+	/**
+	 * Whether the platform added {@code delegate}, a method or constructor of the class taking {@code method}'s
+	 * parameters and more: one of those it adds is of the platform's types, or vanilla's class ({@code vanilla}, when
+	 * known) declares {@code method} and not {@code delegate}.
+	 */
+	static boolean platformAdded(MethodNode method, MethodNode delegate, ClassNode vanilla) {
 		Type[] all = Type.getArgumentTypes(delegate.desc);
-		int own = Type.getArgumentTypes(constructor.desc).length;
-		boolean neoForgeAdded = false;
-		for (int i = own; i < all.length; i++) neoForgeAdded |= all[i].getSort() == Type.OBJECT && MixinNames.isPlatformCode(all[i].getInternalName());
-		// Vanilla's class has this constructor and not the one it calls: the platform added that one.
-		neoForgeAdded |= vanilla != null && PreflightAsm.declared(vanilla, "<init>", constructor.desc) != null
-				&& PreflightAsm.declared(vanilla, "<init>", delegate.desc) == null;
-		return neoForgeAdded && forwardsItsParameters(constructor, delegate) ? delegate : null;
+		for (int i = Type.getArgumentTypes(method.desc).length; i < all.length; i++) {
+			if (all[i].getSort() == Type.OBJECT && MixinNames.isPlatformCode(all[i].getInternalName())) return true;
+		}
+		return vanilla != null && PreflightAsm.declared(vanilla, method.name, method.desc) != null
+				&& PreflightAsm.declared(vanilla, delegate.name, delegate.desc) == null;
 	}
 
 	/** The constructor of {@code target} that {@code constructor}'s body, {@code this(...)} and nothing after it, calls; or null. */
@@ -288,38 +294,43 @@ final class ConstructorRepairs extends PreflightPart {
 	}
 
 	/**
-	 * Whether {@code constructor} is {@code this(its parameters in order, then defaults)}: the other constructor gets
-	 * exactly what it got, plus defaults. A default is a constant, a static field or what a static method returns
-	 * without arguments: NeoForge keeps {@code ClientLanguage}'s vanilla constructor as {@code this(storage, rtl,
-	 * Map.of())} (every version), so owo-lib's hook at its end never ran and left owo's text map unset (CTOR-6).
+	 * Whether {@code method}, a constructor or a method, only calls {@code delegate} of its class with its parameters in
+	 * order, then defaults, and returns what it returns: the other one gets exactly what it got, plus defaults. A default
+	 * is a constant, a static field or what a static method returns without arguments: NeoForge keeps
+	 * {@code ClientLanguage}'s vanilla constructor as {@code this(storage, rtl, Map.of())} (every version), so owo-lib's
+	 * hook at its end never ran and left owo's text map unset (CTOR-6).
 	 */
-	static boolean forwardsItsParameters(MethodNode constructor, MethodNode delegate) {
-		Type[] own = Type.getArgumentTypes(constructor.desc);
+	static boolean forwardsItsParameters(MethodNode method, MethodNode delegate) {
+		Type[] own = Type.getArgumentTypes(method.desc);
 		Type[] all = Type.getArgumentTypes(delegate.desc);
-		if (all.length <= own.length) return false;
+		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
+		if (all.length <= own.length || isStatic != ((delegate.access & Opcodes.ACC_STATIC) != 0)
+				|| !Type.getReturnType(method.desc).equals(Type.getReturnType(delegate.desc))) return false;
 		for (int i = 0; i < own.length; i++) {
 			if (!own[i].equals(all[i])) return false;
 		}
 		List<AbstractInsnNode> code = new ArrayList<>();
-		for (AbstractInsnNode insn : constructor.instructions) {
+		for (AbstractInsnNode insn : method.instructions) {
 			if (insn.getOpcode() >= 0) code.add(insn); // not labels, line numbers or frames
 		}
-		if (code.size() != own.length + (all.length - own.length) + 3) return false;
-		if (!(code.get(0) instanceof VarInsnNode self) || self.getOpcode() != Opcodes.ALOAD || self.var != 0) return false;
-		int slot = 1;
+		int first = isStatic ? 0 : 1;
+		if (code.size() != first + all.length + 2) return false;
+		if (!isStatic && (!(code.get(0) instanceof VarInsnNode self) || self.getOpcode() != Opcodes.ALOAD || self.var != 0)) return false;
+		int slot = first;
 		for (int i = 0; i < own.length; i++) {
-			if (!(code.get(1 + i) instanceof VarInsnNode load) || load.getOpcode() != own[i].getOpcode(Opcodes.ILOAD) || load.var != slot) return false;
+			if (!(code.get(first + i) instanceof VarInsnNode load) || load.getOpcode() != own[i].getOpcode(Opcodes.ILOAD) || load.var != slot) return false;
 			slot += own[i].getSize();
 		}
-		for (int i = 1 + own.length; i < code.size() - 2; i++) {
+		for (int i = first + own.length; i < code.size() - 2; i++) {
 			int op = code.get(i).getOpcode();
 			boolean constant = op >= Opcodes.ACONST_NULL && op <= Opcodes.DCONST_1 || op == Opcodes.BIPUSH || op == Opcodes.SIPUSH
 					|| op == Opcodes.LDC || op == Opcodes.GETSTATIC
 					|| op == Opcodes.INVOKESTATIC && Type.getArgumentTypes(((MethodInsnNode) code.get(i)).desc).length == 0;
 			if (!constant) return false;
 		}
-		return code.get(code.size() - 2) instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESPECIAL && call.desc.equals(delegate.desc)
-				&& code.get(code.size() - 1).getOpcode() == Opcodes.RETURN;
+		return code.get(code.size() - 2) instanceof MethodInsnNode call && (call.getOpcode() == Opcodes.INVOKESTATIC) == isStatic
+				&& call.name.equals(delegate.name) && call.desc.equals(delegate.desc)
+				&& code.get(code.size() - 1).getOpcode() == Type.getReturnType(method.desc).getOpcode(Opcodes.IRETURN);
 	}
 
 	/** Whether {@code handler} takes {@code method}'s parameters and a callback info, and nothing else (no captured locals or sugar). */
