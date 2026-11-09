@@ -206,6 +206,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		classpathScan();
 		classResources();
 		resourceBundle();
+		RecordedFramesTest.check();
 
 		List<Runnable> custom = loader.getEntrypoints("fabricated-test", Runnable.class);
 		custom.forEach(Runnable::run);
