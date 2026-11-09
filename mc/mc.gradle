@@ -106,7 +106,7 @@ sourceSets {
         java.srcDirs = ['src/main/java', 'src/fabricapi/java']
         java.srcDir sharedJava('main')
         // The in-game mod's sources every platform shares, in mc/shared: Mod Menu's API, whose screens each platform's
-        // mod list shows.
+        // mod list shows, and the /fabricated command, which each platform registers.
         java.srcDir renamedJava('everyPlatformMain', [rootProject.file('mc/shared/src/main/java')])
         resources.srcDirs = ['src/main/resources'] + sharedSources.collect { rootProject.file("$it/src/main/resources") }
     }
@@ -119,9 +119,10 @@ sourceSets {
         java.srcDir renamedJava('testmodbroken', [rootProject.file('mc/shared/src/testmodbroken/java')])
     }
     // stand-ins for other mods' plugin interfaces, which the test mod compiles against (never packaged), with the Mod Menu
-    // API the in-game mod provides,
+    // API the in-game mod provides (not the in-game mod's own classes there),
     testmodstubs {
         java.srcDir renamedJava('testmodstubs', [rootProject.file('mc/shared/src/testmodstubs/java'), rootProject.file('mc/shared/src/main/java')])
+        java.exclude 'io/github/cmdralph/fabricated/**'
     }
     // and stand-ins for the APIs of Fabric libraries Fabricated bridges when a mod brings them (Team Reborn's energy
     // API), never packaged: the bridge loads only when the library is present.

@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.neoforge;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.command.FabricatedCommands;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.neoforge.biome.BiomeCompat;
 import io.github.cmdralph.fabricated.neoforge.fluid.FabricFluidType;

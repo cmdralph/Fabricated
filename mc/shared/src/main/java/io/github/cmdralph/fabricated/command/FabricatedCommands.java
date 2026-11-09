@@ -1,4 +1,4 @@
-package io.github.cmdralph.fabricated.neoforge;
+package io.github.cmdralph.fabricated.command;
 
 import java.io.IOException;
 import java.util.List;
@@ -17,23 +17,26 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
-import net.neoforged.fml.loading.FMLPaths;
 
 /**
  * {@code /fabricated}: prints a summary of Fabric mod loading. {@code /fabricated disabled} lists the Fabric mods that
  * didn't load, with why; {@code /fabricated why <mod>} tells one mod's outcome and what to do about it;
  * {@code /fabricated disable <mod>} and {@code enable <mod>} change {@code config/fabricated.json} for the next launch;
  * {@code /fabricated report} rewrites {@code logs/fabric-bridge-report.txt}. On a server all but the summary are limited
- * to the console, so players can't write files on the host or read its file names.
+ * to the console, so players can't write files on the host or read its file names. Every platform's in-game mod
+ * registers it, on its server's and its client's command events.
  */
-final class FabricatedCommands {
+public final class FabricatedCommands {
 	/** The most mods {@code /fabricated disabled} lists in chat; the report has them all. */
 	private static final int MAX_LISTED = 20;
 
 	private FabricatedCommands() {
 	}
 
-	static void register(CommandDispatcher<CommandSourceStack> dispatcher, FabricatedState state, boolean clientSide) {
+	/**
+	 * @param clientSide whether the dispatcher is the client's own, whose commands only its player runs
+	 */
+	public static void register(CommandDispatcher<CommandSourceStack> dispatcher, FabricatedState state, boolean clientSide) {
 		Predicate<CommandSourceStack> local = source -> clientSide || source.getPlayer() == null;
 		dispatcher.register(Commands.literal("fabricated")
 				.executes(context -> {
@@ -87,7 +90,7 @@ final class FabricatedCommands {
 		return Commands.literal(name).requires(local).then(modArgument(state).executes(context -> {
 			String id = StringArgumentType.getString(context, "mod");
 			try {
-				FabricatedConfig.setModDisabled(FMLPaths.CONFIGDIR.get(), id, disabled);
+				FabricatedConfig.setModDisabled(state.runtime().getConfigDir(), id, disabled);
 			} catch (IOException | JsonException e) {
 				context.getSource().sendFailure(Component.literal("Could not change config/" + FabricatedConfig.FILE_NAME + ": " + e.getMessage()));
 				return 0;
@@ -99,7 +102,7 @@ final class FabricatedCommands {
 	}
 
 	/** One mod's outcome, why, and what to do about it. */
-	static String why(Report.ModRow row) {
+	private static String why(Report.ModRow row) {
 		String outcome = switch (row.status()) {
 			case LOADED -> "loaded";
 			case DISABLED -> "disabled";
@@ -113,7 +116,7 @@ final class FabricatedCommands {
 				+ (row.suggestion().isEmpty() ? "" : " Fix: " + row.suggestion());
 	}
 
-	static String summary(FabricatedState state) {
+	private static String summary(FabricatedState state) {
 		Report report = state.report();
 		return "Fabricated: " + report.count(Report.Status.LOADED) + " Fabric mod(s) loaded, "
 				+ report.count(Report.Status.DISABLED) + " disabled, " + report.count(Report.Status.REJECTED) + " rejected, "

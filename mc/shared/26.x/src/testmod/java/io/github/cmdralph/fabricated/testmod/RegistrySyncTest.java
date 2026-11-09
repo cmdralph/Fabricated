@@ -38,10 +38,13 @@ public final class RegistrySyncTest implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		// A registry NeoForge tracks, as Forgified Fabric API's FabricRegistryBuilder has it do: NeoForge refuses one after its
-		// NewRegistryEvent, where Fabricated runs initializers (PROVIDER-6). Never added to the root registry: only made.
+		// NewRegistryEvent, where Fabricated runs initializers (PROVIDER-6). A platform that makes no mod's registry that
+		// late says so, and there is nothing to check. Never added to the root registry: only made.
 		try {
 			TestPlatform.createTrackedRegistry(TRACKED);
 			TestMod.LOGGER.info("FABRICATED-TEST registry sync: tracked registry OK");
+		} catch (UnsupportedOperationException e) {
+			TestMod.LOGGER.info("FABRICATED-TEST registry sync: tracked registry SKIPPED: {}", e.getMessage());
 		} catch (IllegalStateException e) {
 			TestMod.LOGGER.error("FABRICATED-TEST registry sync: tracked registry FAILED: {}", e.getMessage());
 		}
