@@ -1072,7 +1072,7 @@ them, with that folder's version groups that serve the version (`mc/forge-shared
 `overwrites.requireAnnotations`, which every NeoForge config sets: in the others, a method a mixin adds that its
 target already declares replaces the target's without an `@Overwrite` (MIX-3).
 
-## Forge 61 to 66 (`forge`): 83 mixins in 24 configs
+## Forge 61 to 66 (`forge`): 85 mixins in 24 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1134,9 +1134,10 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.item.mixin` ·
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| mixins | ItemForgeHooksMixin | 1.21.11 (1.21.11) | n.m.world.item.Item | no injectors; adds methods getEquipmentSlot, canApplyAtEnchantingTable, getCreatorModId (Forge's item hooks, answered from Fabric's item API) | | | | |
+| mixins | ItemForgeHooksMixin | mc/forge-shared/1.21.1+ (1.21.11) | n.m.world.item.Item | no injectors; adds methods getEquipmentSlot, getCreatorModId (Forge's item hooks, answered from Fabric's item API) | | | | |
+| mixins | ItemEnchantingHookMixin | common (1.21.11) | n.m.world.item.Item | no injectors; adds method canApplyAtEnchantingTable(ItemStack, Holder) (Forge's, answered from Fabric's item API) | | | | |
 | mixins | ItemRecipeRemainderMixin | 1.21.11 (1.21.11) | n.m.world.item.Item | no injectors; adds method getCraftingRemainder(ItemStack) (Forge's, answered from Fabric's getRecipeRemainder) | | | | |
-| mixins | ItemBuiltComponentsMixin | 1.21.11 (1.21.11) | n.m.world.item.Item | @Inject → fabricated$buildAgainOnceChanged; @Shadow components, builtComponents; @Unique fields fabricated$builtFrom | "components()Lnet/minecraft/core/component/DataComponentMap;" | HEAD | — | default |
+| mixins | ItemBuiltComponentsMixin | mc/forge-shared/1.21.x (1.21.11) | n.m.world.item.Item | @Inject → fabricated$buildAgainOnceChanged; @Shadow components, builtComponents; @Unique fields fabricated$builtFrom | "components()Lnet/minecraft/core/component/DataComponentMap;" | HEAD | — | default |
 
 ### `mc/forge/common26/src/main/resources/fabricated-forge-item.mixins.json`
 
@@ -1144,7 +1145,8 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.forge.ite
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| mixins | ItemForgeHooksMixin | common26 (26.1.2, 26.2, 26.3) | n.m.world.item.Item | no injectors; adds methods getEquipmentSlot, canApplyAtEnchantingTable, getCreatorModId (Forge's item hooks, answered from Fabric's item API) | | | | |
+| mixins | ItemForgeHooksMixin | mc/forge-shared/1.21.1+ (26.1.2, 26.2, 26.3) | n.m.world.item.Item | no injectors; adds methods getEquipmentSlot, getCreatorModId (Forge's item hooks, answered from Fabric's item API) | | | | |
+| mixins | ItemEnchantingHookMixin | common (26.1.2, 26.2, 26.3) | n.m.world.item.Item | no injectors; adds method canApplyAtEnchantingTable(ItemStack, Holder) (Forge's, answered from Fabric's item API) | | | | |
 
 ### `mc/forge-shared/1.21.1+/src/main/resources/fabricated-forge-block.mixins.json`
 
@@ -1330,7 +1332,7 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 | mixins | TagFileRemoveMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.tags.TagFile | @Inject → fabricated$readFabricRemove; @Shadow @Mutable CODEC | "<clinit>" | TAIL | — | default |
 | mixins | IngredientNetworkCodecMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.crafting.Ingredient | @Inject → fabricated$sendAsUpstream; @Shadow @Mutable CONTENTS_STREAM_CODEC, @Mutable OPTIONAL_CONTENTS_STREAM_CODEC, VANILLA_CONTENTS_STREAM_CODEC | "<clinit>" | TAIL | — | default |
 | mixins | ForgePayloadEncodeMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.network.protocol.common.custom.CustomPacketPayload$1 (`targets`) | @WrapOperation → fabricated$writeForgePayload | "writeCap" | INVOKE `L…/StreamCodec;encode(L…/Object;L…/Object;)V` | — | default |
-| mixins | ResourcePackLoaderKnownPackMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.resource.ResourcePackLoader | @ModifyArg → fabricated$knownPack | "findPacks" | INVOKE `L…/PackLocationInfo;<init>(L…/String;L…/Component;L…/PackSource;L…/Optional;)V` index=3 | 0 | default |
+| mixins | ResourcePackLoaderKnownPackMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.resource.ResourcePackLoader | @ModifyArg → fabricated$knownPack | "findPacks" | INVOKE `L…/PackLocationInfo;<init>(L…/String;L…/Component;L…/PackSource;L…/Optional;)V` index=3 | 0 | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.BucketItem | @WrapOperation → fabricated$delegateIfRegistered; @Shadow @Mutable fluidSupplier | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | INVOKE `L…/IForgeRegistry;getDelegateOrThrow(L…/Object;)L…/Holder$Reference;` | — | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.BucketItem | @Inject → fabricated$fluidItselfIfUnregistered | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | TAIL | — | default |
 | mixins | PlayerListViewMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, POLY-2) | "getPlayers" | RETURN | — | default |
@@ -1522,7 +1524,7 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.content.mixin` 
 |---|---|---|---|---|---|---|---|---|
 | mixins | FabricBrewingRecipeRegistryMixin | 1.20.1 (1.20.1) | fapi.api.registry.FabricBrewingRecipeRegistry (`targets`) (@Pseudo) | @Redirect → fabricated$potionMix | "registerPotionRecipe" | NEW `net/minecraft/world/item/alchemy/PotionBrewing$Mix` | — | require=0 |
 | mixins | FabricBrewingRecipeRegistryMixin | 1.20.1 (1.20.1) | fapi.api.registry.FabricBrewingRecipeRegistry (`targets`) (@Pseudo) | @Redirect → fabricated$itemMix | "registerItemRecipe" | NEW `net/minecraft/world/item/alchemy/PotionBrewing$Mix` | — | require=0 |
-| mixins | FurnaceFuelTableMixin | 1.20.1 (1.20.1) | n.m.world.level.block.entity.AbstractFurnaceBlockEntity | @Inject → fabricated$addFabricFuels | "getFuel" | RETURN | — | default |
+| mixins | FurnaceFuelTableMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.world.level.block.entity.AbstractFurnaceBlockEntity | @Inject → fabricated$addFabricFuels | "getFuel" | RETURN | — | default |
 
 ### `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-entity.mixins.json`
 
@@ -1539,11 +1541,11 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.rendering.mixin
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| client | BlockRenderDispatcherMixin | 1.20.1 (1.20.1) | n.m.client.renderer.block.BlockRenderDispatcher | @WrapWithCondition → fabricated$breakingOverlay | "renderBreakingTexture(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;Lnet/minecraftforge/client/model/data/ModelData;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(L…/BlockAndTintGetter;L…/BakedModel;L…/BlockState;L…/BlockPos;L…/PoseStack;L…/VertexConsumer;ZL…/RandomSource;JIL…/ModelData;L…/RenderType;)V` | — | default |
-| client | BlockRenderDispatcherMixin | 1.20.1 (1.20.1) | n.m.client.renderer.block.BlockRenderDispatcher | @WrapWithCondition → fabricated$batched | "renderBatched(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;ZLnet/minecraft/util/RandomSource;Lnet/minecraftforge/client/model/data/ModelData;Lnet/minecraft/client/renderer/RenderType;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(L…/BlockAndTintGetter;L…/BakedModel;L…/BlockState;L…/BlockPos;L…/PoseStack;L…/VertexConsumer;ZL…/RandomSource;JIL…/ModelData;L…/RenderType;)V` | — | default |
-| client | FallingBlockRendererMixin | 1.20.1 (1.20.1) | n.m.client.renderer.entity.FallingBlockRenderer | @WrapWithCondition → fabricated$fabricModels | "render(Lnet/minecraft/world/entity/item/FallingBlockEntity;FFLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(L…/BlockAndTintGetter;L…/BakedModel;L…/BlockState;L…/BlockPos;L…/PoseStack;L…/VertexConsumer;ZL…/RandomSource;JIL…/ModelData;L…/RenderType;)V` | — | default |
+| client | BlockRenderDispatcherMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.renderer.block.BlockRenderDispatcher | @WrapWithCondition → fabricated$breakingOverlay | "renderBreakingTexture(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;Lnet/minecraftforge/client/model/data/ModelData;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(L…/BlockAndTintGetter;L…/BakedModel;L…/BlockState;L…/BlockPos;L…/PoseStack;L…/VertexConsumer;ZL…/RandomSource;JIL…/ModelData;L…/RenderType;)V` | — | default |
+| client | BlockRenderDispatcherMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.renderer.block.BlockRenderDispatcher | @WrapWithCondition → fabricated$batched | "renderBatched(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;ZLnet/minecraft/util/RandomSource;Lnet/minecraftforge/client/model/data/ModelData;Lnet/minecraft/client/renderer/RenderType;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(L…/BlockAndTintGetter;L…/BakedModel;L…/BlockState;L…/BlockPos;L…/PoseStack;L…/VertexConsumer;ZL…/RandomSource;JIL…/ModelData;L…/RenderType;)V` | — | default |
+| client | FallingBlockRendererMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.renderer.entity.FallingBlockRenderer | @WrapWithCondition → fabricated$fabricModels | "render(Lnet/minecraft/world/entity/item/FallingBlockEntity;FFLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(L…/BlockAndTintGetter;L…/BakedModel;L…/BlockState;L…/BlockPos;L…/PoseStack;L…/VertexConsumer;ZL…/RandomSource;JIL…/ModelData;L…/RenderType;)V` | — | default |
 | client | ForgeHooksClientMixin | 1.20.1 (1.20.1) | forge.client.ForgeHooksClient | @WrapWithCondition → fabricated$fabricModels | "renderPistonMovedBlocks(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;Lnet/minecraft/world/level/Level;ZILnet/minecraft/client/renderer/block/BlockRenderDispatcher;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(L…/BlockAndTintGetter;L…/BakedModel;L…/BlockState;L…/BlockPos;L…/PoseStack;L…/VertexConsumer;ZL…/RandomSource;JIL…/ModelData;L…/RenderType;)V` | — | default |
-| client | MultiPartBakedModelMixin | 1.20.1 (1.20.1) | n.m.client.resources.model.MultiPartBakedModel | no injectors; implements FabricBlockRendering.Composite; adds methods fabricated$state, fabricated$parts; @Shadow selectors; @Unique fields fabricated$state | | | | |
+| client | MultiPartBakedModelMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.resources.model.MultiPartBakedModel | no injectors; implements FabricBlockRendering.Composite; adds methods fabricated$state, fabricated$parts; @Shadow selectors; @Unique fields fabricated$state | | | | |
 | client | RebuildTaskMixin | 1.20.1 (1.20.1) | n.m.client.renderer.chunk.ChunkRenderDispatcher$RenderChunk$RebuildTask (`targets`) | @WrapWithCondition → fabricated$fabricModels | "compile(FFFLnet/minecraft/client/renderer/ChunkBufferBuilderPack;)Lnet/minecraft/client/renderer/chunk/ChunkRenderDispatcher$RenderChunk$RebuildTask$CompileResults;" | INVOKE `L…/BlockRenderDispatcher;renderBatched(L…/BlockState;L…/BlockPos;L…/BlockAndTintGetter;L…/PoseStack;L…/VertexConsumer;ZL…/RandomSource;L…/ModelData;L…/RenderType;)V` @Local | — | default |
 | client | RebuildTaskMixin | 1.20.1 (1.20.1) | n.m.client.renderer.chunk.ChunkRenderDispatcher$RenderChunk$RebuildTask (`targets`) | @Inject → fabricated$endSection | "compile(FFFLnet/minecraft/client/renderer/ChunkBufferBuilderPack;)Lnet/minecraft/client/renderer/chunk/ChunkRenderDispatcher$RenderChunk$RebuildTask$CompileResults;" | RETURN | — | default |
 | client | WeightedBakedModelMixin | 1.20.1 (1.20.1) | n.m.client.resources.model.WeightedBakedModel | no injectors; implements FabricBlockRendering.Composite; adds methods fabricated$state, fabricated$parts; @Shadow list; @Unique fields fabricated$state | | | | |
@@ -1681,7 +1683,7 @@ Written in Mojang's names; the test mod's jar names them in Intermediary's, its 
 | client | HudHooksMixin | 1.20.1 (1.20.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheStart; @Unique fields fabricatedForgeTest$started, fabricatedForgeTest$endedCancelled, fabricatedForgeTest$endReported | "render" | HEAD cancellable=true | — | default |
 | client | HudHooksMixin | 1.20.1 (1.20.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheEnd | "render" | TAIL | — | default |
 | client | McRuntimeTestMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedForgeTest$holdForServerChecks | "tickHook" | HEAD cancellable=true | — | default |
-| client | MouseHandlerInvoker | 1.20.1 (1.20.1) | n.m.client.MouseHandler | @Invoker → fabricatedtest$onPress | "onPress" |  | — | default |
+| client | MouseHandlerInvoker | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.MouseHandler | @Invoker → fabricatedtest$onPress | "onPress" |  | — | default |
 | client | ParticleEngineProvidersAccessor | 1.20.1 (1.20.1) | n.m.client.particle.ParticleEngine | @Accessor → fabricatedtest$providers | "field_3835" remap=false |  | — | default |
 
 ### `mc/forge-legacy/1.20.1/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json`
@@ -1692,16 +1694,17 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.testmod.frapi.mixin` 
 |---|---|---|---|---|---|---|---|---|
 | client | McRuntimeTestHoldMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedFrapiTest$holdForMovingBlocks | "tickHook" | HEAD cancellable=true | — | default |
 
-## Forge 52 (`forge-legacy`): 35 mixins in 9 configs
+## Forge 52 (`forge-legacy`): 50 mixins in 14 configs
 
 Minecraft 1.21.1, in Mojang's names without a refmap, as on Forge 61 to 66. The mixins come from `mc/forge-shared` and its
 groups, as the source column says, but `NamespacedWrapperAliasMixin`, over 1.21.1's lookups, `LoadingRegistriesMixin`, on
-1.21.1's tagless wrapper of the registries, and `LiquidBlockRendererSpritesMixin`, Forge 52's fluid sprites (FLUID-4).
-Its test mod's `fabricated-forge-testmod.mixins.json` lists none: the recorded frames check is the shared test mod's.
+1.21.1's tagless wrapper of the registries, `LiquidBlockRendererSpritesMixin`, Forge 52's fluid sprites (FLUID-4), the
+item hooks Forge 52 names its own way (ITEM-1), the renderer seams in its section compiler and piston renderer and on
+1.21.1's weighted model (FRAPI-11), and its screen input hook (LAMBDA-10).
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 18, client 1 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 19, client 1 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.1 | mixins 4 | 1 | true | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 1.21.1 | mixins 2 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
@@ -1710,6 +1713,11 @@ Its test mod's `fabricated-forge-testmod.mixins.json` lists none: the recorded f
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-color.mixins.json` | `io.github.cmdralph.fabricated.forge.color.mixin` | 1.21.1 | client 2 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.21.1 | client 1 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.21.1 | client 4 | 1 | — | none |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-item.mixins.json` | `io.github.cmdralph.fabricated.forge.item.mixin` | 1.21.1 | mixins 4 | 1 | — | none |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-content.mixins.json` | `io.github.cmdralph.fabricated.forge.content.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 1.21.1 | client 6 | 1 | — | `FrapiMixinPlugin` |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-screen.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.mixin` | 1.21.1 | client 1 | 1 | — | none |
+| `mc/forge-legacy/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.1 | client 2 | 1 | — | none |
 
 ### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json`
 
@@ -1735,6 +1743,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | GameDataFreezeMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.registries.GameData | @Inject → fabricated$freezeBuiltInRegistries | "freezeData" | HEAD | — | default |
 | mixins | TagFileRemoveMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.tags.TagFile | @Inject → fabricated$readFabricRemove; @Shadow @Mutable CODEC | "<clinit>" | TAIL | — | default |
 | mixins | ForgePayloadEncodeMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.network.protocol.common.custom.CustomPacketPayload$1 (`targets`) | @WrapOperation → fabricated$writeForgePayload | "writeCap" | INVOKE `L…/StreamCodec;encode(L…/Object;L…/Object;)V` | — | default |
+| mixins | ResourcePackLoaderKnownPackMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.resource.ResourcePackLoader | @ModifyArg → fabricated$knownPack (a Fabric mod's pack gets Fabric API's known-pack identity, PACK-10) | "findPacks" | INVOKE `L…/PackLocationInfo;<init>(L…/String;L…/Component;L…/PackSource;L…/Optional;)V` index=3 | 0 | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.1) | n.m.world.item.BucketItem | @WrapOperation → fabricated$delegateIfRegistered; @Shadow @Mutable fluidSupplier | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | INVOKE `L…/IForgeRegistry;getDelegateOrThrow(L…/Object;)L…/Holder$Reference;` | — | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.1) | n.m.world.item.BucketItem | @Inject → fabricated$fluidItselfIfUnregistered | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | TAIL | — | default |
 | mixins | PlayerListViewMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, POLY-2) | "getPlayers" | RETURN | — | default |
@@ -1844,5 +1853,58 @@ Versions: 1.21.1 · package `net.fabricmc.fabric.mixin.client.particle` · requi
 | client | ParticleManagerAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Accessor → getParticleAtlasTexture | "textureAtlas" |  | — | default |
 | client | ParticleManagerAccessor$SimpleSpriteProviderAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine$MutableSpriteSet (`targets`) | @Accessor → getSprites | "sprites" |  | — | default |
 | client | ParticleManagerMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Inject → onRegisterDefaultFactories | "registerProviders()V" | RETURN | — | default |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-item.mixins.json`
+
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.item.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | ItemForgeHooksMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.world.item.Item | no injectors; adds methods getEquipmentSlot, getCreatorModId (Forge's item hooks, answered from Fabric's item API, ITEM-1) | | | | |
+| mixins | ItemEnchantingHookMixin | 1.21.1 (1.21.1) | n.m.world.item.Item | no injectors; adds method canApplyAtEnchantingTable(ItemStack, Enchantment) (Forge 52's, answered from Fabric's item API with the running server's holder); @Unique methods fabricated$holder | | | | |
+| mixins | ItemRecipeRemainderMixin | 1.21.1 (1.21.1) | n.m.world.item.Item | no injectors; adds methods getCraftingRemainingItem(ItemStack), hasCraftingRemainingItem(ItemStack) (Forge 52's, answered from Fabric's getRecipeRemainder) | | | | |
+| mixins | ItemBuiltComponentsMixin | mc/forge-shared/1.21.x (1.21.1) | n.m.world.item.Item | @Inject → fabricated$buildAgainOnceChanged; @Shadow components, builtComponents; @Unique fields fabricated$builtFrom | "components()Lnet/minecraft/core/component/DataComponentMap;" | HEAD | — | default |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-content.mixins.json`
+
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.content.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | FurnaceFuelTableMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.level.block.entity.AbstractFurnaceBlockEntity | @Inject → fabricated$addFabricFuels (Fabric's fuels in the table Forge 52 reads its burn times from, FUEL-2) | "getFuel" | RETURN | — | default |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-frapi.mixins.json`
+
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.rendering.mixin` · required=true · defaultRequire=1 · plugin=`FrapiMixinPlugin` · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| client | BlockRenderDispatcherMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.renderer.block.BlockRenderDispatcher | @WrapWithCondition → fabricated$breakingOverlay | "renderBreakingTexture(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;Lnet/minecraftforge/client/model/data/ModelData;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…ModelData;L…/RenderType;)V` | — | default |
+| client | BlockRenderDispatcherMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.renderer.block.BlockRenderDispatcher | @WrapWithCondition → fabricated$batched | "renderBatched(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;ZLnet/minecraft/util/RandomSource;Lnet/minecraftforge/client/model/data/ModelData;Lnet/minecraft/client/renderer/RenderType;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…ModelData;L…/RenderType;)V` | — | default |
+| client | FallingBlockRendererMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.renderer.entity.FallingBlockRenderer | @WrapWithCondition → fabricated$fabricModels | "render(Lnet/minecraft/world/entity/item/FallingBlockEntity;FFLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…ModelData;L…/RenderType;)V` | — | default |
+| client | MultiPartBakedModelMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.resources.model.MultiPartBakedModel | no injectors; implements FabricBlockRendering$Composite; adds methods fabricated$state, fabricated$parts; @Shadow selectors; @Unique fields fabricated$state | | | | |
+| client | PistonHeadRendererMixin | 1.21.1 (1.21.1) | n.m.client.renderer.blockentity.PistonHeadRenderer | @WrapWithCondition → fabricated$fabricModels | "renderBlock" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…ModelData;L…/RenderType;)V` | — | default |
+| client | SectionCompilerMixin | 1.21.1 (1.21.1) | n.m.client.renderer.chunk.SectionCompiler | @WrapWithCondition → fabricated$fabricModels (@Local region, pack, the buffers by layer (ordinal 1: Forge's model data map is the first), the model); implements FabricBlockRendering$SectionLayers; @Shadow getOrBeginLayer | "compile" | INVOKE `L…/BlockRenderDispatcher;renderBatched(…ModelData;L…/RenderType;)V` | — | default |
+| client | SectionCompilerMixin | 1.21.1 (1.21.1) | n.m.client.renderer.chunk.SectionCompiler | @Inject → fabricated$endSection | "compile" | RETURN | — | default |
+| client | WeightedBakedModelMixin | 1.21.1 (1.21.1) | n.m.client.resources.model.WeightedBakedModel | no injectors; implements FabricBlockRendering$Composite; adds methods fabricated$state, fabricated$parts; @Shadow list; @Unique fields fabricated$state | | | | |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-screen.mixins.json`
+
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.screen.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| client | ForgeEventFactoryClientScreenInputMixin | 1.21.1 (1.21.1) | forge.client.event.ForgeEventFactoryClient | @WrapOperation → fabricated$mouseClicked (Fabric's mouse click events around the screen's call, LAMBDA-10) | "onScreenMouseClicked" | INVOKE `L…/Screen;mouseClicked(DDI)Z` | — | default |
+| client | ForgeEventFactoryClientScreenInputMixin | 1.21.1 (1.21.1) | forge.client.event.ForgeEventFactoryClient | @WrapOperation → fabricated$mouseReleased | "onScreenMouseReleased" | INVOKE `L…/Screen;mouseReleased(DDI)Z` | — | default |
+
+### `mc/forge-legacy/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json`
+
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forgetest.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| client | HudHooksMixin | 1.21.1 (1.21.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheStart; @Unique fields fabricatedForgeTest$started, fabricatedForgeTest$endedCancelled, fabricatedForgeTest$endReported | "render" | HEAD cancellable=true | — | default |
+| client | HudHooksMixin | 1.21.1 (1.21.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheEnd | "render" | TAIL | — | default |
+| client | MouseHandlerInvoker | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.MouseHandler | @Invoker → fabricatedtest$onPress | "onPress" |  | — | default |
 
 ---
