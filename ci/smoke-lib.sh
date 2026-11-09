@@ -39,7 +39,7 @@ download() {
 		cp "$cached" "$2"
 		return
 	fi
-	curl -fsSL --retry 4 -o "$2" "$1"
+	curl -fsSL --retry 8 --retry-max-time 300 -o "$2" "$1"
 	if [ -n "$SMOKE_CACHE" ]; then
 		mkdir -p "$SMOKE_CACHE/downloads"
 		cp "$2" "$cached"

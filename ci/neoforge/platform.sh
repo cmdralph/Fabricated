@@ -16,7 +16,7 @@ gradle_tasks() {
 }
 
 installer() {
-	curl -fsSL --retry 4 -o installer.jar "https://maven.neoforged.net/releases/net/neoforged/neoforge/$loader/neoforge-$loader-installer.jar"
+	curl -fsSL --retry 8 --retry-max-time 300 -o installer.jar "https://maven.neoforged.net/releases/net/neoforged/neoforge/$loader/neoforge-$loader-installer.jar"
 }
 
 install_server() {
@@ -65,7 +65,7 @@ standins() {
 
 # The newest NeoForge build of the pinned build's line.
 newest_loader() {
-	curl -fsSL --retry 4 https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml | python3 -c '
+	curl -fsSL --retry 8 --retry-max-time 300 https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml | python3 -c '
 import re, sys
 builds = [v for v in re.findall(r"<version>([^<]+)</version>", sys.stdin.read()) if v.startswith(sys.argv[1])]
 print(builds[-1] if builds else "")' "${loader%.*}."

@@ -29,14 +29,13 @@ MAX_BYTES = 256 << 20
 IMMUTABLE = re.compile(r"^(https://api\.modrinth\.com/v2/version/[A-Za-z0-9]+|https://cdn\.modrinth\.com/.+)$")
 
 
-ATTEMPTS = 4
+ATTEMPTS = 7
 
 
 def get(url):
     """The response's body, from $MODRINTH_CACHE for what never changes at its URL (a version by its id, a file on the
     CDN; a file's SHA-512 is checked as it is used). A timeout, a dropped connection or a server error (429, 5xx) is
-    tried again, after 2, 4 and 8 seconds: one slow answer from Modrinth left a gate without its mods (extended run
-    41501863294)."""
+    tried again, waiting 2 s and doubling up to about two minutes in all: a host's gateway errors can last that long."""
     cache = os.environ.get("MODRINTH_CACHE")
     if cache and IMMUTABLE.match(url):
         path = os.path.join(cache, hashlib.sha256(url.encode()).hexdigest())
