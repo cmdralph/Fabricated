@@ -1329,7 +1329,7 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 | mixins | GameDataFreezeMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.registries.GameData | @Inject → fabricated$freezeBuiltInRegistries | "freezeData" | HEAD | — | default |
 | mixins | TagFileRemoveMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.tags.TagFile | @Inject → fabricated$readFabricRemove; @Shadow @Mutable CODEC | "<clinit>" | TAIL | — | default |
 | mixins | IngredientNetworkCodecMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.crafting.Ingredient | @Inject → fabricated$sendAsUpstream; @Shadow @Mutable CONTENTS_STREAM_CODEC, @Mutable OPTIONAL_CONTENTS_STREAM_CODEC, VANILLA_CONTENTS_STREAM_CODEC | "<clinit>" | TAIL | — | default |
-| mixins | ForgePayloadEncodeMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.network.protocol.common.custom.CustomPacketPayload$1 (`targets`) | @WrapOperation → fabricated$writeForgePayload | "writeCap" | INVOKE `L…/StreamCodec;encode(L…/Object;L…/Object;)V` | — | default |
+| mixins | ForgePayloadEncodeMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.network.protocol.common.custom.CustomPacketPayload$1 (`targets`) | @WrapOperation → fabricated$writeForgePayload | "writeCap" | INVOKE `L…/StreamCodec;encode(L…/Object;L…/Object;)V` | — | default |
 | mixins | ResourcePackLoaderKnownPackMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.resource.ResourcePackLoader | @ModifyArg → fabricated$knownPack | "findPacks" | INVOKE `L…/PackLocationInfo;<init>(L…/String;L…/Component;L…/PackSource;L…/Optional;)V` index=3 | 0 | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.BucketItem | @WrapOperation → fabricated$delegateIfRegistered; @Shadow @Mutable fluidSupplier | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | INVOKE `L…/IForgeRegistry;getDelegateOrThrow(L…/Object;)L…/Holder$Reference;` | — | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.BucketItem | @Inject → fabricated$fluidItselfIfUnregistered | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | TAIL | — | default |
@@ -1692,7 +1692,7 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.testmod.frapi.mixin` 
 |---|---|---|---|---|---|---|---|---|
 | client | McRuntimeTestHoldMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedFrapiTest$holdForMovingBlocks | "tickHook" | HEAD cancellable=true | — | default |
 
-## Forge 52 (`forge-legacy`): 32 mixins in 9 configs
+## Forge 52 (`forge-legacy`): 33 mixins in 9 configs
 
 Minecraft 1.21.1, in Mojang's names without a refmap, as on Forge 61 to 66. The mixins come from `mc/forge-shared` and its
 groups, as the source column says, but `NamespacedWrapperAliasMixin`, over 1.21.1's lookups, and `LoadingRegistriesMixin`,
@@ -1700,7 +1700,7 @@ on 1.21.1's tagless wrapper of the registries.
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 17 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 18 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.1 | mixins 4 | 1 | true | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 1.21.1 | mixins 2 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
@@ -1733,6 +1733,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | BuiltInRegistriesInvoker | mc/forge-shared (1.21.1) | n.m.core.registries.BuiltInRegistries | @Invoker → fabricated$freeze | "freeze" |  | — | default |
 | mixins | GameDataFreezeMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.registries.GameData | @Inject → fabricated$freezeBuiltInRegistries | "freezeData" | HEAD | — | default |
 | mixins | TagFileRemoveMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.tags.TagFile | @Inject → fabricated$readFabricRemove; @Shadow @Mutable CODEC | "<clinit>" | TAIL | — | default |
+| mixins | ForgePayloadEncodeMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.network.protocol.common.custom.CustomPacketPayload$1 (`targets`) | @WrapOperation → fabricated$writeForgePayload | "writeCap" | INVOKE `L…/StreamCodec;encode(L…/Object;L…/Object;)V` | — | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.1) | n.m.world.item.BucketItem | @WrapOperation → fabricated$delegateIfRegistered; @Shadow @Mutable fluidSupplier | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | INVOKE `L…/IForgeRegistry;getDelegateOrThrow(L…/Object;)L…/Holder$Reference;` | — | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.1) | n.m.world.item.BucketItem | @Inject → fabricated$fluidItselfIfUnregistered | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | TAIL | — | default |
 | mixins | PlayerListViewMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, POLY-2) | "getPlayers" | RETURN | — | default |
