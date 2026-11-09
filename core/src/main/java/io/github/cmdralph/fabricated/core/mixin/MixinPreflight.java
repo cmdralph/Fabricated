@@ -1123,6 +1123,40 @@ public final class MixinPreflight extends PreflightPart {
 		return null;
 	}
 
+	/**
+	 * Reports an injector none of whose selectors picks a method of the target. As Mixin's {@code TargetSelectors}, an
+	 * injector fails only where none of them finds a method, so one that another installed mod's mixin adds is enough
+	 * (PRE-23: Emotecraft's {@code @Inject(method = {"tick", "method_5773"})} into {@code Avatar}, whose {@code tick} Player
+	 * Animation Library's mixin adds, and which pre-flight failed on the second name, which nothing has).
+	 */
+	private void reportNoTargetMethod(MethodNode handler, List<MemberRef> named, int require, String injectorName, ClassNode target, Context ctx) {
+		String targetDotted = target.name.replace('/', '.');
+		for (MemberRef ref : named) {
+			InstalledClasses.AddedMember added = addedByInstalledMixin(target.name, ref.name(), ref.desc(), false);
+			if (added != null) {
+				ctx.info(injectorName + " " + handler.name + " targets method " + selector(ref) + ", which is not in " + targetDotted
+						+ "; " + addedBy(added) + " adds it, so it was not verified");
+				return;
+			}
+		}
+		for (MemberRef ref : named) {
+			if (addedByAMixin(ref.name())) {
+				ctx.info(injectorName + " " + handler.name + " targets method " + selector(ref) + ", which is not in " + targetDotted
+						+ "; another mod's mixin may add it, so it was not verified");
+				return;
+			}
+		}
+		List<String> selectors = named.stream().map(MixinPreflight::selector).distinct().toList();
+		ctx.injector(handler, require, injectorName + (selectors.size() == 1 ? " targets method " + selectors.get(0) + ", which does not exist in "
+						: " targets methods " + String.join(", ", selectors) + ", none of which exists in ") + targetDotted,
+				"The method was renamed or removed by " + ctx.changer(false) + ".");
+	}
+
+	/** A selector's name and descriptor, as reports print it. */
+	private static String selector(MemberRef ref) {
+		return ref.name() + (ref.desc() != null ? ref.desc() : "");
+	}
+
 	private void checkInjector(ClassNode mixin, MethodNode handler, AnnotationNode ann, ClassNode target, Context ctx) {
 		if (!(Annotations.value(ann, "method") instanceof List<?> selectors) || selectors.isEmpty()) return;
 		// As Mixin: a grouped injector requires nothing by default, its group's minimum being the check.
@@ -1132,9 +1166,7 @@ public final class MixinPreflight extends PreflightPart {
 
 		List<MethodNode> matched = new ArrayList<>();
 		boolean anyFuzzy = false;
-		String lastSelector = null;
-		String lastName = null;
-		String lastDesc = null;
+		List<MemberRef> named = new ArrayList<>();
 		for (Object o : selectors) {
 			if (!(o instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
@@ -1142,9 +1174,7 @@ public final class MixinPreflight extends PreflightPart {
 				anyFuzzy = true;
 				continue;
 			}
-			lastSelector = ref.name() + (ref.desc() != null ? ref.desc() : "");
-			lastName = ref.name();
-			lastDesc = ref.desc();
+			named.add(ref);
 			if (PreflightAsm.addsMethod(mixin, ref)) {
 				anyFuzzy = true; // a method the mixin itself merges into the target: not judged
 				continue;
@@ -1160,18 +1190,7 @@ public final class MixinPreflight extends PreflightPart {
 			}
 		}
 		if (matched.isEmpty()) {
-			InstalledClasses.AddedMember added = !anyFuzzy && lastSelector != null ? addedByInstalledMixin(target.name, lastName, lastDesc, false) : null;
-			if (added != null) {
-				ctx.info(injectorName + " " + handler.name + " targets method " + lastSelector + ", which is not in " + target.name.replace('/', '.')
-						+ "; " + addedBy(added) + " adds it, so it was not verified");
-			} else if (!anyFuzzy && lastSelector != null && addedByAMixin(lastName)) {
-				ctx.info(injectorName + " " + handler.name + " targets method " + lastSelector + ", which is not in " + target.name.replace('/', '.')
-						+ "; another mod's mixin may add it, so it was not verified");
-			} else if (!anyFuzzy && lastSelector != null) {
-				ctx.injector(handler, require, injectorName + " targets method " + lastSelector
-								+ ", which does not exist in " + target.name.replace('/', '.'),
-						"The method was renamed or removed by " + ctx.changer(false) + ".");
-			}
+			if (!anyFuzzy && !named.isEmpty()) reportNoTargetMethod(handler, named, require, injectorName, target, ctx);
 			return;
 		}
 		boolean handlerStatic = (handler.access & Opcodes.ACC_STATIC) != 0;

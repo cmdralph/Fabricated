@@ -6519,6 +6519,63 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void anInjectorNamingSeveralMethodsNeedsOnlyOneOfThemAsMixinDoes() throws Exception {
+		// PRE-23: Emotecraft's @Inject(method = {"tick", "method_5773"}, remap = false) into Avatar, which declares no tick:
+		// Player Animation Library's mixin adds one (an @Intrinsic). Mixin fails an injector only where none of its selectors
+		// finds a method (TargetSelectors.validate); pre-flight judged the last name alone and disabled Emotecraft on Forge 64
+		// to 66.
+		String adder = "com/example/animation/AvatarMixin";
+		ClassWriter aw = new ClassWriter(0);
+		aw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, adder, null, "java/lang/Object", null);
+		AnnotationVisitor am = aw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor targets = am.visitArray("value");
+		targets.visit(null, Type.getObjectType(TARGET));
+		targets.visitEnd();
+		am.visitEnd();
+		MethodVisitor added = aw.visitMethod(Opcodes.ACC_PUBLIC, "aiStep", "()V", null, null);
+		added.visitAnnotation("Lorg/spongepowered/asm/mixin/Intrinsic;", false).visitEnd();
+		added.visitEnd();
+		aw.visitEnd();
+		byte[] adderClass = aw.toByteArray();
+		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("Player Animation Library", adder::equals,
+				name -> name.equals(adder) ? adderClass : null, () -> List.of(adder), true)));
+		byte[] emote = mixin("com/example/mixin/Emote", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "onTick", "(" + CALLBACK_INFO + ")V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "aiStep");
+			methods.visit(null, "method_6007");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "TAIL");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visit("remap", false);
+			ann.visit("require", 1); // Emotecraft's config: defaultRequire 1
+			ann.visitEnd();
+			mv.visitEnd();
+		});
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Emote", emote);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Emote"));
+
+		List<PreflightFinding> findings = new MixinPreflight(game, installed, mod::get, ClassBytesSource.EMPTY, true, true, ClassBytesSource.EMPTY)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, findings.size(), findings.toString());
+		assertEquals(Severity.INFO, findings.getFirst().severity());
+		assertTrue(findings.getFirst().message().contains("targets method aiStep, which is not in net.minecraft.world.Thing; Player Animation Library's mixin"
+				+ " com.example.animation.AvatarMixin adds it, so it was not verified"), findings.toString());
+
+		// Where nothing adds either, the injector fails, naming both.
+		List<PreflightFinding> none = preflight(game, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, none.size(), none.toString());
+		assertEquals(Severity.LEFT_OUT, none.getFirst().severity());
+		assertTrue(none.getFirst().message().contains("@Inject targets methods aiStep, method_6007, none of which exists in net.minecraft.world.Thing"),
+				none.toString());
+	}
+
+	@Test
 	void aRedirectsLocalArgumentTakenByNameIsTakenByItsSlotWhereMixinDoesntKnowArgumentNames() throws Exception {
 		// CORPUS-82: ImmediatelyFast's buffer upload hook, a @Redirect of DirectStateAccess.bufferSubData in 26.3's
 		// GlCommandEncoder.writeToBuffer(GpuBufferSlice, ByteBuffer), takes @Local(name = "slice", argsOnly = true)
