@@ -410,7 +410,7 @@ tasks.register('testmods') {
     dependsOn brokenJars
 }
 
-// --- A Fabric mod using Fabric's renderer API, for the client smoke test with Fabric API (ci/neoforge/smoke-client.sh)
+// --- A Fabric mod using Fabric's renderer API, for the client smoke test with Fabric API (ci/smoke-client.sh)
 sourceSets {
     testmodfrapi {
         java.srcDir testJava('testmodfrapi')

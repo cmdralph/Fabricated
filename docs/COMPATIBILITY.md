@@ -98,10 +98,10 @@ Notes:
 
 ## How CI tests it
 
-On NeoForge, the tables below come from CI runs on a real dedicated server (`ci/neoforge/smoke-server.sh`) and a
-real NeoForge client (`ci/neoforge/smoke-client.sh`), not from expectations. CI starts each version many times (up to five
-server runs, and up to seven client runs on 1.21.1, eight on 1.21.11 or eleven on 26.x, all in `.github/workflows/build.yml`); these
-three are the base of this file:
+Every loader and Minecraft version runs the same harness (`ci/smoke-server.sh`, `ci/smoke-client.sh`, with the
+platform's install and launch in `ci/<platform>/platform.sh`), on real dedicated servers and clients, from
+`.github/workflows/ci.yml`. The runs are `ci/runs.tsv` and their checks `ci/checks.tsv`: each check's row says where it
+gates and, where it doesn't apply, why. On NeoForge these three runs are the base of the tables below:
 
 1. **Test mods only**: Fabricated plus the Fabric test mods in `mc/shared` (with their NeoForge half in
    `mc/neoforge`). This is a pass/fail gate.
@@ -138,7 +138,7 @@ reported, naming the dependency; a mod with an impossible mixin is caught by pre
 entrypoint throws is isolated while the server keeps running; Fabricated's public API answers and its
 after-initializers callback runs; a client-only interface listed in `@EnvironmentInterface` is stripped on the
 server; and no test mod check reports a failure. The others cover the native Fabric API modules (described in
-their sections below) and fixes the roadmap lists, each named in `ci/neoforge/smoke-server.sh` by its finding. The client checks: the client starts and joins a singleplayer world, the `main` and
+their sections below) and fixes the roadmap lists, each named in `ci/checks.tsv` by its finding. The client checks: the client starts and joins a singleplayer world, the `main` and
 `client` entrypoints run, the client-side native modules work, including a networking round trip and a
 configuration task with the integrated server, an extended menu opens with its data, a Mod Menu config screen
 factory is registered with NeoForge, and no test mod check reports a failure.

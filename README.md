@@ -1,5 +1,5 @@
 # <img width="35" alt="D · Zipper Block@1x" src="https://github.com/user-attachments/assets/a3720634-2930-4bb3-a060-ec85fe1ddac5" /> Fabricated
-[![Builds](https://github.com/cmdralph/Fabricated/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/cmdralph/Fabricated/actions/workflows/build.yml)
+[![Builds](https://github.com/cmdralph/Fabricated/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cmdralph/Fabricated/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/tag/cmdralph/Fabricated?logo=github)](https://github.com/cmdralph/Fabricated/tags)
 [![CurseForge Latest](https://img.shields.io/badge/CurseForge-Latest-orange?logo=curseforge)](https://www.curseforge.com/minecraft/mc-mods/fabricated-neoforge)
 

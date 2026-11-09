@@ -1,8 +1,7 @@
 # NeoForge's part of CI: how its build is made (ci.yml), and how the harness (ci/smoke-lib.sh) installs and launches its
 # server and client. Sourced with root, mc (the Minecraft version) and loader (the NeoForge version) set.
 # shellcheck shell=bash disable=SC2034,SC2154 # the harness reads these, and sets what it is sourced with
-# The jar's name, and until the build names it so, the name it had (fabricated-<version>+mc<minecraft>.jar).
-jar_globs=("fabricated-neoforge-[0-9]*+mc$mc.jar" "fabricated-[0-9]*+mc$mc.jar")
+jar_globs=("fabricated-neoforge-[0-9]*+mc$mc.jar")
 testmods_dir="$root/mc/neoforge/$mc/build/testmods"
 mods_toml=META-INF/neoforge.mods.toml
 server_timeout=900

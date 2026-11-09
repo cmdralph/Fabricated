@@ -57,7 +57,7 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p>fabric-key-binding-api-v1 (KEYMAP-2): a key binding registered from the client entrypoint must be in the game's
  * options once it has started, its category sorted after the game's, registering it twice or once the options exist
  * must throw as upstream's does, and by the time the game stops it must have the key CI's options file saved for it
- * ({@code ci/neoforge/smoke-client.sh}).
+ * ({@code ci/smoke-client.sh}).
  *
  * <p>fabric-renderer-api-v1 (FRAPI-5): Fabric models (no vanilla adapter: only the quads they emit, none for vanilla's
  * renderer), put in place of the test blocks' models after they are baked (fabric-model-loading-api-v1), one alone, one
