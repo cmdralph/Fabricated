@@ -118,6 +118,13 @@ final class MixinRepairs extends PreflightPart {
 				if (changed) repaired.put(internal + ".class", write(node));
 				continue;
 			}
+			for (String values : extensibleValuesRepair(node, targets, ctx)) {
+				changed = true;
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), values + ", which stops the game as the enum loads: "
+						+ loader + " makes the enum extensible, and its enum extender, which runs after Mixin, finds the array only while it is "
+						+ "final (\"could not find $VALUES\"). It is no longer @Mutable: the extender makes the array writable itself, for the "
+						+ "mixin's writes too (ENUM-8)", ""));
+			}
 			for (MethodNode method : List.copyOf(node.methods)) {
 				MemberRef inherited = inheritedShadowRepair(node, method, targets, ctx);
 				if (inherited == null) continue;
@@ -888,6 +895,65 @@ final class MixinRepairs extends PreflightPart {
 			if (used) rewritten.put(name + ".class", write(nested));
 		}
 		return rewritten;
+	}
+
+	/** The flags of the values array Forge's enum extender looks for: private, static, final and synthetic. */
+	private static final int VALUES_FLAGS = Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC;
+
+	/**
+	 * Drops {@code @Mutable} from a mixin's shadow or accessor setter of the values array of an enum Forge makes
+	 * extensible, and {@code @Final} from the shadow (ENUM-8); returns what each would have done, for the report.
+	 * Forge's enum extender ({@code RuntimeEnumExtender}, a launch plugin running after Mixin) rewrites such an enum's
+	 * {@code create} factories to append to its values array, which it finds as the enum's first field of its array type
+	 * that is private, static, final and synthetic, and then makes non-final itself; without one, it stops the class
+	 * loading ("Enum has create method but we could not find $VALUES", read in the fmlloader of Forge 47, 52 and 61 to
+	 * 66). Mixin makes a field non-final for a {@code @Mutable} shadow or accessor ({@code MixinApplicatorStandard},
+	 * {@code AccessorGeneratorFieldSetter}), so a mixin adding constants as on Fabric, with a constructor invoker and a
+	 * {@code @Shadow @Final @Mutable $VALUES} it appends them to (FrozenLib's {@code MobCategoryMixin}), stopped the Forge
+	 * 61 servers with FrozenLib as {@code MobCategory} loaded. Without {@code @Mutable}, Mixin leaves the field final and
+	 * the extender makes it writable before the class is defined, so the mixin's writes still work; without
+	 * {@code @Final}, Mixin doesn't log them as writes to a final field. Every game enum implementing Forge's marker is
+	 * one its extender rewrites: Forge 47's and 52's take every class outside Forge's and Mojang's packages, Forge 61 to
+	 * 66's those in {@code net/minecraft/world} and {@code net/minecraft/client/model}, where all of theirs are (read in
+	 * Forge 61.2.4's and 66.1.0's game). NeoForge's enums don't implement it: nothing changes there.
+	 */
+	static List<String> extensibleValuesRepair(ClassNode mixin, List<ClassNode> targets, Context ctx) {
+		List<String> changed = new ArrayList<>();
+		for (ClassNode target : targets) {
+			if ((target.access & Opcodes.ACC_ENUM) == 0 || !target.interfaces.contains(MixinNames.FORGE_EXTENSIBLE_ENUM)) continue;
+			String arrayDesc = "[L" + target.name + ";";
+			FieldNode values = target.fields.stream().filter(f -> f.desc.equals(arrayDesc) && (f.access & VALUES_FLAGS) == VALUES_FLAGS)
+					.findFirst().orElse(null);
+			if (values == null) continue;
+			for (FieldNode field : mixin.fields) {
+				if ((field.access & Opcodes.ACC_STATIC) == 0 || !field.desc.equals(arrayDesc) || !field.name.equals(values.name)
+						|| Annotations.find(field, MixinNames.SHADOW) == null || Annotations.find(field, MixinNames.MUTABLE) == null) {
+					continue;
+				}
+				removeAnnotations(field.visibleAnnotations, field.invisibleAnnotations, MixinNames.MUTABLE, MixinNames.FINAL);
+				changed.add("@Shadow @Mutable field " + field.name + " would make the values array of " + target.name.replace('/', '.') + " writable");
+			}
+			for (MethodNode method : mixin.methods) {
+				AnnotationNode accessor = Annotations.find(method, MixinNames.ACCESSOR);
+				if (accessor == null || (method.access & Opcodes.ACC_STATIC) == 0 || !method.desc.equals("(" + arrayDesc + ")V")
+						|| Annotations.find(method, MixinNames.MUTABLE) == null) {
+					continue;
+				}
+				String explicit = Annotations.value(accessor, "value") instanceof String v && !v.isEmpty() ? v : null;
+				String name = explicit != null ? explicit : MixinPreflight.inferAccessorName(method.name);
+				if (name == null || !MemberRef.parse(ctx.resolve(name)).nameOr(name).equals(values.name)) continue;
+				removeAnnotations(method.visibleAnnotations, method.invisibleAnnotations, MixinNames.MUTABLE);
+				changed.add("@Accessor @Mutable " + method.name + method.desc + " would make the values array of " + target.name.replace('/', '.')
+						+ " writable");
+			}
+		}
+		return changed;
+	}
+
+	private static void removeAnnotations(List<AnnotationNode> visible, List<AnnotationNode> invisible, String... descs) {
+		Set<String> removed = Set.of(descs);
+		if (visible != null) visible.removeIf(a -> removed.contains(a.desc));
+		if (invisible != null) invisible.removeIf(a -> removed.contains(a.desc));
 	}
 
 	/**
