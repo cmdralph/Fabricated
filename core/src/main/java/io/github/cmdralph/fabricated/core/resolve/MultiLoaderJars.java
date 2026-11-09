@@ -21,9 +21,15 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * Fabric mod. So is one whose NeoForge metadata is a placeholder for Sinytra Connector ({@code "connector:placeholder"
  * = true} in its properties, a dependency on {@code connector}): Continuity's and LambDynamicLights' NeoForge jars are
  * their Fabric builds, which only Connector, or Fabricated, loads.
+ *
+ * <p>On Forge, whose metadata is {@code META-INF/mods.toml}, only the placeholder makes a jar with both loaders' metadata
+ * a Fabric mod ({@link #forgeFabricReason}, MULTI-2): Origins 1.10.2's Fabric jar ships one requiring Connector's
+ * {@code connectormod}, and Forge 47 refused the launch for it.
  */
 public final class MultiLoaderJars {
 	public static final String MODS_TOML = "META-INF/neoforge.mods.toml";
+	/** Forge's metadata, which NeoForge doesn't read. */
+	public static final String FORGE_MODS_TOML = "META-INF/mods.toml";
 	/** NeoForge's {@code @Mod}, which marks the class it starts a Java mod with. */
 	private static final byte[] MOD_ANNOTATION = "Lnet/neoforged/fml/common/Mod;".getBytes(StandardCharsets.UTF_8);
 	private static final Pattern JAVA_MOD_LOADER = Pattern.compile("(?m)^[ \\t]*modLoader[ \\t]*=[ \\t]*[\"']javafml[\"']");
@@ -31,6 +37,7 @@ public final class MultiLoaderJars {
 	/** Why a jar with both loaders' metadata is a Fabric mod, for the log. */
 	public static final String KEPT_METADATA = "it declares a NeoForge mod too, but no class of it for NeoForge to start (MULTI-1)";
 	public static final String PLACEHOLDER = "its NeoForge metadata is a placeholder for Sinytra Connector, which loads its Fabric build (MULTI-1)";
+	public static final String FORGE_PLACEHOLDER = "its Forge metadata is a placeholder for Sinytra Connector, which loads its Fabric build (MULTI-2)";
 
 	private MultiLoaderJars() {
 	}
@@ -55,6 +62,20 @@ public final class MultiLoaderJars {
 				if (data != null && Annotations.mentions(data, MOD_ANNOTATION)) return null;
 			}
 			return KEPT_METADATA;
+		} catch (IOException | RuntimeException e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Why a jar with Forge's metadata ({@link #FORGE_MODS_TOML}) is a Fabric mod: its metadata is a placeholder for Sinytra
+	 * Connector ({@link #FORGE_PLACEHOLDER}); else null, and Forge loads it as its own mod (a multi-loader jar, or one
+	 * without Fabric's metadata). An unreadable jar is left to Forge, which reports it.
+	 */
+	public static String forgeFabricReason(Path jar, ArchiveLimits limits) {
+		try (SafeArchive archive = SafeArchive.open(jar, limits)) {
+			if (!archive.contains(FORGE_MODS_TOML) || !archive.contains("fabric.mod.json")) return null;
+			return CONNECTOR_PLACEHOLDER.matcher(archive.readText(FORGE_MODS_TOML)).find() ? FORGE_PLACEHOLDER : null;
 		} catch (IOException | RuntimeException e) {
 			return null;
 		}
