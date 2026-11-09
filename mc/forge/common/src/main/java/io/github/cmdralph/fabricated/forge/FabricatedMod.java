@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.command.FabricatedCommands;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
@@ -25,6 +26,8 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraftforge.client.event.RegisterClientCommandsEvent;
+import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.fml.ModLoadingStage;
 import net.minecraftforge.fml.ModLoadingWarning;
 import net.minecraftforge.fml.common.Mod;
@@ -43,8 +46,9 @@ import net.minecraftforge.registries.RegistryManager;
  * initializer from {@code Minecraft}'s constructor on a client, the game instance set, and so does Forge's mod loading
  * there ({@code ClientModLoader.begin}), so the client ones run right after the main ones, with the registries still
  * open. The rest of Fabric API on Forge's events follows (its loot and key mapping APIs are native: {@code forge.loot},
- * {@code forge.keymapping}). It also adds the Fabric mods discovery didn't load to Forge's loading warnings, which Forge
- * reads once every mod has loaded: the server logs them, the client shows them on its warnings screen.
+ * {@code forge.keymapping}), and {@code /fabricated} ({@link FabricatedCommands}) on Forge's command events. It also adds
+ * the Fabric mods discovery didn't load to Forge's loading warnings, which Forge reads once every mod has loaded: the
+ * server logs them, the client shows them on its warnings screen.
  *
  * <p>Fabric mods register their content directly from their initializers. Forge opens vanilla's registries for its
  * registration events only ({@code UNFREEZE_DATA}, then {@code LOAD_REGISTRIES}), and each registry it manages only for
@@ -85,7 +89,10 @@ public final class FabricatedMod {
 		}
 		// What discovery tells the player from now on: a Fabric mod's jar proposed for the class path (DOWNLOAD-1).
 		ForgeLoaderHooks.warnings(text -> LoadingWarnings.add(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text)));
+		// /fabricated, in the server's commands and, on a client, in its own, which only its player runs.
+		RegisterCommandsEvent.BUS.addListener(event -> FabricatedCommands.register(event.getDispatcher(), state, false));
 		if (!FMLLoader.getDist().isDedicatedServer()) {
+			RegisterClientCommandsEvent.BUS.addListener(event -> FabricatedCommands.register(event.getDispatcher(), state, true));
 			// Fabric mods' config screens in Forge's mod list, once their initializers ran.
 			ClientSupport.init(state);
 			// Fabric API's screen drawing events, from Forge's (see ScreenDrawEvents; its input events: ScreenInputEvents).
