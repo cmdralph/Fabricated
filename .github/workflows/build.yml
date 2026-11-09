@@ -4,12 +4,14 @@ name: Build and test
 # plan job picks the versions from what changed (ci/changed-targets.py --full: a version's own folder runs that version,
 # anything shared every version; a tag or a run by hand runs them all). Each version is built once, and its jar and test
 # mods are tested in parallel parts: "server" (dedicated servers), "client" (clients with the test mods and Fabric API)
-# and "mods" (clients with other mods' NeoForge builds). With "extended", or on a release tag, the informational runs
-# join: the newest NeoForge build in "server", other mods' Fabric builds in "mods", and the mod corpora in a "corpus"
-# part. Each push to a working branch gets the quick check instead (check.yml), which stands down while the branch has a
-# pull request. Forge's targets are on their own branches, forge and forge-legacy, with their own workflows. A push to
-# main is a merge whose pull request already passed this, so it only builds what it changed: that keeps main's Gradle
-# caches, which pull requests read, current. Changes to documentation alone build nothing.
+# and "mods" (clients with other mods' NeoForge builds). With "extended", or on a release tag, more runs join: other
+# mods' Fabric builds in "mods", each a gate once it held on two extended runs in a row (CI-1), and two informational
+# ones, the newest NeoForge build in "server" (it can break for reasons of its own) and the mod corpora in a "corpus"
+# part (their clients don't hold yet, CORPUS-48 and CORPUS-66). Each push to a working branch gets the quick check
+# instead (check.yml), which stands down while the branch has a pull request. Forge's targets are on their own
+# branches, forge and forge-legacy, with their own workflows. A push to main is a merge whose pull request already
+# passed this, so it only builds what it changed: that keeps main's Gradle caches, which pull requests read, current.
+# Changes to documentation alone build nothing.
 on:
   pull_request:
     branches: [main]
@@ -29,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       extended:
-        description: Also the informational runs (newest NeoForge build, other mods' Fabric builds, the mod corpora)
+        description: Also the extended runs (other mods' Fabric builds; the newest NeoForge build and the mod corpora, informational)
         type: boolean
         default: false
 
@@ -399,11 +401,11 @@ jobs:
             ${{ runner.temp }}/client-provided/run/crash-reports
             ${{ runner.temp }}/client-provided/client.out
           if-no-files-found: ignore
-      # The same client with the official Fabric API jar: shows which client-side modules load and whether the game
-      # still reaches a world. Informational until every client module is accounted for.
-      - name: Client smoke test with Fabric API (informational)
+      # The same client with the official Fabric API jar: which client-side modules load (COMPATIBILITY.md accounts for
+      # each) and whether the game still reaches a world. A gate since it held on both of v0.6.0-beta's release head
+      # extended runs (task 7, CI-1): every smoke check passes.
+      - name: Client smoke test with Fabric API
         if: ${{ matrix.part == 'client' && !cancelled() && steps.build.outcome == 'success' }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         # Where the version has one, the test mod for Fabric API's client modules joins this run (it needs modules only
@@ -412,8 +414,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/extra-client"
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-client/"
           cp mc/neoforge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-client/" 2>/dev/null || true
-          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra-client" || true
+          status=0
+          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra-client" || status=$?
           grep -A200 "== " "$RUNNER_TEMP/client-fapi/run/logs/fabric-bridge-report.txt" || true
+          exit "$status"
       # A Fabric model (its own emitQuads) must be drawn in the world: Fabricated sends it through Fabric's renderer when
       # its chunk section is meshed. This check is a gate, unlike the run above.
       - name: Fabric renderer API and model formats (26.x)
@@ -693,10 +697,10 @@ jobs:
           fi
       # Sodium for NeoForge 1.21.11 meshes chunk sections itself and has no Fabric renderer, though its metadata says it has
       # one: Fabricated registers Indigo once the client initializers ran, and Sodium draws a Fabric block model from the
-      # parts Fabricated makes from its quads. Informational until it has passed.
-      - name: Client with Sodium for NeoForge (informational, 1.21.11)
+      # parts Fabricated makes from its quads. A gate since task 7 (both release head extended runs, CI-1): every smoke
+      # check passes and each line below is logged.
+      - name: Client with Sodium for NeoForge (1.21.11)
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && matrix.target.minecraft == '1.21.11' }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -707,17 +711,19 @@ jobs:
             exit 0
           fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" mc/neoforge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-sodium/"
-          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium" "$RUNNER_TEMP/extra-sodium" || true
+          failed=0
+          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium" "$RUNNER_TEMP/extra-sodium" || failed=1
           log="$RUNNER_TEMP/client-sodium/run/logs/latest.log"
           for check in "Fabric API's own renderer (Indigo) is used" "FABRICATED-TEST frapi NeoForge parts OK" "FABRICATED-TEST frapi terrain OK .*LevelSlice" \
               "FABRICATED-TEST frapi nested terrain OK .*LevelSlice" "FABRICATED-TEST frapi level-aware default OK"; do
-            if grep -h -m 1 "$check" "$log"; then echo "PASS: $check"; else echo "::warning::Sodium 1.21.11: no \"$check\" line"; fi
+            if grep -h -m 1 "$check" "$log"; then echo "PASS: $check"; else echo "::error::FAIL: Sodium 1.21.11: no \"$check\" line"; failed=1; fi
           done
+          exit "$failed"
       # The pair whose shared package once stopped the game on 1.21.1 (PROVIDER-1): Forgified Fabric API's modules and
-      # Sodium for NeoForge, with Fabric API's official jar for Fabricated's Fabric mods. Informational.
-      - name: Client with Forgified Fabric API and Sodium for NeoForge (informational, 1.21.1)
+      # Sodium for NeoForge, with Fabric API's official jar for Fabricated's Fabric mods. A gate since task 7 (both
+      # release head extended runs, CI-1): every smoke check passes and no module layer refuses a shared package.
+      - name: Client with Forgified Fabric API and Sodium for NeoForge (1.21.1)
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && matrix.target.minecraft == '1.21.1' }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -725,12 +731,15 @@ jobs:
           python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-coexist" neoforge forgified-fabric-api sodium || true
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-coexist/"
           ls "$RUNNER_TEMP/extra-coexist"
-          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-coexist" "$RUNNER_TEMP/extra-coexist" || true
+          failed=0
+          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-coexist" "$RUNNER_TEMP/extra-coexist" || failed=1
           report="$RUNNER_TEMP/client-coexist/run/logs/fabric-bridge-report.txt"
           sed -n '/== Fabric API modules provided by other mods ==/,/^$/p;/== Fabric Loader API ==/,/^$/p;/== Fabric API providers ==/,/^$/p' "$report" || true
           if grep -q "ResolutionException" "$RUNNER_TEMP/client-coexist/run/logs/latest.log" "$RUNNER_TEMP/client-coexist/client.out" 2>/dev/null; then
             echo "::error::Forgified Fabric API and Sodium 1.21.1: a module layer refused a package two mods share"
+            failed=1
           fi
+          exit "$failed"
       - name: Upload Fabric API client run logs and report
         if: ${{ matrix.part == 'client' && !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -744,10 +753,10 @@ jobs:
           if-no-files-found: ignore
       # Sodium and Iris for NeoForge (downloaded here from Modrinth, never redistributed) with Fabric API and the test
       # mod for Fabric's renderer API: Sodium meshes the world through its own Fabric renderer, which must draw Fabric
-      # models, and Fabric API's default renderer must stand down for it.
+      # models, and Fabric API's default renderer must stand down for it. Every smoke check is a gate since task 7 (both
+      # release head extended runs, CI-1), and the next step's checks of its log are gates too.
       - name: Client smoke test with Sodium and Iris for NeoForge (26.x)
         if: ${{ matrix.part == 'mods' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.target.minecraft, '26.') }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -756,8 +765,10 @@ jobs:
           # newest 26.3 build refused the newest Iris for 26.3 (CI-4).
           python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium" neoforge ${{ matrix.target.renderers }}
           cp "$RUNNER_TEMP/extra/fabric-api.jar" mc/neoforge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-sodium/"
-          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium" "$RUNNER_TEMP/extra-sodium" || true
+          status=0
+          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium" "$RUNNER_TEMP/extra-sodium" || status=$?
           grep -A200 "== " "$RUNNER_TEMP/client-sodium/run/logs/fabric-bridge-report.txt" || true
+          exit "$status"
       - name: Fabric models under Sodium (26.x)
         if: ${{ matrix.part == 'mods' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.target.minecraft, '26.') }}
         env:
@@ -791,10 +802,10 @@ jobs:
       # blocks and wraps glass's model after Continuity's, and logs whether the quads a chunk section gets for it are off
       # glass's own sprite, as the connected textures of Continuity's default resource pack are. Continuity registers that
       # pack as one the player switches on (NORMAL), so the run selects it in the options, as a player would.
-      # Informational until it holds on two extended runs in a row (CI-1's rule).
-      - name: Client with Continuity (informational)
+      # A gate since it held on both of v0.6.0-beta's release head extended runs (task 7, CI-1's rule): Continuity's
+      # connected textures reach a chunk section.
+      - name: Client with Continuity
         if: ${{ matrix.part == 'mods' && !cancelled() && steps.build.outcome == 'success' }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           MC: ${{ matrix.target.minecraft }}
@@ -814,7 +825,7 @@ jobs:
           if grep -q "FABRICATED-TEST continuity connected textures OK" "$log"; then
             echo "PASS: Continuity's connected textures reached a chunk section through Fabric's renderer"
           else
-            echo "::warning::Continuity on $MC: no connected textures seen in a chunk section (informational)"
+            echo "::error::FAIL: Continuity on $MC: no connected textures seen in a chunk section"
             grep -n -m 60 -E "[Cc]ontinuity|frapi|/(ERROR|FATAL)\]" "$log" || true
             awk '/^== /{show = /^== (Summary|Disabled|Rendering)/} show' "$RUNNER_TEMP/client-continuity/run/logs/fabric-bridge-report.txt" | head -80 || true
             exit 1
@@ -823,11 +834,10 @@ jobs:
       # renderer API test mod (and Fabric API's official jar for the modules it doesn't provide). The renderer API is then
       # Forgified Fabric API's and Fabricated's renderer seams stand down, so no block may come through them (seam=other
       # on each block the test mod logs), or a Fabric model would be sent to a renderer twice; the test mod's broken models
-      # don't throw there (another mod's renderer isn't Fabricated's to guard). Informational, as the other coexisting
-      # clients.
-      - name: Client with Forgified Fabric API's renderer (informational, 1.21.1 and 26.x)
+      # don't throw there (another mod's renderer isn't Fabricated's to guard). A gate since task 7 (both release head
+      # extended runs, CI-1): every smoke check passes and each block comes through the other renderer.
+      - name: Client with Forgified Fabric API's renderer (1.21.1 and 26.x)
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && matrix.target.minecraft != '1.21.11' }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           MC: ${{ matrix.target.minecraft }}
@@ -839,7 +849,8 @@ jobs:
             exit 0
           fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "mc/neoforge/$MC/build/testmods/fabricated-testmod-frapi.jar" "$RUNNER_TEMP/extra-ffapi/"
-          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "$MC" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-ffapi" "$RUNNER_TEMP/extra-ffapi" || true
+          status=0
+          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "$MC" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-ffapi" "$RUNNER_TEMP/extra-ffapi" || status=$?
           log="$RUNNER_TEMP/client-ffapi/run/logs/latest.log"
           provided=$(sed -n '/== Fabric API modules provided by other mods ==/,/^$/p' "$RUNNER_TEMP/client-ffapi/run/logs/fabric-bridge-report.txt" || true)
           echo "$provided"
@@ -849,27 +860,40 @@ jobs:
             exit 0
           fi
           failed=0
+          if [ "$status" != 0 ]; then
+            echo "::error::FAIL: Forgified Fabric API on $MC: a smoke check failed (exit status $status; its FAIL lines are above)"
+            failed=1
+          fi
           if grep -q "FABRICATED-TEST frapi .*seam=Fabricated" "$log"; then
-            echo "::warning::Forgified Fabric API provides the renderer API on $MC, yet a block came through Fabricated's seam"
+            echo "::error::FAIL: Forgified Fabric API provides the renderer API on $MC, yet a block came through Fabricated's seam"
             failed=1
           fi
           for check in "frapi terrain OK" "frapi nested terrain OK" "frapi moving block OK" "frapi breaking OK"; do
-            if grep -q "FABRICATED-TEST $check" "$log"; then echo "PASS: $check"; else echo "::warning::Forgified Fabric API on $MC: no \"$check\" line"; failed=1; fi
+            if grep -q "FABRICATED-TEST $check" "$log"; then echo "PASS: $check"; else echo "::error::FAIL: Forgified Fabric API on $MC: no \"$check\" line"; failed=1; fi
           done
           if [ "$failed" = 1 ]; then grep -n -m 60 -E "frapi|[Ff]orgified|/(ERROR|FATAL)\]" "$log" || true; fi
           exit $failed
       # The same mods with a shader pack (ci/neoforge/smoke-client.sh writes a minimal one): Iris's pipeline, with its extended
-      # vertex format, under the Fabric models Sodium's Fabric renderer meshes. Informational until it has passed.
-      - name: Client with Sodium, Iris and a shader pack (informational, 26.x)
+      # vertex format, under the Fabric models Sodium's Fabric renderer meshes. A gate since task 7 (both release head
+      # extended runs, CI-1): every smoke check passes and Iris uses the pack.
+      - name: Client with Sodium, Iris and a shader pack (26.x)
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.target.minecraft, '26.') }}
-        continue-on-error: true
         run: |
           if ! ls "$RUNNER_TEMP"/extra-sodium/iris*.jar >/dev/null 2>&1; then
             echo "Modrinth has no Iris for NeoForge ${{ matrix.target.minecraft }} build: nothing to run"
             exit 0
           fi
-          SMOKE_SHADERS=1 SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-shaders" "$RUNNER_TEMP/extra-sodium" || true
+          failed=0
+          SMOKE_SHADERS=1 SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-shaders" "$RUNNER_TEMP/extra-sodium" || failed=1
           grep -n -m 80 -E "FABRICATED-TEST frapi|[Ss]haderpack|shader pack|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-shaders/run/logs/latest.log" || true
+          log="$RUNNER_TEMP/client-shaders/run/logs/latest.log"
+          if grep -q "Using shaderpack: fabricated-test" "$log" && ! grep -q "Failed to create shader rendering pipeline" "$log"; then
+            echo "PASS: Iris uses CI's shader pack"
+          else
+            echo "::error::FAIL: Iris for NeoForge didn't use CI's shader pack (its lines are above)"
+            failed=1
+          fi
+          exit "$failed"
       # The Fabric builds of Sodium and Iris, which the compatibility plan loads on NeoForge (task 5, decision 3), with
       # Fabric API and the renderer API test mod, on every version Modrinth has them for. A gate: every smoke check
       # passes, both load and Sodium's renderer draws Fabric's block models.
@@ -901,11 +925,11 @@ jobs:
           fi
           exit "$failed"
       # The same Fabric builds with CI's shader pack (ci/neoforge/smoke-client.sh writes a minimal one): Iris's pipeline,
-      # with its extended vertex format, over Sodium's Fabric renderer and the Fabric models it meshes. Informational
-      # until it holds on two extended runs in a row (CI-1).
-      - name: Client with the Fabric builds of Sodium and Iris and a shader pack (informational)
+      # with its extended vertex format, over Sodium's Fabric renderer and the Fabric models it meshes. A gate since it
+      # held on both of v0.6.0-beta's release head extended runs (task 7, CI-1): every smoke check passes, both load and
+      # Iris uses the pack.
+      - name: Client with the Fabric builds of Sodium and Iris and a shader pack
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
-        continue-on-error: true
         run: |
           if ! ls "$RUNNER_TEMP"/extra-sodium-fabric/iris*.jar >/dev/null 2>&1; then
             echo "Modrinth has no Fabric build of Iris for ${{ matrix.target.minecraft }}: nothing to run"
@@ -913,14 +937,25 @@ jobs:
           fi
           status=0
           SMOKE_SHADERS=1 SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-shaders-fabric" "$RUNNER_TEMP/extra-sodium-fabric" || status=$?
-          echo "smoke-client.sh exit status: $status"
           grep -n -m 80 -E "FABRICATED-TEST frapi|[Ss]haderpack|shader pack|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-shaders-fabric/run/logs/latest.log" || true
+          failed=0
+          ci/gate-mods.sh "$RUNNER_TEMP/client-shaders-fabric" "$status" "the Fabric builds of Sodium and Iris with a shader pack" sodium iris || failed=1
+          log="$RUNNER_TEMP/client-shaders-fabric/run/logs/latest.log"
+          if grep -q "Using shaderpack: fabricated-test" "$log" && ! grep -q "Failed to create shader rendering pipeline" "$log"; then
+            echo "PASS: Iris uses CI's shader pack"
+          else
+            echo "::error::FAIL: Iris's Fabric build didn't use CI's shader pack (its lines are above)"
+            failed=1
+          fi
+          exit "$failed"
       # Fabric addons of Sodium (Sodium Extra, Reese's Sodium Options) next to Sodium for NeoForge, with Fabric API: their
       # mixins into Sodium are checked against Sodium for NeoForge's classes (R3), and they use Sodium's API from its
-      # NeoForge build. The Fabric build of Sodium they depend on is skipped for the NeoForge one. Informational.
-      - name: Client with Sodium for NeoForge and Fabric Sodium addons (informational, 26.x)
+      # NeoForge build. The Fabric build of Sodium they depend on is skipped for the NeoForge one. A gate since task 7
+      # (both release head extended runs, CI-1): every smoke check passes and both addons load. On 26.3 it stays
+      # informational: the addons' builds there ask for a newer Sodium than the pair CI pins (ci_renderers).
+      - name: Client with Sodium for NeoForge and Fabric Sodium addons (26.x; informational on 26.3)
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.target.minecraft, '26.') }}
-        continue-on-error: true
+        continue-on-error: ${{ matrix.target.minecraft == '26.3' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -932,12 +967,14 @@ jobs:
           python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium-addons" fabric sodium-extra reeses-sodium-options || true
           cp "$RUNNER_TEMP"/extra-sodium/sodium*.jar "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-sodium-addons/"
           ls -1 "$RUNNER_TEMP/extra-sodium-addons"
-          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium-addons" "$RUNNER_TEMP/extra-sodium-addons" || true
+          status=0
+          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium-addons" "$RUNNER_TEMP/extra-sodium-addons" || status=$?
+          ci/gate-mods.sh "$RUNNER_TEMP/client-sodium-addons" "$status" "Fabric Sodium addons with Sodium for NeoForge" sodium-extra reeses-sodium-options
       # The Fabric-only Polyfrost stack (OneConfig, PolyPlus): no NeoForge build exists, so Fabricated is its only way
-      # to NeoForge. Modrinth slugs and builds per version are UNVERIFIED; a missing one is reported and skipped.
-      - name: Client with OneConfig and PolyPlus (informational)
+      # to NeoForge. A version Modrinth has no build of either for is reported and skipped. A gate since task 7 (both
+      # release head extended runs, CI-1): every smoke check passes and no Fabric mod is disabled.
+      - name: Client with OneConfig and PolyPlus
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -948,11 +985,20 @@ jobs:
           # Polydium asks once, in the first world, whether to switch to Vulkan, and the world test waits for no screen to be
           # open: its own marker says it has asked.
           mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/polydium" && touch "${XDG_CONFIG_HOME:-$HOME/.config}/polydium/vulkan-prompt"
-          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-polyfrost" "$RUNNER_TEMP/extra-polyfrost" || true
+          status=0
+          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-polyfrost" "$RUNNER_TEMP/extra-polyfrost" || status=$?
           # The counts and the disabled mods, not the long list of loaded ones.
           awk '/^== /{show = /^== (Summary|Disabled)/} show' "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" | head -80 | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
           # Which modules serve the native libraries of jars without classes (Skiko's).
           grep -F "has no classes" "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" | head -10 | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
+          failed=0
+          ci/gate-mods.sh "$RUNNER_TEMP/client-polyfrost" "$status" "OneConfig and PolyPlus" || failed=1
+          disabled=$(awk '/^  Disabled:/ { print $2; exit }' "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" 2>/dev/null || true)
+          if [ "${disabled:-}" != 0 ]; then
+            echo "::error::FAIL: OneConfig and PolyPlus: ${disabled:-an unknown number of} Fabric mod(s) disabled (the report's Disabled section says why)"
+            failed=1
+          fi
+          exit "$failed"
       # The NeoForge builds of recipe viewers, tooltip mods and Simple Voice Chat (pinned per version), with the test
       # mod's plugins declared the Fabric way (as entrypoints, and WTHIT's plugin file): each must construct and call
       # its plugin.

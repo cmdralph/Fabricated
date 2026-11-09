@@ -91,7 +91,7 @@ resume from it.
 | 4 | Fabric's renderer API on NeoForge and Forge (*FRAPI plan*) | Done (#243, #244, #245: R1 to R7; FRAPI-5 to FRAPI-9 and PACK-6 fixed); R8 stays a candidate |
 | 5 | General compatibility, the difficult mods' Fabric builds first (*Difficult mods*) | Done (#247 to #253, #257, #260, #264, #266, #270 and #272 on main; #254, #258, #261 and #268 on `forge`, #249, #259, #263, #265, #267, #269 and #271 on `forge-legacy`): the difficult mods' Fabric builds load and are gated on NeoForge and Forge (#298 and #299 on the Forge branches); the Forge corpus stops read and fixed one by one (CORPUS-70 to 102); then PROVIDER-12 to 18 and PRE-19 (#313 to #315) |
 | 6 | Optimization, cleanup and bug fixes, no features | Done (#316 on `main`: the launch baselines, PERF-1 and PERF-2, FC-5 and FC-6, PLAT-2, CI-3 to CI-5; #317 on `forge`, #318 on `forge-legacy`) |
-| 7 | Release v0.6.0-beta | In progress: SEC-5 fixed, the release notes written; the release heads' extended runs and the draft release next |
+| 7 | Release v0.6.0-beta | In progress (#319 to #321, then the gates): SEC-5 fixed, the release notes written, two extended runs on each release head, and the targets that held on both gated (the owner's decision); the draft release next |
 
 ### The owner's decisions
 
@@ -137,7 +137,9 @@ What changes:
    NeoForge) and eleven with `extended` (the newest NeoForge build, Sodium for NeoForge on 1.21.11, the shader pack, the
    Fabric builds of Sodium and Iris, Sodium addons, OneConfig and PolyPlus, malilib, and both corpora on a server and a
    client). One that holds on two extended runs in a row on the same code becomes a gate (CI-1); one that tests nothing
-   the beta promises is dropped.
+   the beta promises is dropped. In task 7 each target's run that held on both of the release heads' extended runs
+   became a gate (the owner's decision); the corpora and 26.3's Sodium addons stay informational, and so does the
+   newest NeoForge build, which is no target (*Compatibility targets*).
 4. **Forge gets the checks NeoForge has.** No Forge job runs the renderer test mod or gates the client with Fabric API
    (tasks 3 and 4), and the Forge loaders don't yet call the provider policy and the refusals the engine has (task 3).
 5. **GSON-2 was fixed** on both Forge branches (#233, #234): it is in `FINDINGS.md` now.
@@ -153,7 +155,7 @@ Each item still experimental or undecided, with its decision:
 | Item | Decision | Task |
 |---|---|---|
 | The Forge 61 to 66 and Forge 47 builds | Beta, their tables listing what's unsupported | 3 |
-| The Fabric builds of Sodium and Iris | Done (#247 on NeoForge, task 5 on Forge): loaded by default and gated on every version of both, Iris's on NeoForge 1.21.1 and Forge 47 since IRIS-1's fix; with a shader pack informational | 5 |
+| The Fabric builds of Sodium and Iris | Done (#247 on NeoForge, task 5 on Forge): loaded by default and gated on every version of both, Iris's on NeoForge 1.21.1 and Forge 47 since IRIS-1's fix; with a shader pack gated too since task 7 | 5 |
 | Essential's Fabric build | Done on NeoForge (#247, DOWNLOAD-1): what its loader downloads in one launch loads from the next, without Essential's automatic updates; both launches gated on every version. The same on Forge, gated on every version (task 5) | 5 |
 | malilib and the mods needing it | Done (#247 on NeoForge, #303 on Forge): malilib, MiniHUD, Tweakeroo and Litematica load by default and are gated on every version of both | 5 |
 | Flashback | Done (#247 on NeoForge, task 5 on Forge): its freeze hook waits for the main entrypoints (REG-8); gated on every version with a Fabric build (Forge 61 to 66 since PLUGIN-1's fix; none for 1.20.1) | 5 |
@@ -198,14 +200,14 @@ gates. Work that serves none of the criteria below goes into a track for after t
 |---|---|---|---|
 | The test mods, with and without Fabric API, server and client | gates | gates (task 3) | gates (task 3) |
 | Fabric API's client modules (key mappings, HUD, screens, client commands) | gates on 26.x and 1.21.1; 1.21.11's stand-ins lack them | gates on 26.x (the client API test mod); on 1.21.11 the forge test mod's key binding and HUD checks | the forge test mod's HUD callback and screen input checks |
-| Fabric's renderer and model APIs (the renderer test mod: sections, nested models, moving blocks, the breaking overlay, items, blocks drawn as entities, broken models) | gates on every version (task 4) | gates on every version (task 4, R5), minecarts' blocks included; Forge 66's glow outline informational | gates (task 4, R5), a piston's block included; blocks drawn as entities keep vanilla's quads, as upstream on 1.20.1 |
-| Sodium and Iris for NeoForge | gates on 26.x; 1.21.11 informational | — (no Forge builds) | — |
-| The Fabric builds of Sodium and Iris, with a shader pack | gates on every version without the shader pack (Iris's on 1.21.1 since IRIS-1's fix, two runs in a row); with it informational | gates on every version (Sodium's since the syncs of #304, Iris's since ENTRY-4's fix, loaded on request until task 5 lifted its refusal) | gates (Sodium with Indium; Iris since IRIS-1's fix, two runs in a row) |
+| Fabric's renderer and model APIs (the renderer test mod: sections, nested models, moving blocks, the breaking overlay, items, blocks drawn as entities, broken models) | gates on every version (task 4) | gates on every version (task 4, R5), minecarts' blocks included, and Forge 66's glow outline since task 7 | gates (task 4, R5), a piston's block included; blocks drawn as entities keep vanilla's quads, as upstream on 1.20.1 |
+| Sodium and Iris for NeoForge | gates on 26.x, with CI's shader pack too, and Sodium alone on 1.21.11 (both since task 7) | — (no Forge builds) | — |
+| The Fabric builds of Sodium and Iris, with a shader pack | gates on every version (Iris's on 1.21.1 since IRIS-1's fix, two runs in a row), with the shader pack since task 7 | gates on every version (Sodium's since the syncs of #304, Iris's since ENTRY-4's fix, loaded on request until task 5 lifted its refusal) | gates (Sodium with Indium; Iris since IRIS-1's fix, two runs in a row) |
 | malilib with MiniHUD, Tweakeroo and Litematica | gates on every version (task 5) | gates on every version, with the Forge syncs of #303 | as Forge 61 to 66 |
 | Essential's Fabric build; Flashback | gates on every version (task 5) | Essential's gated on every version with the syncs of #304 (two passing runs in a row since GROUP-2's fix); Flashback's on every version (on 64 to 66 two runs in a row since PLUGIN-1's fix) | Essential's gated with the sync of #304; Flashback has no build |
-| OneConfig and PolyPlus | informational (they reach a world on 26.3 and 1.21.1) | not run | not run |
-| Packs sharing the game with Forgified Fabric API and Sodium for NeoForge | the server a gate, the clients informational | — (Forgified Fabric API's builds for these versions are NeoForge's; a jar with its own copy of Fabric Loader is refused, PROVIDER-2) | coexisting (task 5): the server a gate on every run since it passed two extended runs in a row (41833110379 and 41840874477), the client informational; its modules' answers are its own (PROVIDER-14, PROVIDER-15) |
-| Popular Fabric mods: both corpora reach a world, every mod not loaded named with a reason | informational; 1.21.1's servers start since CORPUS-61's fix (extended run 41512581949), its client stays in its world since CORPUS-54's fix (extended run 41536167292) | informational; the servers start, and the 26.2 and 26.3 clients reach a world; the 1.21.11 and 26.1.2 clients stop initializing the game (CORPUS-79) | informational; the server starts, its recipes parsing but two that fail on Fabric too (CORPUS-106); the client joins its world and quits as mc-runtime-test does (extended runs 41770251158 and 41772824375) |
+| OneConfig and PolyPlus | gates on every version since task 7: the client reaches its world with no Fabric mod disabled | not run (a known limit) | not run (a known limit) |
+| Packs sharing the game with Forgified Fabric API and Sodium for NeoForge | gates: the server, and since task 7 the clients (1.21.1's with Sodium for NeoForge, and Forgified Fabric API's renderer on 1.21.1, 26.1.2 and 26.2) | — (Forgified Fabric API's builds for these versions are NeoForge's; a jar with its own copy of Fabric Loader is refused, PROVIDER-2) | coexisting (task 5): the server a gate on every run since it passed two extended runs in a row (41833110379 and 41840874477), the client since task 7; its modules' answers are its own (PROVIDER-14, PROVIDER-15) |
+| Popular Fabric mods: both corpora reach a world, every mod not loaded named with a reason | informational (a known limit): every server starts, and every client reaches its world but 1.21.1's advanced one, on Origins' screen (CORPUS-66); a client with Xaero's World Map can hang as mc-runtime-test stops it (CORPUS-48) | informational; the servers start, and the 26.2 and 26.3 clients reach a world; the 1.21.11 and 26.1.2 clients stop initializing the game (CORPUS-79) | informational; the server starts, its recipes parsing but two that fail on Fabric too (CORPUS-106); the client joins its world and quits as mc-runtime-test does (extended runs 41770251158 and 41772824375) |
 | The owner's reference pack (1.21.1: Forgified Fabric API, Sodium, OneConfig, about 130 Fabric mods) | the owner's check before the release (not in CI) | — | — |
 
 A run becomes a gate once it holds on two extended runs in a row on the same code (CI-1).
@@ -223,12 +225,13 @@ change costing more than 10% on either says why in its pull request.
    v0.5.1-alpha on each platform (FRAPI's status included) and what to do on upgrade.
 5. The owner chooses the version and approves the tag, as for every release.
 
-**What blocks it** (2026-11-08, task 7): criteria 1, 3 and 4 wait on two extended runs on each branch's release
-head (the stability bar held on the heads before task 7, extended runs 42527530813, 42529812463 and 42529814940, with
-SEC-5 fixed since); criterion 2 on the owner's decision on the targets still informational: Sodium and Iris for
-NeoForge on 1.21.11, the shader pack runs, OneConfig and PolyPlus, the clients sharing the game with Forgified Fabric
-API, Forge 66's glow outline and the corpora. The corpora can't be gates as they stand: 1.21.1's advanced client stays
-on Origins' screen (CORPUS-66) and its corpus client can hang as mc-runtime-test stops it (CORPUS-48).
+**What blocks it** (2026-11-08, task 7): only the owner's go-ahead (criterion 5). Criteria 1 and 3 held on two
+extended runs on each branch's release head (`main` 42533784185 and 42535987817, `forge` 42535034947 and 42536321030,
+`forge-legacy` 42534631585 and 42536323160). Criterion 2 as the owner decided: each target's run that passed both
+became a gate, and the rest ship as known limits in the release notes: the corpora (1.21.1's advanced client stays on
+Origins' screen, CORPUS-66; a client with Xaero's World Map can hang as mc-runtime-test stops it, CORPUS-48), 26.3's
+Sodium addons (their builds there ask for a newer Sodium than CI pins) and OneConfig and PolyPlus on Forge (not run).
+Criterion 4 with the gating change's fixes to `COMPATIBILITY.md` and the Forge tables.
 
 ### FRAPI plan (task 4)
 
@@ -280,10 +283,10 @@ unless said:
 - **R6:** Continuity in CI on every version it has a build for (`a8f1c38`), informational: no connected textures seen yet
   (run 41404975032). On 1.21.1 Continuity's model draws the test's glass through Fabricated's seam (FRAPI-7 had
   switched its models off), with vanilla's sprite; on 1.21.11 and 26.x its sprite hook is left out and the check sees
-  vanilla's glass model. Both are CORPUS-56, task 5. Found on the way: PACK-6 and FRAPI-7.
+  vanilla's glass model. Both are CORPUS-56, task 5. Found on the way: PACK-6 and FRAPI-7. A gate since task 7.
 - **R7:** with Forgified Fabric API's renderer (`a8fbe84`, extended runs), Fabricated's seams stand down on 1.21.1,
   26.1.2 and 26.2 (every block logs `seam=other`, extended run 41400541531); it has no 1.21.11 or 26.3 build. Its own
-  modules' answers there are its own (the test mod's checks of them fail, informational).
+  modules' answers there are its own (the test mod's checks of them failed then, informational). A gate since task 7.
 - **R8:** stays a candidate.
 - **R5:** the renderer test mod on both Forge branches, its checks gated on every Forge version (runs 41421652876
   and 41423804163). Rule 8 at Indigo's entry points on Forge 61 to 66 (`4169249`), where upstream's hooks draw every
@@ -291,8 +294,8 @@ unless said:
   entities' blocks; FRAPI-9 on Forge 47 (`b020730`), where Fabric models were invisible, as FRAPI-5 on 1.21.1, now
   drawn through Indigo in chunk sections, falling, moved by a piston, with the overlay and through `renderBatched`. The guards load only with
   Fabric's renderer API (`FrapiMixinPlugin`, `a46fbae`). Forge 47's blocks drawn as entities keep vanilla's quads,
-  as upstream on 1.20.1, and its overlay needs no flicker fix (Forge's own). Forge 66's glow outline stays
-  informational.
+  as upstream on 1.20.1, and its overlay needs no flicker fix (Forge's own). Forge 66's glow outline is a gate since
+  task 7.
 
 ### Difficult mods (task 5)
 
@@ -307,7 +310,7 @@ Where each stands, and what it needs:
 | Mod | Today | Needs | Gate |
 |---|---|---|---|
 | Sodium (Fabric build) | Loads by default on NeoForge (`8cf0106`), a gate on every version (`547e2c6`): the client reaches a world, the renderer test mod's checks pass under it and Sodium's renderer draws Fabric's block models. Fixed on the way: CTOR-5 (1.21.1's quads), STATE-1 (Fabric API's fluid sprites), OVERLOAD-2 (1.21.11), FRAPI-10. Loads on Forge too, gated on every version (task 5) | What its Fabric platform code doesn't answer the NeoForge way, the gaps `COMPATIBILITY.md` lists (decision 2026-11-02: no patch): NeoForge's fluid renderers (through Fabric's fluid render handlers), the geometry NeoForge mods add to sections (`AddSectionGeometryEvent`), position-aware light emission and face culling, baked colours in immediate mode (*Rendering-pipeline mods*) | A gate on every version; a NeoForge mod's fluid and section geometry in view not yet checked |
-| Iris (Fabric build) | Loads with Sodium's by default on NeoForge and Forge, a gate on every version. Fixed on the way: TOKEN-1 (1.21.11's access widener), the accessor replacing Sodium's own method (`f696c80`), IRIS-1 (its particle hook on NeoForge 1.21.1 and Forge 47, its shader hook on Forge 47), ENTRY-3 and ENTRY-4 (Forge's client constructor). With CI's shader pack: informational | A shader pack drawing with NeoForge's own render pipelines | The shader pack client a gate once it holds (CI-1) |
+| Iris (Fabric build) | Loads with Sodium's by default on NeoForge and Forge, a gate on every version. Fixed on the way: TOKEN-1 (1.21.11's access widener), the accessor replacing Sodium's own method (`f696c80`), IRIS-1 (its particle hook on NeoForge 1.21.1 and Forge 47, its shader hook on Forge 47), ENTRY-3 and ENTRY-4 (Forge's client constructor). With CI's shader pack: a gate since task 7 | A shader pack drawing with NeoForge's own render pipelines | Done (task 7) |
 | The mixed pairs (Iris for NeoForge with Sodium's Fabric build, and the reverse) | Refused even with `loadUnsupported` | Nothing: each hooks classes only its own partner build has, so it can't link | Kept refused, with the reason |
 | Essential (Fabric build) | Loads on NeoForge (DOWNLOAD-1): its loader downloads Essential in the first launch, and Essential loads from the next, as a regular mod without its automatic updates (a jar older than 30 days is reported). Both launches a gate on every version. Fixed on the way: MIXEXT-4 (its relocated MixinExtras), REMAP-4 (Elementa). The same on Forge, both launches gated (task 5) | Loads from its download in the next launch (the owner's decision, 2026-11-02) | Done on NeoForge |
 | OneConfig, PolyPlus, Polydium | Reach a world on every version with builds, no mod disabled (extended run 41512581949; CORPUS-47). adventure-platform-fabric loads with adapters for its two library mixins (LIB-2, verified there), and with it OneConfig's chat event; OneConfig's keybinds can't reach `KeyMapping.MAP` (KEYMAP-1, P3, documented). Polydium's deferred sky (`@WrapMethod` of a `LevelRenderer` lambda NeoForge gives other parameters, PRE-6), its render thread stack (a library class) and its two Vulkan pipeline hooks (26.2) are left out | KEYMAP-1's `Map` view, if built; a captured-values bridge for a `@WrapMethod` of a lambda, as `@Inject`s get (LAMBDA-3) | The Polyfrost client on every version with builds, adventure-platform-fabric loaded |
@@ -433,9 +436,11 @@ logs become findings, and the corpora grow by the mods they name.
     informational runs' misses are the corpora's, none Fabricated's: on 1.21.1 the advanced client stays on Origins'
     screen (CORPUS-66), the corpus client can hang as mc-runtime-test stops it (CORPUS-48, this run only), and the
     advanced server's `/reload` fails in Wover's code (CORPUS-113, new). Which informational targets become gates
-    before the beta is the owner's call (asked 2026-11-08).
-  - **Done:** SEC-5; the release notes (`docs/releases/v0.6.0-beta.md`). **Next:** two extended runs on each branch's
-    release head, then the draft release for the owner to publish.
+    before the beta was the owner's call: those whose runs pass two extended runs on the release heads (2026-11-08).
+  - **Done:** SEC-5 and the release notes (#319, synced in #320 and #321); two extended runs on each branch's release
+    head, every job passing (*What blocks it*); the targets' runs that held on both gated, with the rows of
+    `COMPATIBILITY.md` and the Forge tables that didn't match CI fixed. **Next:** the draft release, for the owner to
+    check and publish.
 
 ## Tracks
 
@@ -452,7 +457,7 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 | Client entrypoints | yes | yes, right after the main ones in Forge's registry events, registries open | yes, right after the main ones in Forge's registry events, registries open |
 | Mixins (pre-flight, its repairs, hooks left out), access wideners, injected interfaces, `@Environment` stripping | yes | yes, with MixinExtras 0.5.5 nested in the in-game mod over Forge's 0.5.4 (MIXEXT-3) | yes, with MixinExtras nested in the in-game mod, which also carries Fabric mods' hooks at a call in a constructor (CTOR-4); hooks into lambdas of the classes Forge patched found by vanilla's SRG names (LAMBDA-6), and bridged where Forge's patch made them take `this` or reordered their values (LAMBDA-7) |
 | Official Fabric API jar | every module loads, server and client | every module loads, server and client | every module loads, server and client |
-| Native Fabric API modules | 17 (18 on 1.21.1: particles) | 3 (`fabric-api-base`, `fabric-loot-api-v3`, the key mapping module, KEYMAP-3) | 6 (`fabric-api-base`, biome, both loot modules, dimensions, particles) |
+| Native Fabric API modules | 17 (19 on 1.21.1: particles and key bindings) | 3 (`fabric-api-base`, `fabric-loot-api-v3`, the key mapping module, KEYMAP-3) | 6 (`fabric-api-base`, biome, both loot modules, dimensions, particles) |
 | Bridges to the platform | fluid types, storages and energy with capabilities, plugins of other mods, custom values, renderer API | fluid types, storages with capabilities (on blocks, fluids and items in items), tags' `fabric:remove`, default attributes (Forge 64 to 66), advancement events (Forge 65 and 66), block break, sleep and after-damage events (BREAK-1, SLEEP-1, DAMAGE-1), load conditions in Forge 61's conditional decoder, a Fabric mod's pack identity (PACK-5), screen events (SCREEN-1), HUD elements on Forge's layers (HUD-2), Fabric mods' hooks at the HUD method's end and at the calls Forge's layers make (HUD-4) | fluid types, storages with capabilities (on blocks, fluids in items), tags' `fabric:remove`, block break and sleep events (BREAK-1, SLEEP-1, SLEEP-2), Fabric fuels and brewing recipes (FUEL-1, BREW-1), Fabric mods' hooks at the HUD method's start and end, `HudRenderCallback`'s included, through Fabricated's seams (HUD-4) |
 | Networking | native, on NeoForge's payloads | upstream's module: a payload round trip with the integrated server (checked with Fabric API) | upstream's module: a channel round trip with the integrated server (checked with Fabric API) |
 | Rendering (renderer API, models, Sodium and Iris for NeoForge) | yes | upstream's modules: Indigo builds chunk sections on all four (SUPER-1, LOCAL-4), Fabric's colour providers are read from Forge's map (COLOR-1), and Fabric's block dust tint event is asked where Forge 61 decides the tint (PART-2); Fabric models drawn through Indigo with rule 8 at its entry points, and on Forge 61 from Fabricated's seams where upstream's hooks are left out (FRAPI-8; CI's renderer test mod); a Fabric model's level-aware particle sprite where Forge asks with its model data: the screen effect inside a block (Forge 65 draws none), block markers (64 to 66) and block particles (PART-4) | upstream's renderer API, Indigo, `fabric-rendering-v1` and model loading load, with Fabric's colour providers read from Forge's maps (COLOR-1), model loading's constructor hook wrapped (CTOR-4) and its before-bake hook moved to the overload Forge's code went to (MODEL-3); particles Fabricated's own, on Forge's particle engine (PART-1); Fabric models drawn through Indigo from Fabricated's seams, as Forge's renderers call its own overloads, with rule 8 (FRAPI-9; CI's renderer test mod) |
@@ -520,11 +525,11 @@ The Fabric renderer API on NeoForge:
 | Blocks drawn as entities, other mods drawing blocks from their parts | through `renderBatched`, yes (FRAPI-5); a minecart's block from vanilla's quads, as upstream (invisible for a model with only Fabric quads, as on Fabric) | yes, from parts made from the model's quads (M5) | yes, Fabric models only (FRAPI-6; CI checks a minecart's block) | yes | yes |
 | Fabric models nested in a vanilla multipart or weighted model | yes (FRAPI-5, CI) | yes (M5, CI) | yes (M3) | yes | yes |
 | Block outlines, a moving block's glow outline | not checked | the translucent outline pass from the parts made from the quads | block outlines from the model's parts, as NeoForge sees them; moving blocks have no outline | block outlines: same; the glow outline by Fabric's renderer (M2b; CI checks a glowing falling block) | same as 26.2 |
-| Under Sodium for NeoForge | not checked (task 5) | Sodium meshes the parts made from the quads, with Indigo registered as the renderer (M5; informational CI, run 374) | Sodium's own Fabric renderer, Indigo stands down (R1, CI) | same | same |
+| Under Sodium for NeoForge | not checked (task 5) | Sodium meshes the parts made from the quads, with Indigo registered as the renderer (M5; CI, a gate since task 7) | Sodium's own Fabric renderer, Indigo stands down (R1, CI) | same | same |
 | Fabric item models (hotbar, hand, dropped, item frame) | yes (CI) | yes (CI) | yes (CI) | yes | yes |
 | A Fabric model that throws fails alone, a wrapper of one too (rule 8, FRAPI-7) | yes (CI) | yes (CI) | yes (CI) | yes | yes |
-| Forgified Fabric API's renderer beside Fabricated's seams (R7) | they stand down (extended CI) | no build | they stand down | they stand down | no build |
-| Continuity's connected textures (R6, informational) | yes, since CORPUS-56's fix (extended run 41496005222) | yes, since CORPUS-56's fix (extended run 41512581949) | same | same | same |
+| Forgified Fabric API's renderer beside Fabricated's seams (R7) | they stand down (extended CI, a gate since task 7) | no build | they stand down | they stand down | no build |
+| Continuity's connected textures (R6, a gate since task 7) | yes, since CORPUS-56's fix (extended run 41496005222) | yes, since CORPUS-56's fix (extended run 41512581949) | same | same | same |
 
 - **Done (task 4):** the *FRAPI plan*'s R1 to R7, with FRAPI-5 to FRAPI-9 and PACK-6 fixed; its *Status* has each.
 - **Done:** M1 (Fabric block models in chunk sections, `8e80c6e`, `0dbdfda`, `08aff28`), M2 (moving blocks and the
@@ -587,8 +592,9 @@ research sandbox).
 | Entity, block-entity and item renderers | PolyPlus cosmetics | Render events and feature renderer registration | Pre-flight |
 
 **Where the Fabric builds stand.** Since task 5 (#247) Sodium's and Iris's load by default on NeoForge, and their
-client run is a gate on every version (Iris's on 1.21.1 since IRIS-1's fix), with the gaps below listed in `COMPATIBILITY.md`; the
-same client with CI's shader pack is informational. Before that (CI's informational run, `loadUnsupported`, 26.x):
+client run is a gate on every version (Iris's on 1.21.1 since IRIS-1's fix), with the gaps below listed in
+`COMPATIBILITY.md`; the same client with CI's shader pack is a gate too since task 7. Before that (CI's informational
+run, `loadUnsupported`, 26.x):
 - Sodium 0.9.2 and Iris 1.11.4 (Fabric) load through Fabricated on 26.2 (run on `dbdff1d`): pre-flight passes them, Iris
   creates its pipeline, the client joins a world. It then crashed on the first block quad (SODIUM-1, below).
 - With the constructor repair (`bee1fe4`), the 26.1.2 and 26.3 runs on `e68cb58` no longer crash: Sodium's Fabric build meshes
@@ -630,7 +636,7 @@ same client with CI's shader pack is informational. Before that (CI's informatio
 | 7 | Block-entity render data and NeoForge model data, bridged both ways | Fabric renderers reading NeoForge block entities' data | Planned |
 | 8 | Renderer contract: report the active renderer, optional every-block routing | Third-party renderer API implementations | The log names the renderer drawing Fabric models (FRAPI-3, won't fix); every-block routing planned |
 | 9 | Early-window opt-out for mods that need to act before the first GL context (driver workarounds) | Sodium's `preLaunch` workarounds | When a real report needs it |
-| 10 | Corpus runs for the Polyfrost stack and Fabric Sodium/Iris | Evidence for 3-8 | Both exist: Fabric Sodium/Iris a gate on NeoForge since task 5 (its shader pack run informational), OneConfig with PolyPlus informational where Modrinth has builds |
+| 10 | Corpus runs for the Polyfrost stack and Fabric Sodium/Iris | Evidence for 3-8 | Both exist: Fabric Sodium/Iris a gate on NeoForge since task 5 (its shader pack run since task 7), OneConfig with PolyPlus a gate since task 7 where Modrinth has builds |
 
 **Reconsidered on 2026-11-01** (decision 3): code for one mod's Fabric build is allowed as a compatibility patch where
 no generic capability does the job (*Difficult mods*). A port of Sodium's own NeoForge platform module stays out (its

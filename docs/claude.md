@@ -58,7 +58,7 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the p
   and per branch): verify locally (the `coreOnly` build, the touched version's jars and test mods, a local server
   smoke where it helps: *Building and verifying*), commit in logical steps and push in batches. Each push gets the
   quick check (`check.yml`, about five minutes). The full matrix runs once a task is done, on its pull request into
-  `main`, and before a release; by hand (`workflow_dispatch`, with `extended` for the informational runs) only when a
+  `main`, and before a release; by hand (`workflow_dispatch`, with `extended` for the extended runs) only when a
   task needs that evidence. Never push just to see CI, and no polishing rounds: cleanup is a task of its own.
 - **Lightweight and readable over clever.** No abstraction without a second user, no dead code, no duplicated
   utilities. A refactor must measurably reduce coupling or duplication.
@@ -92,7 +92,7 @@ pull requests, release tags and by hand. A pull request runs the versions it tou
 version's own folder that version, anything shared every version); a tag or a run by hand runs all of them. A push to
 `main` or a platform branch (a merge) only builds what it changed, to keep that branch's Gradle caches current.
 `build.yml` builds each version once and tests it in parallel parts: `server`, `client` and `mods` (other mods' NeoForge
-builds), with `extended` (and on tags) the informational runs too, and a `corpus` part. A version's CI pins are in its
+builds), with `extended` (and on tags) the extended runs too, and a `corpus` part. A version's CI pins are in its
 folder: the loader in `gradle.properties`, Fabric API in its `fabric-api-plan.json`, and the plugin hosts the client
 checks in `ci_plugin_hosts`. A job installs the game once and its later runs copy that install
 (`ci/install-cache.sh`).
@@ -104,8 +104,8 @@ checks in `ci_plugin_hosts`. A job installs the game once and its later runs cop
    then again with Fabric API. On 26.x that second run also loads the renderer API test mod, and a gate checks that
    Fabric block models are drawn in chunk sections (also inside a vanilla multipart model), as moving blocks and with
    the breaking overlay, and that Fabric's and NeoForge's custom model formats both load.
-4. A corpus of popular Fabric mods from Modrinth, other mods' Fabric builds and the newest NeoForge build
-   (informational, with `extended`).
+4. With `extended`: other mods' Fabric builds (gates, CI-1), and a corpus of popular Fabric mods from Modrinth and the
+   newest NeoForge build (informational).
 
 ## Architecture
 
