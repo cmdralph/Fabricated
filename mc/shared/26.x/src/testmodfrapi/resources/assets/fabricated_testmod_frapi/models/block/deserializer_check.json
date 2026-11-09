@@ -1,0 +1,6 @@
+{
+  "fabric:type": "fabricated_testmod_frapi:delegate",
+  "model": {
+    "parent": "minecraft:block/stone"
+  }
+}

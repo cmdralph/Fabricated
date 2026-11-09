@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "": {
+      "fabric:type": "fabricated_testmod_frapi:broken_entity_check",
+      "model": {
+        "model": "minecraft:block/stone"
+      }
+    }
+  }
+}
