@@ -25,7 +25,7 @@ import net.minecraft.world.entity.item.ItemEntity;
 public final class BootstrapContent {
 	// Not TestMod's logger: the registries' freeze may come during vanilla's bootstrap, before the mod is constructed.
 	private static final Logger LOGGER = LoggerFactory.getLogger(TestMod.MOD_ID);
-	private static final Identifier ID = Identifier.fromNamespaceAndPath("fabricated_testmod", "bootstrap_entity");
+	private static final Identifier ID = TestCompat.id("fabricated_testmod", "bootstrap_entity");
 	private static EntityType<ItemEntity> type;
 	private static boolean mainInitializerRan;
 	private static boolean registryFreezeSeen;

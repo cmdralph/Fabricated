@@ -6,7 +6,6 @@ import java.lang.reflect.Method;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -51,7 +50,7 @@ public final class DefaultBridgeTest implements ModInitializer {
 	}
 
 	private static void check(MinecraftServer server) {
-		EntityType<?> pigType = TestCompat.value(BuiltInRegistries.ENTITY_TYPE, Identifier.withDefaultNamespace("pig"));
+		EntityType<?> pigType = TestCompat.value(BuiltInRegistries.ENTITY_TYPE, TestCompat.id("minecraft", "pig"));
 		if (!(TestCompat.create(pigType, server.overworld()) instanceof Mob pig)) {
 			TestMod.LOGGER.error("FABRICATED-TEST default bridge FAILED: could not create a pig");
 			TestMod.LOGGER.error("FABRICATED-TEST inherited default bridge FAILED: could not create a pig");

@@ -30,7 +30,7 @@ import net.minecraft.resources.Identifier;
  * would report where the module isn't installed.
  */
 public final class ArgumentTypeTest implements ModInitializer {
-	static final Identifier ID = Identifier.fromNamespaceAndPath("fabricated_testmod", "word");
+	static final Identifier ID = TestCompat.id("fabricated_testmod", "word");
 	private static final String MODULE = "fabric-command-api-v2";
 
 	@Override

@@ -53,7 +53,7 @@ import net.minecraft.world.item.Items;
 public final class TestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-testmod";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
-	public static final Identifier ITEM_ID = Identifier.fromNamespaceAndPath("fabricated_testmod", "test_item");
+	public static final Identifier ITEM_ID = TestCompat.id("fabricated_testmod", "test_item");
 	/**
 	 * A namespace no Fabric mod has: content registered under it stands for a NeoForge mod's, since Fabricated's bridges
 	 * tell the two apart by namespace.
@@ -73,7 +73,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	 * in vanilla ones (REG-3): NeoForge has frozen them by then, and its registration events haven't opened them yet.
 	 */
 	public static void earlyRegistryWrites() {
-		Identifier stat = Identifier.fromNamespaceAndPath("fabricated_testmod", "early_stat");
+		Identifier stat = TestCompat.id("fabricated_testmod", "early_stat");
 		try {
 			Registry.register(BuiltInRegistries.CUSTOM_STAT, stat, stat);
 			if (addRegistry("early")) LOGGER.info("FABRICATED-TEST early registry writes OK");
@@ -84,7 +84,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 
 	@SuppressWarnings({"unchecked", "rawtypes"})
 	private static boolean addRegistry(String name) {
-		ResourceKey<Registry<String>> key = ResourceKey.createRegistryKey(Identifier.fromNamespaceAndPath("fabricated_testmod", name));
+		ResourceKey<Registry<String>> key = ResourceKey.createRegistryKey(TestCompat.id("fabricated_testmod", name));
 		try {
 			Registry.register((Registry) BuiltInRegistries.REGISTRY, TestCompat.location(key), new MappedRegistry<>(key, Lifecycle.stable()));
 			return BuiltInRegistries.REGISTRY.containsKey(TestCompat.location(key));
@@ -241,16 +241,15 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		// (neoforge:false), which Fabric ignores (DATA-1, PACK-2).
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			var damageTypes = TestCompat.registry(server.registryAccess(), Registries.DAMAGE_TYPE);
-			if (damageTypes.containsKey(Identifier.fromNamespaceAndPath("fabricated_testmod", "conditioned"))) {
+			if (damageTypes.containsKey(TestCompat.id("fabricated_testmod", "conditioned"))) {
 				LOGGER.info("FABRICATED-TEST data without NeoForge conditions OK");
 			}
-			Identifier builtin = Identifier.fromNamespaceAndPath("fabricated_testmod", "conditioned_builtin");
+			Identifier builtin = TestCompat.id("fabricated_testmod", "conditioned_builtin");
 			if (damageTypes.containsKey(builtin)) {
 				LOGGER.info("FABRICATED-TEST built-in pack data without NeoForge conditions OK");
 			}
 			// A world whose registries hold an experimental entry asks the player to confirm before it opens (PACK-3).
-			if (damageTypes.registrationInfo(ResourceKey.create(Registries.DAMAGE_TYPE, builtin))
-					.filter(info -> info.lifecycle().equals(Lifecycle.stable())).isPresent()) {
+			if (Lifecycle.stable().equals(TestCompat.lifecycle(damageTypes, ResourceKey.create(Registries.DAMAGE_TYPE, builtin)))) {
 				LOGGER.info("FABRICATED-TEST built-in pack data is stable OK");
 			}
 		});
@@ -296,11 +295,11 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 				.icon(() -> new ItemStack(item))
 				.displayItems((parameters, output) -> output.accept(item))
 				.build();
-		Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, Identifier.fromNamespaceAndPath("fabricated_testmod", "aaa_test_tab"), tab);
+		Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, TestCompat.id("fabricated_testmod", "aaa_test_tab"), tab);
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			List<CreativeModeTab> sorted = TestPlatform.sortedCreativeTabs();
 			int index = sorted.indexOf(tab);
-			int spawnEggs = sorted.indexOf(TestCompat.value(BuiltInRegistries.CREATIVE_MODE_TAB, Identifier.withDefaultNamespace("spawn_eggs")));
+			int spawnEggs = sorted.indexOf(TestCompat.value(BuiltInRegistries.CREATIVE_MODE_TAB, TestCompat.id("minecraft", "spawn_eggs")));
 			if (spawnEggs >= 0 && index > spawnEggs) LOGGER.info("FABRICATED-TEST creative tab order OK");
 			else LOGGER.error("FABRICATED-TEST creative tab order FAILED: the test tab is at {}, the spawn eggs at {}", index, spawnEggs);
 		});

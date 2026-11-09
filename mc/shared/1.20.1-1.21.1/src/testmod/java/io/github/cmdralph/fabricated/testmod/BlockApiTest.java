@@ -20,12 +20,12 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * 1.21.1 part of the CI test mod: exercises Fabricated's native fabric-block-api-v1 (the trapdoor climbing tag and
- * appearance through Fabric's interface; 1.21.1's API has nothing more).
+ * 1.20.1 and 1.21.1 part of the CI test mod: exercises fabric-block-api-v1 (Fabricated's native module on NeoForge 21.1):
+ * the trapdoor climbing tag and appearance through Fabric's interface; these versions' API has nothing more.
  */
 public final class BlockApiTest implements ModInitializer {
 	static ResourceLocation id(String path) {
-		return ResourceLocation.fromNamespaceAndPath("fabricated_testmod", path);
+		return TestCompat.id("fabricated_testmod", path);
 	}
 
 	@Override
@@ -38,8 +38,8 @@ public final class BlockApiTest implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			ServerLevel level = server.overworld();
 			List<String> failed = new ArrayList<>();
-			BlockState trapdoor = BuiltInRegistries.BLOCK.get(ResourceLocation.withDefaultNamespace("oak_trapdoor")).defaultBlockState();
-			BlockState stone = BuiltInRegistries.BLOCK.get(ResourceLocation.withDefaultNamespace("stone")).defaultBlockState();
+			BlockState trapdoor = BuiltInRegistries.BLOCK.get(TestCompat.id("minecraft", "oak_trapdoor")).defaultBlockState();
+			BlockState stone = BuiltInRegistries.BLOCK.get(TestCompat.id("minecraft", "stone")).defaultBlockState();
 			if (!climbable.makesOpenTrapdoorAboveClimbable(climbable.defaultBlockState(), level, BlockPos.ZERO, trapdoor)
 					|| stone.getBlock().makesOpenTrapdoorAboveClimbable(stone, level, BlockPos.ZERO, trapdoor)) failed.add("trapdoor_tag");
 			if (((FabricBlockState) stone).getAppearance(level, BlockPos.ZERO, Direction.UP, null, null) != stone) failed.add("appearance");

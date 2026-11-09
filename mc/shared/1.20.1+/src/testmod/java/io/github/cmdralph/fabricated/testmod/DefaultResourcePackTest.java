@@ -2,7 +2,6 @@ package io.github.cmdralph.fabricated.testmod;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.repository.Pack;
 import net.minecraft.server.packs.repository.PackRepository;
 
@@ -22,7 +21,7 @@ public final class DefaultResourcePackTest implements ClientModInitializer {
 			Pack pack = repository.getPack(PACK);
 			boolean selected = repository.getSelectedIds().contains(PACK);
 			boolean loaded = client.getResourceManager()
-					.getResource(Identifier.fromNamespaceAndPath("fabricated_testmod", "fabricated_test/extra_assets.json")).isPresent();
+					.getResource(TestCompat.id("fabricated_testmod", "fabricated_test/extra_assets.json")).isPresent();
 			if (selected && loaded) {
 				TestMod.LOGGER.info("FABRICATED-TEST builtin resource pack enabled by default OK");
 			} else if (pack != null && !selected && TestCompat.PROVIDERS_DEFAULT_PACK != null && TestMod.providedByAnotherMod("fabric-resource-loader-v0")) {

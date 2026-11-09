@@ -12,9 +12,9 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 
 /**
- * CI test for Fabricated's native fabric-entity-events-v1 (Minecraft 1.21.1, whose Fabric API has no mob effect events):
- * once the server has started, a pig is spawned, hurt, and killed, and a zombie is converted to a drowned; the events
- * seen are logged as one marker line.
+ * CI test for fabric-entity-events-v1 (Fabricated's native module on NeoForge 1.21.1) on Minecraft 1.20.1 and 1.21.1,
+ * whose Fabric API has no mob effect events: once the server has started, a pig is spawned, hurt, and killed, and a
+ * zombie is converted to a drowned; the events seen are logged as one marker line.
  */
 public final class EntityEventsTest implements ModInitializer {
 	private static final List<String> SEEN = new ArrayList<>();
@@ -30,7 +30,7 @@ public final class EntityEventsTest implements ModInitializer {
 			seen(entity, "allow_damage");
 			return true;
 		});
-		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, base, taken, blocked) -> seen(entity, "after_damage"));
+		TestCompat.afterDamage(entity -> seen(entity, "after_damage"));
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
 			seen(entity, "allow_death");
 			return true;
