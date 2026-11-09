@@ -66,9 +66,11 @@ public final class ObjectBuilderTest implements ModInitializer {
 				FabricBlockEntityTypeBuilder.create(BarrelBlockEntity::new, stone).build());
 		// Fabricated makes every block entity type Fabric's, as upstream's interface injection does on Fabric.
 		((FabricBlockEntityType) blockEntity).addSupportedBlock(dirt);
-		// Vanilla's builder has Fabric's build() through interface injection (1.21.1 only).
-		BlockEntityType<BarrelBlockEntity> builtBlockEntity = Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE, id("test_block_entity_builder"),
-				BlockEntityType.Builder.of(BarrelBlockEntity::new, stone).build());
+		// Vanilla's builder has Fabric's build() through interface injection (1.21.1 only), which Forge's toolchain doesn't
+		// apply at compile time: the builder is cast to the interface, as the type is above.
+		@SuppressWarnings("unchecked")
+		FabricBlockEntityType.Builder<BarrelBlockEntity> builder = (FabricBlockEntityType.Builder<BarrelBlockEntity>) (Object) BlockEntityType.Builder.of(BarrelBlockEntity::new, stone);
+		BlockEntityType<BarrelBlockEntity> builtBlockEntity = Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE, id("test_block_entity_builder"), builder.build());
 		// Mods call Fabric's factories and setters by Fabric's own names (CORPUS-39).
 		boolean blockSettings = FabricBlockSettings.of() != null
 				&& FabricBlockSettings.create().requiresTool().sounds(SoundType.STONE).hardness(2.0F).resistance(6.0F).nonOpaque().luminance(state -> 7) != null;

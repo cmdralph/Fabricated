@@ -1063,10 +1063,11 @@ Versions: all · package `io.github.cmdralph.fabricated.testmod.broken.mixin` ·
 ## Forge configs
 
 The Forge branches' configs, the test mods' included: `forge` (Forge 61 to 66, Minecraft 1.21.11 and 26.x) and
-`forge-legacy` (Forge 47, Minecraft 1.20.1). Generated from those branches' sources on 2026-11-08 (task 6), in the
-per-config tables' format above; `scripts/check-mixin-inventory.py` checks them on each branch, where the configs
-are. A version takes a config, and each mixin class, from its own folder (`mc/<platform>/<version>`), else from the
-first folder its `shared_sources` lists that has it, `mc/forge-shared` among them. `forge.` = `net.minecraftforge.`;
+`forge-legacy` (Forge 47 and 52, Minecraft 1.20.1 and 1.21.1). Generated from those branches' sources on 2026-11-08
+(task 6), Forge 52's on 2026-11-09, in the per-config tables' format above; `scripts/check-mixin-inventory.py` checks
+them on each branch, where the configs are. A version takes a config, and each mixin class, from its own folder
+(`mc/<platform>/<version>`), else from the first folder its `shared_sources` lists that has it, `mc/forge-shared` among
+them, with that folder's version groups that serve the version (`mc/forge-shared/1.21.1+` for 1.21.1 and later). `forge.` = `net.minecraftforge.`;
 "—" in a configs table means the key is unset. Only `fabricated-loot` and the Forge 61 to 66 renderer test mod set
 `overwrites.requireAnnotations`, which every NeoForge config sets: in the others, a method a mixin adds that its
 target already declares replaces the target's without an `@Overwrite` (MIX-3).
@@ -1106,7 +1107,7 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.color.mixin` �
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| client | BlockColorsLookupMixin | 1.21.11 (1.21.11) | n.m.client.color.block.BlockColors | no injectors; adds methods get; @Shadow blockColors | | | | |
+| client | BlockColorsLookupMixin | mc/forge-shared/1.20.1-1.21.11 (1.21.11) | n.m.client.color.block.BlockColors | no injectors; adds methods get; @Shadow blockColors | | | | |
 
 ### `mc/forge/1.21.11/src/main/resources/fabricated-forge-conditions.mixins.json`
 
@@ -1145,13 +1146,13 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.forge.ite
 |---|---|---|---|---|---|---|---|---|
 | mixins | ItemForgeHooksMixin | common26 (26.1.2, 26.2, 26.3) | n.m.world.item.Item | no injectors; adds methods getEquipmentSlot, canApplyAtEnchantingTable, getCreatorModId (Forge's item hooks, answered from Fabric's item API) | | | | |
 
-### `mc/forge/common/src/main/resources/fabricated-forge-block.mixins.json`
+### `mc/forge-shared/1.21.1+/src/main/resources/fabricated-forge-block.mixins.json`
 
 Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.forge.block.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| mixins | BlockForgeHooksMixin | common (1.21.11, 26.1.2, 26.2, 26.3) | n.m.world.level.block.Block | no injectors; adds method makesOpenTrapdoorAboveClimbable (Forge's ladder rule, or a block in Fabric's trapdoor tag) | | | | |
+| mixins | BlockForgeHooksMixin | mc/forge-shared/1.21.1+ (1.21.11, 26.1.2, 26.2, 26.3) | n.m.world.level.block.Block | no injectors; adds method makesOpenTrapdoorAboveClimbable (Forge's ladder rule, or a block in Fabric's trapdoor tag) | | | | |
 
 ### `mc/forge/common26late/src/main/resources/fabricated-forge-block-late.mixins.json`
 
@@ -1198,8 +1199,8 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.loot.mixin` ·
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
 | mixins | LoadingRegistriesMixin | 1.21.11 (1.21.11) | n.m.server.ReloadableServerRegistries | @WrapOperation → fabricated$noteLoadingRegistries | "reload" | INVOKE `L…/HolderLookup$Provider;createSerializationContext(L…/DynamicOps;)L…/RegistryOps;` | — | default |
-| mixins | ReloadableServerRegistriesMixin | common (1.21.11) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
-| mixins | ReloadableServerRegistriesMixin | common (1.21.11) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
+| mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (1.21.11) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
+| mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (1.21.11) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 
 ### `mc/forge/1.21.11/src/main/resources/fabricated-forge-particle.mixins.json`
 
@@ -1267,8 +1268,8 @@ Versions: 26.3 · package `io.github.cmdralph.fabricated.forge.loot.mixin` · re
 |---|---|---|---|---|---|---|---|---|
 | mixins | ForgeHooksLootTableNameMixin | 26.3 (26.3) | forge.common.ForgeHooks | @WrapOperation → fabricated$nameOnce | "onJsonDataParsed" | INVOKE `L…/LootTable;setLootTableId(L…/Identifier;)V` | — | default |
 | mixins | LoadingRegistriesMixin | 26.3 (26.3) | n.m.server.ReloadableServerRegistries | @WrapOperation → fabricated$noteLoadingRegistries | "reload" | INVOKE `L…/RegistryDataLoader;load(L…/ResourceManager;L…/List;L…/List;L…/Executor;)L…/CompletableFuture;` | — | default |
-| mixins | ReloadableServerRegistriesMixin | common (26.3) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
-| mixins | ReloadableServerRegistriesMixin | common (26.3) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
+| mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (26.3) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
+| mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (26.3) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 | mixins | ResourceManagerRegistryLoadTaskMixin | 26.3 (26.3) | n.m.resources.ResourceManagerRegistryLoadTask | @WrapOperation → fabricated$modifyLootTable | "/^lambda\$load\$\d+$/" | INVOKE `L…/RegistryLoadTask$PendingRegistration;loadFromResource(L…/Decoder;L…/RegistryOps;L…/ResourceKey;L…/Resource;)L…/Either;` | — | default |
 
 ### `mc/forge/common/src/main/resources/fabricated-forge-entity.mixins.json`
@@ -1278,8 +1279,8 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
 | mixins | ExecuteCommandEffectMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.commands.execution.tasks.ExecuteCommand | @WrapOperation → fabricated$runExecutable | "execute" | INVOKE `L…/ContextChain;runExecutable(L…/CommandContext;L…/Object;L…/ResultConsumer;Z)I` | — | default |
-| mixins | LivingEntitySleepMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @WrapOperation → fabricated$setBedOccupied | "startSleeping", "/^lambda\$stopSleeping\$\d+$/" | INVOKE `L…/BlockState;setBedOccupied(L…/Level;L…/BlockPos;L…/LivingEntity;Z)V` | — | require=2 |
-| mixins | LivingEntitySleepMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @ModifyReturnValue → fabricated$modifySleepingDirection | "getBedOrientation()Lnet/minecraft/core/Direction;" | RETURN | — | default |
+| mixins | LivingEntitySleepMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @WrapOperation → fabricated$setBedOccupied | "startSleeping", "/^lambda\$stopSleeping\$\d+$/" | INVOKE `L…/BlockState;setBedOccupied(L…/Level;L…/BlockPos;L…/LivingEntity;Z)V` | — | require=2 |
+| mixins | LivingEntitySleepMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @ModifyReturnValue → fabricated$modifySleepingDirection | "getBedOrientation()Lnet/minecraft/core/Direction;" | RETURN | — | default |
 
 ### `mc/forge/common/src/main/resources/fabricated-forge-interaction.mixins.json`
 
@@ -1310,32 +1311,32 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
 | mixins | DefaultAttributeCopyMixin | common (1.21.11,26.1.2,26.2,26.3) | fapi.impl.object.builder.FabricDefaultAttributeRegistryImpl (`targets`) (@Pseudo) | @Inject → fabricated$copyWithForge | "createFromExistingSupplier" | HEAD cancellable=true | — | default |
-| mixins | FluidTypeMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.level.material.Fluid | @WrapOperation → fabricated$fabricFluidType | "getFluidType" | INVOKE `L…/ForgeHooks;getVanillaFluidType(L…/Fluid;)L…/FluidType;` | — | default |
+| mixins | FluidTypeMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.world.level.material.Fluid | @WrapOperation → fabricated$fabricFluidType | "getFluidType" | INVOKE `L…/ForgeHooks;getVanillaFluidType(L…/Fluid;)L…/FluidType;` | — | default |
 | mixins | LivingEntityFluidTravelMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @Inject → fabricated$throughFabricFluid | "shouldTravelInFluid" | RETURN cancellable=true | — | default |
 | mixins | MappedRegistryPendingHoldersMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$beforeFreeze; implements PendingHolders; adds methods fabricated$keepPendingHolders, fabricated$restorePendingHolders; @Shadow unregisteredIntrusiveHolders, key; @Unique fields fabricated$pendingHolders | "freeze" | HEAD | — | default |
 | mixins | MappedRegistryPendingHoldersMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$afterFreeze | "freeze" | RETURN | — | default |
-| mixins | NamespacedWrapperPendingHoldersMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.registries.NamespacedWrapper (`targets`) | @Inject → fabricated$beforeFreeze | "freeze" | HEAD | — | default |
-| mixins | NamespacedWrapperPendingHoldersMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.registries.NamespacedWrapper (`targets`) | @Inject → fabricated$afterFreeze | "freeze" | RETURN | — | default |
-| mixins | NamespacedWrapperEarlyWriteMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.registries.NamespacedWrapper (`targets`) | @WrapMethod → fabricated$openForEarlyWrite; @Shadow locked, delegate | "register(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;" |  | — | default |
+| mixins | NamespacedWrapperPendingHoldersMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.registries.NamespacedWrapper (`targets`) | @Inject → fabricated$beforeFreeze | "freeze" | HEAD | — | default |
+| mixins | NamespacedWrapperPendingHoldersMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.registries.NamespacedWrapper (`targets`) | @Inject → fabricated$afterFreeze | "freeze" | RETURN | — | default |
+| mixins | NamespacedWrapperEarlyWriteMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.registries.NamespacedWrapper (`targets`) | @WrapMethod → fabricated$openForEarlyWrite; @Shadow locked, delegate | "register(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;" |  | — | default |
 | mixins | NamespacedWrapperAliasMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.registries.NamespacedWrapper (`targets`) | @Inject → fabricated$refuseAliasName; adds methods addAlias; @Unique methods fabricated$addToForge; @Shadow locked, delegate; @Unique fields FABRICATED$LOGGER, fabricated$aliases | "register(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;" | HEAD | — | default |
 | mixins | NamespacedWrapperAliasMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.registries.NamespacedWrapper (`targets`) | @ModifyVariable → fabricated$aliasedName | "get(Lnet/minecraft/resources/Identifier;)Ljava/util/Optional;", "getValue(Lnet/minecraft/resources/Identifier;)Ljava/lang/Object;", "getOptional(Lnet/minecraft/resources/Identifier;)Ljava/util/Optional;", "containsKey(Lnet/minecraft/resources/Identifier;)Z", "getHolder(Lnet/minecraft/resources/Identifier;)Ljava/util/Optional;" | HEAD | — | default |
 | mixins | NamespacedWrapperAliasMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.registries.NamespacedWrapper (`targets`) | @ModifyVariable → fabricated$aliasedKey | "get(Lnet/minecraft/resources/ResourceKey;)Ljava/util/Optional;", "getValue(Lnet/minecraft/resources/ResourceKey;)Ljava/lang/Object;", "containsKey(Lnet/minecraft/resources/ResourceKey;)Z", "getOrCreateHolderOrThrow(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/core/Holder$Reference;", "registrationInfo(Lnet/minecraft/resources/ResourceKey;)Ljava/util/Optional;" | HEAD | — | default |
-| mixins | NamespacedWrapperEntryAddedMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.registries.NamespacedWrapper (`targets`) | @WrapMethod → fabricated$entryAdded; @Shadow delegate | "register(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;" |  | — | default |
+| mixins | NamespacedWrapperEntryAddedMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.registries.NamespacedWrapper (`targets`) | @WrapMethod → fabricated$entryAdded; @Shadow delegate | "register(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;" |  | — | default |
 | mixins | ForgeRegistryEntryAddedMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAdded; @Unique methods fabricated$self, fabricated$fire | "register(Lnet/minecraft/resources/Identifier;Ljava/lang/Object;)V" |  | — | default |
 | mixins | ForgeRegistryEntryAddedMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAddedWithId | "register(ILnet/minecraft/resources/Identifier;Ljava/lang/Object;)V" |  | — | default |
 | mixins | BuiltInRegistriesFreezeMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.core.registries.BuiltInRegistries | @WrapOperation → fabricated$freezeAfterMainEntrypoints | "bootStrap" | INVOKE `L…/BuiltInRegistries;freeze()V` | — | default |
 | mixins | BuiltInRegistriesInvoker | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.core.registries.BuiltInRegistries | @Invoker → fabricated$freeze | "freeze" |  | — | default |
-| mixins | GameDataFreezeMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.registries.GameData | @Inject → fabricated$freezeBuiltInRegistries | "freezeData" | HEAD | — | default |
-| mixins | TagFileRemoveMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.tags.TagFile | @Inject → fabricated$readFabricRemove; @Shadow @Mutable CODEC | "<clinit>" | TAIL | — | default |
+| mixins | GameDataFreezeMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.registries.GameData | @Inject → fabricated$freezeBuiltInRegistries | "freezeData" | HEAD | — | default |
+| mixins | TagFileRemoveMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.tags.TagFile | @Inject → fabricated$readFabricRemove; @Shadow @Mutable CODEC | "<clinit>" | TAIL | — | default |
 | mixins | IngredientNetworkCodecMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.crafting.Ingredient | @Inject → fabricated$sendAsUpstream; @Shadow @Mutable CONTENTS_STREAM_CODEC, @Mutable OPTIONAL_CONTENTS_STREAM_CODEC, VANILLA_CONTENTS_STREAM_CODEC | "<clinit>" | TAIL | — | default |
-| mixins | ForgePayloadEncodeMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.network.protocol.common.custom.CustomPacketPayload$1 (`targets`) | @WrapOperation → fabricated$writeForgePayload | "writeCap" | INVOKE `L…/StreamCodec;encode(L…/Object;L…/Object;)V` | — | default |
+| mixins | ForgePayloadEncodeMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.network.protocol.common.custom.CustomPacketPayload$1 (`targets`) | @WrapOperation → fabricated$writeForgePayload | "writeCap" | INVOKE `L…/StreamCodec;encode(L…/Object;L…/Object;)V` | — | default |
 | mixins | ResourcePackLoaderKnownPackMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.resource.ResourcePackLoader | @ModifyArg → fabricated$knownPack | "findPacks" | INVOKE `L…/PackLocationInfo;<init>(L…/String;L…/Component;L…/PackSource;L…/Optional;)V` index=3 | 0 | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.BucketItem | @WrapOperation → fabricated$delegateIfRegistered; @Shadow @Mutable fluidSupplier | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | INVOKE `L…/IForgeRegistry;getDelegateOrThrow(L…/Object;)L…/Holder$Reference;` | — | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.BucketItem | @Inject → fabricated$fluidItselfIfUnregistered | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | TAIL | — | default |
-| mixins | PlayerListViewMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, POLY-2) | "getPlayers" | RETURN | — | default |
-| mixins | BiomeWeatherWriteMixin | common (1.21.11,26.1.2,26.2,26.3) | fapi.impl.biome.modification.BiomeModificationContextImpl$WeatherContextImpl (`targets`) (@Pseudo) | @Redirect → fabricated$setClimate (the climate into the field and Forge's biome info, BIOME-3) | "setPrecipitation", "setTemperature", "setTemperatureModifier", "setDownfall" | FIELD `L…/Biome;climateSettings:L…/Biome$ClimateSettings;` opcode=PUTFIELD | — | default |
-| mixins | BiomeClimateAccessor | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.level.biome.Biome | @Accessor @Mutable → fabricated$setClimateSettings | "climateSettings" |  | — | default |
-| mixins | ModifiableBiomeInfoAccessor | common (1.21.11,26.1.2,26.2,26.3) | forge.common.world.ModifiableBiomeInfo | @Accessor @Mutable → fabricated$setOriginalBiomeInfo; @Accessor → fabricated$setModifiedBiomeInfo | "originalBiomeInfo", "modifiedBiomeInfo" |  | — | default |
+| mixins | PlayerListViewMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, POLY-2) | "getPlayers" | RETURN | — | default |
+| mixins | BiomeWeatherWriteMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | fapi.impl.biome.modification.BiomeModificationContextImpl$WeatherContextImpl (`targets`) (@Pseudo) | @Redirect → fabricated$setClimate (the climate into the field and Forge's biome info, BIOME-3) | "setPrecipitation", "setTemperature", "setTemperatureModifier", "setDownfall" | FIELD `L…/Biome;climateSettings:L…/Biome$ClimateSettings;` opcode=PUTFIELD | — | default |
+| mixins | BiomeClimateAccessor | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.world.level.biome.Biome | @Accessor @Mutable → fabricated$setClimateSettings | "climateSettings" |  | — | default |
+| mixins | ModifiableBiomeInfoAccessor | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.common.world.ModifiableBiomeInfo | @Accessor @Mutable → fabricated$setOriginalBiomeInfo; @Accessor → fabricated$setModifiedBiomeInfo | "originalBiomeInfo", "modifiedBiomeInfo" |  | — | default |
 
 ### `mc/forge/common/src/main/resources/fabricated-loot.mixins.json`
 
@@ -1343,11 +1344,11 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `net.fabricmc.fabric.mixin.loot
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| mixins | LootPoolAccessor | 1.21.11 (1.21.11) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getRolls | "rolls" |  | — | default |
-| mixins | LootPoolAccessor | 1.21.11 (1.21.11) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getBonusRolls | "bonusRolls" |  | — | default |
-| mixins | LootPoolAccessor | 1.21.11 (1.21.11) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getEntries | "entries" |  | — | default |
-| mixins | LootPoolAccessor | 1.21.11 (1.21.11) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getConditions | "conditions" |  | — | default |
-| mixins | LootPoolAccessor | 1.21.11 (1.21.11) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getFunctions | "functions" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.11) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getRolls | "rolls" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.11) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getBonusRolls | "bonusRolls" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.11) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getEntries | "entries" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.11) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getConditions | "conditions" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.11) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getFunctions | "functions" |  | — | default |
 | mixins | LootPoolAccessor | common26early (26.1.2,26.2) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getRolls | "rolls" |  | — | default |
 | mixins | LootPoolAccessor | common26early (26.1.2,26.2) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getBonusRolls | "bonusRolls" |  | — | default |
 | mixins | LootPoolAccessor | common26early (26.1.2,26.2) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getEntries | "entries" |  | — | default |
@@ -1358,19 +1359,19 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `net.fabricmc.fabric.mixin.loot
 | mixins | LootPoolAccessor | 26.3 (26.3) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getEntries | "entries" |  | — | default |
 | mixins | LootPoolAccessor | 26.3 (26.3) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getCondition | "condition" |  | — | default |
 | mixins | LootPoolAccessor | 26.3 (26.3) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getModifier | "modifier" |  | — | default |
-| mixins | LootPoolBuilderMixin | 1.21.11 (1.21.11) | n.m.world.level.storage.loot.LootPool$Builder | no injectors; implements FabricLootPoolBuilder; adds methods with, conditionally, apply; @Unique methods self; @Shadow entries, conditions, functions | | | | |
+| mixins | LootPoolBuilderMixin | mc/forge-shared/1.21.x (1.21.11) | n.m.world.level.storage.loot.LootPool$Builder | no injectors; implements FabricLootPoolBuilder; adds methods with, conditionally, apply; @Unique methods self; @Shadow entries, conditions, functions | | | | |
 | mixins | LootPoolBuilderMixin | common26early (26.1.2,26.2) | n.m.world.level.storage.loot.LootPool$Builder | no injectors; implements FabricLootPoolBuilder; adds methods add, when, apply; @Unique methods self; @Shadow entries, conditions, functions | | | | |
 | mixins | LootPoolBuilderMixin | 26.3 (26.3) | n.m.world.level.storage.loot.LootPool$Builder | no injectors; implements FabricLootPoolBuilder; adds methods add, when, apply; @Unique methods self; @Shadow entries | | | | |
-| mixins | LootTableAccessor | 1.21.11 (1.21.11) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getPools | "pools" |  | — | default |
-| mixins | LootTableAccessor | 1.21.11 (1.21.11) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getFunctions | "functions" |  | — | default |
-| mixins | LootTableAccessor | 1.21.11 (1.21.11) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getRandomSequenceId | "randomSequence" |  | — | default |
+| mixins | LootTableAccessor | mc/forge-shared/1.21.x (1.21.11) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getPools | "pools" |  | — | default |
+| mixins | LootTableAccessor | mc/forge-shared/1.21.x (1.21.11) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getFunctions | "functions" |  | — | default |
+| mixins | LootTableAccessor | mc/forge-shared/1.21.x (1.21.11) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getRandomSequenceId | "randomSequence" |  | — | default |
 | mixins | LootTableAccessor | common26early (26.1.2,26.2) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getPools | "pools" |  | — | default |
 | mixins | LootTableAccessor | common26early (26.1.2,26.2) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getFunctions | "functions" |  | — | default |
 | mixins | LootTableAccessor | common26early (26.1.2,26.2) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getRandomSequence | "randomSequence" |  | — | default |
 | mixins | LootTableAccessor | 26.3 (26.3) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getPools | "pools" |  | — | default |
 | mixins | LootTableAccessor | 26.3 (26.3) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getModifier | "modifier" |  | — | default |
 | mixins | LootTableAccessor | 26.3 (26.3) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getRandomSequence | "randomSequence" |  | — | default |
-| mixins | LootTableBuilderMixin | 1.21.11 (1.21.11) | n.m.world.level.storage.loot.LootTable$Builder | no injectors; implements FabricLootTableBuilder; adds methods pool, apply, pools, modifyPools; @Unique methods self; @Shadow @Mutable pools, functions | | | | |
+| mixins | LootTableBuilderMixin | mc/forge-shared/1.21.x (1.21.11) | n.m.world.level.storage.loot.LootTable$Builder | no injectors; implements FabricLootTableBuilder; adds methods pool, apply, pools, modifyPools; @Unique methods self; @Shadow @Mutable pools, functions | | | | |
 | mixins | LootTableBuilderMixin | common26early (26.1.2,26.2) | n.m.world.level.storage.loot.LootTable$Builder | no injectors; implements FabricLootTableBuilder; adds methods pool, apply, pools, modifyPools; @Unique methods self; @Shadow @Mutable pools, functions | | | | |
 | mixins | LootTableBuilderMixin | 26.3 (26.3) | n.m.world.level.storage.loot.LootTable$Builder | no injectors; implements FabricLootTableBuilder; adds methods pool, apply, pools, modifyPools; @Unique methods self; @Shadow @Mutable pools | | | | |
 | mixins | LootTableMixin | 1.21.11 (1.21.11) | n.m.world.level.storage.loot.LootTable prio=3000 | @WrapMethod → fabric$modifyDrops; implements FabricLootTable; adds methods fabric$setRegistryEntry; @Unique fields entry | "getRandomItemsRaw(Lnet/minecraft/world/level/storage/loot/LootContext;Ljava/util/function/Consumer;)V" |  | — | default |
@@ -1446,8 +1447,8 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
 | mixins | LoadingRegistriesMixin | common26early (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @WrapOperation → fabricated$noteLoadingRegistries | "reload" | INVOKE `L…/HolderLookup$Provider;createSerializationContext(L…/DynamicOps;)L…/RegistryOps;` | — | default |
-| mixins | ReloadableServerRegistriesMixin | common (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
-| mixins | ReloadableServerRegistriesMixin | common (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
+| mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
+| mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 
 ## Forge 47 (`forge-legacy`): 82 mixins in 14 configs
 
@@ -1510,8 +1511,8 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.color.mixin` ·
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| client | BlockColorsLookupMixin | 1.20.1 (1.20.1) | n.m.client.color.block.BlockColors | no injectors; adds methods get; @Shadow blockColors | | | | |
-| client | ItemColorsLookupMixin | 1.20.1 (1.20.1) | n.m.client.color.item.ItemColors | no injectors; adds methods get; @Shadow itemColors | | | | |
+| client | BlockColorsLookupMixin | mc/forge-shared/1.20.1-1.21.11 (1.20.1) | n.m.client.color.block.BlockColors | no injectors; adds methods get; @Shadow blockColors | | | | |
+| client | ItemColorsLookupMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.color.item.ItemColors | no injectors; adds methods get; @Shadow itemColors | | | | |
 
 ### `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-content.mixins.json`
 
@@ -1553,8 +1554,8 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.interaction.mix
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| mixins | ServerPlayerGameModeBreakMixin | 1.20.1 (1.20.1) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeBreak; @Shadow level, player | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;isCreative()Z` cancellable=true | — | default |
-| mixins | ServerPlayerGameModeBreakMixin | 1.20.1 (1.20.1) | n.m.server.level.ServerPlayerGameMode | @WrapOperation → fabricated$afterBreak | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;removeBlock(L…/BlockPos;Z)Z` | — | default |
+| mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeBreak; @Shadow level, player | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;isCreative()Z` cancellable=true | — | default |
+| mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.server.level.ServerPlayerGameMode | @WrapOperation → fabricated$afterBreak | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;removeBlock(L…/BlockPos;Z)Z` | — | default |
 
 ### `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-item.mixins.json`
 
@@ -1575,7 +1576,7 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | FluidTypeMixin | 1.20.1 (1.20.1) | n.m.world.level.material.Fluid | @WrapOperation → fabricated$fabricFluidType | "getFluidType" | INVOKE `L…/ForgeHooks;getVanillaFluidType(L…/Fluid;)L…/FluidType;` | — | default |
 | mixins | LivingEntityDropCaptureMixin | 1.20.1 (1.20.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @WrapOperation → fabricated$keepDropsCaptured | "dropAllDeathLoot" | INVOKE `L…/ForgeHooks;onLivingDrops(L…/LivingEntity;L…/DamageSource;L…/Collection;IZ)Z` | — | default |
 | mixins | LivingEntityDropCaptureMixin | 1.20.1 (1.20.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @Inject → fabricated$addCapturedDrops | "dropAllDeathLoot" | RETURN | — | default |
-| mixins | LivingEntityFluidTravelMixin | 1.20.1 (1.20.1) | n.m.world.entity.LivingEntity | @WrapOperation → fabricated$throughFabricFluid | "travel" | INVOKE `L…/LivingEntity;isInFluidType(L…/FluidState;)Z` | — | default |
+| mixins | LivingEntityFluidTravelMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.world.entity.LivingEntity | @WrapOperation → fabricated$throughFabricFluid | "travel" | INVOKE `L…/LivingEntity;isInFluidType(L…/FluidState;)Z` | — | default |
 | mixins | MappedRegistryPendingHoldersMixin | mc/forge-shared (1.20.1) | n.m.core.MappedRegistry | @Inject → fabricated$beforeFreeze; implements PendingHolders; adds methods fabricated$keepPendingHolders, fabricated$restorePendingHolders; @Shadow unregisteredIntrusiveHolders, key; @Unique fields fabricated$pendingHolders | "freeze" | HEAD | — | default |
 | mixins | MappedRegistryPendingHoldersMixin | mc/forge-shared (1.20.1) | n.m.core.MappedRegistry | @Inject → fabricated$afterFreeze | "freeze" | RETURN | — | default |
 | mixins | MappedRegistryEarlyWriteMixin | 1.20.1 (1.20.1) | n.m.core.MappedRegistry | @Inject → fabricated$openForEarlyWrite (a frozen built-in registry written to before the main entrypoints is opened, REG-10); @Shadow frozen | "validateWrite(Lnet/minecraft/resources/ResourceKey;)V" | HEAD | — | default |
@@ -1586,8 +1587,8 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | NamespacedWrapperAliasMixin | 1.20.1 (1.20.1) | forge.registries.NamespacedWrapper (`targets`) | @ModifyVariable → fabricated$aliasedName | "m_7745_(Lnet/minecraft/resources/ResourceLocation;)Ljava/lang/Object;", "m_6612_(Lnet/minecraft/resources/ResourceLocation;)Ljava/util/Optional;", "m_7804_(Lnet/minecraft/resources/ResourceLocation;)Z" | HEAD | — | default |
 | mixins | NamespacedWrapperAliasMixin | 1.20.1 (1.20.1) | forge.registries.NamespacedWrapper (`targets`) | @ModifyVariable → fabricated$aliasedKey | "m_6246_(Lnet/minecraft/resources/ResourceKey;)Ljava/lang/Object;", "m_142003_(Lnet/minecraft/resources/ResourceKey;)Z", "m_203636_(Lnet/minecraft/resources/ResourceKey;)Ljava/util/Optional;", "getOrCreateHolderOrThrow(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/core/Holder$Reference;", "m_245420_(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/core/Holder$Reference;" | HEAD | — | default |
 | mixins | NamespacedWrapperEntryAddedMixin | 1.20.1 (1.20.1) | forge.registries.NamespacedWrapper (`targets`) | @WrapMethod → fabricated$entryAdded; @Shadow delegate | "m_203704_(ILnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lcom/mojang/serialization/Lifecycle;)Lnet/minecraft/core/Holder$Reference;" |  | — | default |
-| mixins | ForgeRegistryEntryAddedMixin | 1.20.1 (1.20.1) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAdded; @Unique methods fabricated$self, fabricated$fire | "register(Lnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)V" |  | — | default |
-| mixins | ForgeRegistryEntryAddedMixin | 1.20.1 (1.20.1) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAddedWithId | "register(ILnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)V" |  | — | default |
+| mixins | ForgeRegistryEntryAddedMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAdded; @Unique methods fabricated$self, fabricated$fire | "register(Lnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)V" |  | — | default |
+| mixins | ForgeRegistryEntryAddedMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAddedWithId | "register(ILnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)V" |  | — | default |
 | mixins | BuiltInRegistriesFreezeMixin | mc/forge-shared (1.20.1) | n.m.core.registries.BuiltInRegistries | @WrapOperation → fabricated$freezeAfterMainEntrypoints | "bootStrap" | INVOKE `L…/BuiltInRegistries;freeze()V` | — | default |
 | mixins | BuiltInRegistriesInvoker | mc/forge-shared (1.20.1) | n.m.core.registries.BuiltInRegistries | @Invoker → fabricated$freeze | "freeze" |  | — | default |
 | mixins | BuiltInRegistriesValidateMixin | 1.20.1 (1.20.1) | n.m.core.registries.BuiltInRegistries | @ModifyArg → fabricated$passOverEmptyForgeRegistries | "validate" | INVOKE `L…/Registry;forEach(L…/Consumer;)V` | — | default |
@@ -1622,8 +1623,8 @@ Versions: 1.20.1 · package `net.fabricmc.fabric.mixin.client.keybinding` · req
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| client | KeyBindingAccessor | 1.20.1 (1.20.1) | n.m.client.KeyMapping | @Accessor → fabric_getCategoryMap | "CATEGORY_SORT_ORDER" |  | — | default |
-| client | KeyBindingAccessor | 1.20.1 (1.20.1) | n.m.client.KeyMapping | @Accessor → fabric_getBoundKey | "key" |  | — | default |
+| client | KeyBindingAccessor | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.KeyMapping | @Accessor → fabric_getCategoryMap | "CATEGORY_SORT_ORDER" |  | — | default |
+| client | KeyBindingAccessor | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.KeyMapping | @Accessor → fabric_getBoundKey | "key" |  | — | default |
 
 ### `mc/forge-legacy/1.20.1/src/main/resources/fabricated-loot.mixins.json`
 
@@ -1653,10 +1654,10 @@ Versions: 1.20.1 · package `net.fabricmc.fabric.mixin.client.particle` · requi
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| client | BlockDustParticleMixin | 1.20.1 (1.20.1) | n.m.client.particle.TerrainParticle | @WrapOperation → removeUntintableParticles | "<init>(Lnet/minecraft/client/multiplayer/ClientLevel;DDDDDDLnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;)V" | INVOKE `L…/IClientBlockExtensions;areBreakingParticlesTinted(L…/BlockState;L…/ClientLevel;L…/BlockPos;)Z` | — | allow=1 |
-| client | ParticleManagerAccessor | 1.20.1 (1.20.1) | n.m.client.particle.ParticleEngine | @Accessor → getParticleAtlasTexture | "textureAtlas" |  | — | default |
-| client | ParticleManagerAccessor$SimpleSpriteProviderAccessor | 1.20.1 (1.20.1) | n.m.client.particle.ParticleEngine$MutableSpriteSet (`targets`) | @Accessor → getSprites | "sprites" |  | — | default |
-| client | ParticleManagerMixin | 1.20.1 (1.20.1) | n.m.client.particle.ParticleEngine | @Inject → onRegisterDefaultFactories | "registerProviders()V" | RETURN | — | default |
+| client | BlockDustParticleMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.particle.TerrainParticle | @WrapOperation → removeUntintableParticles | "<init>(Lnet/minecraft/client/multiplayer/ClientLevel;DDDDDDLnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;)V" | INVOKE `L…/IClientBlockExtensions;areBreakingParticlesTinted(L…/BlockState;L…/ClientLevel;L…/BlockPos;)Z` | — | allow=1 |
+| client | ParticleManagerAccessor | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.particle.ParticleEngine | @Accessor → getParticleAtlasTexture | "textureAtlas" |  | — | default |
+| client | ParticleManagerAccessor$SimpleSpriteProviderAccessor | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.particle.ParticleEngine$MutableSpriteSet (`targets`) | @Accessor → getSprites | "sprites" |  | — | default |
+| client | ParticleManagerMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.client.particle.ParticleEngine | @Inject → onRegisterDefaultFactories | "registerProviders()V" | RETURN | — | default |
 
 ### `mc/forge-legacy/1.20.1/src/testmod/resources/fabricated-forge-testmod.mixins.json`
 
@@ -1690,5 +1691,158 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.testmod.frapi.mixin` 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
 | client | McRuntimeTestHoldMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedFrapiTest$holdForMovingBlocks | "tickHook" | HEAD cancellable=true | — | default |
+
+## Forge 52 (`forge-legacy`): 35 mixins in 9 configs
+
+Minecraft 1.21.1, in Mojang's names without a refmap, as on Forge 61 to 66. The mixins come from `mc/forge-shared` and its
+groups, as the source column says, but `NamespacedWrapperAliasMixin`, over 1.21.1's lookups, `LoadingRegistriesMixin`, on
+1.21.1's tagless wrapper of the registries, and `LiquidBlockRendererSpritesMixin`, Forge 52's fluid sprites (FLUID-4).
+Its test mod's `fabricated-forge-testmod.mixins.json` lists none: the recorded frames check is the shared test mod's.
+
+| Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
+|---|---|---|---|---|---|---|
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 18, client 1 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.1 | mixins 4 | 1 | true | none |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 1.21.1 | mixins 2 | 1 | — | none |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-entity.mixins.json` | `io.github.cmdralph.fabricated.forge.entity.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
+| `mc/forge-shared/1.21.1+/src/main/resources/fabricated-forge-block.mixins.json` | `io.github.cmdralph.fabricated.forge.block.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-color.mixins.json` | `io.github.cmdralph.fabricated.forge.color.mixin` | 1.21.1 | client 2 | 1 | — | none |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.21.1 | client 1 | 1 | — | none |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.21.1 | client 4 | 1 | — | none |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json`
+
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.mixin` · required=true · defaultRequire=1 · plugin=`FabricatedMixinPlugin` · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | FluidTypeMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.world.level.material.Fluid | @WrapOperation → fabricated$fabricFluidType | "getFluidType" | INVOKE `L…/ForgeHooks;getVanillaFluidType(L…/Fluid;)L…/FluidType;` | — | default |
+| mixins | LivingEntityFluidTravelMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.entity.LivingEntity | @WrapOperation → fabricated$throughFabricFluid | "travel" | INVOKE `L…/LivingEntity;isInFluidType(L…/FluidState;)Z` | — | default |
+| mixins | MappedRegistryPendingHoldersMixin | mc/forge-shared (1.21.1) | n.m.core.MappedRegistry | @Inject → fabricated$beforeFreeze; implements PendingHolders; adds methods fabricated$keepPendingHolders, fabricated$restorePendingHolders; @Shadow unregisteredIntrusiveHolders, key; @Unique fields fabricated$pendingHolders | "freeze" | HEAD | — | default |
+| mixins | MappedRegistryPendingHoldersMixin | mc/forge-shared (1.21.1) | n.m.core.MappedRegistry | @Inject → fabricated$afterFreeze | "freeze" | RETURN | — | default |
+| mixins | NamespacedWrapperPendingHoldersMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.registries.NamespacedWrapper (`targets`) | @Inject → fabricated$beforeFreeze | "freeze" | HEAD | — | default |
+| mixins | NamespacedWrapperPendingHoldersMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.registries.NamespacedWrapper (`targets`) | @Inject → fabricated$afterFreeze | "freeze" | RETURN | — | default |
+| mixins | NamespacedWrapperEarlyWriteMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.registries.NamespacedWrapper (`targets`) | @WrapMethod → fabricated$openForEarlyWrite; @Shadow locked, delegate | "register(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;" |  | — | default |
+| mixins | NamespacedWrapperAliasMixin | 1.21.1 (1.21.1) | forge.registries.NamespacedWrapper (`targets`) | @Inject → fabricated$refuseAliasName; adds methods addAlias; @Unique methods fabricated$addToForge; @Shadow locked, delegate; @Unique fields FABRICATED$LOGGER, fabricated$aliases | "register(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;" | HEAD | — | default |
+| mixins | NamespacedWrapperAliasMixin | 1.21.1 (1.21.1) | forge.registries.NamespacedWrapper (`targets`) | @ModifyVariable → fabricated$aliasedName | "get(Lnet/minecraft/resources/ResourceLocation;)Ljava/lang/Object;", "getOptional(Lnet/minecraft/resources/ResourceLocation;)Ljava/util/Optional;", "containsKey(Lnet/minecraft/resources/ResourceLocation;)Z", "getHolder(Lnet/minecraft/resources/ResourceLocation;)Ljava/util/Optional;" | HEAD | — | default |
+| mixins | NamespacedWrapperAliasMixin | 1.21.1 (1.21.1) | forge.registries.NamespacedWrapper (`targets`) | @ModifyVariable → fabricated$aliasedKey | "get(Lnet/minecraft/resources/ResourceKey;)Ljava/lang/Object;", "containsKey(Lnet/minecraft/resources/ResourceKey;)Z", "getHolder(Lnet/minecraft/resources/ResourceKey;)Ljava/util/Optional;", "getOrCreateHolderOrThrow(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/core/Holder$Reference;", "registrationInfo(Lnet/minecraft/resources/ResourceKey;)Ljava/util/Optional;" | HEAD | — | default |
+| mixins | NamespacedWrapperEntryAddedMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.registries.NamespacedWrapper (`targets`) | @WrapMethod → fabricated$entryAdded; @Shadow delegate | "register(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;" |  | — | default |
+| mixins | ForgeRegistryEntryAddedMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAdded; @Unique methods fabricated$self, fabricated$fire | "register(Lnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)V" |  | — | default |
+| mixins | ForgeRegistryEntryAddedMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAddedWithId | "register(ILnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)V" |  | — | default |
+| mixins | BuiltInRegistriesFreezeMixin | mc/forge-shared (1.21.1) | n.m.core.registries.BuiltInRegistries | @WrapOperation → fabricated$freezeAfterMainEntrypoints | "bootStrap" | INVOKE `L…/BuiltInRegistries;freeze()V` | — | default |
+| mixins | BuiltInRegistriesInvoker | mc/forge-shared (1.21.1) | n.m.core.registries.BuiltInRegistries | @Invoker → fabricated$freeze | "freeze" |  | — | default |
+| mixins | GameDataFreezeMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.registries.GameData | @Inject → fabricated$freezeBuiltInRegistries | "freezeData" | HEAD | — | default |
+| mixins | TagFileRemoveMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.tags.TagFile | @Inject → fabricated$readFabricRemove; @Shadow @Mutable CODEC | "<clinit>" | TAIL | — | default |
+| mixins | ForgePayloadEncodeMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.network.protocol.common.custom.CustomPacketPayload$1 (`targets`) | @WrapOperation → fabricated$writeForgePayload | "writeCap" | INVOKE `L…/StreamCodec;encode(L…/Object;L…/Object;)V` | — | default |
+| mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.1) | n.m.world.item.BucketItem | @WrapOperation → fabricated$delegateIfRegistered; @Shadow @Mutable fluidSupplier | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | INVOKE `L…/IForgeRegistry;getDelegateOrThrow(L…/Object;)L…/Holder$Reference;` | — | default |
+| mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.1) | n.m.world.item.BucketItem | @Inject → fabricated$fluidItselfIfUnregistered | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | TAIL | — | default |
+| mixins | PlayerListViewMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, POLY-2) | "getPlayers" | RETURN | — | default |
+| mixins | BiomeWeatherWriteMixin | mc/forge-shared/1.21.1+ (1.21.1) | fapi.impl.biome.modification.BiomeModificationContextImpl$WeatherContextImpl (`targets`) (@Pseudo) | @Redirect → fabricated$setClimate (the climate into the field and Forge's biome info, BIOME-3) | "setPrecipitation", "setTemperature", "setTemperatureModifier", "setDownfall" | FIELD `L…/Biome;climateSettings:L…/Biome$ClimateSettings;` opcode=PUTFIELD | — | default |
+| mixins | BiomeClimateAccessor | mc/forge-shared/1.21.1+ (1.21.1) | n.m.world.level.biome.Biome | @Accessor @Mutable → fabricated$setClimateSettings | "climateSettings" |  | — | default |
+| mixins | ModifiableBiomeInfoAccessor | mc/forge-shared/1.21.1+ (1.21.1) | forge.common.world.ModifiableBiomeInfo | @Accessor @Mutable → fabricated$setOriginalBiomeInfo; @Accessor → fabricated$setModifiedBiomeInfo | "originalBiomeInfo", "modifiedBiomeInfo" |  | — | default |
+| client | LiquidBlockRendererSpritesMixin | 1.21.1 (1.21.1) | n.m.client.renderer.block.LiquidBlockRenderer | @ModifyVariable → fabricated$overlaySlot | "tesselate" | INVOKE `L…/LiquidBlockRenderer;isFaceOccludedByNeighbor(L…/BlockGetter;L…/BlockPos;L…/Direction;FL…/BlockState;)Z` (ordinal 0), the first `TextureAtlasSprite[]` local | 0 | default |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json`
+
+Versions: 1.21.1 · package `net.fabricmc.fabric.mixin.loot` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getRolls | "rolls" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getBonusRolls | "bonusRolls" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getEntries | "entries" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getConditions | "conditions" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getFunctions | "functions" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getRolls | "rolls" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getBonusRolls | "bonusRolls" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getEntries | "entries" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getConditions | "conditions" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getFunctions | "functions" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getRolls | "rolls" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getBonusRolls | "bonusRolls" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getEntries | "entries" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getCondition | "condition" |  | — | default |
+| mixins | LootPoolAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool | @Accessor → fabric_getModifier | "modifier" |  | — | default |
+| mixins | LootPoolBuilderMixin | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool$Builder | no injectors; implements FabricLootPoolBuilder; adds methods with, conditionally, apply; @Unique methods self; @Shadow entries, conditions, functions | | | | |
+| mixins | LootPoolBuilderMixin | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool$Builder | no injectors; implements FabricLootPoolBuilder; adds methods add, when, apply; @Unique methods self; @Shadow entries, conditions, functions | | | | |
+| mixins | LootPoolBuilderMixin | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootPool$Builder | no injectors; implements FabricLootPoolBuilder; adds methods add, when, apply; @Unique methods self; @Shadow entries | | | | |
+| mixins | LootTableAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getPools | "pools" |  | — | default |
+| mixins | LootTableAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getFunctions | "functions" |  | — | default |
+| mixins | LootTableAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getRandomSequenceId | "randomSequence" |  | — | default |
+| mixins | LootTableAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getPools | "pools" |  | — | default |
+| mixins | LootTableAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getFunctions | "functions" |  | — | default |
+| mixins | LootTableAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getRandomSequence | "randomSequence" |  | — | default |
+| mixins | LootTableAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getPools | "pools" |  | — | default |
+| mixins | LootTableAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getModifier | "modifier" |  | — | default |
+| mixins | LootTableAccessor | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable | @Accessor → fabric_getRandomSequence | "randomSequence" |  | — | default |
+| mixins | LootTableBuilderMixin | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable$Builder | no injectors; implements FabricLootTableBuilder; adds methods pool, apply, pools, modifyPools; @Unique methods self; @Shadow @Mutable pools, functions | | | | |
+| mixins | LootTableBuilderMixin | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable$Builder | no injectors; implements FabricLootTableBuilder; adds methods pool, apply, pools, modifyPools; @Unique methods self; @Shadow @Mutable pools, functions | | | | |
+| mixins | LootTableBuilderMixin | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable$Builder | no injectors; implements FabricLootTableBuilder; adds methods pool, apply, pools, modifyPools; @Unique methods self; @Shadow @Mutable pools | | | | |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json`
+
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.loot.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | LoadingRegistriesMixin | 1.21.1 (1.21.1) | n.m.server.ReloadableServerRegistries | @WrapOperation → fabricated$noteLoadingRegistries (@Coerce receiver) | "reload" | INVOKE `L…/ReloadableServerRegistries$EmptyTagLookupWrapper;createSerializationContext(L…/DynamicOps;)L…/RegistryOps;` | — | default |
+| mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
+| mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json`
+
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.interaction.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeBreak; @Shadow level, player | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;isCreative()Z` cancellable=true | — | default |
+| mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.server.level.ServerPlayerGameMode | @WrapOperation → fabricated$afterBreak | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;removeBlock(L…/BlockPos;Z)Z` | — | default |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-entity.mixins.json`
+
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.entity.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | LivingEntitySleepMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.world.entity.LivingEntity | @WrapOperation → fabricated$setBedOccupied | "startSleeping", "/^lambda\$stopSleeping\$\d+$/" | INVOKE `L…/BlockState;setBedOccupied(L…/Level;L…/BlockPos;L…/LivingEntity;Z)V` | — | require=2 |
+| mixins | LivingEntitySleepMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.world.entity.LivingEntity | @ModifyReturnValue → fabricated$modifySleepingDirection | "getBedOrientation()Lnet/minecraft/core/Direction;" | RETURN | — | default |
+
+### `mc/forge-shared/1.21.1+/src/main/resources/fabricated-forge-block.mixins.json`
+
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.block.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | BlockForgeHooksMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.world.level.block.Block | no injectors; adds method makesOpenTrapdoorAboveClimbable (Forge's ladder rule, or a block in Fabric's trapdoor tag) | | | | |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-color.mixins.json`
+
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.color.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| client | BlockColorsLookupMixin | mc/forge-shared/1.20.1-1.21.11 (1.21.1) | n.m.client.color.block.BlockColors | no injectors; adds methods get; @Shadow blockColors | | | | |
+| client | ItemColorsLookupMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.color.item.ItemColors | no injectors; adds methods get; @Shadow itemColors | | | | |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-keybinding.mixins.json`
+
+Versions: 1.21.1 · package `net.fabricmc.fabric.mixin.client.keybinding` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| client | KeyBindingAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.KeyMapping | @Accessor → fabric_getCategoryMap | "CATEGORY_SORT_ORDER" |  | — | default |
+| client | KeyBindingAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.KeyMapping | @Accessor → fabric_getBoundKey | "key" |  | — | default |
+
+### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-particles.mixins.json`
+
+Versions: 1.21.1 · package `net.fabricmc.fabric.mixin.client.particle` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| client | BlockDustParticleMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.TerrainParticle | @WrapOperation → removeUntintableParticles | "<init>(Lnet/minecraft/client/multiplayer/ClientLevel;DDDDDDLnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;)V" | INVOKE `L…/IClientBlockExtensions;areBreakingParticlesTinted(L…/BlockState;L…/ClientLevel;L…/BlockPos;)Z` | — | allow=1 |
+| client | ParticleManagerAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Accessor → getParticleAtlasTexture | "textureAtlas" |  | — | default |
+| client | ParticleManagerAccessor$SimpleSpriteProviderAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine$MutableSpriteSet (`targets`) | @Accessor → getSprites | "sprites" |  | — | default |
+| client | ParticleManagerMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Inject → onRegisterDefaultFactories | "registerProviders()V" | RETURN | — | default |
 
 ---

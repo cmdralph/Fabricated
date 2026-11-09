@@ -42,8 +42,8 @@ final class ForgeStack {
 	private ForgeStack() {
 	}
 
-	/** Forge 47's ({@link ForgeDescriptor}). */
-	static PlatformDescriptor descriptor() {
+	/** Forge 47's ({@link ForgeDescriptor}), for its one Minecraft version. */
+	static PlatformDescriptor descriptor(String minecraftVersion) {
 		return ForgeDescriptor.INSTANCE;
 	}
 

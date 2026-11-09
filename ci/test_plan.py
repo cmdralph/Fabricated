@@ -54,6 +54,7 @@ class TouchedTest(unittest.TestCase):
         root = tree("forge")
         self.assertEqual(plan.touched(root, ["ci/forge-shared/platform.sh"]), {"forge": {None}})
         self.assertEqual(plan.platforms_of("mc/forge-mixinextras.gradle"), ("forge", "forge-legacy"))
+        self.assertEqual(plan.platforms_of("mc/platform-forge.gradle"), ("forge", "forge-legacy"))
 
     def test_the_platforms_own_folders(self):
         self.assertEqual(plan.platforms_of("ci/neoforge/platform.sh"), ("neoforge",))

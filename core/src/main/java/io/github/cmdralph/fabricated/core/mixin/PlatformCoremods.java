@@ -59,7 +59,8 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * only in the methods {@code finalize_spawn_targets.json} lists and in every synthetic method (lambda bodies) of the
  * classes it lists; their {@code FieldToMethodTransformer} reads fields through their getters everywhere in the class but
  * the getter itself (its check meant to skip methods with the getter's descriptor compares a string with a method, so it
- * never does). Forge 47's are described on its branch.
+ * never does). Forge 52's (Minecraft 1.21.1) are JavaScript coremods ModLauncher runs before Mixin, as Forge 47's, in
+ * Mojang's names ({@link #forge}). Forge 47's are described on its branch.
  */
 public final class PlatformCoremods {
 	/**
@@ -177,8 +178,9 @@ public final class PlatformCoremods {
 	private static final String FORGE_EVENT_FACTORY = "net/minecraftforge/event/ForgeEventFactory";
 
 	/**
-	 * Forge 61 to 66's, for the Minecraft versions Fabricated's Forge builds run on (1.21.11, 26.1.2, 26.2 and 26.3);
-	 * {@link #NONE} for another, Forge 47's 1.20.1 among them (its branch describes its JavaScript coremods). Read in
+	 * Forge 61 to 66's, for the Minecraft versions Fabricated's Forge builds run on (1.21.11, 26.1.2, 26.2 and 26.3), and
+	 * Forge 52's for 1.21.1 ({@link #forge52}); {@link #NONE} for another, Forge 47's 1.20.1 among them (its branch
+	 * describes its JavaScript coremods). Read in
 	 * MinecraftForge's {@code forge-transformers} sources, the branch of each Minecraft version (1.21.11, 26.1.2, 26.2,
 	 * 26.3; tags 61.2, 64.1, 65.1 and 66.1 have the same lists): {@code MethodRedirector}'s one replacement, the
 	 * {@code INVOKEVIRTUAL} of {@code finalizeSpawn} with {@link #FINALIZE_SPAWN_REASON}, whatever its owner, by
@@ -191,6 +193,7 @@ public final class PlatformCoremods {
 	 * still makes (CORPUS-78).
 	 */
 	public static PlatformCoremods forge(String minecraftVersion) {
+		if (FORGE_52.equals(minecraftVersion)) return forge52();
 		String line = forgeLine(minecraftVersion);
 		if (line == null) return NONE;
 		Map<String, List<Redirect>> redirects = new HashMap<>();
@@ -199,6 +202,27 @@ public final class PlatformCoremods {
 		Map<String, String> getters = new HashMap<>(AccessTransformerConverter.FORGE_PRIVATE_FIELDS);
 		if (line.equals("26.3")) getters.keySet().removeIf(field -> field.startsWith("net/minecraft/world/level/biome/Biome "));
 		return of(redirects, getters, false);
+	}
+
+	/** The Minecraft version of Forge 52, whose coremods are JavaScript ones ({@link #forge52}). */
+	private static final String FORGE_52 = "1.21.1";
+	private static final String TRIAL_SPAWNER = "net/minecraft/world/level/block/entity/trialspawner/TrialSpawner";
+
+	/**
+	 * Forge 52's, read in its universal jar (52.1.21, {@code META-INF/coremods.json}): its {@code method_redirector.js}
+	 * replaces every {@code INVOKEVIRTUAL} of {@code finalizeSpawn} with 1.21.1's descriptor, whatever its owner, in every
+	 * method of the classes its {@code finalize_spawn_targets.json} lists (NeoForge 21.1's and {@code TrialSpawner}), with
+	 * a call of {@code ForgeEventFactory.onFinalizeSpawn} taking the mob first; its {@code field_to_method.js} reads the
+	 * fields of {@link AccessTransformerConverter#FORGE_PRIVATE_FIELDS} (the same list) through their getters, except in
+	 * the getter and in methods with its descriptor (coremods 5.2.6's {@code ASMAPI.redirectFieldToMethod}).
+	 */
+	private static PlatformCoremods forge52() {
+		Redirect finalizeSpawn = new Redirect(Opcodes.INVOKEVIRTUAL, "finalizeSpawn", FINALIZE_SPAWN, FORGE_EVENT_FACTORY, "onFinalizeSpawn",
+				"(L" + MOB + ";" + FINALIZE_SPAWN.substring(1));
+		Map<String, List<Redirect>> redirects = new HashMap<>();
+		for (String target : SPAWN_TARGETS_21_1) redirects.put(target, List.of(finalizeSpawn));
+		redirects.put(TRIAL_SPAWNER, List.of(finalizeSpawn));
+		return of(redirects, AccessTransformerConverter.FORGE_PRIVATE_FIELDS);
 	}
 
 	/**
