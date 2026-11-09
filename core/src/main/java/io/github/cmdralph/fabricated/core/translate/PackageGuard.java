@@ -85,13 +85,16 @@ public final class PackageGuard {
 	 *
 	 * @param packages   package → its files, each with the jar it is read from (the overlay, or the mod's jar)
 	 * @param services   its service files ({@code META-INF/services/...}), by path
-	 * @param rootFiles  the files at its root other than mod metadata, with the jar they are read from
-	 * @param hasClasses whether it has any class
+	 * @param rootFiles   the files at its root other than mod metadata, with the jar they are read from
+	 * @param hasClasses  whether it has any class
+	 * @param descriptors its module descriptors ({@code module-info.class}, at the root or a multi-release jar's)
 	 */
-	private record Contents(Map<String, Map<String, Path>> packages, Map<String, Service> services, Map<String, Path> rootFiles, boolean hasClasses) {
+	private record Contents(Map<String, Map<String, Path>> packages, Map<String, Service> services, Map<String, Path> rootFiles, boolean hasClasses,
+			Set<String> descriptors) {
 	}
 
 	private static final String SERVICES = "META-INF/services/";
+	private static final String MODULE_DESCRIPTOR = "module-info.class";
 	/** Root files that describe a jar rather than belong to its code. */
 	private static final Set<String> METADATA = Set.of("fabric.mod.json", "quilt.mod.json", "pack.mcmeta", "pack.png");
 	private static final String SUGGESTION = "Java modules cannot share packages. Remove one of the two mods, or ask the authors to relocate (shade) the shared library.";
@@ -228,6 +231,13 @@ public final class PackageGuard {
 						+ (missing.size() > 1 ? " and " + (missing.size() - 1) + " more provider(s)" : "")
 						+ ", which its module doesn't have; the service file is left out, as a module can only declare its own providers");
 			}
+			// Fabric's class path ignores a module descriptor; the platform would make the jar that module, whose
+			// requirements must all be there or no mod loads (SEC-10).
+			if (!contents.descriptors().isEmpty()) {
+				hidden.addAll(contents.descriptors());
+				notes.add("has a module descriptor (module-info.class), which Fabric's class path ignores; left out, so its module is made as other"
+						+ " Fabric jars' are");
+			}
 			lent.forEach((pkg, files) -> {
 				String lender = owner.get(pkg);
 				files.forEach((file, jar) -> borrowedById.computeIfAbsent(lender, k -> new LinkedHashMap<>()).computeIfAbsent(jar, k -> new TreeSet<>()).add(file));
@@ -302,6 +312,7 @@ public final class PackageGuard {
 		Map<String, Map<String, Path>> packages = new TreeMap<>();
 		Map<String, Service> services = new TreeMap<>();
 		Map<String, Path> rootFiles = new TreeMap<>();
+		Set<String> descriptors = new TreeSet<>();
 		boolean hasClasses = false;
 		for (Path jar : mod.overlay() != null && Files.exists(mod.overlay()) ? List.of(mod.jar(), mod.overlay()) : List.of(mod.jar())) {
 			try (SafeArchive archive = SafeArchive.open(jar, limits.forTranslatedJars())) {
@@ -310,8 +321,12 @@ public final class PackageGuard {
 						services.put(name, new Service(providers(archive.readText(name)), jar));
 						continue;
 					}
+					if (name.equals(MODULE_DESCRIPTOR) || name.startsWith("META-INF/versions/") && name.endsWith("/" + MODULE_DESCRIPTOR)) {
+						descriptors.add(name);
+						continue;
+					}
 					if (name.endsWith("/") || name.startsWith("META-INF/") || name.startsWith("assets/") || name.startsWith("data/")) continue;
-					if (name.endsWith("module-info.class")) continue;
+					if (name.endsWith(MODULE_DESCRIPTOR)) continue;
 					hasClasses |= name.endsWith(".class");
 					int slash = name.lastIndexOf('/');
 					if (slash < 0 && !METADATA.contains(name)) rootFiles.put(name, jar);
@@ -322,7 +337,7 @@ public final class PackageGuard {
 				}
 			}
 		}
-		return new Contents(packages, services, rootFiles, hasClasses);
+		return new Contents(packages, services, rootFiles, hasClasses, descriptors);
 	}
 
 	/** The providers a service file lists (binary class names), as NeoForge reads it: comments and blank lines ignored. */

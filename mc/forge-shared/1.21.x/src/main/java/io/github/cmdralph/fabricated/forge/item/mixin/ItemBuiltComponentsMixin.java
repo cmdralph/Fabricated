@@ -13,8 +13,8 @@ import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.world.item.Item;
 
 /**
- * Forge 61 builds an item's components once, the first time they are asked (its components with what Forge's gather
- * event adds), and keeps them. Fabric API's {@code DefaultItemComponentEvents.MODIFY} replaces an item's components as
+ * Forge 52 and 61 build an item's components once, the first time they are asked (its components with what Forge's
+ * gather event adds), and keep them. Fabric API's {@code DefaultItemComponentEvents.MODIFY} replaces an item's components as
  * the built-in registries freeze, after the mods' initializers, by which time something may have asked them already, so
  * the item kept the components it had before. The built components are made again once the item's own changed.
  */

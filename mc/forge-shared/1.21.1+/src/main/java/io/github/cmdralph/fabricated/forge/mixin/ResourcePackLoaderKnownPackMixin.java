@@ -14,7 +14,7 @@ import net.minecraftforge.resource.ResourcePackLoader;
 
 /**
  * A Fabric mod's own pack takes Fabric API's known-pack identity, so that its registry entries are stable, as on Fabric,
- * and a world holding them opens without asking to confirm experimental settings (PACK-5, see
+ * and a world holding them opens without asking to confirm experimental settings (PACK-5, PACK-10, see
  * {@link FabricPackIdentity}). The first pack location {@code findPacks} makes is each mod file's (the later ones are
  * for the merged pack of the mods hidden from the resource pack list, which holds no registry data).
  */

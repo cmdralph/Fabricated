@@ -6,7 +6,8 @@ import io.github.cmdralph.fabricated.loader.FabricatedState;
 import net.minecraft.server.packs.repository.KnownPack;
 
 /**
- * The known-pack identity of a Fabric mod's own pack on Forge 61 to 66 (PACK-5). Forge makes a pack of each mod file
+ * The known-pack identity of a Fabric mod's own pack on Forge 52 and 61 to 66 (PACK-5, PACK-10). Forge makes a pack of
+ * each mod file
  * ({@code ResourcePackLoader.findPacks}) with no known-pack identity, and vanilla marks the registry entries of a pack
  * without one experimental: a world holding a Fabric mod's worldgen, damage types or other registry data then asked the
  * player to confirm experimental settings before it was created, which a Fabric mod's data never asks on Fabric. Fabric

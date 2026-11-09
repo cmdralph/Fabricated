@@ -20,6 +20,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin;
 import net.fabricmc.fabric.api.client.model.loading.v1.ModelModifier;
+import net.fabricmc.fabric.api.client.rendering.v1.ArmorRenderer;
 import net.fabricmc.fabric.api.client.rendering.v1.ColorProviderRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.renderer.v1.mesh.MutableQuadView;
@@ -43,6 +44,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockAndTintGetter;
@@ -52,7 +54,10 @@ import net.minecraft.world.level.block.state.BlockState;
  * fabric-rendering-v1 on 1.21.1: color providers for the test block and its item, registered from the client
  * entrypoint as Fabric mods register theirs, must be the game's colors once it has started, and Fabric's lookups
  * ({@code ColorProviderRegistry.get}, which reads NeoForge's maps by block and by item) must return them. A HUD
- * callback must be called as the HUD is drawn.
+ * callback must be called as the HUD is drawn. An armour renderer registered for the test helmet must be called as the
+ * armour stand wearing it ({@link FrapiTestMod}) is drawn: from upstream's hook at the start of
+ * {@code HumanoidArmorLayer.renderArmorPiece}, which NeoForge 21.1 keeps only to call an overload in its place (ARMOR-1).
+ * It logs once, and a failure as the game stops if it never was called.
  *
  * <p>fabric-key-binding-api-v1 (KEYMAP-2): a key binding registered from the client entrypoint must be in the game's
  * options once it has started, its category sorted after the game's, registering it twice or once the options exist
@@ -95,6 +100,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			"key.categories.fabricated_testmod_frapi");
 	// Render thread only.
 	private static boolean hudDrawn;
+	private static boolean armorDrawn;
 	private static final ResourceLocation STONE = ResourceLocation.withDefaultNamespace("block/stone");
 	private static final AtomicBoolean partSeen = new AtomicBoolean();
 	private static String keyFailure;
@@ -116,6 +122,12 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST hud callback OK");
 			}
 		});
+		ArmorRenderer.register((matrices, buffers, stack, entity, slot, light, model) -> {
+			if (!armorDrawn) {
+				armorDrawn = true;
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST armor renderer OK ({} drawn on {} in its {} slot)", stack, EntityType.getKey(entity.getType()), slot);
+			}
+		}, FrapiTestMod.armorItem);
 		ModelLoadingPlugin.register(context -> context.modifyModelAfterBake().register(FrapiClientTestMod::fabricModels));
 		if (FabricLoader.getInstance().isModLoaded("continuity")) {
 			// In a phase of its own after the last wrapping phase, so it wraps Continuity's model whichever mod's plugin
@@ -129,6 +141,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		ClientLifecycleEvents.CLIENT_STARTED.register(FrapiClientTestMod::checkKeyBinding);
 		ClientLifecycleEvents.CLIENT_STARTED.register(FrapiClientTestMod::checkModelLoaderKey);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+			if (!armorDrawn) FrapiTestMod.LOGGER.error("FABRICATED-TEST armor renderer FAILED: never called for the test helmet the armour stand wears");
 			InputConstants.Key saved = InputConstants.getKey("key.keyboard.k");
 			InputConstants.Key bound = KeyBindingHelper.getBoundKeyOf(KEY);
 			if (saved.equals(bound)) FrapiTestMod.LOGGER.info("FABRICATED-TEST key binding saved key OK");

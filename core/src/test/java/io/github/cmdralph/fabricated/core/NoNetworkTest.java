@@ -15,12 +15,15 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 
 /**
  * Enforces the "no network access" promise: Fabricated's compiled classes must not reference any
- * networking API. Scans the bytecode of every class in the core module and the Fabric Loader API layer.
+ * networking API. Scans the bytecode of every class in the core module, the Fabric Loader API layer and Fabricated's
+ * public API.
  */
 class NoNetworkTest {
 	private static final List<String> FORBIDDEN = List.of(
@@ -36,7 +39,8 @@ class NoNetworkTest {
 	void noNetworkingApisAreReferenced() throws Exception {
 		List<String> violations = new ArrayList<>();
 		int scanned = 0;
-		for (Class<?> anchor : List.of(Pipeline.class, io.github.cmdralph.fabricated.fabricloader.FabricLoaderImpl.class)) {
+		for (Class<?> anchor : List.of(Pipeline.class, io.github.cmdralph.fabricated.fabricloader.FabricLoaderImpl.class,
+				io.github.cmdralph.fabricated.api.Fabricated.class)) {
 			Path root = classesRoot(anchor);
 			if (Files.isRegularFile(root)) {
 				// Classes packaged as a jar: walk it through a zip file system.
@@ -58,6 +62,27 @@ class NoNetworkTest {
 		}
 		assertTrue(scanned > 50, "expected to scan the compiled classes, scanned " + scanned);
 		assertEquals(List.of(), violations);
+	}
+
+	/** The scan sees a networking class however a class names it: a method reference, a class literal (SEC-8). */
+	@Test
+	void theScanSeesMethodReferencesAndClassLiterals() throws Exception {
+		List<String> violations = new ArrayList<>();
+		scan(classesRoot(Probe.class).resolve(Probe.class.getName().replace('.', '/') + ".class"), violations);
+		assertEquals(List.of(Probe.class.getName().replace('.', '/') + " -> java/net/Socket",
+				Probe.class.getName().replace('.', '/') + " -> java/net/http/HttpClient"), violations);
+	}
+
+	/** Names networking classes without calling them; never run. */
+	private static final class Probe {
+		static Object socket() {
+			java.util.function.Supplier<java.net.Socket> socket = java.net.Socket::new;
+			return socket;
+		}
+
+		static Object literal() {
+			return java.net.http.HttpClient.class;
+		}
 	}
 
 	private static Path classesRoot(Class<?> anchor) throws URISyntaxException {
@@ -91,6 +116,25 @@ class NoNetworkTest {
 						@Override
 						public void visitFieldInsn(int opcode, String owner, String n, String d) {
 							check(owner);
+						}
+
+						// A method reference (Socket::new, URL::openStream) names its method in a handle, and a class literal
+						// in a constant, not in an instruction of their own (SEC-8).
+						@Override
+						public void visitInvokeDynamicInsn(String n, String d, Handle bootstrap, Object... arguments) {
+							check(bootstrap);
+							for (Object argument : arguments) check(argument);
+						}
+
+						@Override
+						public void visitLdcInsn(Object value) {
+							check(value);
+						}
+
+						private void check(Object constant) {
+							if (constant instanceof Handle h) check(h.getOwner());
+							else if (constant instanceof Type t && t.getSort() == Type.OBJECT) check(t.getInternalName());
+							else if (constant instanceof Type t && t.getSort() == Type.ARRAY) check(t.getElementType());
 						}
 
 						private void check(String owner) {

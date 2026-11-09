@@ -15,13 +15,13 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantment;
 
 /**
- * Fabric API's item hooks (fabric-item-api-v1, passed through) where Forge 61 to 66 ask their own: an item's
- * equipment slot, whether the enchanting table may offer it an enchantment, the mod that made it, and on Forge 61 its
- * stack's crafting remainder. Forge asks its {@code IForgeItem} hooks for those where upstream's hooks look for
- * vanilla's code (its enchanting table check calls Forge's hook, not the enchantment's), and Forge mods ask the hooks
- * themselves, so Fabricated's item mixins answer them from a Fabric item's {@link FabricItem} settings and overrides.
- * An item overriding Forge's hooks (a Forge mod's) keeps its own answers. The mixins name no type of Fabric API's, which
- * a game may not have.
+ * Fabric API's item hooks (fabric-item-api-v1, passed through) where Forge 52 and 61 to 66 ask their own: an item's
+ * equipment slot, whether the enchanting table may offer it an enchantment, the mod that made it, and on Forge 52 and 61
+ * its stack's crafting remainder ({@code ItemCompat}). Forge asks its {@code IForgeItem} hooks for those where upstream's
+ * hooks look for vanilla's code (its enchanting table check calls Forge's hook, not the enchantment's), and Forge mods
+ * ask the hooks themselves, so Fabricated's item mixins answer them from a Fabric item's {@link FabricItem} settings and
+ * overrides. An item overriding Forge's hooks (a Forge mod's) keeps its own answers. The mixins name no type of Fabric
+ * API's, which a game may not have.
  */
 public final class ItemHooks {
 	/** Fabric API's item module is installed. Its classes are only touched then. */

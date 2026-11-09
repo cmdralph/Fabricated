@@ -60,7 +60,7 @@ public final class LinkageChecker {
 		ClassNode node = new ClassNode();
 		try {
 			new ClassReader(classFile).accept(node, ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
-		} catch (RuntimeException | StackOverflowError e) {
+		} catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
 			out.add(new Issue("?", "unreadable class file", "class"));
 			return;
 		}
@@ -124,7 +124,7 @@ public final class LinkageChecker {
 		ClassNode node = new ClassNode();
 		try {
 			new ClassReader(classFile).accept(node, ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
-		} catch (RuntimeException | StackOverflowError e) {
+		} catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
 			return null;
 		}
 		if (isMixin(node) || !clientSide && (isClientOnly(node) || referencesClientCode(node))) return null;
