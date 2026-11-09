@@ -10,8 +10,12 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.gui.screens.inventory.ContainerScreen;
+import net.minecraft.network.chat.CommonComponents;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.resources.ReloadableResourceManager;
@@ -26,6 +30,7 @@ import net.minecraft.world.inventory.MenuType;
  * server (the server side is {@link NetworkingTest}). 1.20.1 has no configuration phase.
  */
 public final class ClientTestMod implements ClientModInitializer {
+	private static final Component EXPERIMENTAL = Component.translatable("selectWorld.warning.experimental.title");
 	private boolean menuRequested;
 	private boolean vanillaPingSent;
 
@@ -80,6 +85,16 @@ public final class ClientTestMod implements ClientModInitializer {
 			TestMod.LOGGER.error("FABRICATED-TEST could not register the test menu's screen", e);
 		}
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			// 1.20.1 marks a registry entry experimental unless its pack is built-in, which Fabric API 0.92's built-in packs
+			// aren't (its mods' own pack is), and asks to confirm a world holding one, on Fabric too. The smoke test's world
+			// holds the test mod's built-in pack damage type, so the client confirms, as a player would.
+			if (client.screen instanceof ConfirmScreen screen && EXPERIMENTAL.equals(screen.getTitle())) {
+				screen.children().stream().filter(child -> child instanceof Button button && CommonComponents.GUI_YES.equals(button.getMessage()))
+						.findFirst().ifPresent(yes -> {
+							TestMod.LOGGER.info("FABRICATED-TEST experimental settings of the new world confirmed");
+							((Button) yes).onPress();
+						});
+			}
 			// Once the server has announced it receives the packet (NET-4).
 			if (NetworkingTest.OWN && !vanillaPingSent && client.player != null && client.player.tickCount > 40 && ClientPlayNetworking.canSend(NetworkingTest.VanillaPing.TYPE)) {
 				vanillaPingSent = true;

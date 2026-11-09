@@ -64,7 +64,7 @@ public final class RegistrySyncTest implements ModInitializer {
 			if (!OWN) TestMod.LOGGER.info("FABRICATED-TEST registry sync: attributes and aliases SKIPPED: fabric-registry-sync-v0 is another mod's");
 		} else {
 			TestMod.LOGGER.error("FABRICATED-TEST registry sync: custom registry FAILED (registered={}, added={}, fabricRegistry={}, synced={})",
-					BuiltInRegistries.REGISTRY.containsKey(CUSTOM.location()), added.get(), custom instanceof FabricRegistry, TestPlatform.syncs(custom));
+					BuiltInRegistries.REGISTRY.containsKey(CUSTOM.location()), added.get(), OWN && custom instanceof FabricRegistry, TestPlatform.syncs(custom));
 		}
 
 		// A synced data-pack registry, loaded from data/fabricated_testmod/fabricated_testmod/dynamic/.
