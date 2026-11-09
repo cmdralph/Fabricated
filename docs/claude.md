@@ -176,9 +176,11 @@ mc/neoforge/<version>        (one Gradle project per Minecraft version, MDG)
   │              + the folders the version's `shared_sources` lists: mc/neoforge/common (all; renamed for 1.21.1),
   │                mc/neoforge/common121 (1.21.1, 1.21.11), mc/neoforge/common12111 (1.21.11, 26.x), mc/neoforge/common26 (26.x),
   │                mc/neoforge/common26early (26.1.2, 26.2), mc/neoforge/common26late (26.2, 26.3)
-  │     compileOnly: the jars of fabric-renderer-api-v1 and fabric-model-loading-api-v1 on 26.x (pass-through modules,
-  │       typed calls); stand-ins in Mojang's names on 1.21.1 and 1.21.11 (src/fabricapistubs)
-  ├─ source sets testmod, testmodbroken, testmodfrapi  ──compileOnly──► main output, fabric-loader-api, api
+  │     compileOnly: the jars of the plan's pass-through Fabric API modules (typed calls), in Mojang's names: as
+  │       published on 26.x, remapped from Intermediary's by core's remapper on 1.21.1 and 1.21.11 (remapFabricApi)
+  ├─ source sets testmod, testmodbroken, testmodfrapi  ──compileOnly──► Fabric API (all its modules), fabric-loader-api, api
+  │     sources: the groups of mc/shared the version's `testmod_sources` lists (by Minecraft version, for every
+  │       platform), and the platform's half (TestPlatform, FrapiPlatform, its own hooks' checks) in its folders
   └─ fabricatedJar = loader classes + core + fabric-loader-api + api + META-INF/fabricated/game-mod.jar (main)
 ```
 
@@ -202,7 +204,7 @@ vendored modules in `mc/neoforge/<version>/src/fabricapi` and the bridges in `mc
 | Discovery services → FML | `META-INF/services` in the `loader` source set: `IModFileCandidateLocator`, `IDependencyLocator`, `IModLanguageLoader`, `ClassProcessor` | compile-time against FML SPI |
 | Version facts → core | `META-INF/fabricated/version.properties` (generated: Minecraft version, namespace, Mixin versions) and `fabric-api-plan.json` (data, per version) | data, validated when parsed |
 | Discovery → in-game mod | `FabricatedState.get()` (a `volatile` static in `loader`, published once discovery ends) | compile-time |
-| In-game mod → pass-through Fabric API modules | 26.x renderer API: typed calls, compiled against the module's own jar, in classes loaded only when the module is (`FabricBlockRendering`). Model loading formats: the same, against compile-only stand-ins in Mojang's names on 1.21.11 (`FabricModelFormats`, shared; `mc/neoforge/1.21.11/src/fabricapistubs`). Other modules: `Class.forName` + `MethodHandle`s, because their jars are not compile dependencies (and 1.21.11's use intermediary names): `HudBridge`, `ScreenRenderBridge`, `FabricSoundStreams`, `FabricResourceConditions` (shared), `PictureInPictureBridge`, `FabricExtraModels` (shared), `HudRenderCallbackBridge`, `FabricFluidTint` (1.21.11), `FabricAdvancementReload` (26.3) | typed / reflective |
+| In-game mod → pass-through Fabric API modules | 26.x renderer API: typed calls, compiled against the module's own jar, in classes loaded only when the module is (`FabricBlockRendering`). Model loading formats: the same (`FabricModelFormats`, shared). Every pass-through module's jar is a compile dependency, remapped to Mojang's names on 1.21.x (`mc/mc.gradle`). Other modules, by `Class.forName` + `MethodHandle`s: `HudBridge`, `ScreenRenderBridge`, `FabricSoundStreams`, `FabricResourceConditions` (shared), `PictureInPictureBridge`, `FabricExtraModels` (shared), `HudRenderCallbackBridge`, `FabricFluidTint` (1.21.11), `FabricAdvancementReload` (26.3) | typed / reflective |
 | Fabric mods → Fabricated | mixins and class tweakers, applied by FML; Fabric's injected interfaces added by `FabricClassProcessor` at class load | bytecode |
 
 ### Mixins

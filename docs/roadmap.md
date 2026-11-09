@@ -98,9 +98,9 @@ version (`core`, 536 unit tests), and none of the goals is at risk there. The de
 release, folds the working rules into `CONTRIBUTING.md`, keeps the verified facts and drops the rest. The CI folder's
 diagnostic scripts that no job runs go in task 2.
 
-**Releases.** The jars are named `fabricated-<version>+mc<minecraft>.jar` on NeoForge and
-`fabricated-forge-<version>+mc<minecraft>.jar` on Forge, and the version in them doesn't say beta. From beta.2 every
-jar is `fabricated-<loader>-<version>+mc<minecraft>.jar`, with the full version (`fabricated-neoforge-0.6.0-beta.2+mc26.3.jar`).
+**Releases.** Every jar is named `fabricated-<loader>-<version>+mc<minecraft>.jar`, the loader `neoforge` or `forge`
+(`mc/mc.gradle`), and the version in it doesn't say beta yet. From beta.2 it is the full version
+(`fabricated-neoforge-0.6.0-beta.2+mc26.3.jar`).
 There is no CurseForge deployment yet: a release workflow uploads exactly the jars that passed the full matrix to one
 CurseForge project, every loader's (task 2).
 

@@ -103,8 +103,8 @@ real NeoForge client (`ci/neoforge/smoke-client.sh`), not from expectations. CI 
 server runs, and up to seven client runs on 1.21.1, eight on 1.21.11 or eleven on 26.x, all in `.github/workflows/build.yml`); these
 three are the base of this file:
 
-1. **Test mods only**: Fabricated plus the Fabric test mods in `mc/neoforge/common/src/testmod` and
-   `mc/shared/src/testmodbroken`. This is a pass/fail gate.
+1. **Test mods only**: Fabricated plus the Fabric test mods in `mc/shared` (with their NeoForge half in
+   `mc/neoforge`). This is a pass/fail gate.
 2. **With the official Fabric API jar** added: the server must start (a gate), and the energy bridge check must
    pass where CI finds Team Reborn's energy library for the version; the other checks are informational. The
    resulting `fabric-bridge-report.txt` is kept as a CI artifact
