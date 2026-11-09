@@ -1848,6 +1848,11 @@ What else differs on Forge, for Fabric mods in general:
   enum's values array, as FrozenLib's `MobCategory` mixin has, loses `@Mutable`, so Forge's enum extender, which runs
   after Mixin and finds the array only while it is final, still finds it, and makes it writable for the mod (ENUM-8,
   UNVERIFIED in the game). Mixin's own `@Mutable` had stopped the game as the enum loaded.
+- **Mixin configs a mod adds itself:** Forge 52's and 61 to 66's Mixin (SpongePowered's 0.8.7) gives a config added
+  by name alone (`Mixins.addConfiguration`, as ReplayMod's plugin adds most of its configs) no environment, and stopped
+  the game reading it; the mod's calls give the default one, as Fabric's Mixin does (LOADER-6). Pre-flight doesn't
+  check such configs' mixins, which the mod's metadata doesn't list (MIXCFG-1). Whether Forge's Mixin then applies
+  ReplayMod's is UNVERIFIED.
 - **Two mixins' unique fields of one name:** for the same reason, Forge's Mixin renames a private `@Unique` field only
   when its class declares one of that name, not when another mixin adds it, and two mixins' fields became one, where
   Fabric's Mixin keeps a field each: Fabric API's screen mixin and SpruceUI's both keep `tickingScreen` in `Minecraft`,
