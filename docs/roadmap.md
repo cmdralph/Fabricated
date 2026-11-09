@@ -191,7 +191,7 @@ corpus run passes on every version (informational), and every gate holds but one
 | Forge 47, client corpus | Porting Lib's GUI utilities disabled by pre-flight: a `@ModifyArgs` call in `GuiGraphics` Forge changed | Not repaired (CORPUS-93): Forge gathers the tooltip components itself, which the module ports; Create's Forge build is the way |
 | Forge 47, corpus | ModernFix names Fabric Loader's error GUI (`net.fabricmc.loader.impl.gui`), which Fabricated doesn't provide | No change: only lambdas `ModernFixPreLaunchFabric.onPreLaunch` never calls name it (read in 5.25.2+mc1.20.1) |
 | Every version | Fabric Language Kotlin names Fabric Loader's old `LanguageAdapter` (CORPUS-38) | Open, no mod seen needing it |
-| Forge 47 and 61 to 66 | The advanced corpus doesn't run on Forge | Task 4 |
+| Forge 47, 52 and 61 to 66 | The advanced corpus didn't run on Forge | Runs on every Forge version in the extended runs (informational), with the main corpus's drops; its results set what task 4 takes on next |
 
 ## Not in this pass
 
