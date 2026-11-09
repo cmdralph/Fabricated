@@ -12,24 +12,18 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the p
 
 ## Working rules
 
-- **Branches** (the owner's decision, 2026-10-28, replacing the one tree of 2026-10-21 to 2026-10-27): each platform
-  is on its own branch, with the same folder structure. `main` holds the shared engine (`core`, `api`,
-  `fabric-loader-api`, `loader/common`, `mc/shared`, `mc/mc.gradle`, the shared CI scripts and documents) and
-  NeoForge (`loader/neoforge`, `mc/neoforge`, `ci/neoforge`, `build.yml`, `release.yml`), the primary platform.
-  `forge` holds the shared engine and Minecraft Forge 61 to 66 (`loader/forge`, `mc/forge`, `ci/forge`,
-  `build-forge.yml`), `forge-legacy` the shared engine and Forge 47 for 1.20.1 (`loader/forge-legacy`,
-  `mc/forge-legacy`, `ci/forge-legacy`, `build-forge-legacy.yml`); both have a copy of the Forge platforms' shared
-  folders (`loader/forge-shared`, `mc/forge-shared`, `mc/forge-mixinextras.gradle`), and their own `README.md` and
-  `docs/FORGE.md` or `docs/FORGE-LEGACY.md` (what works there). NeoForge work and shared work go to `main` from a
-  working branch (`claude/dev`, or the session's own `claude/...` branch), one pull request per task, its full matrix
-  green. Shared changes reach the platform
-  branches by merge only: `scripts/sync-platform-branch.sh` merges `main` into a working branch made from the platform
-  branch, keeping its own platform and leaving NeoForge's out, and a pull request into the platform branch runs its
-  matrix. Forge work goes the same way: a working branch from `forge` or `forge-legacy`, a pull request into it. A
-  platform branch is never merged into `main` or a working branch for it (it would bring its platform along, and two merge bases,
-  which GitHub reports as a conflict and on which no CI runs, as #157's first head did), and `forge-shared` changes
-  are made on both Forge branches. Before a release every platform branch is synced with `main`. 1.20.1 targets Forge
-  47.4 and modern Forge builds with ForgeGradle: decisions D1 to D6 in `RESEARCH.md` §8.
+- **Branches** (`roadmap.md`, *Branches*): each platform is on its own branch, with the same folder structure. `main`
+  holds the shared code (`core`, `api`, `fabric-loader-api`, `loader/common`, `mc/shared`, `mc/mc.gradle`, the code
+  both Forge platforms share, the shared CI scripts and the documents) and NeoForge (`loader/neoforge`,
+  `mc/neoforge`, `ci/neoforge`). `forge` adds Minecraft Forge 61 to 66 (`loader/forge`, `mc/forge`, `ci/forge`),
+  `forge-legacy` Forge 47 for 1.20.1 and Forge 52 for 1.21.1 (`loader/forge-legacy`, `mc/forge-legacy`,
+  `ci/forge-legacy`). Work on `main` goes from `claude/dev`, Forge work from `claude/dev-forge` or
+  `claude/dev-forge-legacy` (cut from the platform branch), one pull request per task, its full matrix green. Shared
+  changes reach the platform branches by merge only: `scripts/sync-platform-branch.sh` merges `main` into a working
+  branch made from the platform branch, keeping its own platform and leaving NeoForge's out. A platform branch is never
+  merged into `main` or into a working branch for it: it would bring its platform along, and a second merge base,
+  which GitHub reports as a conflict and on which no CI runs. Before a release every platform branch is synced with
+  `main`. 1.20.1 targets Forge 47.4, and modern Forge builds with ForgeGradle (`RESEARCH.md` §8).
 - **Shared modules stay Java 17** (the owner's decision D2, 2026-10-21): `core`, `api` and `fabric-loader-api` compile
   their main code with `release = 17`, so the build rejects what 1.20.1's Java 17 can't load. Not available there: a
   `List`'s `getFirst`/`getLast`/`removeFirst`/`addFirst` (Java 21's sequenced collections: use `get(0)`,
