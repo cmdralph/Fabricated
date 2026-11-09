@@ -1,17 +1,17 @@
 package io.github.cmdralph.fabricated.forgetest;
 
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.WeatheringCopper;
 import java.util.Map;
 
 import net.fabricmc.fabric.api.registry.OxidizableBlocksRegistry;
-import net.minecraft.class_2248;
-import net.minecraft.class_2960;
-import net.minecraft.class_5955;
-import net.minecraft.class_7923;
 
 /**
  * The forge-legacy test mod's part for fabric-content-registries-v0's oxidizable blocks (CORPUS-91, INTERFACE-1; with
  * Fabric API's jar only): a pair {@code OxidizableBlocksRegistry} registers must be in vanilla's oxidation map
- * ({@code WeatheringCopper.NEXT_BY_BLOCK}, {@code field_29564}), which stays immutable unless upstream's
+ * ({@code WeatheringCopper.NEXT_BY_BLOCK}, {@code NEXT_BY_BLOCK}), which stays immutable unless upstream's
  * {@code OxidizableMixin} made it a mutable copy. That mixin is an {@code @Inject} in an interface mixin, of which Forge
  * 47's Mixin applies none; Fabricated applies it, as Create's copper needs. The pair, two sandstone blocks no copper
  * becomes, is taken out again once checked.
@@ -21,10 +21,10 @@ public final class ForgeOxidizableTest {
 	}
 
 	/** From the main entrypoint, where Create registers its copper; only with Fabric API's content registries module. */
-	static void check() {
-		class_2248 less = block("cut_sandstone");
-		class_2248 more = block("smooth_sandstone");
-		Map<class_2248, class_2248> next = class_5955.field_29564.get();
+	public static void check() {
+		Block less = block("cut_sandstone");
+		Block more = block("smooth_sandstone");
+		Map<Block, Block> next = WeatheringCopper.NEXT_BY_BLOCK.get();
 		try {
 			OxidizableBlocksRegistry.registerOxidizableBlockPair(less, more);
 			if (next.get(less) == more) {
@@ -40,7 +40,7 @@ public final class ForgeOxidizableTest {
 		}
 	}
 
-	private static class_2248 block(String path) {
-		return class_7923.field_41175.method_10223(new class_2960("minecraft", path));
+	private static Block block(String path) {
+		return BuiltInRegistries.BLOCK.get(new ResourceLocation("minecraft", path));
 	}
 }

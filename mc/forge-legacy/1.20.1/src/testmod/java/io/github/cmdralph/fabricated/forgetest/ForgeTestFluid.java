@@ -1,26 +1,25 @@
 package io.github.cmdralph.fabricated.forgetest;
 
-import net.minecraft.class_1792;
-import net.minecraft.class_1802;
-import net.minecraft.class_1922;
-import net.minecraft.class_1936;
-import net.minecraft.class_1937;
-import net.minecraft.class_2338;
-import net.minecraft.class_2350;
-import net.minecraft.class_2404;
-import net.minecraft.class_2680;
-import net.minecraft.class_2689;
-import net.minecraft.class_3609;
-import net.minecraft.class_3610;
-import net.minecraft.class_3611;
-import net.minecraft.class_4538;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.material.FlowingFluid;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.FluidState;
 
 /**
  * A Fabric mod's fluid, written the way Fabric API's own test fluids are, for {@link ForgeFluidTest}: it names no Forge
- * fluid type, as no Fabric fluid does. In Intermediary's names, as a Fabric mod for 1.20.1 is compiled (the stand-ins
- * name each method's Mojang name).
+ * fluid type, as no Fabric fluid does.
  */
-abstract class ForgeTestFluid extends class_3609 {
+abstract class ForgeTestFluid extends FlowingFluid {
 	private final ForgeFluidTest.Family family;
 
 	ForgeTestFluid(ForgeFluidTest.Family family) {
@@ -28,61 +27,61 @@ abstract class ForgeTestFluid extends class_3609 {
 	}
 
 	@Override
-	public class_3611 method_15750() {
+	public Fluid getFlowing() {
 		return family.flowing;
 	}
 
 	@Override
-	public class_3611 method_15751() {
+	public Fluid getSource() {
 		return family.source;
 	}
 
 	@Override
-	public class_1792 method_15774() {
-		return class_1802.field_8162;
+	public Item getBucket() {
+		return Items.AIR;
 	}
 
 	@Override
-	public boolean method_15737(class_1937 level) {
+	public boolean canConvertToSource(Level level) {
 		return false;
 	}
 
 	@Override
-	public void method_15730(class_1936 level, class_2338 pos, class_2680 state) {
+	public void beforeDestroyingBlock(LevelAccessor level, BlockPos pos, BlockState state) {
 	}
 
 	@Override
-	public int method_15733(class_4538 level) {
+	public int getSlopeFindDistance(LevelReader level) {
 		return 4;
 	}
 
 	@Override
-	public class_2680 method_15790(class_3610 state) {
-		return family.block.method_9564().method_11657(class_2404.field_11278, method_15741(state));
+	public BlockState createLegacyBlock(FluidState state) {
+		return family.block.defaultBlockState().setValue(LiquidBlock.LEVEL, getLegacyLevel(state));
 	}
 
 	@Override
-	public boolean method_15780(class_3611 fluid) {
+	public boolean isSame(Fluid fluid) {
 		return fluid == family.source || fluid == family.flowing;
 	}
 
 	@Override
-	public int method_15739(class_4538 level) {
+	public int getDropOff(LevelReader level) {
 		return 1;
 	}
 
 	@Override
-	public int method_15789(class_4538 level) {
+	public int getTickDelay(LevelReader level) {
 		return 5;
 	}
 
 	@Override
-	public boolean method_15777(class_3610 state, class_1922 level, class_2338 pos, class_3611 fluid, class_2350 direction) {
+	public boolean canBeReplacedWith(FluidState state, BlockGetter level, BlockPos pos, Fluid fluid, Direction direction) {
 		return false;
 	}
 
 	@Override
-	public float method_15784() {
+	public float getExplosionResistance() {
 		return 100.0F;
 	}
 
@@ -92,12 +91,12 @@ abstract class ForgeTestFluid extends class_3609 {
 		}
 
 		@Override
-		public int method_15779(class_3610 state) {
+		public int getAmount(FluidState state) {
 			return 8;
 		}
 
 		@Override
-		public boolean method_15793(class_3610 state) {
+		public boolean isSource(FluidState state) {
 			return true;
 		}
 	}
@@ -108,18 +107,18 @@ abstract class ForgeTestFluid extends class_3609 {
 		}
 
 		@Override
-		public void method_15775(class_2689.class_2690<class_3611, class_3610> builder) {
-			super.method_15775(builder);
-			builder.method_11667(field_15900);
+		public void createFluidStateDefinition(StateDefinition.Builder<Fluid, FluidState> builder) {
+			super.createFluidStateDefinition(builder);
+			builder.add(LEVEL);
 		}
 
 		@Override
-		public int method_15779(class_3610 state) {
-			return state.method_11654(field_15900);
+		public int getAmount(FluidState state) {
+			return state.getValue(LEVEL);
 		}
 
 		@Override
-		public boolean method_15793(class_3610 state) {
+		public boolean isSource(FluidState state) {
 			return false;
 		}
 	}

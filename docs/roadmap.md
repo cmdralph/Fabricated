@@ -49,8 +49,8 @@ The task table is the pass's checkpoint: it changes with every step, so the work
 | # | Task | Status |
 |---|---|---|
 | 1 | Rethink the project and the spec: the support matrix, the conclusions, the criteria, the plan (below) | Done |
-| 2 | CI and workflows: one workflow and one test harness on every branch, the same test-mod suite everywhere, caching, CurseForge deployment | In progress: on `main`'s branch, done (#326): `ci.yml`, the shared harness with checks as data, the shared test mods on the real Fabric API, the Forge-shared code, the release workflow with CurseForge. `forge-legacy`'s branch is on all of it, every local run passing; `forge`'s is under way. Then the syncs' pull requests and the times after |
-| 3 | Forge parity, and Minecraft 1.21.1 on Forge (Forge 52, `forge-legacy`) | — |
+| 2 | CI and workflows: one workflow and one test harness on every branch, the same test-mod suite everywhere, caching, CurseForge deployment | Done (#326, #329 on `main`; #327 on `forge-legacy`; #328 on `forge`): times below, in *CI times*. Found on the way and fixed: LEVEL-2, BIOME-3, POLY-2; open for task 3: BIOME-4 and the shared checks each Forge platform doesn't pass yet, marked in `ci/checks.tsv` |
+| 3 | Forge parity, and Minecraft 1.21.1 on Forge (Forge 52) | In progress: Forge 61 to 66's shared and bridge gaps closed, BIOME-4 fixed (#330, #331); Forge 47 on the shared suite, REG-9, PACK-7 and POLY-3 fixed (#332, #333); API-2 fixed. Left: the rows `ci/checks.tsv` marks "task 3" on Forge 47 (PROVIDER-20 and 21 among them), one Forge discovery loader on `main`, then Forge 52 on `forge-legacy` |
 | 4 | Compatibility: Fabric API coverage, mixin and remapping edge cases, the difficult mods, popular mods on every loader and version | — |
 | 5 | Security and robustness review, the release workflow's secrets included | — |
 | 6 | Optimization, cleanup and bug fixes, with a startup and memory benchmark in CI | — |
@@ -156,7 +156,8 @@ that fixes or closes it.
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
-| BIOME-4 | P1 on Forge 66 (Minecraft 26.3) | Fabric API's `fabric-biome-api-v1` (passed through on Forge) and Forge 66's `ModifiableBiomeInfo`, whose biome info record holds no mob spawn settings of its own | A mob spawn a Fabric mod adds to a biome through `BiomeModifications` doesn't reach the biome Forge 66 reads: the shared suite's biome check finds the plains' creatures without it (PR #328's Forge 26.3 server runs); the climate change it also makes arrives (BIOME-3). Forge 61 to 65 pass the same check. | Task 3: read how Fabric API 0.164 adds spawns and where Forge 66 keeps a biome's spawns, and bridge them; `ci/checks.tsv` leaves the check out on Forge 26.3 until then. |
+| PROVIDER-20 | P2 on Forge 47 with Forgified Fabric API | Forgified Fabric API's `FabricRegistryBuilder` on Forge 47 | A registry a Fabric initializer makes joins the root registry only in Forge's `NewRegistryEvent`, which comes before Fabricated runs the initializers: the registry is never added (the shared suite's registry sync check, `registered=false`). PROVIDER-6 is the same on NeoForge, where Fabricated makes such a registry the platform's. | Task 3: as PROVIDER-6, on Forge 47; `ci/checks.tsv` skips the check there with the reason. |
+| PROVIDER-21 | P2 on Forge 47 with Forgified Fabric API | Forgified Fabric API's `DynamicRegistries` on Forge 47 | A dynamic registry a Fabric mod registers through `DynamicRegistries` is never made (the shared check's `dynamic=-1`). PROVIDER-11 is the same on NeoForge. | Task 3: as PROVIDER-11, on Forge 47. |
 | FRAME-1 | P2, UNVERIFIED on real mods | Fabricated's frame repair (CORPUS-79), which runs on Forge only | A Fabric mod's `@ModifyVariable` of the shape CORPUS-79 fixed on Forge (a local the method's compressed stack frames don't record) fails to apply on NeoForge's Mixin too: Forge's "recorded frames" check, ported to the shared test-mod suite, finds "0 candidate variables" on NeoForge 1.21.11 (Mixin 0.16.5) and 26.1.2 (0.17.4). | Task 4: run the frame repair on NeoForge where the same shape occurs, then add the check to the shared suite. |
 | MIX-3 | P3, no case seen | The Forge branches' mixin configs but `fabricated-loot` (`MIXINS.md`, *Forge configs*) | They leave `overwrites.requireAnnotations` unset, which every NeoForge config sets: a method a Forge mixin adds that its target already declares replaces the target's silently, without an `@Overwrite`, where on NeoForge the launch would stop on it. | Open: set it on each, checking every method the configs' mixins add against their targets on every version first, in its own pull request on each Forge branch (each launch applies them all, so CI shows a collision). |
 | PERF-3 | P3, UNVERIFIED | `NeoForgeMods.of` (the mods' declarations, `NestedNeoForgeJars.readAll`); split from PERF-2 | A cached launch still reads every NeoForge mod's declarations and nested jars: the phase takes 16 to 23 ms on 1.21.1 and 40 to 68 ms on 1.21.11 and 26.x in CI's servers (extended run 42522554523), which have few NeoForge mods. What in it costs that, and how it grows with a pack of NeoForge mods, is unmeasured. | Read the report's *Launch timings* on a large pack; if the nested jars are the cost, keep their contents in the cache by the file's hash. |
@@ -191,6 +192,23 @@ Candidates, each waiting for a mod or a report that needs it:
   and the one Forge 47 accepts (`0.8.5`).
 - FC-7 on Windows (junctions), and an in-game allocation baseline for the chunk meshing path (CI has no GPU or
   profiler).
+
+## CI times
+
+Wall time and job-minutes of a pull request's full matrix, before this pass's CI (v0.6.0-beta's last runs) and after
+it (the first runs of `ci.yml`, before the base branches had written any of its caches):
+
+| Run | Before | After |
+|---|---|---|
+| `main` pull request, NeoForge's five versions | 5 min, 50 job-min (22 jobs) | 6 to 7 min, 61 job-min (23 jobs) |
+| `forge` pull request, four versions | 8 min, 32 job-min | 7 min, 35 job-min (15 jobs) |
+| `forge-legacy` pull request, 1.20.1 | 7 min, 7 job-min | 5 min, 9 job-min (6 jobs) |
+| Fast check on a push (unit tests and one version booted) | 2 min, 2 job-min | 2.5 min, 3 job-min |
+
+The CI code shared by every branch replaced each branch's own: about 5,800 lines of workflows and smoke scripts in all
+three became about 2,000 lines of workflow, harness and adapters, 470 of manifests and 390 of tests; the hand-written
+Fabric API stand-ins went from about 6,900 lines to the 1,830 of game stand-ins Forge 47's Intermediary-named test mod
+needs. The next pull requests show the times with the base branches' caches written.
 
 ## Performance baselines
 

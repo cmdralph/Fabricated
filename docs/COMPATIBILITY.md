@@ -23,7 +23,7 @@ isn't supported says why, in the notes under the matrix.
 | Mixins: pre-flight, its repairs, MixinExtras | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Access wideners, class tweakers, injected interfaces, `@Environment` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | `config/fabricated.json` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| The `/fabricated` command | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 |
+| The `/fabricated` command | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Refusals with an error naming the jars (Sinytra Connector, two Fabricated jars) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | **Fabric API** | | | | | | | | | | | |
 | Every module of the official jar loads, server and client | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ⏳ 3 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 |
@@ -32,12 +32,13 @@ isn't supported says why, in the notes under the matrix.
 | Registries, registry sync, resource and data packs, load conditions | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ⏳ 3 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
 | Item, block, entity, interaction and lifecycle events | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ⏳ 3 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
 | Fabric fluids as the platform's fluid types | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
+| Biome modifications: features, spawns, climate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Transfer API and the platform's item and fluid handlers, on blocks and in items | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 5 | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Team Reborn Energy and the platform's energy | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 |
 | Client modules: key mappings, HUD, screens, client commands | ✅ | ◐ 7 | ✅ | ✅ | ✅ | ◐ 7 | ⏳ 3 | ◐ 7 | ✅ | ✅ | ✅ |
 | Fabric mods' hooks inside the HUD method | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 8 | ⏳ 3 | ◐ 8 | ◐ 8 | ◐ 8 | ◐ 8 |
 | Mod Menu config screens in the platform's mod list | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 |
+| Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ⏳ 3 | ⏳ 3 | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 |
 | Platform mods' properties as Fabric custom values, and the reverse | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ⏳ 3 | ⚪ | ⚪ | ⚪ | ⚪ |
 | **Fabric's renderer API and models** | | | | | | | | | | | |
 | Model loading: plugins, modifiers, Fabric model formats | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
@@ -49,7 +50,7 @@ isn't supported says why, in the notes under the matrix.
 | Level-aware particle sprites | ⚪ | ⚪ | ◐ 11 | ◐ 11 | ◐ 11 | ⚪ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Another registered renderer (Sodium's, Forgified Fabric API's) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | **Other mods** | | | | | | | | | | | |
-| Forgified Fabric API beside Fabricated | ✅ 12 | — | ✅ 12 | ✅ 12 | — | ✅ 12 | ⏳ 3 | ❌ 13 | ❌ 13 | ❌ 13 | ❌ 13 |
+| Forgified Fabric API beside Fabricated | ✅ 12 | — | ✅ 12 | ✅ 12 | — | ◐ 12 | ⏳ 3 | ❌ 13 | ❌ 13 | ❌ 13 | ❌ 13 |
 | Sodium and Iris for the platform | ✅ | ✅ | ✅ | ✅ | ✅ | — 14 | — 14 | — 14 | — 14 | — 14 | — 14 |
 | The Fabric builds of Sodium and Iris, with a shader pack | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Essential's Fabric build | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
@@ -59,7 +60,7 @@ isn't supported says why, in the notes under the matrix.
 | Continuity (connected textures through the renderer API) | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ ⏳ 4 | ⏳ 3 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 |
 | Popular Fabric mods (the corpora) | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ⏳ 3 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 |
 | **Tests** | | | | | | | | | | | |
-| One test-mod suite for every loader with this Minecraft version | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 | ⏳ 2 |
+| One test-mod suite for every loader with this Minecraft version | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 16 | ⏳ 3 | ✅ 16 | ✅ 16 | ✅ 16 | ✅ 16 |
 
 Notes:
 
@@ -89,12 +90,18 @@ Notes:
     (PART-5).
 12. Forgified Fabric API's modules are used as they are, and Fabricated's copies of them stand down. What its modules do
     differently is theirs (*Mods that bring Fabric API or Fabric Loader*). It has no build for NeoForge 1.21.11 or 26.3.
+    On Forge 47, a registry a Fabric initializer makes and a `DynamicRegistries` registry don't work with it yet
+    (PROVIDER-20, PROVIDER-21, task 3).
 13. Forgified Fabric API's builds for these versions are NeoForge's, and a jar carrying its own copy of Fabric Loader
     is refused.
 14. Sodium and Iris have no Forge builds for these versions.
 15. CI runs two corpora of popular Fabric mods on a server and a client, as informational runs: every server starts, and
     every client reaches its world but where a mod's own behaviour holds it (`roadmap.md`, CORPUS-66). Per-mod results
     are in *Fabric mods tested*.
+16. The shared suite runs, with Forge's half of it; each shared check Forge doesn't pass yet is listed in `ci/checks.tsv`
+    with its reason, and is a cell of this matrix.
+17. Modrinth has Forge builds of WTHIT and Simple Voice Chat for these versions, which CI checks; JEI, REI and Jade have
+    none, so their plugins are converted the same way but unchecked on Forge.
 
 ## How CI tests it
 
@@ -968,11 +975,11 @@ owner's decision, 2026-11-02: no patch for one mod, the gaps listed):
 ### Plugins for recipe viewers, tooltip mods and Simple Voice Chat
 
 A Fabric mod's plugins for JEI, REI, Jade, EMI and Simple Voice Chat are its entrypoints (`jei_mod_plugin`,
-`rei_common`, `rei_client`, `rei_server`, `jade`, `emi`, `voicechat`); their NeoForge builds look for an annotation on
-the plugin class instead. Fabricated adds
-that annotation to the mod's NeoForge scan data for each such entrypoint, so the NeoForge builds find the plugins.
-WTHIT needs nothing: on NeoForge it reads the jar's `waila_plugins.json` / `wthit_plugins.json`, which stay in the
-translated mod. Jade's per-mod settings (the `jade` custom value) reach Jade for NeoForge as a mod property (see
+`rei_common`, `rei_client`, `rei_server`, `jade`, `emi`, `voicechat`); their NeoForge and Forge builds look for an
+annotation on the plugin class instead. Fabricated adds that annotation to the mod's scan data for each such entrypoint
+(loader/common's `PluginAnnotations`: on NeoForge as its language loader gets the mod, on Forge as Fabricated's container
+for it is made, both before any mod is constructed), so those builds find the plugins. WTHIT needs nothing: on NeoForge
+and Forge it reads the jar's `waila_plugins.json` / `wthit_plugins.json`, which stay in the translated mod. Jade's per-mod settings (the `jade` custom value) reach Jade for NeoForge as a mod property (see
 *Custom values* below). Which entrypoint becomes which annotation, or which mod property, is data: core's
 `interop.json`, one line per entrypoint key.
 
@@ -982,9 +989,10 @@ translated mod. Jade's per-mod settings (the `jade` custom value) reach Jade for
 - JEI and REI create plugins while NeoForge constructs mods, before Fabric `main` entrypoints run (on Fabric JEI does
   it after them); EMI and Jade create a plugin again on each reload.
 - A plugin that calls a viewer's Fabric-only API (`mezz.jei.api.fabric`, EMI's `FabricEmiStack`) fails at that call.
-- CI runs the NeoForge builds of JEI, REI, Jade, WTHIT and Simple Voice Chat (from Modrinth, where one exists for the
-  version) with the test mod's plugins, as a gate: each must create and call its plugin. EMI has no NeoForge build for
-  these versions (UNVERIFIED), so only its mapping is unit-tested.
+- CI runs the NeoForge builds of JEI, REI, Jade, WTHIT and Simple Voice Chat, and on Forge 61 to 66 the Forge builds
+  of WTHIT and Simple Voice Chat (from Modrinth, where one exists for the version: JEI, REI and Jade have no Forge build
+  for these versions there), with the test mod's plugins, as a gate: each must create and call its plugin. EMI has no
+  NeoForge or Forge build for these versions (UNVERIFIED), so only its mapping is unit-tested.
 
 ### Custom values
 
@@ -1436,7 +1444,7 @@ How to read it: as the NeoForge table, and
 | fabric-api-base | native | native | native | native | native |
 | fabric-api-lookup-api-v1 | loads | loads | loads | loads | loads |
 | fabric-biome-api-v1 | loads | loads | loads | loads | native |
-| fabric-block-api-v1 | loads | loads | loads | loads | loads |
+| fabric-block-api-v1 | loads | loads | loads, part | loads, part | loads |
 | fabric-block-getter-api-v2 | — | loads | loads | loads | — |
 | fabric-block-view-api-v2 | loads | — | — | — | loads |
 | fabric-blockrenderlayer-v1 | — | — | — | — | loads |
@@ -1523,10 +1531,14 @@ by the server runs (the colours, screens, key mappings and config screens by the
   resource conditions, tested on the condition's JSON as Moonlight's bridge tests it on Fabric: Supplementaries' recipes
   name their own condition there (CORPUS-97). Of the test mod's two recipes naming its Fabric condition, the server
   loads the one whose condition holds, and neither fails to parse (with Fabric API).
-- **Biomes:** a feature `BiomeModifications.addFeature` adds to the plains is among their features (Forge 61 to 66, with
-  Fabric API). Upstream rebuilds each generator's feature list, a field Forge retypes, which the in-game mod writes with
-  Forge's type (CORPUS-33). On Forge 47 the module is native: Fabric's changes go through Forge's biome modifiers, and a
-  spawn and a temperature added to the plains reach the biome Forge reads.
+- **Biomes:** a feature `BiomeModifications.addFeature` adds to the plains is among their features, and a spawn and a
+  temperature added to the plains reach the biome Forge reads (Forge 61 to 66, with Fabric API). Upstream rebuilds each
+  generator's feature list, a field Forge retypes, which the in-game mod writes with Forge's type (CORPUS-33). Its
+  climate changes, which write a field Forge keeps private, go into that field and into Forge's biome info (BIOME-3).
+  Forge 66 keeps a biome's environment attributes, its spawns among them, in that info too, and writes the info back
+  into the biome once its biome modifiers ran: those start from the attributes Fabric API gave the biome (BIOME-4). On
+  Forge 47 the module is native: Fabric's changes go through Forge's biome modifiers, and a spawn and a temperature
+  added to the plains reach the biome Forge reads.
 - **Default attributes:** `FabricDefaultAttributeRegistry.MODIFY` runs in Forge's attribute modification event, and a
   cow's armor set through it is what the game reads (Forge 64 to 66, with Fabric API).
 - **Advancements:** a vanilla advancement's reward set through `AdvancementEvents.MODIFY` is what the server loads
@@ -1565,8 +1577,30 @@ by the server runs (the colours, screens, key mappings and config screens by the
   runs through Brigadier's own dispatcher gives none.
 - **Use and attack:** a player's uses of an item, a block and an entity, and its attacks on a block and an entity, ask
   `UseItemCallback`, `UseBlockCallback`, `UseEntityCallback`, `AttackBlockCallback` and `AttackEntityCallback` through
-  Forge's own code, and a refusal holds (all five, with Fabric API, server and client). Upstream's hooks apply as they
-  are, pre-flight renaming the captured value the entity hook shadows.
+  Forge's own code, and a refusal holds (all five, with Fabric API, server and client). On Forge 61 to 66 the server
+  asks `AttackBlockCallback` from Forge's `LeftClickBlock` as a block starts being broken and `UseEntityCallback` from
+  its `EntityInteractSpecific`, which Forge's own code and its mods (a fake player's click) post, and
+  `ItemEvents.USE_ON` where Forge's server calls an item's `useOn` (`ForgeHooks.onPlaceItemIntoWorld`); the plans leave
+  out upstream's server hooks for the first two, in the packet handling before Forge's events, which would ask the
+  callbacks twice (the shared suite's interaction check, server and client). The client keeps upstream's hooks, and an
+  interaction with an entity without a clicked point (Forge 61's `EntityInteract`) keeps upstream's server hook.
+  Upstream's other hooks apply as they are, pre-flight renaming the captured value the entity hook shadows.
+- **Items:** Forge's item hooks answer from Fabric's item API (Forge 61 to 66, with Fabric API, server and client): an
+  item's equipment slot from its Fabric equipment slot provider (asked without an entity, as Forge's hook names none;
+  Forge's `LivingEntity.getEquipmentSlotForItem` asks upstream's hook first, with the entity), the enchanting table's
+  check from `EnchantmentEvents.ALLOW_ENCHANTING` and `canBeEnchantedWith`, the creator mod from `getCreatorNamespace`
+  where the item overrides it, and on Forge 61 a stack's crafting remainder from `getRecipeRemainder`, which its
+  furnaces, brewing stands and crafting ask (Forge 64 to 66 share the method with Fabric's). On Forge 61 Fabric's
+  `DefaultItemComponentEvents.MODIFY` reaches an item whose components were asked before the registries froze: Forge
+  builds an item's components once, and builds them again once Fabric API changed them. An item overriding Forge's
+  hooks (a Forge mod's) keeps its own answers.
+- **Blocks:** a block in Fabric's `fabric:can_climb_trapdoor_above` tag makes the open trapdoor above it climbable
+  through Forge's `makesOpenTrapdoorAboveClimbable`, whose ladder check never reaches vanilla's that upstream's hook
+  extends (Forge 61 to 66, with Fabric API). On Forge 65 and 66 a block's enchanting power is Fabric's
+  `getProvidedEnchantmentPower` through Forge's `getEnchantPowerBonus`, which Forge's enchanting table sums (the plans
+  leave out upstream's table hooks, which would replace Forge's sum and lose a Forge mod's block's power), and
+  `FluidFlowEvents.ALLOW` is asked where Forge asks its fluid interactions in place of vanilla's check, as a liquid is
+  placed and as its neighbour changes (the shared suite's block check, server and client).
 - **Screens:** a screen's initialization and drawing events fire, and a key press, a key release, a character typed, a
   mouse click and its release on a screen ask `ScreenKeyboardEvents` and `ScreenMouseEvents`, whose refusals hold (Forge
   64 to 66, with Fabric API, client run). Forge calls a screen's input handlers and draws it through hooks of its own,
@@ -1683,7 +1717,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   every block through Fabric's renderer, as on Fabric. Forge 61 moved the code three of them hook into, so pre-flight
   leaves out those for moving blocks, the breaking overlay and blocks drawn as entities, and the in-game mod sends a
   block whose model is a Fabric model, or a multipart or weighted model with one among its parts, to Fabric's renderer
-  there instead; every other block keeps Forge's path. Forge 61 to 66 also ask a block model for its particle sprite
+  there instead; every other block keeps Forge's path. A model without an emitter of its own that reads Forge's model
+  data (a Forge mod's level-aware model), drawn by Fabric's renderer as a block's model or inside a Fabric model, emits
+  the parts for its model data, which it is asked with the level as Forge's chunk section compiler asks it; upstream's
+  default emitter collects its parts without it (Forge 61 to 66, the renderer test mod's level-aware default check).
+  Forge 61 to 66 also ask a block model for its particle sprite
   with Forge's model data where upstream's hooks ask Fabric's level-aware one, in places those hooks no longer reach:
   the screen effect inside a block (Forge 65 draws none for any block: its patch submits it only where a listener
   cancelled Forge's `RenderBlockScreenEffectEvent` for it), a block marker (Forge 64 to 66) and a block particle, whose
@@ -1707,9 +1745,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
 What else differs on Forge, for Fabric mods in general:
 
 - **Covered by Forge itself:** upstream's fix for emerald trades with other mods' villager types, as Forge 61 to 66
-  skip the same check and give no trade for a type without one, and upstream's DataFixerUpper hooks for a dimension
-  whose chunk generator type no mod registers, as Forge's patch to the same schema keeps the generator's data (all
-  five). The report lists those hooks as left out or skipped.
+  skip the same check and give no trade for a type without one, upstream's DataFixerUpper hooks for a dimension whose
+  chunk generator type no mod registers, as Forge's patch to the same schema keeps the generator's data (all five), and
+  on Forge 66 upstream's leave for a Fabric mod's fishing rod to keep its hook out, as Forge's own check keeps it out
+  for any item performing its fishing rod action, which every `FishingRodItem` does. The report lists those hooks as
+  left out or skipped.
 - **Loading errors:** when Forge refuses a mod file or a dependency is missing, it loads only Minecraft and Forge to
   show the error. Fabricated then leaves the game's classes alone, so Forge's own error is what the player sees
   (LOADERR-1). Forge itself refuses two Fabric jars in the corpus: JEI's on Forge 61 to 66 (its module-info) and YACL
@@ -1832,12 +1872,10 @@ instead. Unless a task is named, nothing is planned for them yet.
 
 **Not supported on Forge** (Forge's code differs where upstream hooks in):
 
-- **Item API.** A Fabric item's stack-aware recipe remainder (`FabricItem.getRecipeRemainder`) in furnaces, brewing
-  stands and crafting, where Forge's own per-stack remainder hook applies (all five). On Forge 61 to 66,
-  `FabricItem.canBeEnchantedWith` at the enchanting table, where Forge asks its own hook, and
-  `allowContinuingBlockBreaking` as the stack changes while mining (client). On Forge 66, upstream's leave for a Fabric
-  mod's fishing rod to keep its hook out, where Forge checks its own fishing action. On Forge 47, a Fabric item's
-  per-stack attribute modifiers and `isSuitableFor`, where Forge's own per-stack hooks apply.
+- **Item API.** On Forge 61 to 66, `allowContinuingBlockBreaking` as the stack changes while mining (client), where
+  Forge asks its own hook. On Forge 47, a Fabric item's stack-aware recipe remainder (`FabricItem.getRecipeRemainder`)
+  in furnaces, brewing stands and crafting, and its per-stack attribute modifiers and `isSuitableFor`, where Forge's own
+  per-stack hooks apply.
 - **Content registries.** On Forge 64 to 66, an `EntityFluidInteractionRegistry` behaviour: entities swim, travel,
   sprint and float a boat in a fluid as its Forge fluid type lets them, which for a Fabric fluid is Fabricated's,
   treating it as water when it is tagged `minecraft:water` and as air otherwise.

@@ -1,12 +1,12 @@
 package io.github.cmdralph.fabricated.forgetest;
 
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.alchemy.Potion;
+import net.minecraft.class_1845;
 import java.util.List;
 
 import io.github.cmdralph.fabricated.forgetest.mixin.PotionBrewingAccessor;
 import io.github.cmdralph.fabricated.forgetest.mixin.PotionBrewingMixAccessor;
-import net.minecraft.class_1842;
-import net.minecraft.class_1845;
-import net.minecraft.class_7923;
 
 /**
  * CORPUS-37: Fabric mods' accessors of a brewing mix's {@code from} and {@code to} read vanilla's potions, which Forge 47
@@ -30,16 +30,17 @@ public final class ForgeBrewingMixTest {
 		PotionBrewingMixAccessor mix = (PotionBrewingMixAccessor) mixes.get(0);
 		Object from = mix.fabricatedtest$from();
 		Object to = mix.fabricatedtest$to();
+		// Read as REI reads it, named against vanilla's class (src/testmodstubs), whose field Forge 47 retyped.
 		Object read = ((class_1845.class_1846<?>) mixes.get(0)).field_8962;
 		if (read != from) {
 			ForgeTestMod.LOGGER.error("FABRICATED-TEST brewing mix accessors FAILED: the first potion mix's from, read as REI reads it, is {}",
 					read == null ? null : read.getClass().getName());
 			return;
 		}
-		if (from instanceof class_1842 in && to instanceof class_1842 out && class_7923.field_41179.method_10221(in) != null
-				&& class_7923.field_41179.method_10221(out) != null) {
-			ForgeTestMod.LOGGER.info("FABRICATED-TEST brewing mix accessors OK ({} to {})", class_7923.field_41179.method_10221(in),
-					class_7923.field_41179.method_10221(out));
+		if (from instanceof Potion in && to instanceof Potion out && BuiltInRegistries.POTION.getKey(in) != null
+				&& BuiltInRegistries.POTION.getKey(out) != null) {
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST brewing mix accessors OK ({} to {})", BuiltInRegistries.POTION.getKey(in),
+					BuiltInRegistries.POTION.getKey(out));
 		} else {
 			ForgeTestMod.LOGGER.error("FABRICATED-TEST brewing mix accessors FAILED: the first potion mix's from and to are {} and {}",
 					from == null ? null : from.getClass().getName(), to == null ? null : to.getClass().getName());

@@ -144,9 +144,10 @@ class PlanTest(unittest.TestCase):
             self.assertEqual(len(result["targets"]), 3, event)
             self.assertFalse(result["save"] or result["fast"])
 
-    def test_forge_has_no_mods_part_without_extended(self):
+    def test_forge_mods_part_without_extended_is_the_plugin_hosts(self):
         root = tree("forge")
-        self.assertEqual(sorted(plan.parts(root, "forge", "26.3", False)), ["client", "server"])
+        self.assertEqual(sorted(plan.parts(root, "forge", "26.3", False)), ["client", "mods", "server"])
+        self.assertEqual([r["run"] for r in plan.runs(root, "forge", "26.3", "mods", False)], ["client-plugins"])
         self.assertEqual(sorted(plan.parts(root, "forge", "26.3", True)), ["client", "corpus", "mods", "server"])
 
 

@@ -36,8 +36,9 @@ if [ "$part" = warm ]; then
 	SMOKE_INSTALL_ONLY=1 ci/smoke-server.sh "$platform" "$mc" "$loader" "$work/warm-server" || exit 1
 	SMOKE_INSTALL_ONLY=1 ci/smoke-client.sh "$platform" "$mc" "$loader" "$work/warm-client" || exit 1
 	download "$fabric_api_url" "$work/fabric-api.jar" || exit 1
-	# The pinned builds (<project>@<version id>) the version's runs fetch.
-	for pins in "neoforge $plugin_hosts" "neoforge $renderers" "fabric $fabric_renderers"; do
+	# The pinned builds (<project>@<version id>) the version's runs fetch: the plugin hosts' for the platform's loader
+	# (Forge's for both Forge platforms), the renderers' for NeoForge.
+	for pins in "${platform%-legacy} $plugin_hosts" "neoforge $renderers" "fabric $fabric_renderers"; do
 		# shellcheck disable=SC2086 # the loader, then one pin per word
 		set -- $pins
 		case "$*" in *@*) fetch "$work/warm-mods" "$@" ;; esac

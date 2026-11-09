@@ -1,5 +1,7 @@
 package io.github.cmdralph.fabricated.forgetest;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -9,8 +11,6 @@ import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
-import net.minecraft.class_310;
-import net.minecraft.class_437;
 
 /**
  * The forge-legacy test mod's part for fabric-screen-api-v1's mouse and key events (with Fabric API's jar only): the
@@ -50,18 +50,18 @@ public final class ForgeScreenClient {
 		return false;
 	}
 
-	private static void send(class_437 screen) {
-		class_310 client = class_310.method_1551();
-		if (sent || client.field_1755 != screen || client.method_18506() != null) return;
+	private static void send(Screen screen) {
+		Minecraft client = Minecraft.getInstance();
+		if (sent || client.screen != screen || client.getOverlay() != null) return;
 		sent = true;
-		long window = client.method_22683().method_4490();
+		long window = client.getWindow().getWindow();
 		sending = true;
 		try {
-			MouseHandlerInvoker mouse = (MouseHandlerInvoker) client.field_1729;
+			MouseHandlerInvoker mouse = (MouseHandlerInvoker) client.mouseHandler;
 			mouse.fabricatedtest$onPress(window, 0, 1, 0);
 			mouse.fabricatedtest$onPress(window, 0, 0, 0);
-			client.field_1774.method_1466(window, KEY, 0, 1, 0);
-			client.field_1774.method_1466(window, KEY, 0, 0, 0);
+			client.keyboardHandler.keyPress(window, KEY, 0, 1, 0);
+			client.keyboardHandler.keyPress(window, KEY, 0, 0, 0);
 		} finally {
 			sending = false;
 		}

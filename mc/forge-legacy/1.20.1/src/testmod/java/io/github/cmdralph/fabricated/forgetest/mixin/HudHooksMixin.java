@@ -1,7 +1,7 @@
 package io.github.cmdralph.fabricated.forgetest.mixin;
 
-import net.minecraft.class_329;
-import net.minecraft.class_332;
+import net.minecraft.client.gui.Gui;
+import net.minecraft.client.gui.GuiGraphics;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -11,13 +11,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMod;
 
 /**
- * A Fabric mod's own hooks at the start and the end of vanilla's HUD method ({@code Gui.render}, {@code method_1753}),
+ * A Fabric mod's own hooks at the start and the end of vanilla's HUD method ({@code Gui.render}, {@code render}),
  * which Forge 47's GUI overrides and never calls (HUD-4): pre-flight points them at Fabricated's seams, which run where
  * Forge's GUI starts and ends its HUD drawing. Both must run once the world shows. The start hook cancels the first
  * drawing it sees, as a mod hiding the HUD does, so that drawing must stop there: the end hook must not run in it. Each
  * is reported once; the client smoke reports one never reported as missing.
  */
-@Mixin(class_329.class)
+@Mixin(Gui.class)
 public abstract class HudHooksMixin {
 	/** The drawings the start hook saw; on the render thread only, as the rest. */
 	@Unique
@@ -27,8 +27,8 @@ public abstract class HudHooksMixin {
 	@Unique
 	private static boolean fabricatedForgeTest$endReported;
 
-	@Inject(method = "method_1753", at = @At("HEAD"), cancellable = true)
-	private void fabricatedForgeTest$atTheStart(class_332 graphics, float tickDelta, CallbackInfo ci) {
+	@Inject(method = "render", at = @At("HEAD"), cancellable = true)
+	private void fabricatedForgeTest$atTheStart(GuiGraphics graphics, float tickDelta, CallbackInfo ci) {
 		int started = ++fabricatedForgeTest$started;
 		if (started == 1) {
 			ci.cancel();
@@ -42,8 +42,8 @@ public abstract class HudHooksMixin {
 		}
 	}
 
-	@Inject(method = "method_1753", at = @At("TAIL"))
-	private void fabricatedForgeTest$atTheEnd(class_332 graphics, float tickDelta, CallbackInfo ci) {
+	@Inject(method = "render", at = @At("TAIL"))
+	private void fabricatedForgeTest$atTheEnd(GuiGraphics graphics, float tickDelta, CallbackInfo ci) {
 		if (fabricatedForgeTest$started == 1) {
 			fabricatedForgeTest$endedCancelled = true;
 		} else if (!fabricatedForgeTest$endReported) {

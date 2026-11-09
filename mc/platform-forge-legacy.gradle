@@ -14,11 +14,91 @@ tasks.named('processResources', ProcessResources) {
     filesMatching('META-INF/mods.toml') { expand(expandProps) }
 }
 
-// The test mod is compiled in Intermediary's names (testmod_namespace), against Fabric API's jars as published and
-// stand-ins for the game classes it names, which come first, as the game's own are in Mojang's names. mc/shared's
-// stand-ins for other mods' plugin interfaces name 1.21's classes (Identifier), and the test mod uses none of them.
-sourceSets.testmodstubs.java.srcDirs = [file('src/testmodstubs/java')]
-sourceSets.testmod.compileClasspath = sourceSets.testmodstubs.output + sourceSets.testmod.compileClasspath
+// --- The test mods: Mojang's names in their sources, Intermediary's in their jars --------------------------------------
+// A Fabric mod for 1.20.1 is published in Intermediary's names, which Fabricated remaps to Forge 47's (Mojang's class names,
+// SRG's member names). The test mods are compiled in Mojang's, against the game and Fabric API's remapped jars, as every
+// version's are (mc/shared), and CI installs them remapped to Intermediary's as Loom remaps a mod: the classes by
+// AutoRenamingTool (ModDevGradle's reobfuscation, below) with Mojang-to-Intermediary mappings, the targets of the mixins by
+// the refmap Mixin's annotation processor writes from the same mappings, and the access widener by them too.
+def srgUtils = configurations.detachedConfiguration(dependencies.create('net.neoforged:srgutils:1.0.10'))
+def srgUtilsClass = { -> new URLClassLoader(srgUtils.files.collect { it.toURI().toURL() } as URL[]) }.memoize() >> { it.loadClass('net.neoforged.srgutils.IMappingFile') }
+def mappingFile = { File file -> srgUtilsClass().load(file) }
+def namedToIntermediary = layout.buildDirectory.file('intermediary/named-intermediary.tsrg')
+def namedToIntermediaryMappings = tasks.register('namedToIntermediaryMappings') {
+    description = "Writes the mappings from Mojang's names to Intermediary's, which the test mods' jars are remapped with"
+    def intermediaryTiny = tasks.named('downloadIntermediary').map { it.outputs.files.singleFile }
+    inputs.files(intermediaryTiny).withPropertyName('intermediary')
+    inputs.files(project.mojangMappings).withPropertyName('mojang')
+    outputs.file(namedToIntermediary)
+    doLast {
+        def intermediary = mappingFile(project.mojangMappings.get().asFile).chain(mappingFile(intermediaryTiny.get()))
+        def out = namedToIntermediary.get().asFile
+        intermediary.write(out.toPath(), srgUtilsClass().classLoader.loadClass('net.neoforged.srgutils.IMappingFile$Format').TSRG, false)
+        // Intermediary names a method where it is first declared, so an override keeps its obfuscated name in the chain: it
+        // takes the name of the declaration of its name and descriptor, which Mixin's annotation processor doesn't look
+        // up in supertypes, and goes where that name isn't one. A member the game doesn't obfuscate keeps its name.
+        def mapped = { String line -> line ==~ /.*\s(method|field|comp)_\d+/ }
+        def lines = out.readLines()
+        def declared = lines.findAll { it.startsWith('\t') && mapped(it) }.groupBy { it.trim().tokenize()[0..-2].join(' ') }
+                .collectEntries { key, found -> [(key): found*.tokenize()*.last().unique()] }
+        out.text = lines.findResults { String line ->
+            def member = line.trim().tokenize()
+            if (!line.startsWith('\t') || mapped(line) || member.first() == member.last()) return line
+            def names = declared[member[0..-2].join(' ')]
+            member.size() == 3 && names?.size() == 1 ? "\t${member[0]} ${member[1]} ${names[0]}" : null
+        }.collect { it + '\n' }.join()
+    }
+}
+// Each source set with mixins gets its refmap, and the mappings of the members its mixins shadow, which the remapping
+// renames in the mixins too.
+def mixinMappings = [testmod: 'fabricated-testmod.refmap.json', testmodbroken: 'fabricated-testmod-badmixin.refmap.json'].collectEntries { name, refmap ->
+    def dir = layout.buildDirectory.dir("mixin/${name}")
+    dependencies {
+        add("${name}AnnotationProcessor", "org.spongepowered:mixin:${project.mixin_processor_version}:processor")
+        add("${name}AnnotationProcessor", "io.github.llamalad7:mixinextras-common:${project.mixinextras_version}")
+    }
+    tasks.named("compile${name.capitalize()}Java", JavaCompile) {
+        inputs.files(namedToIntermediaryMappings).withPropertyName('namedToIntermediary')
+        outputs.dir(dir).withPropertyName('mixinMappings')
+        options.compilerArgumentProviders.add({
+            ["-AreobfTsrgFile=${namedToIntermediary.get().asFile}", "-AoutTsrgFile=${dir.get().file('shadows.tsrg').asFile}",
+             "-AoutRefMapFile=${dir.get().file(refmap).asFile}", '-AmappingTypes=tsrg', '-AdefaultObfuscationEnv=searge',
+             // Accessors of vanilla fields Forge's game no longer has name them as the mod's jar does (forgetest.mixin).
+             '-AMSG_ACCESSOR_TARGET_NOT_FOUND=warning']
+        } as CommandLineArgumentProvider)
+    }
+    [(name): [refmap: refmap, file: dir.map { it.file(refmap) }, shadows: dir.map { it.file('shadows.tsrg') }]]
+}
+// A mixin config names its source set's refmap.
+def namingRefmap = { String refmap -> { String line -> line.replaceFirst(/^(\s*)"package":/, "\$1\"refmap\": \"${refmap}\",\n\$1\"package\":") } }
+// An access widener's names, in Intermediary's.
+def remapAccessWidener = { File file, mappings ->
+    def lines = file.readLines()
+    def header = lines[0].tokenize()
+    file.text = ([header[0], header[1], 'intermediary'].join(' ') + '\n' + lines.drop(1).collect { String line ->
+        def t = line.tokenize()
+        if (t.isEmpty() || t[0].startsWith('#')) return line
+        if (t[0] == 'inject-interface') return [t[0], mappings.remapClass(t[1]), t[2]].join(' ')
+        def owner = mappings.getClass(t[2])
+        switch (t[1]) {
+            case 'class': return [t[0], t[1], mappings.remapClass(t[2])].join(' ')
+            case 'method': return [t[0], t[1], mappings.remapClass(t[2]), owner?.remapMethod(t[3], t[4]) ?: t[3], mappings.remapDescriptor(t[4])].join(' ')
+            default: return [t[0], t[1], mappings.remapClass(t[2]), owner?.remapField(t[3]) ?: t[3], mappings.remapDescriptor(t[4])].join(' ')
+        }
+    }.collect { it + '\n' }.join())
+}
+// Forge 47's half of the test mod (src/testmod), beside the shared one (mc/mc.gradle): the checks of Forge's own hooks
+// and of the Fabric API modules Fabricated ships here, their mixins, the Fabric mod it nests (mc.gradle's testmodnested,
+// JIJ-1), and the access widener's interface injected into the server and its fields, one of which Forge's coremod reads
+// through a getter and must stay private.
+testmodDescriptor.testmod << [entrypoints: [main: ['io.github.cmdralph.fabricated.forgetest.ForgeTestMod'],
+        client: ['io.github.cmdralph.fabricated.forgetest.ForgeTestClient']], mixins: ['fabricated-forge-testmod.mixins.json'],
+        jars: [[file: 'META-INF/jars/fabricated-forge-nested.jar']],
+        depends: ['fabric-biome-api-v1': '*', 'fabric-dimensions-v1': '*', 'fabric-loot-tables-v1': '*', 'fabric-particles-v1': '*']]
+testmodAccessWidener << 'inject-interface net/minecraft/server/MinecraftServer io/github/cmdralph/fabricated/forgetest/ForgeTestMarker' <<
+        'accessible field net/minecraft/world/item/BucketItem content Lnet/minecraft/world/level/material/Fluid;' <<
+        'accessible class net/minecraft/world/item/alchemy/PotionBrewing$Mix' <<
+        'accessible field net/minecraft/world/item/alchemy/PotionBrewing$Mix from Ljava/lang/Object;'
 // Forge Config API Port's API, which the in-game mod provides: the test mod uses it as a Fabric mod does.
 def configPortApiJar = tasks.register('configPortApiJar', Jar) {
     archiveFileName = 'forgeconfigapiport-api.jar'
@@ -27,16 +107,9 @@ def configPortApiJar = tasks.register('configPortApiJar', Jar) {
 }
 dependencies {
     testmodCompileOnly files(configPortApiJar)
+    // The nullness annotations of the shared sources, which the platforms of later versions have and Forge 47 doesn't.
+    testmodCompileOnly 'org.jspecify:jspecify:1.0.0'
 }
-// The test mod that fails on purpose touches the game before it throws (HOLD-2). mc/shared's names the game in Mojang's
-// names, as the platforms that run the game in them read it; this version's own copy names it in Intermediary's, against
-// the same stand-ins, and replaces it.
-def sharedThrowingMod = rootProject.file('mc/shared/src/testmodbroken/java/io/github/cmdralph/fabricated/testmod/broken/ThrowingMod.java').canonicalFile
-sourceSets.testmodbroken.java {
-    srcDir file('src/testmodbroken/java')
-    exclude { FileTreeElement element -> element.file.canonicalFile == sharedThrowingMod }
-}
-sourceSets.testmodbroken.compileClasspath = sourceSets.testmodstubs.output + sourceSets.testmodbroken.compileClasspath
 
 // --- The in-game mod in Forge 47's names -----------------------------------------------------------------------------
 // Forge 1.20.1 runs the game with SRG's member names. The in-game mod compiles against Mojang's: the copy nested in the
@@ -176,30 +249,41 @@ afterEvaluate {
             java.security.MessageDigest.getInstance('SHA-256').digest(nestedGameMod.get().asFile.bytes).encodeHex().toString()
         }
     }
-    // The renderer test mod (mc/mc.gradle) is compiled in Mojang's names, against Fabric API's remapped jars: the game
-    // classes its models extend are too many for Intermediary stand-ins. Forge 47 runs the game in SRG's member names, so
-    // the jar CI installs is reobfuscated, as the in-game mod is; Fabricated reads a Fabric mod through Intermediary's
-    // mappings, which leave names in no Intermediary namespace as they are. The jar as built goes to build/devlibs.
-    // The task is registered as ModDevGradle's reobfuscate() registers its own, without what that adds to the source
-    // set's published variants: the test mod has none (reobfuscate() fails on a source set without them) and is never
-    // published. Its class comes from the plugin's class loader, which a script applied with `apply from` can't name.
-    if (sourceSets.testmodfrapi.java.srcDirs.any { it.isDirectory() }) {
-        def frapiTestmodJar = tasks.named('testmodFrapiJar', Jar) {
-            destinationDirectory = layout.buildDirectory.dir('devlibs')
+    // The test mods' jars as CI installs them (above); the jars as built go to build/devlibs. A remapping task is registered
+    // as ModDevGradle's reobfuscate() registers its own, without what that adds to the source set's published variants:
+    // the test mods have none (reobfuscate() fails on a source set without them) and are never published. Its class comes
+    // from the plugin's class loader, which a script applied with `apply from` can't name.
+    def remapJarType = obfuscation.getClass().classLoader.loadClass('net.neoforged.moddevgradle.legacyforge.tasks.RemapJar')
+    tasks.named('processTestmodResources', ProcessResources) {
+        inputs.files(namedToIntermediaryMappings).withPropertyName('namedToIntermediary')
+        filesMatching('*.mixins.json') { filter(namingRefmap(mixinMappings.testmod.refmap)) }
+        doLast {
+            def accessWidener = new File(destinationDir, 'fabricated-testmod.accesswidener')
+            if (accessWidener.isFile()) remapAccessWidener(accessWidener, mappingFile(namedToIntermediary.get().asFile))
         }
-        def remapJarType = obfuscation.getClass().classLoader.loadClass('net.neoforged.moddevgradle.legacyforge.tasks.RemapJar')
-        def reobfFrapiTestmodJar = tasks.register('reobfTestmodFrapiJar', remapJarType) {
+    }
+    tasks.named('testmodJar', Jar) { from(mixinMappings.testmod.file) }
+    tasks.named('testmodBadmixinJar', Jar) {
+        from(mixinMappings.testmodbroken.file)
+        filesMatching('*.mixins.json') { filter(namingRefmap(mixinMappings.testmodbroken.refmap)) }
+    }
+    [testmodJar: 'testmod', testmodThrowsJar: 'testmodbroken', testmodBadmixinJar: 'testmodbroken', testmodFrapiJar: 'testmodfrapi'].each { jar, sourceSet ->
+        def built = tasks.named(jar, Jar) { destinationDirectory = layout.buildDirectory.dir('devlibs') }
+        def remapped = tasks.register("${jar}Intermediary", remapJarType) {
             group = 'verification'
-            description = "Reobfuscates the renderer test mod to Forge's runtime names"
-            input.set(frapiTestmodJar.flatMap { it.archiveFile })
-            archiveFileName = 'fabricated-testmod-frapi.jar'
+            description = "Remaps ${jar}'s jar to Intermediary's names, as a Fabric mod for 1.20.1 is published"
+            input.set(built.flatMap { it.archiveFile })
+            archiveFileName = built.flatMap { it.archiveFileName }
             destinationDirectory = layout.buildDirectory.dir('testmods')
             // The classes the test mod's classes extend (the game's and Fabric API's), so that the methods which override
             // theirs are renamed with them.
-            libraries.from(sourceSets.testmodfrapi.compileClasspath)
+            libraries.from(sourceSets[sourceSet].compileClasspath)
             obfuscation.configureNamedToSrgOperation(remapOperation)
+            remapOperation.mappings.setFrom(namedToIntermediaryMappings, mixinMappings[sourceSet]?.shadows ?: [])
+            // The task doesn't track the mappings' contents itself.
+            inputs.files(remapOperation.mappings).withPropertyName('remapMappings')
         }
-        tasks.named('testmods') { dependsOn reobfFrapiTestmodJar }
+        tasks.named('testmods') { dependsOn remapped }
     }
     def fabricatedJar = tasks.named('fabricatedJar', Jar) {
         // Named apart from the NeoForge jar of the same Minecraft version: here, once mc/mc.gradle has registered the
