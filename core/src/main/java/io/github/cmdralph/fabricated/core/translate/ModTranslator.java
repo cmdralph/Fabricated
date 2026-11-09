@@ -602,7 +602,8 @@ public final class ModTranslator {
 				MixinCompat.interfaceInjectors(env.runtimeMixinVersion()), MixinCompat.constructorInjects(env.runtimeMixinVersion()),
 				MixinCompat.argumentNames(env.runtimeMixinVersion()), MixinCompat.exactStaticInjects(env.runtimeMixinVersion()),
 				MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion()), MixinCompat.readsLocalTypes(env.runtimeMixinVersion()),
-				MixinCompat.seesMixinFields(env.runtimeMixinVersion()), env.descriptor().handsOffConstructorArguments());
+				MixinCompat.seesMixinFields(env.runtimeMixinVersion()), env.descriptor().handsOffConstructorArguments(),
+				MixinCompat.overlapsWideArguments(env.runtimeMixinVersion()));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();
