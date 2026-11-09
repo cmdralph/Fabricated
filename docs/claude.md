@@ -51,9 +51,9 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the p
 - **Local first, one pull request per task** (the owner's decision, 2026-10-27, replacing one pull request per pass
   and per branch): verify locally (the `coreOnly` build, the touched version's jars and test mods, a local server
   smoke where it helps: *Building and verifying*), commit in logical steps and push in batches. Each push gets the
-  quick check (`check.yml`, about five minutes). The full matrix runs once a task is done, on its pull request into
-  `main`, and before a release; by hand (`workflow_dispatch`, with `extended` for the extended runs) only when a
-  task needs that evidence. Never push just to see CI, and no polishing rounds: cleanup is a task of its own.
+  unit tests and CI's fast job (one touched version on a server). The full matrix runs once a task is done, on its
+  pull request into `main`, and before a release; by hand (`workflow_dispatch`, with `extended` for the extended
+  runs) only when a task needs that evidence. Never push just to see CI, and no polishing rounds: cleanup is a task of its own.
 - **Lightweight and readable over clever.** No abstraction without a second user, no dead code, no duplicated
   utilities. A refactor must measurably reduce coupling or duplication.
 
@@ -62,44 +62,64 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the p
 | What | Command | Where it runs |
 |---|---|---|
 | Minecraft-independent modules and all unit tests | `./gradlew -Pfabricated.coreOnly=true build` | anywhere (Maven Central only) |
-| One version's jar and the test mods | `./gradlew :mc:neoforge-26.1.2:fabricatedJar :mc:neoforge-26.1.2:testmods` | needs `maven.neoforged.net`, Mojang and `maven.fabricmc.net` |
-| A Forge platform's version | on that platform's branch (`forge`, `forge-legacy`), as its README says | needs the platform's maven and Mojang |
+| One version's jar and the test mods | `ci/build.sh <platform> <minecraft>` (`./gradlew :mc:neoforge-26.1.2:fabricatedJar :mc:neoforge-26.1.2:testmods` on NeoForge; the tasks are in `ci/<platform>/platform.sh`) | needs `maven.neoforged.net`, Mojang and `maven.fabricmc.net` |
+| A Forge platform's version | on that platform's branch (`forge`, `forge-legacy`), the same way | needs the platform's maven and Mojang |
 | Everything on NeoForge | `./gradlew build` | same |
-| A real server with the test mods | `ci/<platform>/smoke-server.sh <minecraft> <loader version> <work dir>` (on the game's Java) | locally or CI |
-| A real client with the test mods | `ci/<platform>/smoke-client.sh` (same arguments) | CI (HeadlessMC, Xvfb and `gh`) |
+| A real server with the test mods, checked | `ci/smoke-server.sh <platform> <minecraft> <loader version> <work dir>` (on the game's Java) | locally or CI |
+| A real client with the test mods, checked | `ci/smoke-client.sh` (same arguments) | CI; locally with Xvfb and Mesa |
+| A version's part of CI's runs, or some of its runs | `ci/smoke.sh <platform> <minecraft> <server\|client\|mods\|corpus> [<run>...]` (`ci/runs.tsv`) | same |
+| CI's own scripts and manifests | `python3 -B -m unittest discover -s ci -p 'test_*.py'` | anywhere |
 
 **Local builds.** The cloud container reaches `maven.neoforged.net`, `maven.minecraftforge.net`, Mojang and
 `maven.fabricmc.net` (checked on 2026-10-27; a session whose network policy blocks them can run only the `coreOnly`
 build). Forge 47 and Forge 61, 64 and 66 and NeoForge 1.21.11 and 26.1.2 have been built locally, and a server smoke
 runs locally on the game's Java (`/root/.gradle/jdks` holds 25, `/usr/lib/jvm` 21). NeoForge 26.2 and 26.3 don't build
 locally: NeoForge's source transformer (JST 2.0.10) doesn't apply NeoForge's access transformer line for the anonymous
-class `HolderSet$1`, and recompiling the game fails, while CI builds both (why CI differs is UNVERIFIED); the quick
-check covers them. `compileJava` doesn't check mixin targets or injection points: those fail when the game applies
-them, which a server or client run shows. A change to documentation alone (`docs/`, `*.md`) builds nothing in CI.
+class `HolderSet$1`, and recompiling the game fails, while CI builds both (why CI differs is UNVERIFIED); the fast
+job covers them. `compileJava` doesn't check mixin targets or injection points: those fail when the game applies
+them, which a server or client run shows. A pull request changing documentation alone (`docs/`, `*.md`) runs no CI,
+and a push of it runs only the unit tests.
 
-**CI** (`.github/workflows`): the quick check (`check.yml`) on each push to a working branch runs the unit tests and,
-for each platform the push changed, one version built and booted on a server with the test mods
-(`ci/changed-targets.py` picks it; shared code boots the branch's platform). It stands down while the branch has an
-open pull request into `main`, `forge` or `forge-legacy`, whose full matrix runs on each push. The full matrix
-(`build.yml`, NeoForge's, on `main`; each Forge branch runs its own `build-forge*.yml` on pull requests into it) runs on
-pull requests, release tags and by hand. A pull request runs the versions it touches (`changed-targets.py --full`: a
-version's own folder that version, anything shared every version); a tag or a run by hand runs all of them. A push to
-`main` or a platform branch (a merge) only builds what it changed, to keep that branch's Gradle caches current.
-`build.yml` builds each version once and tests it in parallel parts: `server`, `client` and `mods` (other mods' NeoForge
-builds), with `extended` (and on tags) the extended runs too, and a `corpus` part. A version's CI pins are in its
-folder: the loader in `gradle.properties`, Fabric API in its `fabric-api-plan.json`, and the plugin hosts the client
-checks in `ci_plugin_hosts`. A job installs the game once and its later runs copy that install
-(`ci/install-cache.sh`).
+**CI** (`.github/workflows/ci.yml`, one workflow, the same on every branch). Its plan job (`ci/plan.py`) reads the
+version folders the branch holds (`mc/<platform>/<version>/gradle.properties`) and what the change touched: a version's
+own folder touches that version, a platform's folders (`mc/<platform>`, `loader/<platform>`, `ci/<platform>`; the
+`forge-shared` ones both Forge platforms) its versions, anything else but documentation and the release every version.
+- A push to a working branch gets the unit tests and, beside them, the fast job: one touched version built and booted
+  on a server with the test mods (the version whose folder alone changed, else the newest). Both stand down while the
+  branch has an open pull request into `main`, `forge` or `forge-legacy`, whose full matrix runs on each push.
+- The full matrix runs on pull requests into those branches (the versions they touch), by hand (`workflow_dispatch`,
+  with `extended`) and when the release workflow calls it (`workflow_call` with the commit's `ref`: every version, each
+  jar uploaded as `jar-<platform>-<minecraft>`).
+- A push to `main`, `forge` or `forge-legacy` (a merge) builds what it changed and fills the caches.
 
-**What CI proves, per version** (`.github/workflows/build.yml`):
-1. Unit tests (core, fabric-loader-api, api).
-2. A real dedicated server with the test mods (gate), then with the official Fabric API jar (must start).
-3. A real client, started headlessly with HeadlessMC, that joins a singleplayer world with the test mods (gate),
-   then again with Fabric API. On 26.x that second run also loads the renderer API test mod, and a gate checks that
-   Fabric block models are drawn in chunk sections (also inside a vanilla multipart model), as moving blocks and with
-   the breaking overlay, and that Fabric's and NeoForge's custom model formats both load.
-4. With `extended`: other mods' Fabric builds (gates, CI-1), and a corpus of popular Fabric mods from Modrinth and the
-   newest NeoForge build (informational).
+The full matrix builds each version once (`ci/build.sh`, with the tasks its platform's adapter `ci/<platform>/platform.sh`
+names) and runs its game runs (`ci/runs.tsv`) in parts, each a job of its own (`ci/smoke.sh`): `server`, `client`,
+`mods` (other people's mods) and with `extended` `corpus`. The harness, `ci/smoke-server.sh` and
+`ci/smoke-client.sh`, is every platform's; the adapter installs and launches its loader. Each run is checked against
+the manifest `ci/checks.tsv` by `ci/check-log.py`, which prints PASS, FAIL or SKIP per check (a test mod check that
+another mod's module answers logs `<check> SKIPPED: <why>`) and adds the run to a JSON summary, uploaded as
+`checks-<platform>-<minecraft>-<part>`. A check gates where its row says and its run's `gates` admit it (`all`, `own`:
+only the checks naming the run, `none`: informational); an informational run becomes a gate once it held on two
+extended runs in a row (CI-1). A platform or version a check doesn't apply to has its reason in the row's `why_not`,
+which the support matrix shows. A version's CI pins are in its folder: the loader in `gradle.properties`, Fabric API in
+its `fabric-api-plan.json`, the plugin hosts and the Sodium and Iris pairs in `ci_plugin_hosts`, `ci_renderers` and
+`ci_fabric_renderers`. The caches: Gradle's home per version, keyed by the build files (setup-gradle); each loader
+version's server and client install; the pinned downloads (Fabric API, the pinned Modrinth builds, HeadlessMC,
+mc-runtime-test). Only pushes to the base branches write them, everything else reads them, and the release builds
+from an empty Gradle home.
+
+**What CI proves, per version** (`ci/runs.tsv`, `ci/checks.tsv`):
+1. Unit tests (core, fabric-loader-api, api), CI's own scripts and the mixin inventory.
+2. A real dedicated server with the test mods (every check gates), with the official Fabric API jar, with stand-ins
+   for the mods Fabricated shares a game with, refusing Sinytra Connector and a second Fabricated jar, and (NeoForge)
+   leaving out a mixin that failed as Mixin applied it.
+3. A real client, started headlessly with HeadlessMC, that joins a singleplayer world with the test mods, then with
+   Fabric API and the renderer API test mod: Fabric block models drawn in chunk sections (also inside a vanilla
+   multipart model), as moving blocks and with the breaking overlay, Fabric's and the platform's model formats, and
+   Fabric API's client modules (gates).
+4. Other people's mods: on NeoForge Sodium and Iris, Continuity and the recipe viewers' plugins on every run; with
+   `extended`, the difficult mods' Fabric builds on every platform (gates, CI-1), and the mod corpora and the newest
+   loader build (informational).
 
 ## Architecture
 
