@@ -1,9 +1,9 @@
 package io.github.cmdralph.fabricated.forgetest;
 
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.crafting.RecipeManager;
 import net.fabricmc.fabric.api.resource.conditions.v1.ResourceConditions;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.class_1863;
-import net.minecraft.class_2960;
 
 /**
  * The forge-legacy test mod's part for Fabric API's resource conditions in Forge 47's own recipe {@code conditions}
@@ -25,12 +25,12 @@ public final class ForgeRecipeConditionTest {
 
 	/**
 	 * At the first server tick, with Fabric API: the true condition's recipe is in the recipe manager, the false one's
-	 * isn't ({@code method_8130} is {@code byKey}).
+	 * isn't.
 	 */
-	public static void check(class_1863 recipes) {
+	public static void check(RecipeManager recipes) {
 		if (!FabricLoader.getInstance().isModLoaded("fabric-resource-conditions-api-v1")) return;
-		boolean kept = recipes.method_8130(new class_2960(ForgeTestMod.MOD_ID, "condition_kept")).isPresent();
-		boolean dropped = recipes.method_8130(new class_2960(ForgeTestMod.MOD_ID, "condition_dropped")).isPresent();
+		boolean kept = recipes.byKey(new ResourceLocation(ForgeTestMod.NAMESPACE, "condition_kept")).isPresent();
+		boolean dropped = recipes.byKey(new ResourceLocation(ForgeTestMod.NAMESPACE, "condition_dropped")).isPresent();
 		if (kept && !dropped) {
 			ForgeTestMod.LOGGER.info("FABRICATED-TEST recipe conditions OK");
 		} else {
@@ -44,7 +44,7 @@ public final class ForgeRecipeConditionTest {
 		}
 
 		static void register() {
-			ResourceConditions.register(new class_2960(ForgeTestMod.MOD_ID, "enabled"), json -> {
+			ResourceConditions.register(new ResourceLocation(ForgeTestMod.NAMESPACE, "enabled"), json -> {
 				boolean value = json.has("value") && json.get("value").getAsBoolean();
 				ForgeTestMod.LOGGER.info("FABRICATED-TEST recipe condition asked: {}", value);
 				return value;

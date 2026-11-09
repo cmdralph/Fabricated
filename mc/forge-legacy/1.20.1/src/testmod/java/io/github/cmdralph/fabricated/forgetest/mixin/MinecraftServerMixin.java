@@ -7,131 +7,86 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import io.github.cmdralph.fabricated.forgetest.ForgeBiomeTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeBlockBreakTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeBrewingMixTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeBrewingTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeCommandTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeConfigPortTest;
-import io.github.cmdralph.fabricated.forgetest.ForgeDefaultBridgeTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeDimensionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeDropCaptureTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFluidTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFuelTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeIngredientTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeInteractionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeLanguageTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeMobBucketTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeRecipeConditionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeRegistryAliasTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeSleepTest;
-import io.github.cmdralph.fabricated.forgetest.ForgeTransferTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMarker;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMod;
-import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.class_1792;
-import net.minecraft.class_1799;
-import net.minecraft.class_1802;
-import net.minecraft.class_1863;
-import net.minecraft.class_1937;
-import net.minecraft.class_2170;
-import net.minecraft.class_2378;
-import net.minecraft.class_2960;
-import net.minecraft.class_3218;
-import net.minecraft.class_5321;
-import net.minecraft.class_5455;
-import net.minecraft.class_6862;
-import net.minecraft.class_7923;
+import io.github.cmdralph.fabricated.forgetest.ForgeTransferTest;
+import net.minecraft.commands.Commands;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.crafting.RecipeManager;
+import net.minecraft.world.level.Level;
 
 /**
- * Proves Forge's Mixin applies a translated Fabric mod's mixins (from the overlay's MixinConfigs) in the names Forge 47
- * runs the game with: logs after the first server tick. The method is named in Intermediary's names, as a Fabric mod for
- * 1.20.1 names it (its refmap would), {@code method_3748} being {@code tickServer}; Fabricated remaps it to SRG's
- * {@code m_5705_}. {@code MinecraftServer} keeps its name in every namespace. By then Forge has frozen the registries
- * and checked them, and the test mod's item must still be there, the data packs' tags are bound, and Forge has applied
- * its biome modifiers ({@code method_30611} is {@code registryAccess()}). The test mod then teleports an entity to the End
- * ({@code method_30002} is {@code overworld()}, {@code method_3847} {@code getLevel(ResourceKey)}), checks the fluid
- * types of the fluids it registered, whether vanilla reads a player's stats file (GSON-2), on a client whether Fabric's colour provider registry finds the game's block
- * colours and the particle engine its particle factory, and with Fabric API whether its command is in the server's
- * dispatcher ({@code method_3734} is {@code getCommands()}), whether Forge loaded the config made through Forge Config
- * API Port's registry, whether Fabric's block break events fire as a player breaks
- * blocks, whether Fabric's use and attack callbacks are asked as a player uses and attacks things (finishing at a later
- * tick), whether a block Fabric's sleep events admit as a bed survives being slept on, whether the furnace takes the
- * test item Fabric's fuel registry made a fuel, whether a brewing recipe Fabric's brewing registry added brews, whether
- * the recipes naming a Fabric resource condition in Forge's {@code conditions} loaded as it answered ({@code method_3772}
- * is {@code getRecipeManager()}), whether vanilla's reader read the test mod's language file, and whether the defaults of the interfaces the test mod's mixins add to entities beside
- * Forge's run (default bridges).
+ * Runs the checks of Forge 47's half of the test mod at the end of the server's first tick, by when Forge has frozen the
+ * registries and checked them, the data packs' tags are bound, and Forge has applied its biome modifiers: the interface
+ * the access widener injects, an entity teleported to the End, the fluid types of the fluids it registered, a pig's drops
+ * in Forge's capture, Fabric's command in the server's dispatcher, the config made through Forge Config API Port's
+ * registry, Fabric's block break, use and attack, and sleep events, storages reaching Forge's capabilities, accessors of
+ * fields Forge 47 replaced, Forge's recipe conditions and custom ingredients, vanilla's language reader, and the fuel and
+ * brewing recipe Fabric's content registries made; then Forge's client hooks on a client. The interaction check finishes
+ * at a later tick.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
 	@Unique
-	private static boolean fabricatedForgeTest$logged;
+	private static boolean fabricatedForgeTest$checked;
 
 	@Shadow
-	public abstract class_5455.class_6890 method_30611();
+	public abstract ServerLevel overworld();
 
 	@Shadow
-	public abstract class_3218 method_30002();
+	public abstract ServerLevel getLevel(ResourceKey<Level> key);
 
 	@Shadow
-	public abstract class_3218 method_3847(class_5321<class_1937> key);
+	public abstract Commands getCommands();
 
 	@Shadow
-	public abstract class_2170 method_3734();
+	public abstract RecipeManager getRecipeManager();
 
-	@Shadow
-	public abstract class_1863 method_3772();
-
-	@Inject(method = "method_3748", at = @At("TAIL"))
+	@Inject(method = "tickServer", at = @At("TAIL"))
 	private void fabricatedForgeTest$afterTick(CallbackInfo ci) {
-		if (!fabricatedForgeTest$logged) {
-			fabricatedForgeTest$logged = true;
-			ForgeTestMod.LOGGER.info("FABRICATED-TEST mixin OK");
-			if ((Object) this instanceof ForgeTestMarker) ForgeTestMod.LOGGER.info("FABRICATED-TEST injected interface OK");
-			class_2378<class_1792> items = class_7923.field_41178;
-			if (ForgeTestMod.testItem != null && items.method_10223(new class_2960(ForgeTestMod.MOD_ID, ForgeTestMod.ITEM_PATH)) == ForgeTestMod.testItem) {
-				ForgeTestMod.LOGGER.info("FABRICATED-TEST registry entry kept OK");
-			}
-			// The test mod's tag lists stone and dirt and removes dirt in fabric:remove, which Fabricated's in-game mod reads
-			// into Forge's remove list.
-			class_6862<class_1792> tag = class_6862.method_40092(items.method_30517(), new class_2960(ForgeTestMod.MOD_ID, "fabric_remove"));
-			boolean stone = new class_1799(class_1802.field_20391).method_31573(tag);
-			boolean dirt = new class_1799(class_1802.field_8831).method_31573(tag);
-			if (stone && !dirt) {
-				ForgeTestMod.LOGGER.info("FABRICATED-TEST tag removal OK");
-			} else {
-				ForgeTestMod.LOGGER.warn("FABRICATED-TEST tag removal FAILED: the tag is loaded {}, stone is in it {}, dirt is in it {}",
-						items.method_40266(tag).isPresent(), stone, dirt);
-			}
-			class_5455 registries = method_30611();
-			ForgeBiomeTest.check(registries);
-			ForgeDimensionTest.check(method_30002(), method_3847(class_1937.field_25181));
-			ForgeFluidTest.check(method_30002());
-			ForgeDefaultBridgeTest.check(method_30002());
-			ForgeDropCaptureTest.check(method_30002());
-			ForgeTestMod.checkVanillaStats((MinecraftServer) (Object) this);
-			ForgeTestMod.checkColors();
-			ForgeTestMod.checkParticles();
-			ForgeTestMod.checkKeyBinding();
-			ForgeTestMod.checkDefaultPack();
-			ForgeCommandTest.check(method_3734());
-			ForgeRegistryAliasTest.check();
-			ForgeConfigPortTest.check();
-			ForgeBlockBreakTest.check(method_30002());
-			ForgeTestMod.checkInteractions(method_30002());
-			ForgeSleepTest.check(method_30002());
-			ForgeTransferTest.check(method_30002());
-			ForgeBrewingMixTest.check();
-			ForgeMobBucketTest.check();
-			ForgeRecipeConditionTest.check(method_3772());
-			ForgeIngredientTest.check();
-			ForgeLanguageTest.check();
-			if (ForgeTestMod.testItem != null && FabricLoader.getInstance().isModLoaded("fabric-content-registries-v0")) {
-				ForgeFuelTest.check();
-				ForgeBrewingTest.check();
-			}
-		} else {
-			ForgeTestMod.tickInteractions(method_30002());
+		if (fabricatedForgeTest$checked) {
+			ForgeTestMod.run("interaction check", () -> ForgeInteractionTest.tick(overworld()));
+			return;
 		}
+		fabricatedForgeTest$checked = true;
+		if ((Object) this instanceof ForgeTestMarker) ForgeTestMod.LOGGER.info("FABRICATED-TEST injected interface OK");
+		else ForgeTestMod.LOGGER.error("FABRICATED-TEST injected interface FAILED: the server has no ForgeTestMarker");
+		ServerLevel level = overworld();
+		ForgeTestMod.run("dimensions check", () -> ForgeDimensionTest.check(level, getLevel(Level.END)));
+		ForgeTestMod.run("fluid types check", () -> ForgeFluidTest.check(level));
+		ForgeTestMod.run("drop capture check", () -> ForgeDropCaptureTest.check(level));
+		ForgeTestMod.run("command check", () -> ForgeCommandTest.check(getCommands()));
+		ForgeTestMod.run("registry alias check", ForgeRegistryAliasTest::check);
+		ForgeTestMod.run("config port check", ForgeConfigPortTest::check);
+		ForgeTestMod.run("block break check", () -> ForgeBlockBreakTest.check(level));
+		ForgeTestMod.run("interaction check", () -> ForgeInteractionTest.check(level));
+		ForgeTestMod.run("sleep check", () -> ForgeSleepTest.check(level));
+		ForgeTestMod.run("storages check", () -> ForgeTransferTest.check(level));
+		ForgeTestMod.run("brewing mix accessors check", ForgeBrewingMixTest::check);
+		ForgeTestMod.run("mob bucket accessor check", ForgeMobBucketTest::check);
+		ForgeTestMod.run("recipe condition check", () -> ForgeRecipeConditionTest.check(getRecipeManager()));
+		ForgeTestMod.run("custom ingredients check", ForgeIngredientTest::check);
+		ForgeTestMod.run("language files check", ForgeLanguageTest::check);
+		ForgeTestMod.run("fuel check", ForgeFuelTest::check);
+		ForgeTestMod.run("brewing recipe check", ForgeBrewingTest::check);
+		ForgeTestMod.checkClient();
 	}
 }

@@ -1,11 +1,11 @@
 package io.github.cmdralph.fabricated.forgetest;
 
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.class_2168;
-import net.minecraft.class_2170;
 
 /**
  * The forge-legacy test mod's part for fabric-command-api-v2 (with Fabric API's jar only): a command registered through
@@ -22,13 +22,13 @@ public final class ForgeCommandTest {
 	static void register() {
 		if (!FabricLoader.getInstance().isModLoaded("fabric-command-api-v2")) return;
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
-				dispatcher.register(LiteralArgumentBuilder.<class_2168>literal(COMMAND).executes(context -> 1)));
+				dispatcher.register(LiteralArgumentBuilder.<CommandSourceStack>literal(COMMAND).executes(context -> 1)));
 	}
 
 	/** At the first server tick, with the server's commands. */
-	public static void check(class_2170 commands) {
+	public static void check(Commands commands) {
 		if (!FabricLoader.getInstance().isModLoaded("fabric-command-api-v2")) return;
-		if (commands.method_9235().getRoot().getChild(COMMAND) != null) {
+		if (commands.getDispatcher().getRoot().getChild(COMMAND) != null) {
 			ForgeTestMod.LOGGER.info("FABRICATED-TEST Fabric command registered OK");
 		} else {
 			ForgeTestMod.LOGGER.warn("FABRICATED-TEST Fabric command {} is not in the server's dispatcher", COMMAND);

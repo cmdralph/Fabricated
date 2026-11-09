@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import fuzs.forgeconfigapiport.api.config.v2.ForgeConfigPaths;
+import io.github.cmdralph.fabricated.testmod.TestMod;
 import fuzs.forgeconfigapiport.api.config.v2.ForgeConfigRegistry;
 import fuzs.forgeconfigapiport.api.config.v2.ModConfigEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -21,7 +22,7 @@ import net.minecraftforge.fml.config.ModConfig;
  * port's event, and kept the file's values, under the port's file name in the config directory the port names.
  */
 public final class ForgeConfigPortTest {
-	private static final String FILE = ForgeTestMod.MOD_ID + "-common.toml";
+	private static final String FILE = TestMod.MOD_ID + "-common.toml";
 	private static final AtomicInteger LOADINGS = new AtomicInteger();
 	private static ForgeConfigSpec.BooleanValue enabled;
 	private static ForgeConfigSpec.IntValue count;
@@ -42,10 +43,10 @@ public final class ForgeConfigPortTest {
 			enabled = builder.define("enabled", true);
 			count = builder.defineInRange("count", 3, 0, 10);
 			ForgeConfigSpec spec = builder.build();
-			ModConfigEvents.loading(ForgeTestMod.MOD_ID).register(loaded -> {
+			ModConfigEvents.loading(TestMod.MOD_ID).register(loaded -> {
 				if (FILE.equals(loaded.getFileName())) LOADINGS.incrementAndGet();
 			});
-			config = ForgeConfigRegistry.INSTANCE.register(ForgeTestMod.MOD_ID, ModConfig.Type.COMMON, spec);
+			config = ForgeConfigRegistry.INSTANCE.register(TestMod.MOD_ID, ModConfig.Type.COMMON, spec);
 			registered = values();
 		} catch (IOException | RuntimeException | LinkageError e) {
 			ForgeTestMod.LOGGER.error("FABRICATED-TEST config port registration failed", e);

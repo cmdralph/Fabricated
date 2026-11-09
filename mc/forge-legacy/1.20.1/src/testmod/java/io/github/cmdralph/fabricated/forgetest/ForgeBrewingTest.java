@@ -1,14 +1,14 @@
 package io.github.cmdralph.fabricated.forgetest;
 
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.alchemy.Potion;
+import net.minecraft.world.item.alchemy.PotionBrewing;
+import net.minecraft.world.item.alchemy.PotionUtils;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.fabricmc.fabric.api.registry.FabricBrewingRecipeRegistry;
-import net.minecraft.class_1792;
-import net.minecraft.class_1799;
-import net.minecraft.class_1842;
-import net.minecraft.class_1844;
-import net.minecraft.class_1845;
-import net.minecraft.class_1856;
-import net.minecraft.class_2960;
-import net.minecraft.class_7923;
 
 /**
  * The forge-legacy test mod's part for fabric-content-registries-v0's brewing recipes (BREW-1; with Fabric API's jar
@@ -26,7 +26,7 @@ public final class ForgeBrewingTest {
 
 	/** From the main entrypoint, once the test item is registered; only with Fabric API's content registries module. */
 	static void register() {
-		FabricBrewingRecipeRegistry.registerPotionRecipe(potion("awkward"), class_1856.method_8091(ForgeTestMod.testItem), potion("luck"));
+		FabricBrewingRecipeRegistry.registerPotionRecipe(potion("awkward"), Ingredient.of(ForgeTestMod.testItem), potion("luck"));
 		registered = true;
 	}
 
@@ -36,18 +36,18 @@ public final class ForgeBrewingTest {
 			ForgeTestMod.LOGGER.error("FABRICATED-TEST brewing recipe FAILED: FabricBrewingRecipeRegistry didn't take the recipe (see the error above)");
 			return;
 		}
-		class_1792 potionItem = class_7923.field_41178.method_10223(new class_2960("minecraft", "potion"));
-		class_1799 awkward = class_1844.method_8061(new class_1799(potionItem), potion("awkward"));
-		class_1842 brewed = class_1844.method_8063(class_1845.method_8078(new class_1799(ForgeTestMod.testItem), awkward));
+		Item potionItem = BuiltInRegistries.ITEM.get(new ResourceLocation("minecraft", "potion"));
+		ItemStack awkward = PotionUtils.setPotion(new ItemStack(potionItem), potion("awkward"));
+		Potion brewed = PotionUtils.getPotion(PotionBrewing.mix(new ItemStack(ForgeTestMod.testItem), awkward));
 		if (brewed == potion("luck")) {
 			ForgeTestMod.LOGGER.info("FABRICATED-TEST brewing recipe OK");
 		} else {
 			ForgeTestMod.LOGGER.error("FABRICATED-TEST brewing recipe FAILED: an awkward potion brewed with the test item gave {}",
-					class_7923.field_41179.method_10221(brewed));
+					BuiltInRegistries.POTION.getKey(brewed));
 		}
 	}
 
-	private static class_1842 potion(String path) {
-		return class_7923.field_41179.method_10223(new class_2960("minecraft", path));
+	private static Potion potion(String path) {
+		return BuiltInRegistries.POTION.get(new ResourceLocation("minecraft", path));
 	}
 }

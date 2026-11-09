@@ -6,12 +6,11 @@
 forge_id="$loader"
 testmod_key=key.fabricated-forge-testmod.check
 
-# ModDevGradle's legacyforge plugin; testmods also reobfuscates the renderer API test mod to SRG's names. checkForgeJar
+# ModDevGradle's legacyforge plugin; testmods also remaps the test mods to Intermediary's names. checkForgeJar
 # checks the jar's layout for Forge.
 gradle_tasks() {
 	local project=":mc:forge-legacy-$mc"
-	echo "-Pfabricated.platforms=forge-legacy --configure-on-demand $project:fabricatedJar $project:testmodJar" \
-		"$project:testmodThrowsJar $project:testmods $project:checkForgeJar"
+	echo "-Pfabricated.platforms=forge-legacy --configure-on-demand $project:fabricatedJar $project:testmods $project:checkForgeJar"
 }
 
 # shellcheck source=ci/forge-shared/platform.sh

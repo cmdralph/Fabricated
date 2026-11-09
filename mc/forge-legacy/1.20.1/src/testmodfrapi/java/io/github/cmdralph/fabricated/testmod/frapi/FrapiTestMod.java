@@ -30,8 +30,8 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 /**
  * Fabric's renderer API on Forge 47 (task 4, R5), as the renderer test mod checks it on NeoForge 21.1: registers the
  * test blocks, whose models {@link FrapiClientTestMod} makes Fabric models, and the test item. Only the Fabric API jar
- * provides the renderer API: it joins CI's client run with Fabric API. Written in Mojang's names (the game classes its
- * models extend are too many for Intermediary stand-ins) and reobfuscated to Forge 47's (mc/platform-forge-legacy.gradle).
+ * provides the renderer API: it joins CI's client run with Fabric API. Written in Mojang's names and installed in
+ * Intermediary's, as the test mods are (mc/platform-forge-legacy.gradle).
  *
  * <p>Once a player is in the world it places, in front of them, a block whose model is a Fabric model and one whose
  * vanilla multipart model has a Fabric model as its part, so the client meshes them into a chunk section, and above them

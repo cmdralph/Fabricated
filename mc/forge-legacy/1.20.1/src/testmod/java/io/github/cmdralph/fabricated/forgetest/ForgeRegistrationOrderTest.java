@@ -1,17 +1,17 @@
 package io.github.cmdralph.fabricated.forgetest;
 
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.RecordItem;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockBehaviour;
 import java.util.ArrayList;
 import java.util.List;
 
-import net.minecraft.class_1747;
-import net.minecraft.class_1792;
-import net.minecraft.class_1813;
-import net.minecraft.class_2248;
-import net.minecraft.class_2378;
-import net.minecraft.class_2960;
-import net.minecraft.class_3414;
-import net.minecraft.class_4970;
-import net.minecraft.class_7923;
 
 /**
  * The forge-legacy test mod's part for the order Fabric mods register in (CORPUS-73). Fabric lets a mod make its
@@ -19,7 +19,7 @@ import net.minecraft.class_7923;
  * block item was registered or a music disc made, and threw when it wasn't registered yet (Lootr registers block items
  * before their blocks). From the main entrypoint: a block item registered before its block, which then is its item, and
  * a music disc made before its sound is registered, which then plays it. {@link ForgeFluidTest}'s fluids have the
- * same for their liquid blocks and buckets. In Intermediary's names (the stand-ins in src/testmodstubs).
+ * same for their liquid blocks and buckets.
  */
 final class ForgeRegistrationOrderTest {
 	private ForgeRegistrationOrderTest() {
@@ -28,22 +28,22 @@ final class ForgeRegistrationOrderTest {
 	static void register() {
 		List<String> failed = new ArrayList<>();
 		try {
-			class_2960 id = new class_2960(ForgeTestMod.MOD_ID, "item_first_block");
-			class_2248 block = new class_2248(class_4970.class_2251.method_9630(class_7923.field_41175.method_10223(new class_2960("minecraft", "stone"))));
-			class_1747 item = class_2378.method_10230(class_7923.field_41178, id, new class_1747(block, new class_1792.class_1793()));
-			class_2378.method_10230(class_7923.field_41175, id, block);
-			if (item.method_7711() != block) failed.add("the block item's block is " + item.method_7711());
-			if (class_1792.method_7867(block) != item) failed.add("the block's item is " + class_1792.method_7867(block));
+			ResourceLocation id = new ResourceLocation(ForgeTestMod.NAMESPACE, "item_first_block");
+			Block block = new Block(BlockBehaviour.Properties.copy(BuiltInRegistries.BLOCK.get(new ResourceLocation("minecraft", "stone"))));
+			BlockItem item = Registry.register(BuiltInRegistries.ITEM, id, new BlockItem(block, new Item.Properties()));
+			Registry.register(BuiltInRegistries.BLOCK, id, block);
+			if (item.getBlock() != block) failed.add("the block item's block is " + item.getBlock());
+			if (Item.byBlock(block) != item) failed.add("the block's item is " + Item.byBlock(block));
 		} catch (RuntimeException | LinkageError e) {
 			failed.add("the block item registered before its block: " + e);
 		}
 		try {
-			class_2960 id = new class_2960(ForgeTestMod.MOD_ID, "sound_later_disc");
-			class_3414 sound = class_3414.method_47908(id);
-			class_1813 disc = new class_1813(5, sound, new class_1792.class_1793(), 60);
-			class_2378.method_10230(class_7923.field_41172, id, sound);
-			class_2378.method_10230(class_7923.field_41178, id, disc);
-			if (disc.method_8009() != sound) failed.add("the disc's sound is " + disc.method_8009());
+			ResourceLocation id = new ResourceLocation(ForgeTestMod.NAMESPACE, "sound_later_disc");
+			SoundEvent sound = SoundEvent.createVariableRangeEvent(id);
+			RecordItem disc = new RecordItem(5, sound, new Item.Properties(), 60);
+			Registry.register(BuiltInRegistries.SOUND_EVENT, id, sound);
+			Registry.register(BuiltInRegistries.ITEM, id, disc);
+			if (disc.getSound() != sound) failed.add("the disc's sound is " + disc.getSound());
 		} catch (RuntimeException | LinkageError e) {
 			failed.add("the music disc made before its sound was registered: " + e);
 		}

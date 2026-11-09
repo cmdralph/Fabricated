@@ -1,6 +1,6 @@
 package io.github.cmdralph.fabricated.forgetest;
 
-import net.minecraft.class_2477;
+import net.minecraft.locale.Language;
 
 /**
  * CORPUS-100: a Fabric mod's language file is read on the server by vanilla's reader, where Fabric mods' hooks into it
@@ -20,7 +20,7 @@ public final class ForgeLanguageTest {
 
 	/** At the first server tick, once the server read the mods' language files. */
 	public static void check() {
-		boolean known = class_2477.method_10517().method_4678(KEY);
+		boolean known = Language.getInstance().has(KEY);
 		if (readByVanilla && known) {
 			ForgeTestMod.LOGGER.info("FABRICATED-TEST language files OK");
 		} else {
