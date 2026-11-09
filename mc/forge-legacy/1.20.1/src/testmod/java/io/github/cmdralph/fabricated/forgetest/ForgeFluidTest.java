@@ -148,8 +148,7 @@ public final class ForgeFluidTest {
 			id = new ResourceLocation(ForgeTestMod.NAMESPACE, name);
 			source = new ForgeTestFluid.Source(this);
 			flowing = new ForgeTestFluid.Flowing(this);
-			block = new LiquidBlock(source, BlockBehaviour.Properties.copy(properties)) {
-			};
+			block = new LiquidBlock(source, BlockBehaviour.Properties.copy(properties));
 			bucket = new BucketItem(source, new Item.Properties());
 			Registry.register(BuiltInRegistries.FLUID, id, source);
 			Registry.register(BuiltInRegistries.FLUID, new ResourceLocation(ForgeTestMod.NAMESPACE, name + "_flowing"), flowing);
