@@ -13,9 +13,11 @@ import net.minecraftforge.forgespi.locating.IModLocator;
  * Fabricated's mod locator on Forge (docs/PORTING.md §4.1). Forge finds the Fabricated jar by its service files and
  * leaves it out of the mods folder's scan, so nothing nested in it is seen unless a locator hands it over: this one
  * hands Forge the language provider, which Forge loads into its plugin layer by its manifest. Fabric jars need no
- * claiming: Forge's mods folder locator skips a jar without {@code META-INF/mods.toml} or {@code FMLModType}. With
- * Sinytra Connector or a second Fabricated jar in the mods folder ({@link ConflictingMods}), it hands nothing over and
- * stops the launch with the error naming them, as NeoForge's locator does.
+ * claiming: Forge's mods folder locator skips a jar without {@code META-INF/mods.toml} or {@code FMLModType}; a Fabric
+ * jar whose {@code mods.toml} is a placeholder for Sinytra Connector is kept from that locator, which runs after this one
+ * ({@link FabricJars#claimPlaceholders}). With Sinytra Connector or a second Fabricated jar in the mods folder
+ * ({@link ConflictingMods}), it hands nothing over and stops the launch with the error naming them, as NeoForge's
+ * locator does.
  */
 public final class FabricModLocator extends ForgeModProvider implements IModLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -29,6 +31,7 @@ public final class FabricModLocator extends ForgeModProvider implements IModLoca
 	public List<ModFileOrException> scanMods() {
 		String refusal = ConflictingMods.refusal(FMLPaths.MODSDIR.get());
 		if (refusal != null) throw ConflictingMods.stop(refusal);
+		FabricJars.claimPlaceholders(FMLPaths.MODSDIR.get());
 		try {
 			return List.of(createMod(NestedJars.extract(NestedJars.LANG_PROVIDER)));
 		} catch (IOException | RuntimeException e) {

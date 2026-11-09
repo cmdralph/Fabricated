@@ -1777,6 +1777,10 @@ What else differs on Forge, for Fabric mods in general:
   3.6.6's on Forge 47 (its `mods.toml`). Their Forge builds work.
 - **Jars built for Fabric and NeoForge at once** list their nested jars for NeoForge too. Fabricated hides that list
   from Forge's jar-in-jar locator and reads the jar itself, so each nested mod loads once, translated (JIJ-1).
+- **Placeholders for Sinytra Connector:** a Fabric jar whose `META-INF/mods.toml` only tells Forge to install Connector
+  (`connector:placeholder`, as Origins 1.10.2's has) loads as the Fabric mod it is: Fabricated's mod locator keeps it
+  from Forge's mods-folder scan (MULTI-2, checked on a Forge 47 server with Origins 1.10.2). Any other jar with
+  both loaders' metadata is Forge's.
 - **Other copies of Fabric's parts:** a Fabric API module another Forge mod provides (one bundling Fabric API's modules)
   is that mod's, and Fabricated's copy, its mixins and its Forge hooks stand down, as on NeoForge (all five, server run
   with stand-ins; PROVIDER-1). Sinytra Connector and a second Fabricated jar are refused, the launch stopping with
@@ -1829,7 +1833,8 @@ What else differs on Forge, for Fabric mods in general:
   (CORPUS-61; on Forge 61 to 66 CORPUS-78: Friends and Foes' patrol spawner hook stopped the Forge 64 and 65 servers).
 - **MixinExtras** is 0.5.5 on every Forge version: the in-game mod nests it, and Forge's jar-in-jar locator picks it
   over the 0.5.4 Forge 61 to 66 offer (MIXEXT-3). Its mod's root is the in-game mod's files, which owo reads, as
-  it reads every mod's (CORPUS-77: owo's client stopped on Forge 47).
+  it reads every mod's (CORPUS-77: owo's client stopped on Forge 47). MixinExtras' own Fabric jar, nested under whatever id, isn't
+  loaded: its init config has the name of the platform's, which Mixin then never ran (PLAT-7: Origins' on Forge 47).
 - **`@ModifyArgs`:** Forge 47's Mixin 0.8.5 puts the classes it generates for a `@ModifyArgs` handler's arguments in no
   module of the game layer, so a game class naming one failed to load (the corpus server and client stopped as `Fluids`
   loaded, CORPUS-68). Fabricated's transformation service adds a module holding those packages, and no files, as
@@ -1840,6 +1845,15 @@ What else differs on Forge, for Fabric mods in general:
   declared as the other mixin declares the field, and Mixin merges the two into one field, as on Fabric (CORPUS-74:
   the test mod's tick counter, all five, server run); one that can't be (a static shadow of an instance field, a
   writable one of a final field) disables its mod, or leaves its mixin out where it can.
+- **Mixins adding constants to an enum Forge makes extensible:** a mod's `@Mutable` shadow (or accessor) of such an
+  enum's values array, as FrozenLib's `MobCategory` mixin has, loses `@Mutable`, so Forge's enum extender, which runs
+  after Mixin and finds the array only while it is final, still finds it, and makes it writable for the mod (ENUM-8,
+  checked on a Forge 66 server with FrozenLib 3.0.3). Mixin's own `@Mutable` had stopped the game as the enum loaded.
+- **Mixin configs a mod adds itself:** Forge 52's and 61 to 66's Mixin (SpongePowered's 0.8.7) gives a config added
+  by name alone (`Mixins.addConfiguration`, as ReplayMod's plugin adds most of its configs) no environment, and stopped
+  the game reading it; the mod's calls give the default one, as Fabric's Mixin does (LOADER-6). Pre-flight doesn't
+  check such configs' mixins, which the mod's metadata doesn't list (MIXCFG-1). ReplayMod's apply on a Forge 66 client,
+  which joins its world; on Forge 47 one of them stops the client (MIXCFG-1).
 - **Two mixins' unique fields of one name:** for the same reason, Forge's Mixin renames a private `@Unique` field only
   when its class declares one of that name, not when another mixin adds it, and two mixins' fields became one, where
   Fabric's Mixin keeps a field each: Fabric API's screen mixin and SpruceUI's both keep `tickingScreen` in `Minecraft`,

@@ -470,6 +470,216 @@ class MixinPreflightTest {
 	}
 
 	/**
+	 * ENUM-8: FrozenLib's {@code MobCategoryMixin} adds the mob categories its entrypoints declare as on Fabric: a class
+	 * mixin into {@code MobCategory} with a constructor invoker, an {@code @Inject} into the class initializer after it sets
+	 * the values array, and a {@code @Shadow @Final @Mutable $VALUES} it appends the new constants to. Forge makes
+	 * {@code MobCategory} extensible; its enum extender, which runs after Mixin, finds the values array as the enum's first
+	 * private static final synthetic field of its array type, and Mixin had made it non-final for the {@code @Mutable}
+	 * shadow: "Enum has create method but we could not find $VALUES" stopped every Forge 61 advanced corpus server (extended
+	 * run 42682670119). The shadow loses {@code @Mutable} and {@code @Final}, so Mixin leaves the field final for the
+	 * extender, which makes it writable itself; an accessor setter of the array loses {@code @Mutable} too. A mixin into an
+	 * enum Forge doesn't make extensible (NeoForge's), or a mutable shadow of another field, is left as it is.
+	 */
+	@Test
+	void aMutableShadowOfTheValuesArrayOfAnEnumForgeMakesExtensibleIsNoLongerMutable() throws Exception {
+		String category = "net/minecraft/world/entity/MobCategory";
+		String self = "L" + category + ";";
+		String array = "[" + self;
+		String constructor = "(Ljava/lang/String;ILjava/lang/String;)V";
+		Function<Boolean, byte[]> target = forge -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER | Opcodes.ACC_ENUM, category,
+					"Ljava/lang/Enum<" + self + ">;", "java/lang/Enum", forge ? new String[] {"net/minecraftforge/common/IExtensibleEnum"} : null);
+			cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_ENUM, "MONSTER", self, null, null).visitEnd();
+			cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "CACHE", array, null, null).visitEnd();
+			cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "$VALUES", array, null, null).visitEnd();
+			MethodVisitor init = cw.visitMethod(Opcodes.ACC_PRIVATE, "<init>", constructor, null, null);
+			init.visitCode();
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitVarInsn(Opcodes.ALOAD, 1);
+			init.visitVarInsn(Opcodes.ILOAD, 2);
+			init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Enum", "<init>", "(Ljava/lang/String;I)V", false);
+			init.visitInsn(Opcodes.RETURN);
+			init.visitMaxs(0, 0);
+			init.visitEnd();
+			if (forge) {
+				// The factory Forge's enum extender writes.
+				MethodVisitor create = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "create", "(Ljava/lang/String;Ljava/lang/String;)" + self, null, null);
+				create.visitCode();
+				create.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalStateException");
+				create.visitInsn(Opcodes.DUP);
+				create.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/IllegalStateException", "<init>", "()V", false);
+				create.visitInsn(Opcodes.ATHROW);
+				create.visitMaxs(0, 0);
+				create.visitEnd();
+			}
+			MethodVisitor clinit = cw.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+			clinit.visitCode();
+			clinit.visitTypeInsn(Opcodes.NEW, category);
+			clinit.visitInsn(Opcodes.DUP);
+			clinit.visitLdcInsn("MONSTER");
+			clinit.visitInsn(Opcodes.ICONST_0);
+			clinit.visitLdcInsn("monster");
+			clinit.visitMethodInsn(Opcodes.INVOKESPECIAL, category, "<init>", constructor, false);
+			clinit.visitFieldInsn(Opcodes.PUTSTATIC, category, "MONSTER", self);
+			clinit.visitInsn(Opcodes.ICONST_1);
+			clinit.visitTypeInsn(Opcodes.ANEWARRAY, category);
+			clinit.visitInsn(Opcodes.DUP);
+			clinit.visitInsn(Opcodes.ICONST_0);
+			clinit.visitFieldInsn(Opcodes.GETSTATIC, category, "MONSTER", self);
+			clinit.visitInsn(Opcodes.AASTORE);
+			clinit.visitFieldInsn(Opcodes.PUTSTATIC, category, "$VALUES", array);
+			clinit.visitInsn(Opcodes.ICONST_0);
+			clinit.visitTypeInsn(Opcodes.ANEWARRAY, category);
+			clinit.visitFieldInsn(Opcodes.PUTSTATIC, category, "CACHE", array);
+			clinit.visitInsn(Opcodes.RETURN);
+			clinit.visitMaxs(0, 0);
+			clinit.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		String frozen = "com/example/mixin/MobCategoryMixin";
+		// FrozenLib's shape, with a @Mutable shadow of `field`: newType(...) invokes the constructor, and
+		// addCategories(CallbackInfo), injected after the class initializer sets $VALUES, appends to it.
+		Function<String, byte[]> mixin = field -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, frozen, null, "java/lang/Object", null);
+			AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+			AnnotationVisitor values = m.visitArray("value");
+			values.visit(null, Type.getObjectType(category));
+			values.visitEnd();
+			m.visitEnd();
+			FieldVisitor shadow = cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, field, array, null, null);
+			shadow.visitAnnotation(SHADOW, true).visitEnd();
+			shadow.visitAnnotation("Lorg/spongepowered/asm/mixin/Final;", true).visitEnd();
+			shadow.visitAnnotation("Lorg/spongepowered/asm/mixin/Mutable;", true).visitEnd();
+			shadow.visitEnd();
+			MethodVisitor invoker = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "newType", constructor.replace(")V", ")" + self), null, null);
+			invoker.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Invoker;", true).visit("value", "<init>");
+			invoker.visitCode();
+			invoker.visitTypeInsn(Opcodes.NEW, "java/lang/AssertionError");
+			invoker.visitInsn(Opcodes.DUP);
+			invoker.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/AssertionError", "<init>", "()V", false);
+			invoker.visitInsn(Opcodes.ATHROW);
+			invoker.visitMaxs(0, 0);
+			invoker.visitEnd();
+			MethodVisitor adds = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "addCategories",
+					"(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+			AnnotationVisitor inject = adds.visitAnnotation(INJECT, true);
+			AnnotationVisitor methods = inject.visitArray("method");
+			methods.visit(null, "<clinit>");
+			methods.visitEnd();
+			AnnotationVisitor ats = inject.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "FIELD");
+			at.visit("opcode", Opcodes.PUTSTATIC);
+			at.visit("target", self + "$VALUES:" + array);
+			at.visitEnum("shift", "Lorg/spongepowered/asm/mixin/injection/At$Shift;", "AFTER");
+			at.visitEnd();
+			ats.visitEnd();
+			inject.visitEnd();
+			adds.visitCode();
+			adds.visitFieldInsn(Opcodes.GETSTATIC, frozen, "$VALUES", array);
+			adds.visitInsn(Opcodes.ICONST_2);
+			adds.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Arrays", "copyOf", "([Ljava/lang/Object;I)[Ljava/lang/Object;", false);
+			adds.visitTypeInsn(Opcodes.CHECKCAST, array);
+			adds.visitInsn(Opcodes.DUP);
+			adds.visitInsn(Opcodes.ICONST_1);
+			adds.visitLdcInsn("FROZENLIB_GLARES");
+			adds.visitInsn(Opcodes.ICONST_1);
+			adds.visitLdcInsn("frozenlib:glares");
+			adds.visitMethodInsn(Opcodes.INVOKESTATIC, frozen, "newType", constructor.replace(")V", ")" + self), false);
+			adds.visitInsn(Opcodes.AASTORE);
+			adds.visitFieldInsn(Opcodes.PUTSTATIC, frozen, "$VALUES", array);
+			adds.visitInsn(Opcodes.RETURN);
+			adds.visitMaxs(0, 0);
+			adds.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		String accessor = "com/example/mixin/MobCategoryAccessor";
+		ClassWriter aw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		aw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, accessor, null, "java/lang/Object", null);
+		AnnotationVisitor am = aw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor av = am.visitArray("value");
+		av.visit(null, Type.getObjectType(category));
+		av.visitEnd();
+		am.visitEnd();
+		MethodVisitor setter = aw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "setValues", "(" + array + ")V", null, null);
+		setter.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", true).visit("value", "$VALUES");
+		setter.visitAnnotation("Lorg/spongepowered/asm/mixin/Mutable;", true).visitEnd();
+		setter.visitCode();
+		setter.visitTypeInsn(Opcodes.NEW, "java/lang/UnsupportedOperationException");
+		setter.visitInsn(Opcodes.DUP);
+		setter.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/UnsupportedOperationException", "<init>", "()V", false);
+		setter.visitInsn(Opcodes.ATHROW);
+		setter.visitMaxs(0, 0);
+		setter.visitEnd();
+		aw.visitEnd();
+		byte[] setterMixin = aw.toByteArray();
+
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "MobCategoryMixin", "MobCategoryAccessor"));
+		BiFunction<Boolean, byte[], MixinPreflight> preflight = (forge, mod) -> new MixinPreflight(
+				new ClassIndex(Map.of(category, target.apply(forge))::get), InstalledClasses.NONE,
+				Map.of(frozen, mod, accessor, setterMixin)::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge");
+
+		byte[] frozenLib = mixin.apply("$VALUES");
+		ClassNode forgeTarget = new ClassNode();
+		new ClassReader(target.apply(true)).accept(forgeTarget, 0);
+		assertNull(valuesAsTheExtenderFindsThem(forgeTarget, node(frozenLib)), "the failure: Mixin made the array non-final");
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight.apply(true, frozenLib).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(Set.of(frozen + ".class", accessor + ".class"), repaired.keySet(), notes.toString());
+		assertEquals(2, notes.size(), notes.toString());
+		for (PreflightFinding note : notes) {
+			assertEquals(Severity.INFO, note.severity());
+			assertTrue(note.message().contains("would make the values array of net.minecraft.world.entity.MobCategory writable")
+					&& note.message().contains("(ENUM-8)"), note.message());
+		}
+		FieldNode shadow = node(repaired.get(frozen + ".class")).fields.getFirst();
+		assertNotNull(Annotations.find(shadow, SHADOW), "still the enum's own array");
+		assertNull(Annotations.find(shadow, "Lorg/spongepowered/asm/mixin/Mutable;"));
+		assertNull(Annotations.find(shadow, "Lorg/spongepowered/asm/mixin/Final;"), "Mixin logs no write to a final field");
+		MethodNode set = node(repaired.get(accessor + ".class")).methods.getFirst();
+		assertNotNull(Annotations.find(set, "Lorg/spongepowered/asm/mixin/gen/Accessor;"));
+		assertNull(Annotations.find(set, "Lorg/spongepowered/asm/mixin/Mutable;"));
+		ClassNode extended = new ClassNode();
+		new ClassReader(target.apply(true)).accept(extended, 0);
+		FieldNode found = valuesAsTheExtenderFindsThem(extended, node(repaired.get(frozen + ".class")));
+		assertNotNull(found, "Mixin leaves the array final, for the extender");
+		assertEquals("$VALUES", found.name);
+		assertTrue(preflight.apply(true, repaired.get(frozen + ".class")).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// NeoForge's enum, or a mutable shadow of another array: left as it is.
+		List<PreflightFinding> none = new ArrayList<>();
+		assertTrue(preflight.apply(false, frozenLib).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), none).isEmpty(), none.toString());
+		Map<String, byte[]> cache = preflight.apply(true, mixin.apply("CACHE")).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), none);
+		assertEquals(Set.of(accessor + ".class"), cache.keySet(), none.toString());
+	}
+
+	private static ClassNode node(byte[] bytes) {
+		ClassNode node = new ClassNode();
+		new ClassReader(bytes).accept(node, 0);
+		return node;
+	}
+
+	/**
+	 * The field of {@code target} Forge's enum extender takes for its values array once Mixin has applied {@code mixin}'s
+	 * shadows (made non-final where {@code @Mutable}, {@code MixinApplicatorStandard}): the first of the enum's array type
+	 * that is private, static, final and synthetic ({@code RuntimeEnumExtender.processClassWithFlags}); null where the
+	 * extender stops the class loading.
+	 */
+	private static FieldNode valuesAsTheExtenderFindsThem(ClassNode target, ClassNode mixin) {
+		for (FieldNode shadow : mixin.fields) {
+			if (Annotations.find(shadow, "Lorg/spongepowered/asm/mixin/Mutable;") == null) continue;
+			target.fields.stream().filter(f -> f.name.equals(shadow.name) && f.desc.equals(shadow.desc)).forEach(f -> f.access &= ~Opcodes.ACC_FINAL);
+		}
+		int flags = Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC;
+		return target.fields.stream().filter(f -> f.desc.equals("[L" + target.name + ";") && (f.access & flags) == flags).findFirst().orElse(null);
+	}
+
+	/**
 	 * CORPUS-95: Fabric API's screen mixin and SpruceUI's both add {@code @Unique private Screen tickingScreen} to
 	 * {@code Minecraft}. Fabric's Mixin renames the later one, as an earlier mixin adds the name; Forge's (SpongePowered's)
 	 * prepares both before it adds either field, renames neither, and the two mixins shared one field: SpruceUI's hook

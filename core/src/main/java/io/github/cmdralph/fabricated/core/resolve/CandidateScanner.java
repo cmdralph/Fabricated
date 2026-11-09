@@ -194,6 +194,14 @@ public final class CandidateScanner {
 				notes.add(origin + " bundles " + metadata.getId() + ", which " + loader + " already provides; the bundled copy is not loaded");
 				return null;
 			}
+			// A library's own jar under another id (Loom's, for MixinExtras' Fabric jar, which Origins nests three jars deep):
+			// its classes are all left out for the platform's, and its mixin configs, which can only name them, would still be
+			// found by name, MixinExtras' init config before the platform's of the same name, which Mixin then never runs.
+			if (!metadata.mixins().isEmpty() && PlatformLibraries.onlyLibraryClasses(archive.classEntryNames())) {
+				notes.add(origin + " bundles " + metadata.getId() + ", a copy of a library " + loader + " already provides, with mixin configs"
+						+ " naming its classes; the bundled copy is not loaded (PLAT-7)");
+				return null;
+			}
 			if (depth < limits.maxNestingDepth()) {
 				for (String nested : metadata.nestedJars()) {
 					String nestedOrigin = origin + "!/" + nested;
