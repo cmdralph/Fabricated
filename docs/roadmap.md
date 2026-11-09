@@ -49,7 +49,7 @@ The task table is the pass's checkpoint: it changes with every step, so the work
 | # | Task | Status |
 |---|---|---|
 | 1 | Rethink the project and the spec: the support matrix, the conclusions, the criteria, the plan (below) | Done |
-| 2 | CI and workflows: one workflow and one test harness on every branch, the same test-mod suite everywhere, caching, CurseForge deployment | In progress: the Forge-shared code is on `main`; next the workflow and harness (`ci.yml`, checks as data), the shared test mods on the real Fabric API, the release workflow with CurseForge, then the Forge branches' syncs |
+| 2 | CI and workflows: one workflow and one test harness on every branch, the same test-mod suite everywhere, caching, CurseForge deployment | In progress: on `main`'s branch, done (#326): `ci.yml`, the shared harness with checks as data, the shared test mods on the real Fabric API, the Forge-shared code, the release workflow with CurseForge. `forge-legacy`'s branch is on all of it, every local run passing; `forge`'s is under way. Then the syncs' pull requests and the times after |
 | 3 | Forge parity, and Minecraft 1.21.1 on Forge (Forge 52, `forge-legacy`) | — |
 | 4 | Compatibility: Fabric API coverage, mixin and remapping edge cases, the difficult mods, popular mods on every loader and version | — |
 | 5 | Security and robustness review, the release workflow's secrets included | — |
