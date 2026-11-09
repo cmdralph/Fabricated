@@ -1706,7 +1706,7 @@ vanilla form (NET-13), and the bridges of the fields it replaced, named after Mo
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 22, client 3 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 22, client 4 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.1 | mixins 4 | 1 | true | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 1.21.1 | mixins 2 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
@@ -1760,6 +1760,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | client | LiquidBlockRendererSpritesMixin | 1.21.1 (1.21.1) | n.m.client.renderer.block.LiquidBlockRenderer (priority 1100: after upstream's hook at the same point) | @ModifyVariable → fabricated$overlaySlot | "tesselate" | INVOKE `L…/LiquidBlockRenderer;isNeighborSameFluid(L…/FluidState;L…/FluidState;)Z`, the first `TextureAtlasSprite[]` local | — | default |
 | client | ExtendedBlockModelDeserializerMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | forge.client.model.ExtendedBlockModelDeserializer | @WrapOperation → fabricated$fabricLoader | "deserialize(Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lnet/minecraft/client/renderer/block/model/BlockModel;" | INVOKE `L…/ExtendedBlockModelDeserializer;deserializeGeometry(L…/JsonDeserializationContext;L…/JsonObject;)L…/IUnbakedGeometry;` | — | default |
 | client | ParticleEngineProvidersBridgeMixin | 1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | no injectors; adds methods fabricated$get$providers (named after Mojang's name of the field, ACC-5); @Shadow providers; @Unique fields fabricated$providersById | | | | |
+| client | ParticleEngineRenderMixin | 1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Redirect → fabricated$renderOverload (the call of the overload taking a frustum, with none, which Forge 52's vanilla method makes of itself, IRIS-2) | "render(L…/LightTexture;L…/Camera;F)V" | INVOKE `L…/ParticleEngine;render(L…/LightTexture;L…/Camera;F)V` | — | require=0 (none where Forge 52 calls the overload itself) |
 
 ### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json`
 
