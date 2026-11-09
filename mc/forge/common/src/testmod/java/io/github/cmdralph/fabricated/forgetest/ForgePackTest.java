@@ -16,7 +16,7 @@ import net.minecraft.world.damagesource.DamageType;
  */
 public final class ForgePackTest {
 	private static final ResourceKey<DamageType> ENTRY = ResourceKey.create(Registries.DAMAGE_TYPE,
-			Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "conditions_kept"));
+			Identifier.fromNamespaceAndPath(ForgeTestMod.NAMESPACE, "conditions_kept"));
 
 	private ForgePackTest() {
 	}
@@ -25,9 +25,9 @@ public final class ForgePackTest {
 		var damageTypes = server.registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE);
 		var lifecycle = damageTypes.registrationInfo(ENTRY).map(info -> info.lifecycle());
 		if (lifecycle.isPresent() && lifecycle.get().equals(Lifecycle.stable())) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST mod pack data is stable OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST mod pack data is stable OK");
 		} else {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST mod pack data is stable FAILED: {} has {}", ENTRY.identifier(),
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST mod pack data is stable FAILED: {} has {}", ENTRY.identifier(),
 					lifecycle.map(value -> "the lifecycle " + value).orElse("no registration info"));
 		}
 	}

@@ -23,9 +23,9 @@ public final class ForgeCommandTest {
 	/** At the first server tick, with the server's commands. */
 	public static void check(MinecraftServer server) {
 		if (server.getCommands().getDispatcher().getRoot().getChild(COMMAND) != null) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST Fabric command registered OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST Fabric command registered OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST Fabric command {} is not in the server's dispatcher", COMMAND);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST Fabric command {} is not in the server's dispatcher", COMMAND);
 		}
 	}
 }

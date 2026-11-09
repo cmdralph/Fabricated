@@ -23,10 +23,10 @@ import net.minecraft.world.item.Items;
  * old name only (optional, so a run without Fabric API reads the tag without it).
  */
 public final class ForgeRegistryAliasTest {
-	private static final Identifier NEW_NAME = Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "renamed_item");
-	private static final Identifier OLD_NAME = Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "item_before_renaming");
-	private static final Identifier OLD_STONE = Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "old_stone");
-	private static final TagKey<Item> ALIASED = TagKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "aliased"));
+	private static final Identifier NEW_NAME = Identifier.fromNamespaceAndPath(ForgeTestMod.NAMESPACE, "renamed_item");
+	private static final Identifier OLD_NAME = Identifier.fromNamespaceAndPath(ForgeTestMod.NAMESPACE, "item_before_renaming");
+	private static final Identifier OLD_STONE = Identifier.fromNamespaceAndPath(ForgeTestMod.NAMESPACE, "old_stone");
+	private static final TagKey<Item> ALIASED = TagKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(ForgeTestMod.NAMESPACE, "aliased"));
 	private static Item renamed;
 
 	private ForgeRegistryAliasTest() {
@@ -51,9 +51,9 @@ public final class ForgeRegistryAliasTest {
 		if (BuiltInRegistries.ITEM.getValue(OLD_STONE) != Items.STONE) failed.add("the alias of stone is " + BuiltInRegistries.ITEM.getValue(OLD_STONE));
 		if (!NEW_NAME.equals(BuiltInRegistries.ITEM.getKey(renamed))) failed.add("its name is " + BuiltInRegistries.ITEM.getKey(renamed));
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST registry aliases OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST registry aliases OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST registry aliases not resolved: {}", String.join("; ", failed));
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST registry aliases not resolved: {}", String.join("; ", failed));
 		}
 	}
 }

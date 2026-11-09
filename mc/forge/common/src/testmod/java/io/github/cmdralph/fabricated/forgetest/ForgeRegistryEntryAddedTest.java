@@ -20,8 +20,8 @@ import net.minecraftforge.registries.ForgeRegistries;
  * raw id, with the registry already holding it.
  */
 public final class ForgeRegistryEntryAddedTest {
-	private static final Identifier VANILLA_API = Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "entry_added_vanilla");
-	private static final Identifier FORGE_API = Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "entry_added_forge");
+	private static final Identifier VANILLA_API = Identifier.fromNamespaceAndPath(ForgeTestMod.NAMESPACE, "entry_added_vanilla");
+	private static final Identifier FORGE_API = Identifier.fromNamespaceAndPath(ForgeTestMod.NAMESPACE, "entry_added_forge");
 
 	private ForgeRegistryEntryAddedTest() {
 	}
@@ -38,9 +38,9 @@ public final class ForgeRegistryEntryAddedTest {
 		ForgeRegistries.ITEMS.register(FORGE_API, forge);
 		List<String> expected = List.of(VANILLA_API + " " + items.getId(vanilla), FORGE_API + " " + items.getId(forge));
 		if (heard.equals(expected)) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST registry entry added events OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST registry entry added events OK");
 		} else {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST registry entry added events FAILED: heard {}, expected {}", heard, expected);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST registry entry added events FAILED: heard {}, expected {}", heard, expected);
 		}
 	}
 }

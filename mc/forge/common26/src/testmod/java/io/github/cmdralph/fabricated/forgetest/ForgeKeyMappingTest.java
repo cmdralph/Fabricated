@@ -28,7 +28,7 @@ public final class ForgeKeyMappingTest {
 
 	/** From the client entrypoint. */
 	public static void register() {
-		KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "checks"));
+		KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(ForgeTestMod.NAMESPACE, "checks"));
 		KeyMapping mapping = new KeyMapping("key.fabricated_forge_testmod.check", InputConstants.KEY_J, category);
 		if (KeyMappingHelper.registerKeyMapping(mapping) != mapping) failure = "registering didn't return the key mapping";
 		try {
@@ -69,7 +69,7 @@ public final class ForgeKeyMappingTest {
 		InputConstants.Key saved = InputConstants.getKey("key.keyboard.k");
 		InputConstants.Key bound = KeyMappingHelper.getBoundKeyOf(key);
 		if (!saved.equals(bound)) failed.add("bound to " + bound.getName() + ", not the key saved for it, " + saved.getName());
-		if (failed.isEmpty()) ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST key mapping OK");
-		else ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST key mapping FAILED: {}", String.join("; ", failed));
+		if (failed.isEmpty()) ForgeTestMod.LOGGER.info("FABRICATED-TEST key mapping OK");
+		else ForgeTestMod.LOGGER.error("FABRICATED-TEST key mapping FAILED: {}", String.join("; ", failed));
 	}
 }

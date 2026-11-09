@@ -29,9 +29,9 @@ public final class ForgeParticleTintTest {
 		ClientPlayConnectionEvents.JOIN.register((listener, sender, client) -> {
 			new TerrainParticle(client.level, 0.5, 64.0, 0.5, 0.0, 0.0, 0.0, Blocks.STONE.defaultBlockState(), BlockPos.ZERO);
 			if (asked) {
-				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST block dust tint event OK");
+				ForgeTestMod.LOGGER.info("FABRICATED-TEST block dust tint event OK");
 			} else {
-				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST block dust tint event: a stone particle didn't ask it");
+				ForgeTestMod.LOGGER.warn("FABRICATED-TEST block dust tint event: a stone particle didn't ask it");
 			}
 		});
 	}

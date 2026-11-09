@@ -65,9 +65,9 @@ public final class ForgeBlockBreakTest {
 		level.setBlockAndUpdate(lower, Blocks.AIR.defaultBlockState());
 		level.setBlockAndUpdate(upper, Blocks.AIR.defaultBlockState());
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST block break events OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST block break events OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST block break events: {}", String.join("; ", failed));
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST block break events: {}", String.join("; ", failed));
 		}
 	}
 }

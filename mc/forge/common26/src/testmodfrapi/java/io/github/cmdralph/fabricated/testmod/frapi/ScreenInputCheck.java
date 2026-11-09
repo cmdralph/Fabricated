@@ -2,8 +2,8 @@ package io.github.cmdralph.fabricated.testmod.frapi;
 
 import com.mojang.blaze3d.platform.InputConstants;
 
-import io.github.cmdralph.fabricated.testmod.frapi.mixin.KeyboardHandlerInvoker;
-import io.github.cmdralph.fabricated.testmod.frapi.mixin.MouseHandlerInvoker;
+import io.github.cmdralph.fabricated.testmod.frapi.forgemixin.KeyboardHandlerInvoker;
+import io.github.cmdralph.fabricated.testmod.frapi.forgemixin.MouseHandlerInvoker;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.minecraft.client.Minecraft;
@@ -95,12 +95,17 @@ final class ScreenInputCheck {
 	}
 
 	void report() {
-		ClientApiTestMod.report(keyPressRefused && !keyPressWentOn, "screen key press event", keyPressWentOn
+		report(keyPressRefused && !keyPressWentOn, "screen key press event", keyPressWentOn
 				? "a key press allowKeyPress refused still went on to beforeKeyPress"
 				: "allowKeyPress never saw the key press sent to the shown screen");
-		ClientApiTestMod.report(keyReleased, "screen key release event", "afterKeyRelease never saw the key release sent to the shown screen");
-		ClientApiTestMod.report(characterRefused, "screen character event", "allowCharType never saw the character typed into the shown screen");
-		ClientApiTestMod.report(clickRefused, "screen mouse click event", "allowMouseClick never saw the button pressed over the shown screen");
-		ClientApiTestMod.report(releaseRefused, "screen mouse release event", "allowMouseRelease never saw the button released over the shown screen");
+		report(keyReleased, "screen key release event", "afterKeyRelease never saw the key release sent to the shown screen");
+		report(characterRefused, "screen character event", "allowCharType never saw the character typed into the shown screen");
+		report(clickRefused, "screen mouse click event", "allowMouseClick never saw the button pressed over the shown screen");
+		report(releaseRefused, "screen mouse release event", "allowMouseRelease never saw the button released over the shown screen");
+	}
+
+	private static void report(boolean ok, String check, String failure) {
+		if (ok) FrapiTestMod.LOGGER.info("FABRICATED-TEST {} OK", check);
+		else FrapiTestMod.LOGGER.error("FABRICATED-TEST {} FAILED: {}", check, failure);
 	}
 }

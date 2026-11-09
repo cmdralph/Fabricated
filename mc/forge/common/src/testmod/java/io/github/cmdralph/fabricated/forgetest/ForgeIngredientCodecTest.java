@@ -68,9 +68,9 @@ public final class ForgeIngredientCodecTest {
 			return found;
 		});
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST optional ingredients on the network OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST optional ingredients on the network OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST optional ingredients on the network not as vanilla's: {}", String.join("; ", failed));
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST optional ingredients on the network not as vanilla's: {}", String.join("; ", failed));
 		}
 	}
 
@@ -95,9 +95,9 @@ public final class ForgeIngredientCodecTest {
 			return found;
 		});
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST Fabric mods' ingredients on the network OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST Fabric mods' ingredients on the network OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST Fabric mods' ingredients on the network not as upstream's: {}", String.join("; ", failed));
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST Fabric mods' ingredients on the network not as upstream's: {}", String.join("; ", failed));
 		}
 	}
 
@@ -128,9 +128,9 @@ public final class ForgeIngredientCodecTest {
 			return found;
 		});
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST Fabric API's custom ingredients on the network OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST Fabric API's custom ingredients on the network OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST Fabric API's custom ingredients on the network not as upstream's: {}", String.join("; ", failed));
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST Fabric API's custom ingredients on the network not as upstream's: {}", String.join("; ", failed));
 		}
 	}
 

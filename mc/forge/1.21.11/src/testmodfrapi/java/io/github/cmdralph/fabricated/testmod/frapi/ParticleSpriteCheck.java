@@ -1,24 +1,37 @@
 package io.github.cmdralph.fabricated.testmod.frapi;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Predicate;
 
 import org.jspecify.annotations.Nullable;
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin;
+import net.fabricmc.fabric.api.client.model.loading.v1.ModelModifier;
+import net.fabricmc.fabric.api.renderer.v1.mesh.QuadEmitter;
+import net.fabricmc.fabric.api.renderer.v1.model.FabricBlockStateModel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.block.model.BlockModelPart;
+import net.minecraft.client.renderer.block.model.BlockStateModel;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * The terrain block's Fabric model gives a level-aware particle sprite ({@code FabricBlockStateModel.particleSprite}),
- * which Forge 61 asks a model with its model data instead of (PART-4): the model calls {@link #asked} as it gives it,
+ * which Forge 61 asks a model with its model data instead of (PART-4): this check's wrapper of the model calls {@link #asked} as it gives it,
  * which logs once for each place the game asked from. Once the player is in the world,
  * this client makes the block's breaking particles (whose sprite Forge sets again in {@code TerrainParticle.updateSprite})
  * and a block marker of it, and shows the screen effect inside it: the block is put at the player's eye on this client
@@ -41,6 +54,9 @@ final class ParticleSpriteCheck {
 	}
 
 	static void register() {
+		// After every other wrapper, the shared checks' included.
+		ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register(ModelModifier.WRAP_LAST_PHASE, (model, context) ->
+				BuiltInRegistries.BLOCK.getKey(context.state().getBlock()).equals(FrapiTestMod.TERRAIN_BLOCK_ID) ? new SpriteCheckModel(model) : model));
 		ClientTickEvents.START_CLIENT_TICK.register(client -> takeAway(client.level));
 		ClientTickEvents.END_CLIENT_TICK.register(ParticleSpriteCheck::put);
 	}
@@ -69,7 +85,7 @@ final class ParticleSpriteCheck {
 	private static void put(Minecraft client) {
 		ClientLevel level = client.level;
 		LocalPlayer player = client.player;
-		Block block = FrapiTestMod.terrainBlock;
+		Block block = terrainBlock();
 		if (level == null || player == null || block == null) return;
 		BlockState terrain = block.defaultBlockState();
 		if (!particlesMade) {
@@ -92,5 +108,38 @@ final class ParticleSpriteCheck {
 		placed = null;
 		replaced = null;
 		if (level != null && pos != null && state != null) level.setBlockAndUpdate(pos, state);
+	}
+
+	private static @Nullable Block terrainBlock() {
+		return BuiltInRegistries.BLOCK.getOptional(FrapiTestMod.TERRAIN_BLOCK_ID).orElse(null);
+	}
+
+	/** The terrain block's model as the shared checks made it, telling this check where its particle sprite is asked. */
+	private record SpriteCheckModel(BlockStateModel wrapped) implements BlockStateModel, FabricBlockStateModel {
+		@Override
+		public void collectParts(RandomSource random, List<BlockModelPart> parts) {
+			wrapped.collectParts(random, parts);
+		}
+
+		@Override
+		public TextureAtlasSprite particleIcon() {
+			return wrapped.particleIcon();
+		}
+
+		@Override
+		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
+			((FabricBlockStateModel) wrapped).emitQuads(emitter, level, pos, state, random, cullTest);
+		}
+
+		@Override
+		public Object createGeometryKey(BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random) {
+			return ((FabricBlockStateModel) wrapped).createGeometryKey(level, pos, state, random);
+		}
+
+		@Override
+		public TextureAtlasSprite particleSprite(BlockAndTintGetter level, BlockPos pos, BlockState state) {
+			asked(state, pos);
+			return ((FabricBlockStateModel) wrapped).particleSprite(level, pos, state);
+		}
 	}
 }

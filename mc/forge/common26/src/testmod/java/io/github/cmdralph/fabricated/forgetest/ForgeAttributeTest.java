@@ -29,7 +29,7 @@ public final class ForgeAttributeTest {
 	@SuppressWarnings("unchecked")
 	public static void register() {
 		if (!BuiltInRegistries.ENTITY_TYPE.containsKey(COW)) {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST default attributes: no entity type {}", COW);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST default attributes: no entity type {}", COW);
 			return;
 		}
 		EntityType<? extends LivingEntity> type = (EntityType<? extends LivingEntity>) BuiltInRegistries.ENTITY_TYPE.getValue(COW);
@@ -43,9 +43,9 @@ public final class ForgeAttributeTest {
 		double armor = defaults.getBaseValue(Attributes.ARMOR);
 		double health = defaults.getBaseValue(Attributes.MAX_HEALTH);
 		if (armor == ARMOR && health == COW_HEALTH) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST default attributes OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST default attributes OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST default attributes: a cow's armor is {} (MODIFY set {}), its health {}", armor, ARMOR, health);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST default attributes: a cow's armor is {} (MODIFY set {}), its health {}", armor, ARMOR, health);
 		}
 	}
 }

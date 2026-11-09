@@ -62,9 +62,9 @@ public final class ForgeSleepTest {
 		}
 		level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST sleep events OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST sleep events OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST sleep events: {}", String.join("; ", failed));
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST sleep events: {}", String.join("; ", failed));
 		}
 	}
 }
