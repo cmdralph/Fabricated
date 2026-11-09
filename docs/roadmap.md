@@ -168,6 +168,21 @@ that fixes or closes it.
 | CORPUS-5 | P3, cosmetic, UNVERIFIED | Traveler's Backpack (26.3 corpus) | NeoForge warns "Missing FluidModel" for its potion fluids. NeoForge's check runs inside `FluidStateModelSet.bake`, and upstream's `FluidStateModelSetMixin` wraps that method to add the models of Fabric-registered fluids after it returns, so the warning comes before those models are added. Whether the potion fluids have a model at all is UNVERIFIED. | Could register Fabric's fluid models through NeoForge's `RegisterFluidModelsEvent` instead. Low value. |
 | CORPUS-17 | P3, UNVERIFIED | REI's Fabric build (26.2, 26.3 corpus) | REI logs "Failed to fill display for recipe" for Farmer's Delight's cooking pot recipes (2 to 4 times) and, on the 26.3 dedicated server, for 560 brewing recipes (run 379). REI logs them without a stack (run 381's digest found none to print). | Open: needs REI's own log at debug level, or its source. |
 | CORPUS-25 | P3 | Terralith (26.3 server corpus, every run since at least run 420) | About 130 warnings per server run from NeoForge's `ModifiableBiomeInfo`: "Cannot modify spawn settings of biome terralith:alpha_islands, found unexpected attribute modifier OverrideModifier[]" (the first of them; runs 40241680133 and 40244234167). NeoForge 26.3 refuses to modify the spawns of a biome whose `natural_mob_spawns` attribute uses a modifier other than `overlay` (`ModifiableBiomeInfo`, read in its source), so biome modifiers can't add spawns to those biomes. | Open, likely Terralith's: the count fits every Terralith biome declaring an `override` modifier, which would warn on NeoForge without Fabricated too; UNVERIFIED, as Terralith's 26.x data isn't in its public repository. |
+## Compatibility baseline (task 4)
+
+The extended runs of 2026-11-09 on `main` (42624614743), `forge` (42624619386) and `forge-legacy` (42624625243): every
+corpus run passes on every version (informational), and every gate holds but one.
+
+| Where | What | Status |
+|---|---|---|
+| Forge 64 to 66 clients with the Fabric builds of Sodium and Iris | The renderer API test mod's leaked transform check fails: a transform a Fabric block model pushed before it threw, drawn in an entity, reaches the next quads, as Forge's seam pops transforms only on Indigo's emitter | Task 4, a gate |
+| NeoForge 1.21.1, advanced client | Figura disabled by pre-flight: its armor layer hooks don't occur in NeoForge's `HumanoidArmorLayer.renderArmorPiece` | Task 4 |
+| NeoForge 1.21.11, advanced corpus | Biomes O' Plenty's Fabric build disabled by pre-flight: its `Entity.updateFluidOnEyes` redirect doesn't occur in NeoForge's method | Task 4 |
+| Forge 47, client corpus | Porting Lib's GUI utilities disabled by pre-flight: a `@ModifyArgs` call in `GuiGraphics` Forge changed | Task 4 |
+| Forge 47, corpus | ModernFix names Fabric Loader's error GUI (`net.fabricmc.loader.impl.gui`), which Fabricated doesn't provide | Task 4 |
+| Every version | Fabric Language Kotlin names Fabric Loader's old `LanguageAdapter` (CORPUS-38) | Open, no mod seen needing it |
+| Forge 47 and 61 to 66 | The advanced corpus doesn't run on Forge | Task 4 |
+
 ## Not in this pass
 
 Candidates, each waiting for a mod or a report that needs it:
