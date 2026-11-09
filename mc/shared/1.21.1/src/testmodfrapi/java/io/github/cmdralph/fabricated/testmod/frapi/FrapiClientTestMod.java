@@ -339,7 +339,8 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		@Override
 		public void emitBlockQuads(BlockAndTintGetter level, BlockState state, BlockPos pos, Supplier<RandomSource> randomSupplier, RenderContext context) {
 			emitWrapped(level, state, pos, randomSupplier, context);
-			if (level instanceof RenderChunkRegion) {
+			// A chunk section's level: vanilla's, or Sodium's when Sodium meshes the world.
+			if (level instanceof RenderChunkRegion || level.getClass().getName().equals("net.caffeinemc.mods.sodium.client.world.LevelSlice")) {
 				if (!logged.getAndSet(true)) {
 					FrapiTestMod.LOGGER.info("FABRICATED-TEST {} ({} in {} on {}, seam={})", check, state, level.getClass().getName(), Thread.currentThread().getName(), seam());
 				}
