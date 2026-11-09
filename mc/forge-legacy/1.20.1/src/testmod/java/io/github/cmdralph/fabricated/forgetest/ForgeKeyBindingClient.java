@@ -18,7 +18,7 @@ import net.minecraft.class_3675;
  * mod registers from its client entrypoint, as Fabric mods register theirs, must be in the game's options once the game
  * has started, its category sorted after the game's; registering it twice, or once Forge's key mapping event has added
  * the key bindings, must throw as upstream's does; and it must have the key CI's options file saved for it
- * (ci/forge-legacy/smoke-client.sh), which Forge reads again once mods have loaded. Where another mod provides the module
+ * (ci/smoke-client.sh), which Forge reads again once mods have loaded. Where another mod provides the module
  * (Forgified Fabric API), a late registration is that mod's to refuse ({@link ForgeTestMod#report}). In Intermediary's
  * names: {@code class_304} is {@code KeyMapping}, {@code class_315} {@code Options}, {@code class_3675} {@code
  * InputConstants}.

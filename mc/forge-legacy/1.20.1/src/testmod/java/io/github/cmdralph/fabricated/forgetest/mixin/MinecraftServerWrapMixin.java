@@ -26,7 +26,7 @@ public abstract class MinecraftServerWrapMixin {
 		original.call(hasTimeLeft);
 		if (!fabricatedForgeTest$wrapped) {
 			fabricatedForgeTest$wrapped = true;
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST MixinExtras OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST MixinExtras OK");
 		}
 	}
 }

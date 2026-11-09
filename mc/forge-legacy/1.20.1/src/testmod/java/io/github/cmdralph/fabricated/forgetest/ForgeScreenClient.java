@@ -66,9 +66,9 @@ public final class ForgeScreenClient {
 			sending = false;
 		}
 		if (ASKED.size() == 4) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST screen mouse and key events OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST screen mouse and key events OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST screen mouse and key events: only {} asked", ASKED);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST screen mouse and key events: only {} asked", ASKED);
 		}
 	}
 }

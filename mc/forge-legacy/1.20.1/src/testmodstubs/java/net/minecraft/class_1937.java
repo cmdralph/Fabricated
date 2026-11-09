@@ -1,15 +1,13 @@
 package net.minecraft;
 
 /**
- * {@code Level}: {@code field_25179} is {@code OVERWORLD}, {@code field_25181} {@code END}; {@code method_8320} is
- * {@code getBlockState(BlockPos)} (of {@code BlockGetter}), {@code method_8652} {@code setBlock(BlockPos, BlockState,
- * int)} and {@code method_8649} {@code addFreshEntity(Entity)} (of {@code LevelWriter}); {@code method_43126} is
- * {@code getSharedSpawnPos()}, {@code method_8321} {@code getBlockEntity(BlockPos)} (of {@code BlockGetter}),
- * {@code method_31600} {@code getMaxBuildHeight()} (of {@code LevelHeightAccessor}), {@code method_48963}
- * {@code damageSources()}.
+ * {@code Level}: {@code field_25181} is {@code END}; {@code method_8320} is {@code getBlockState(BlockPos)} (of
+ * {@code BlockGetter}), {@code method_8652} {@code setBlock(BlockPos, BlockState, int)} and {@code method_8649}
+ * {@code addFreshEntity(Entity)} (of {@code LevelWriter}); {@code method_43126} is {@code getSharedSpawnPos()},
+ * {@code method_8321} {@code getBlockEntity(BlockPos)} (of {@code BlockGetter}), {@code method_31600}
+ * {@code getMaxBuildHeight()} (of {@code LevelHeightAccessor}), {@code method_48963} {@code damageSources()}.
  */
 public abstract class class_1937 {
-	public static class_5321<class_1937> field_25179;
 	public static class_5321<class_1937> field_25181;
 
 	class_1937() {

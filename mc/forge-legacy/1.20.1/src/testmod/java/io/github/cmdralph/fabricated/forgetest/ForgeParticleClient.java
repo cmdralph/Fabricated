@@ -80,10 +80,10 @@ public final class ForgeParticleClient {
 		// A tint hook that doesn't apply fails this load, which the caller logs.
 		ForgeTestMod.LOGGER.debug("TerrainParticle is {} here", class_727.class.getName());
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST particles OK (factory registered {} the particle engine existed)",
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST particles OK (factory registered {} the particle engine existed)",
 					beforeEngine ? "before" : "after");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST particles: {}", String.join("; ", failed));
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST particles: {}", String.join("; ", failed));
 		}
 	}
 }

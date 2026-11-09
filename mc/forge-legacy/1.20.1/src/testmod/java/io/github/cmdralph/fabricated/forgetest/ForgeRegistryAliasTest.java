@@ -42,7 +42,7 @@ public final class ForgeRegistryAliasTest {
 			items.addAlias(OLD_NAME, NEW_NAME);
 			items.addAlias(OLD_STONE, new class_2960("minecraft", "stone"));
 		} catch (RuntimeException | LinkageError e) {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST registry aliases not added", e);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST registry aliases not added", e);
 		}
 	}
 
@@ -64,9 +64,9 @@ public final class ForgeRegistryAliasTest {
 			failed.add(e.toString());
 		}
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST registry aliases OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST registry aliases OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST registry aliases not resolved: {}", String.join("; ", failed));
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST registry aliases not resolved: {}", String.join("; ", failed));
 		}
 	}
 }

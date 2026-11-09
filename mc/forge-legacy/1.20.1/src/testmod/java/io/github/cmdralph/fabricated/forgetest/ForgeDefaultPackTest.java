@@ -36,7 +36,7 @@ public final class ForgeDefaultPackTest {
 	static void register() {
 		var container = FabricLoader.getInstance().getModContainer(ForgeTestMod.MOD_ID).orElseThrow();
 		registered = ResourceManagerHelper.registerBuiltinResourcePack(PACK, container, ResourcePackActivationType.DEFAULT_ENABLED);
-		if (!registered) ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST builtin resource pack enabled by default FAILED: {} wasn't registered", PACK);
+		if (!registered) ForgeTestMod.LOGGER.error("FABRICATED-TEST builtin resource pack enabled by default FAILED: {} wasn't registered", PACK);
 	}
 
 	/** Once the integrated server ticks, the game has selected its packs: the check runs on the render thread. */
@@ -53,6 +53,6 @@ public final class ForgeDefaultPackTest {
 		ForgeTestMod.report("builtin resource pack enabled by default", failed, "fabric-resource-loader-v0", Map.of(NOT_SELECTED,
 				"it switches a built-in pack enabled by default on as the options load (GameOptionsMixin.onLoad), which on Forge is before the entrypoints"
 						+ " register theirs (CORPUS-104)"));
-		if (!failed.isEmpty()) ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST builtin resource pack: the game's packs {}", selected);
+		if (!failed.isEmpty()) ForgeTestMod.LOGGER.info("FABRICATED-TEST builtin resource pack: the game's packs {}", selected);
 	}
 }

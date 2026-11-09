@@ -60,7 +60,7 @@ public final class ForgeDropCaptureTest {
 	/** At the first server tick, on the overworld. */
 	public static void check(class_3218 level) {
 		if (!(class_7923.field_41177.method_10223(new class_2960("minecraft", "pig")).method_5883(level) instanceof class_1309 pig)) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST drop capture FAILED: could not create a pig");
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST drop capture FAILED: could not create a pig");
 			return;
 		}
 		class_2338 site = ForgeTestMod.testSite(level, 24, 284, 8);
@@ -69,7 +69,7 @@ public final class ForgeDropCaptureTest {
 		try {
 			pig.method_6078(level.method_48963().method_48830());
 		} catch (RuntimeException e) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST drop capture FAILED: the pig's death threw", e);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST drop capture FAILED: the pig's death threw", e);
 			return;
 		} finally {
 			dying = null;
@@ -90,9 +90,9 @@ public final class ForgeDropCaptureTest {
 			}
 		}
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST drop capture OK{}", drops == null ? " (Porting Lib's hook took the drops)" : "");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST drop capture OK{}", drops == null ? " (Porting Lib's hook took the drops)" : "");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST drop capture: {}", failed);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST drop capture: {}", failed);
 		}
 	}
 

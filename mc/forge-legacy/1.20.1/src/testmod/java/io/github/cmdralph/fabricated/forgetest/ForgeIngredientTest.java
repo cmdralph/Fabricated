@@ -58,9 +58,9 @@ public final class ForgeIngredientTest {
 			failed.add(e.toString());
 		}
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST Fabric API's custom ingredients OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST Fabric API's custom ingredients OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST Fabric API's custom ingredients not as upstream's: {}", String.join("; ", failed));
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST Fabric API's custom ingredients not as upstream's: {}", String.join("; ", failed));
 		}
 	}
 

@@ -4,3 +4,10 @@ plugins {
 }
 
 apply from: rootProject.file('mc/mc.gradle')
+
+// The pass-through modules the in-game mod calls besides those its plan lists (an unlisted module passes through).
+dependencies {
+    compileOnly fabricApi(['fabric-api-lookup-api-v1', 'fabric-content-registries-v0', 'fabric-lifecycle-events-v1',
+            'fabric-model-loading-api-v1', 'fabric-recipe-api-v1', 'fabric-renderer-api-v1', 'fabric-renderer-indigo',
+            'fabric-resource-conditions-api-v1', 'fabric-transfer-api-v1'])
+}

@@ -33,11 +33,11 @@ public abstract class HudHooksMixin {
 		if (started == 1) {
 			ci.cancel();
 		} else if (started == 2) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST hud method start hook OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST hud method start hook OK");
 			if (fabricatedForgeTest$endedCancelled) {
-				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST hud method start hook cancels FAILED: the end hook ran in the drawing the start hook cancelled");
+				ForgeTestMod.LOGGER.error("FABRICATED-TEST hud method start hook cancels FAILED: the end hook ran in the drawing the start hook cancelled");
 			} else {
-				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST hud method start hook cancels OK");
+				ForgeTestMod.LOGGER.info("FABRICATED-TEST hud method start hook cancels OK");
 			}
 		}
 	}
@@ -48,7 +48,7 @@ public abstract class HudHooksMixin {
 			fabricatedForgeTest$endedCancelled = true;
 		} else if (!fabricatedForgeTest$endReported) {
 			fabricatedForgeTest$endReported = true;
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST hud method end hook OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST hud method end hook OK");
 		}
 	}
 }

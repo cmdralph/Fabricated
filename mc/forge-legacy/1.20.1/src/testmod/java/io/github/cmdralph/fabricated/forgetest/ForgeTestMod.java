@@ -31,7 +31,7 @@ import net.minecraft.server.MinecraftServer;
 
 /**
  * The forge-legacy branch's Fabric test mod (docs/PORTING.md §7, L3): its entrypoints and its mixin each log a line the
- * server smoke looks for (ci/forge-legacy/smoke-server.sh). It uses Fabric Loader's API, and of Fabric API only the
+ * server smoke looks for (ci/smoke-server.sh). It uses Fabric Loader's API, and of Fabric API only the
  * modules Fabricated provides itself (fabric-biome-api-v1, fabric-dimensions-v1, fabric-loot-api-v2,
  * fabric-loot-tables-v1 and fabric-particles-v1), as the smoke runs without Fabric API's jar too. It registers fluids
  * as Fabric mods do, and names the game's classes as a Fabric mod for 1.20.1 does, in Intermediary's names (the
@@ -52,20 +52,20 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	@Override
 	public void onInitialize() {
 		String version = FabricLoader.getInstance().getModContainer(MOD_ID).map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("none");
-		LOGGER.info("FABRICATED-FORGE-TEST main entrypoint OK (version {}, Fabric Loader sees {} mods)", version, FabricLoader.getInstance().getAllMods().size());
+		LOGGER.info("FABRICATED-TEST main entrypoint OK (version {}, Fabric Loader sees {} mods)", version, FabricLoader.getInstance().getAllMods().size());
 		// Fabricated's API on Forge: what waits for the Fabric initializers runs once they have, the mod that fails on
 		// purpose (in the server smoke) known as failed.
 		Fabricated.get().ifPresent(api -> api.afterEntrypoints(() -> {
 			boolean ok = api.entrypointsComplete() && api.isFabricModLoaded(MOD_ID)
 					&& api.fabricMod(THROWS).map(m -> m.status() == FabricMod.Status.FAILED).orElse(true);
-			if (ok) LOGGER.info("FABRICATED-FORGE-TEST api after entrypoints OK");
-			else LOGGER.error("FABRICATED-FORGE-TEST api after entrypoints FAILED: complete {}, {}, {}", api.entrypointsComplete(), api.fabricMod(MOD_ID),
+			if (ok) LOGGER.info("FABRICATED-TEST api OK");
+			else LOGGER.error("FABRICATED-TEST api FAILED: complete {}, {}, {}", api.entrypointsComplete(), api.fabricMod(MOD_ID),
 					api.fabricMod(THROWS));
 		}));
 		// Vanilla's resources are the minecraft container's too: Fabric API's resource loader reads vanilla's en_us.json
 		// there as the game boots.
 		if (FabricLoader.getInstance().getModContainer("minecraft").flatMap(c -> c.findPath("/assets/minecraft/lang/en_us.json")).isPresent()) {
-			LOGGER.info("FABRICATED-FORGE-TEST game resources OK");
+			LOGGER.info("FABRICATED-TEST game resources OK");
 		}
 		ForgeRecordedFramesTest.check();
 		try {
@@ -73,39 +73,39 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			class_2378<class_1792> items = class_7923.field_41178;
 			testItem = class_2378.method_10230(items, id, new class_1792(new class_1792.class_1793()));
 			if (id.equals(items.method_10221(testItem))) {
-				LOGGER.info("FABRICATED-FORGE-TEST registry OK");
+				LOGGER.info("FABRICATED-TEST registry OK");
 				// Item.maxStackSize is private: reading it fails to link unless the access widener reached Forge.
-				if (testItem.field_8013 == 64) LOGGER.info("FABRICATED-FORGE-TEST access widener OK");
+				if (testItem.field_8013 == 64) LOGGER.info("FABRICATED-TEST access widener OK");
 			} else {
-				LOGGER.error("FABRICATED-FORGE-TEST registry gave the item another key: {}", items.method_10221(testItem));
+				LOGGER.error("FABRICATED-TEST registry gave the item another key: {}", items.method_10221(testItem));
 			}
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST registry failed", e);
+			LOGGER.error("FABRICATED-TEST registry failed", e);
 		}
 		try {
 			ForgeBootstrapContent.register();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST content built at bootstrap failed", e);
+			LOGGER.error("FABRICATED-TEST content built at bootstrap failed", e);
 		}
 		try {
 			ForgeBiomeTest.register();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST biome modifications failed", e);
+			LOGGER.error("FABRICATED-TEST biome modifications failed", e);
 		}
 		try {
 			ForgeLootTest.register();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST loot table events failed", e);
+			LOGGER.error("FABRICATED-TEST loot table events failed", e);
 		}
 		try {
 			ForgeRecipeConditionTest.register();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST recipe condition registration failed", e);
+			LOGGER.error("FABRICATED-TEST recipe condition registration failed", e);
 		}
 		try {
 			ForgeFluidTest.register();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST fluid registration failed", e);
+			LOGGER.error("FABRICATED-TEST fluid registration failed", e);
 		}
 		ForgeRegistrationOrderTest.register();
 		ForgeRegistryAliasTest.register();
@@ -114,68 +114,68 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		try {
 			ForgeCommandTest.register();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST command registration failed", e);
+			LOGGER.error("FABRICATED-TEST command registration failed", e);
 		}
 		try {
 			ForgeParticleTest.register();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST particle type registration failed", e);
+			LOGGER.error("FABRICATED-TEST particle type registration failed", e);
 		}
 		try {
 			ForgeBlockBreakTest.register();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST block break listeners not registered", e);
+			LOGGER.error("FABRICATED-TEST block break listeners not registered", e);
 		}
 		try {
 			ForgeSleepTest.register();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST sleep listeners not registered", e);
+			LOGGER.error("FABRICATED-TEST sleep listeners not registered", e);
 		}
 		try {
 			ForgeTransferTest.register();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST storage blocks not registered", e);
+			LOGGER.error("FABRICATED-TEST storage blocks not registered", e);
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
 			try {
 				ForgeNetworkingTest.register();
 			} catch (RuntimeException | LinkageError e) {
-				LOGGER.error("FABRICATED-FORGE-TEST networking receiver not registered", e);
+				LOGGER.error("FABRICATED-TEST networking receiver not registered", e);
 			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) {
 			try {
 				ForgeInteractionTest.register();
 			} catch (RuntimeException | LinkageError e) {
-				LOGGER.error("FABRICATED-FORGE-TEST interaction listeners not registered", e);
+				LOGGER.error("FABRICATED-TEST interaction listeners not registered", e);
 			}
 		}
 		if (testItem != null && FabricLoader.getInstance().isModLoaded("fabric-content-registries-v0")) {
 			try {
 				ForgeFuelTest.register();
 			} catch (RuntimeException | LinkageError e) {
-				LOGGER.error("FABRICATED-FORGE-TEST fuel not registered", e);
+				LOGGER.error("FABRICATED-TEST fuel not registered", e);
 			}
 			try {
 				ForgeBrewingTest.register();
 			} catch (RuntimeException | LinkageError e) {
-				LOGGER.error("FABRICATED-FORGE-TEST brewing recipe not registered", e);
+				LOGGER.error("FABRICATED-TEST brewing recipe not registered", e);
 			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-content-registries-v0")) {
 			try {
 				ForgeOxidizableTest.check();
 			} catch (RuntimeException | LinkageError e) {
-				LOGGER.error("FABRICATED-FORGE-TEST oxidizable blocks not checked", e);
+				LOGGER.error("FABRICATED-TEST oxidizable blocks not checked", e);
 			}
 		}
 	}
 
 	@Override
 	public void onInitializeServer() {
-		LOGGER.info("FABRICATED-FORGE-TEST server entrypoint OK");
+		LOGGER.info("FABRICATED-TEST server entrypoint OK");
 		if (Arrays.stream(ForgeTestMod.class.getDeclaredMethods()).noneMatch(m -> m.getName().equals("clientOnly"))) {
-			LOGGER.info("FABRICATED-FORGE-TEST environment strip OK");
+			LOGGER.info("FABRICATED-TEST environment stripping OK");
 		}
 	}
 
@@ -210,12 +210,12 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	 */
 	static void report(String check, List<String> failed, String module, Map<String, String> providersAnswers) {
 		if (failed.isEmpty()) {
-			LOGGER.info("FABRICATED-FORGE-TEST {} OK", check);
+			LOGGER.info("FABRICATED-TEST {} OK", check);
 		} else if (providedByAnotherMod(module) && providersAnswers.keySet().containsAll(failed)) {
-			LOGGER.info("FABRICATED-FORGE-TEST {} SKIPPED: {} is another mod's, which answers {} as its source reads: {} (PROVIDER-15)", check, module, failed,
+			LOGGER.info("FABRICATED-TEST {} SKIPPED: {} is another mod's, which answers {} as its source reads: {} (PROVIDER-15)", check, module, failed,
 					failed.stream().map(providersAnswers::get).distinct().collect(Collectors.joining("; ")));
 		} else {
-			LOGGER.error("FABRICATED-FORGE-TEST {} FAILED: {}", check, String.join("; ", failed));
+			LOGGER.error("FABRICATED-TEST {} FAILED: {}", check, String.join("; ", failed));
 		}
 	}
 
@@ -228,7 +228,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		try {
 			ForgeInteractionTest.check(level);
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST interaction check failed", e);
+			LOGGER.warn("FABRICATED-TEST interaction check failed", e);
 		}
 	}
 
@@ -238,7 +238,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		try {
 			ForgeInteractionTest.tick(level);
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST interaction check failed", e);
+			LOGGER.warn("FABRICATED-TEST interaction check failed", e);
 		}
 	}
 
@@ -252,9 +252,9 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			Path file = Files.createTempFile("fabricated-stats", ".json");
 			Files.writeString(file, "{\"stats\":{}}");
 			new class_3442(server, file.toFile());
-			LOGGER.info("FABRICATED-FORGE-TEST vanilla stats read OK");
+			LOGGER.info("FABRICATED-TEST vanilla stats read OK");
 		} catch (IOException | RuntimeException | LinkageError e) {
-			LOGGER.error("FABRICATED-FORGE-TEST vanilla stats read FAILED: {}", e.toString());
+			LOGGER.error("FABRICATED-TEST vanilla stats read FAILED: {}", e.toString());
 		}
 	}
 
@@ -267,7 +267,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		try {
 			ForgeColorTest.check();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST colour provider check failed", e);
+			LOGGER.warn("FABRICATED-TEST colour provider check failed", e);
 		}
 	}
 
@@ -280,7 +280,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		try {
 			ForgeParticleClient.check();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST particle check failed", e);
+			LOGGER.warn("FABRICATED-TEST particle check failed", e);
 		}
 	}
 
@@ -290,7 +290,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		try {
 			ForgeKeyBindingClient.check();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST key binding check failed", e);
+			LOGGER.warn("FABRICATED-TEST key binding check failed", e);
 		}
 	}
 
@@ -300,7 +300,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		try {
 			ForgeDefaultPackTest.check();
 		} catch (RuntimeException | LinkageError e) {
-			LOGGER.warn("FABRICATED-FORGE-TEST builtin resource pack check failed", e);
+			LOGGER.warn("FABRICATED-TEST builtin resource pack check failed", e);
 		}
 	}
 

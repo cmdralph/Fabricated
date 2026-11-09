@@ -14,16 +14,20 @@ tasks.named('processResources', ProcessResources) {
     filesMatching('META-INF/mods.toml') { expand(expandProps) }
 }
 
-// mc/shared's stand-ins for other mods' plugin interfaces name 1.21's classes (Identifier); this version's test mod uses
-// none of them, but stand-ins for the game classes it names in Intermediary's names, as a Fabric mod does.
+// The test mod is compiled in Intermediary's names (testmod_namespace), against Fabric API's jars as published and
+// stand-ins for the game classes it names, which come first, as the game's own are in Mojang's names. mc/shared's
+// stand-ins for other mods' plugin interfaces name 1.21's classes (Identifier), and the test mod uses none of them.
 sourceSets.testmodstubs.java.srcDirs = [file('src/testmodstubs/java')]
-// Fabric API's stand-ins name Fabric Loader's types (a mod's container), as the real ones do.
-dependencies {
-    testmodstubsCompileOnly project(':fabric-loader-api')
-}
-// It also uses Fabric API's biome, loot and dimensions modules, which Fabricated provides itself (in the in-game mod, in
-// Mojang's names), in Intermediary's names as a Fabric mod is compiled against Fabric API: those stand-ins come first.
 sourceSets.testmod.compileClasspath = sourceSets.testmodstubs.output + sourceSets.testmod.compileClasspath
+// Forge Config API Port's API, which the in-game mod provides: the test mod uses it as a Fabric mod does.
+def configPortApiJar = tasks.register('configPortApiJar', Jar) {
+    archiveFileName = 'forgeconfigapiport-api.jar'
+    destinationDirectory = layout.buildDirectory.dir('configportapi')
+    from(sourceSets.main.output) { include 'fuzs/**' }
+}
+dependencies {
+    testmodCompileOnly files(configPortApiJar)
+}
 // The test mod that fails on purpose touches the game before it throws (HOLD-2). mc/shared's names the game in Mojang's
 // names, as the platforms that run the game in them read it; this version's own copy names it in Intermediary's, against
 // the same stand-ins, and replaces it.
@@ -172,7 +176,7 @@ afterEvaluate {
             java.security.MessageDigest.getInstance('SHA-256').digest(nestedGameMod.get().asFile.bytes).encodeHex().toString()
         }
     }
-    // The renderer test mod (mc/mc.gradle) is compiled in Mojang's names: Fabric API 0.92's renderer types and the game
+    // The renderer test mod (mc/mc.gradle) is compiled in Mojang's names, against Fabric API's remapped jars: the game
     // classes its models extend are too many for Intermediary stand-ins. Forge 47 runs the game in SRG's member names, so
     // the jar CI installs is reobfuscated, as the in-game mod is; Fabricated reads a Fabric mod through Intermediary's
     // mappings, which leave names in no Intermediary namespace as they are. The jar as built goes to build/devlibs.
@@ -190,8 +194,8 @@ afterEvaluate {
             input.set(frapiTestmodJar.flatMap { it.archiveFile })
             archiveFileName = 'fabricated-testmod-frapi.jar'
             destinationDirectory = layout.buildDirectory.dir('testmods')
-            // The classes the test mod's classes extend (the game's, and the stand-ins of Fabric API's), so that the
-            // methods which override theirs are renamed with them.
+            // The classes the test mod's classes extend (the game's and Fabric API's), so that the methods which override
+            // theirs are renamed with them.
             libraries.from(sourceSets.testmodfrapi.compileClasspath)
             obfuscation.configureNamedToSrgOperation(remapOperation)
         }

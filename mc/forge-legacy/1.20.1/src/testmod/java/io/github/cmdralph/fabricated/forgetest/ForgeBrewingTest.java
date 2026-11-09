@@ -33,16 +33,16 @@ public final class ForgeBrewingTest {
 	/** At the first server tick. */
 	public static void check() {
 		if (!registered) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST brewing recipe FAILED: FabricBrewingRecipeRegistry didn't take the recipe (see the error above)");
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST brewing recipe FAILED: FabricBrewingRecipeRegistry didn't take the recipe (see the error above)");
 			return;
 		}
 		class_1792 potionItem = class_7923.field_41178.method_10223(new class_2960("minecraft", "potion"));
 		class_1799 awkward = class_1844.method_8061(new class_1799(potionItem), potion("awkward"));
 		class_1842 brewed = class_1844.method_8063(class_1845.method_8078(new class_1799(ForgeTestMod.testItem), awkward));
 		if (brewed == potion("luck")) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST brewing recipe OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST brewing recipe OK");
 		} else {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST brewing recipe FAILED: an awkward potion brewed with the test item gave {}",
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST brewing recipe FAILED: an awkward potion brewed with the test item gave {}",
 					class_7923.field_41179.method_10221(brewed));
 		}
 	}

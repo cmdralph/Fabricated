@@ -34,20 +34,20 @@ public final class ForgeBootstrapContent {
 	/** Called as the built-in registries are frozen, from a mixin into {@code BuiltInRegistries.freeze}, as Wover's. */
 	public static void frozen() {
 		LOGGER.info(mainInitializerRan
-				? "FABRICATED-FORGE-TEST built-in registries frozen after the main initializers OK"
-				: "FABRICATED-FORGE-TEST built-in registries frozen before the main initializers");
+				? "FABRICATED-TEST built-in registries frozen after the main initializers OK"
+				: "FABRICATED-TEST built-in registries frozen before the main initializers");
 	}
 
 	/** Called from the main initializer: registers the item, as BetterNether registers its entity types. */
 	static void register() {
 		mainInitializerRan = true;
 		if (item == null) {
-			LOGGER.error("FABRICATED-FORGE-TEST content built at bootstrap: nothing was built");
+			LOGGER.error("FABRICATED-TEST content built at bootstrap: nothing was built");
 			return;
 		}
 		class_2960 id = new class_2960(ForgeTestMod.MOD_ID, "bootstrap_item");
 		class_2378<class_1792> items = class_7923.field_41178;
 		class_2378.method_10230(items, id, item);
-		if (id.equals(items.method_10221(item))) LOGGER.info("FABRICATED-FORGE-TEST content built at bootstrap registered OK");
+		if (id.equals(items.method_10221(item))) LOGGER.info("FABRICATED-TEST content built at bootstrap registered OK");
 	}
 }

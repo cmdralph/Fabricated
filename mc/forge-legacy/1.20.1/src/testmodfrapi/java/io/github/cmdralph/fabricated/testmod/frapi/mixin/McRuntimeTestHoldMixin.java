@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import io.github.cmdralph.fabricated.testmod.frapi.FrapiClientTestMod;
 
 /**
- * Holds mc-runtime-test, which CI's client runs start the game with (ci/forge-legacy/smoke-client.sh), until the
+ * Holds mc-runtime-test, which CI's client runs start the game with (ci/smoke-client.sh), until the
  * renderer test mod's moving block checks have logged ({@link FrapiClientTestMod#holding}), as the Fabric test mod's
  * {@code McRuntimeTestMixin} does for its server checks: its tick hook returning false skips its work that tick. Not a
  * Fabricated feature: only CI's runs have mc-runtime-test, and without it this mixin applies to nothing.

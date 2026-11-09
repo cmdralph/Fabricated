@@ -1,0 +1,6 @@
+{
+  "neoforge:conditions": [{ "type": "neoforge:false" }],
+  "message_id": "fabricated_testmod.conditioned",
+  "scaling": "never",
+  "exhaustion": 0.0
+}

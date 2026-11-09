@@ -52,9 +52,9 @@ public final class ForgeFluidTest {
 			failed.add(e instanceof InvocationTargetException ite ? ite.getCause().toString() : e.toString());
 		}
 		if (failed.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST fluid types OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST fluid types OK");
 		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST fluid types: {}", failed);
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST fluid types: {}", failed);
 		}
 	}
 

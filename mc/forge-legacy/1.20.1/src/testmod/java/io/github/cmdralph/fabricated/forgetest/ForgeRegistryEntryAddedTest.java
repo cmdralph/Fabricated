@@ -41,12 +41,12 @@ public final class ForgeRegistryEntryAddedTest {
 			forgeItems.getClass().getMethod("register", class_2960.class, Object.class).invoke(forgeItems, FORGE_API, forge);
 			List<String> expected = List.of(VANILLA_API + " " + items.method_10206(vanilla), FORGE_API + " " + items.method_10206(forge));
 			if (heard.equals(expected)) {
-				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST registry entry added events OK");
+				ForgeTestMod.LOGGER.info("FABRICATED-TEST registry entry added events OK");
 			} else {
-				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST registry entry added events FAILED: heard {}, expected {}", heard, expected);
+				ForgeTestMod.LOGGER.error("FABRICATED-TEST registry entry added events FAILED: heard {}, expected {}", heard, expected);
 			}
 		} catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST registry entry added events FAILED", e);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST registry entry added events FAILED", e);
 		}
 	}
 }

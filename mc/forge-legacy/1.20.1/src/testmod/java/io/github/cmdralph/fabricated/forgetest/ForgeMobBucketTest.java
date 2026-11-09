@@ -21,14 +21,14 @@ public final class ForgeMobBucketTest {
 		class_1792 bucket = class_7923.field_41178.method_10223(new class_2960("minecraft", "pufferfish_bucket"));
 		class_1299<?> pufferfish = class_7923.field_41177.method_10223(new class_2960("minecraft", "pufferfish"));
 		if (!(bucket instanceof MobBucketItemAccessor accessor)) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST mob bucket accessor FAILED: the pufferfish bucket is {}", bucket.getClass().getName());
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST mob bucket accessor FAILED: the pufferfish bucket is {}", bucket.getClass().getName());
 			return;
 		}
 		class_1299<?> type = accessor.fabricatedtest$type();
 		if (type == pufferfish) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST mob bucket accessor OK ({})", class_7923.field_41177.method_10221(type));
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST mob bucket accessor OK ({})", class_7923.field_41177.method_10221(type));
 		} else {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST mob bucket accessor FAILED: the pufferfish bucket holds {}", type);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST mob bucket accessor FAILED: the pufferfish bucket holds {}", type);
 		}
 	}
 }

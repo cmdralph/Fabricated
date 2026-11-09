@@ -1,0 +1,129 @@
+package io.github.cmdralph.fabricated.testmod;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.Identifier;
+
+/** 1.21.1 and 1.21.11 part of the CI test mod: exercises Fabricated's native fabric-networking-api-v1. */
+public final class NetworkingTest implements ModInitializer {
+	/** Whether Fabricated's networking is the one running, not another mod's (Forgified Fabric API's). */
+	static final boolean OWN = !TestMod.providedByAnotherMod("fabric-networking-api-v1");
+	static final String ANOTHER_MODS = "fabric-networking-api-v1 is another mod's";
+	private static boolean lateRegistered;
+
+	/** A tiny payload sent in both directions. */
+	public record Ping(int value) implements CustomPacketPayload {
+		public static final Type<Ping> TYPE = new Type<>(Identifier.fromNamespaceAndPath("fabricated_testmod", "ping"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, Ping> CODEC = StreamCodec.composite(ByteBufCodecs.VAR_INT, Ping::value, Ping::new);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/** A payload whose type is registered as the server starts, after NeoForge's registration event (NET-3). */
+	public record LatePing(int value) implements CustomPacketPayload {
+		public static final Type<LatePing> TYPE = new Type<>(Identifier.fromNamespaceAndPath("fabricated_testmod", "late_ping"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, LatePing> CODEC = StreamCodec.composite(ByteBufCodecs.VAR_INT, LatePing::value, LatePing::new);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/** A payload in the minecraft namespace, which NeoForge keeps for vanilla's own, as BetterEnd registers its ritual update (NET-4). */
+	public record VanillaPing(int value) implements CustomPacketPayload {
+		public static final Type<VanillaPing> TYPE = new Type<>(Identifier.fromNamespaceAndPath("minecraft", "fabricated_testmod_ping"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, VanillaPing> CODEC = StreamCodec.composite(ByteBufCodecs.VAR_INT, VanillaPing::value, VanillaPing::new);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/**
+	 * A payload carrying a buffer, with a codec writing it as Cardinal Components API's sync payloads do
+	 * ({@code writeBytes(ByteBuf)}, which reads the buffer to its end), so a second encoding of the same packet writes
+	 * an empty buffer. Fabric encodes a packet once; NeoForge's packet splitter encodes it to measure it, before
+	 * vanilla's encoder does (NET-10).
+	 */
+	public record BufferPing(ByteBuf data) implements CustomPacketPayload {
+		public static final int VALUE = 0x5EEDCAFE;
+		public static final Type<BufferPing> TYPE = new Type<>(Identifier.fromNamespaceAndPath("fabricated_testmod", "buffer_ping"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, BufferPing> CODEC = StreamCodec.of((buf, ping) -> {
+			buf.writeVarInt(ping.data().readableBytes());
+			buf.writeBytes(ping.data());
+		}, buf -> {
+			int length = buf.readVarInt();
+			ByteBuf copy = Unpooled.buffer(length, length);
+			buf.readBytes(copy, length);
+			return new BufferPing(copy);
+		});
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+
+		/** The client's check of what arrived: the four bytes the server sent. */
+		static void received(BufferPing ping) {
+			int bytes = ping.data().readableBytes();
+			if (bytes == Integer.BYTES && ping.data().getInt(ping.data().readerIndex()) == VALUE) {
+				TestMod.LOGGER.info("FABRICATED-TEST payload encoded once OK");
+			} else if (!OWN) {
+				TestMod.LOGGER.info("FABRICATED-TEST payload encoded once SKIPPED: {} ({} of {} bytes arrived)", ANOTHER_MODS, bytes, Integer.BYTES);
+			} else {
+				TestMod.LOGGER.error("FABRICATED-TEST payload encoded once FAILED: {} of {} bytes arrived", bytes, Integer.BYTES);
+			}
+		}
+	}
+
+	@Override
+	public void onInitialize() {
+		PayloadTypeRegistry.playC2S().register(Ping.TYPE, Ping.CODEC);
+		PayloadTypeRegistry.playS2C().register(Ping.TYPE, Ping.CODEC);
+		PayloadTypeRegistry.playS2C().register(BufferPing.TYPE, BufferPing.CODEC);
+		ServerPlayNetworking.registerGlobalReceiver(Ping.TYPE, (payload, context) -> {
+			if (payload.value() == MenuTest.OPEN_REQUEST) MenuTest.open(context.player());
+			else context.responseSender().sendPacket(new Ping(payload.value() + 1));
+		});
+		// What NeoForge refuses and Fabricated's networking handles (NET-3, NET-4) is another provider's to handle.
+		if (OWN) {
+			PayloadTypeRegistry.playC2S().register(VanillaPing.TYPE, VanillaPing.CODEC);
+			PayloadTypeRegistry.playS2C().register(VanillaPing.TYPE, VanillaPing.CODEC);
+			ServerPlayNetworking.registerGlobalReceiver(VanillaPing.TYPE, (payload, context) -> context.responseSender().sendPacket(new VanillaPing(payload.value() + 1)));
+		}
+		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> {
+			TestMod.LOGGER.info("FABRICATED-TEST networking join event");
+			sender.sendPacket(new BufferPing(Unpooled.copyInt(BufferPing.VALUE)));
+		});
+		if (ServerPlayNetworking.getGlobalReceivers().contains(Ping.TYPE.id())) {
+			TestMod.LOGGER.info("FABRICATED-TEST networking registration OK");
+		}
+		// As Ledger registers its payload types: as the server starts, which upstream accepts.
+		ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+			if (!OWN) {
+				TestMod.LOGGER.info("FABRICATED-TEST late payload type registration SKIPPED: {}", ANOTHER_MODS);
+				return;
+			}
+			if (lateRegistered) return; // a second world in the same game
+			lateRegistered = true;
+			PayloadTypeRegistry.playC2S().register(LatePing.TYPE, LatePing.CODEC);
+			PayloadTypeRegistry.playS2C().register(LatePing.TYPE, LatePing.CODEC);
+			ServerPlayNetworking.registerGlobalReceiver(LatePing.TYPE, (payload, context) -> context.responseSender().sendPacket(new LatePing(payload.value() + 1)));
+			TestMod.LOGGER.info("FABRICATED-TEST late payload type registration OK");
+		});
+	}
+}

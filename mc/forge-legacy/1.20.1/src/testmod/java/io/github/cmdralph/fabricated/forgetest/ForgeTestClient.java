@@ -10,7 +10,7 @@ import net.minecraft.class_310;
 /**
  * The test mod's client entrypoint, which Fabric Loader runs from {@code Minecraft}'s constructor ({@code class_310})
  * after the main ones, the game instance set: each logs a line the client smoke looks for
- * (ci/forge-legacy/smoke-client.sh). It registers the factory of the test mod's particle type
+ * (ci/smoke-client.sh). It registers the factory of the test mod's particle type
  * ({@link ForgeParticleClient}) and a key binding ({@link ForgeKeyBindingClient}), and with Fabric API's networking module it also starts a networking round trip with
  * the integrated server ({@link ForgeNetworkingClient}); with its model loading, screen and rendering modules, it checks
  * the model bake events ({@link ForgeModelClient}), the screen mouse and key events ({@link ForgeScreenClient}) and the
@@ -23,63 +23,63 @@ public final class ForgeTestClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		// Its Mod Menu entrypoint's screen behind Forge's mod list button, once the initializers ran (see ForgeModMenuEntry).
 		Fabricated.get().ifPresent(api -> api.afterEntrypoints(() -> {
-			if (ForgeModMenuEntry.registered()) ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST modmenu config screen OK");
-			else ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST modmenu config screen FAILED: Forge's mod list has no config screen for the test mod");
+			if (ForgeModMenuEntry.registered()) ForgeTestMod.LOGGER.info("FABRICATED-TEST modmenu config screen OK");
+			else ForgeTestMod.LOGGER.error("FABRICATED-TEST modmenu config screen FAILED: Forge's mod list has no config screen for the test mod");
 		}));
 		ForgeTestMod.LOGGER.info(ForgeTestMod.testItem != null
-				? "FABRICATED-FORGE-TEST client entrypoint OK"
-				: "FABRICATED-FORGE-TEST client entrypoint ran before the main entrypoint");
+				? "FABRICATED-TEST client entrypoint OK"
+				: "FABRICATED-TEST client entrypoint ran before the main entrypoint");
 		Object instance = FabricLoader.getInstance().getGameInstance();
 		if (instance != null && instance == class_310.method_1551()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST client game instance OK");
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST client game instance OK");
 		} else {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST client game instance is {}, not the Minecraft instance", instance);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST client game instance is {}, not the Minecraft instance", instance);
 		}
 		if (ForgeParticleTest.sparkle != null) {
 			try {
 				ForgeParticleClient.register();
 			} catch (RuntimeException | LinkageError e) {
-				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST particle factory not registered", e);
+				ForgeTestMod.LOGGER.error("FABRICATED-TEST particle factory not registered", e);
 			}
 		}
 		try {
 			ForgeKeyBindingClient.register();
 		} catch (RuntimeException | LinkageError e) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST key binding FAILED: not registered", e);
+			ForgeTestMod.LOGGER.error("FABRICATED-TEST key binding FAILED: not registered", e);
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-resource-loader-v0")) {
 			try {
 				ForgeDefaultPackTest.register();
 			} catch (RuntimeException | LinkageError e) {
-				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST builtin resource pack not registered", e);
+				ForgeTestMod.LOGGER.error("FABRICATED-TEST builtin resource pack not registered", e);
 			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
 			try {
 				ForgeNetworkingClient.register();
 			} catch (RuntimeException | LinkageError e) {
-				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST networking client receiver not registered", e);
+				ForgeTestMod.LOGGER.error("FABRICATED-TEST networking client receiver not registered", e);
 			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-model-loading-api-v1")) {
 			try {
 				ForgeModelClient.register();
 			} catch (RuntimeException | LinkageError e) {
-				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST model loading plugin not registered", e);
+				ForgeTestMod.LOGGER.error("FABRICATED-TEST model loading plugin not registered", e);
 			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-screen-api-v1")) {
 			try {
 				ForgeScreenClient.register();
 			} catch (RuntimeException | LinkageError e) {
-				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST screen listeners not registered", e);
+				ForgeTestMod.LOGGER.error("FABRICATED-TEST screen listeners not registered", e);
 			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-rendering-v1")) {
 			try {
 				ForgeHudClient.register();
 			} catch (RuntimeException | LinkageError e) {
-				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST HUD callback not registered", e);
+				ForgeTestMod.LOGGER.error("FABRICATED-TEST HUD callback not registered", e);
 			}
 		}
 	}
