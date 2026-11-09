@@ -21,7 +21,7 @@ directly. This is `main`'s tree:
 | `mc/<platform>/common*/` | Code a platform's versions share, as each version's `shared_sources` lists it: NeoForge's `common` (the in-game mod, `/fabricated`, the test mod) for every version, `common121` for 1.21.1 and 1.21.11, `common12111` for 1.21.11 and all 26.x versions, `common26` for all 26.x versions, `common26early` for 26.1.2 and 26.2, `common26late` for 26.2 and 26.3 | Yes |
 | `mc/shared/` | Test sources every platform uses: the broken test mods and stand-ins for other mods' APIs | - |
 | `mc/mc.gradle`, `mc/platform-<platform>.gradle` | The build shared by every version, and each platform's part of it | - |
-| `ci/neoforge/` | NeoForge's server and client smoke tests and the coexisting mods' stand-ins; `ci/` holds the shared helpers and the mod corpus lists | - |
+| `ci/` | CI's plan (`plan.py`), harness (`smoke-server.sh`, `smoke-client.sh`, `smoke.sh`), runs and checks (`runs.tsv`, `checks.tsv`, `check-log.py`) and the mod corpus lists, every platform's; `ci/<platform>/` holds the platform's adapter (`platform.sh`: its build tasks, how its loader installs and launches) and its stand-ins | - |
 | `scripts/` | Maintenance scripts (importing Fabric API modules, the native modules' index, syncing a platform branch with `main`) | - |
 | `docs/` | Research, architecture and compatibility notes | - |
 
@@ -44,19 +44,20 @@ automatically if it is not installed.
 # Everything on NeoForge
 ./gradlew build
 
-# Real server smoke test (downloads NeoForge's installer; needs network)
-ci/neoforge/smoke-server.sh 26.2 26.2.0.90 /tmp/fabricated-server
+# A real server with the test mods, checked against ci/checks.tsv (downloads NeoForge's installer; needs network)
+ci/smoke-server.sh neoforge 26.2 26.2.0.90 /tmp/fabricated-server
+
+# CI's own scripts and manifests
+python3 -B -m unittest discover -s ci -p 'test_*.py'
 ```
 
-Each platform has its CI on its branch: `build.yml` (NeoForge, for pull requests to `main`), `build-forge.yml` (Forge 61
-to 66, for pull requests to `forge`) and `build-forge-legacy.yml` (Forge 47, for pull requests to `forge-legacy`), also
-on release tags and by hand; each push to a working branch gets the quick check (`check.yml`: unit tests and one
-version of the branch's platform, on a server). NeoForge's
-(`.github/workflows/build.yml`) runs the unit tests, then builds every version, boots a real NeoForge
-dedicated server with the test mods (and again with the official Fabric API jar), and starts a real NeoForge
-client headlessly into a singleplayer world (`ci/neoforge/smoke-client.sh`; needs Xvfb, and `gh` to fetch
-mc-runtime-test). Every version's job is a gate; a version whose NeoForge line is still in beta would be marked
-experimental (best-effort) in the matrix.
+CI is one workflow, `.github/workflows/ci.yml`, the same on every branch; it runs the platform the branch holds. Each
+push to a working branch gets the unit tests and its fast job (one touched version booted on a server); a pull request
+into `main`, `forge` or `forge-legacy` runs the full matrix for the versions it touches, and a run by hand every version.
+The full matrix builds each version, boots real dedicated servers and starts real clients headlessly into a
+singleplayer world (HeadlessMC under Xvfb), with the test mods, Fabric API and other people's mods (`ci/runs.tsv`), and
+checks each run against `ci/checks.tsv`. A check a platform or version doesn't pass is listed there as not applying,
+with the reason.
 
 ## Code rules
 
@@ -106,7 +107,8 @@ Example: adding `26.4` once NeoForge supports it.
 6. **Fix compile errors** in `mc/neoforge/26.4/src/main/java` (version-specific code) and the shared `mc/neoforge/common*` directories.
    If shared code no longer compiles on all versions, move the differing part into each version's
    `src/main/java` rather than adding conditionals.
-7. **Add the version to CI** (`.github/workflows/build.yml` matrix) and run the smoke test.
+7. **Add the version to CI**: CI finds the version folder by itself. Mark the checks that don't apply to it in
+   `ci/checks.tsv` (with the reason), and run the smoke test.
 8. **Refine the plan from evidence.** Run the smoke test with the official Fabric API jar in the mods folder
    and read the "Mixin pre-flight" sections of `logs/fabric-bridge-report.txt`. For a module whose mixin
    fails, either add it to that module's `skipMixins` (and describe what is lost in `reason`) or implement

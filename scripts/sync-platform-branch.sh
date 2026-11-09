@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Merges main into a Forge platform branch, keeping the branch's own platform and leaving main's out. main holds the
-# shared code (the code both Forge platforms share included) and NeoForge; forge adds Forge 61 to 66, forge-legacy
-# Forge 47 and 52. Shared changes go to main and reach the platform branches through this merge; a platform branch is
-# never merged into main.
+# shared code (the code both Forge platforms share included, CI's one workflow and harness among it) and NeoForge;
+# forge adds Forge 61 to 66, forge-legacy Forge 47 and 52. Shared changes go to main and reach the platform branches
+# through this merge; a platform branch is never merged into main.
 #
 # Run it in a checkout of a working branch made from the platform branch, with main fetched. It makes a merge commit
-# (no rebase, no force): the branch's own files are kept as they are, the files only main has are left out, and a
-# conflict in a shared file stops it for a person to resolve. Then push the working branch and open a pull request
-# into the platform branch, whose full matrix checks the merge.
+# (no rebase, no force): the branch's own files are kept as they are, the files only main has are left out, the files
+# the branch no longer needs are deleted, and a conflict in a shared file stops it for a person to resolve. Then push
+# the working branch and open a pull request into the platform branch, whose full matrix checks the merge.
 #
 # Usage: scripts/sync-platform-branch.sh <forge|forge-legacy> [<main ref, default origin/main>]
 set -euo pipefail
@@ -16,23 +16,32 @@ platform="${1:-}"
 base="${2:-origin/main}"
 case "$platform" in
 	forge)
-		own=(loader/forge mc/forge mc/platform-forge.gradle
-			ci/forge .github/workflows/build-forge.yml README.md docs/FORGE.md)
+		own=(loader/forge mc/forge mc/platform-forge.gradle ci/forge README.md docs/FORGE.md)
 		;;
 	forge-legacy)
-		own=(loader/forge-legacy mc/forge-legacy mc/platform-forge-legacy.gradle
-			ci/forge-legacy .github/workflows/build-forge-legacy.yml README.md docs/FORGE-LEGACY.md)
+		own=(loader/forge-legacy mc/forge-legacy mc/platform-forge-legacy.gradle ci/forge-legacy README.md docs/FORGE-LEGACY.md)
+		gone=(ci/forge-legacy/ffapi-anatomy.py)
 		;;
 	*)
 		echo "Usage: $0 <forge|forge-legacy> [<main ref>]" >&2
 		exit 2
 		;;
 esac
-# What only main has: NeoForge's platform and the workflows that build and release from main.
-mains=(loader/neoforge mc/neoforge mc/platform-neoforge.gradle ci/neoforge .github/workflows/build.yml .github/workflows/release.yml)
+# What the branch had of its own until CI became one workflow (.github/workflows/ci.yml) and one harness (ci/smoke*.sh,
+# with the platform's adapter ci/<platform>/platform.sh): deleted, as main holds what replaced them
+# (ci/forge-shared/standin-linkage.py, ci/corpus-causes.sh among them). Gone once, these delete nothing again.
+gone+=(".github/workflows/build-$platform.yml" "ci/$platform/smoke-server.sh" "ci/$platform/smoke-client.sh"
+	"ci/$platform/corpus-causes.sh" "ci/$platform/difficult-summary.sh" "ci/$platform/standin-linkage.py")
+# What only main has: NeoForge's platform and the release workflow, which builds every platform from main.
+mains=(loader/neoforge mc/neoforge mc/platform-neoforge.gradle ci/neoforge .github/workflows/release.yml)
 
 if [ -n "$(git status --porcelain)" ]; then
 	echo "The working tree has changes; commit or stash them first." >&2
+	exit 1
+fi
+# ci.yml runs the branch's platform through its adapter: without it, every job of the sync's pull request would fail.
+if ! git cat-file -e "HEAD:ci/$platform/platform.sh" 2>/dev/null; then
+	echo "ci/$platform/platform.sh, the platform's part of CI, is missing: add it first." >&2
 	exit 1
 fi
 
@@ -46,7 +55,7 @@ for path in "${own[@]}"; do
 		git checkout HEAD -- "$path"
 	fi
 done
-for path in "${mains[@]}"; do
+for path in "${mains[@]}" "${gone[@]}"; do
 	git rm -r -q --cached --ignore-unmatch -- "$path"
 	rm -rf -- "$path"
 done
