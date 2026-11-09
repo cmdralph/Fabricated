@@ -111,7 +111,7 @@ jobs:
       # for the rest of the job, setup-gradle's saving at its end included.
       - name: Key Gradle's cache by the build files
         run: echo "GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION=${{ hashFiles('*.gradle', '*/build.gradle', 'gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}" >> "$GITHUB_ENV"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           cache-read-only: ${{ needs.plan.outputs.save != 'true' }}
           # The release's jars and tests start from an empty Gradle home.
@@ -160,7 +160,7 @@ jobs:
             17
             25
             21
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           cache-read-only: true
       - name: Build Fabricated and the test mods
@@ -228,7 +228,9 @@ jobs:
             21
       - name: Key Gradle's cache by the build files
         run: echo "GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION=${{ hashFiles('*.gradle', '*/build.gradle', 'mc/*.gradle', 'gradle.properties', format('mc/{0}/{1}/gradle.properties', matrix.platform, matrix.minecraft), 'gradle/wrapper/gradle-wrapper.properties') }}" >> "$GITHUB_ENV"
-      - uses: gradle/actions/setup-gradle@v4
+      # The one action from outside GitHub, which adds init scripts to every Gradle build, the release's jars' too: pinned
+      # to its tag's commit, as a tag can move (SEC-9).
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           cache-read-only: ${{ env.SAVE != 'true' }}
           # The release's jars start from an empty Gradle home.
