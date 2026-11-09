@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Merges main into a Forge platform branch, keeping the branch's own platform and leaving main's out. main holds the
-# shared engine and NeoForge; forge holds the shared engine and Forge 61 to 66, forge-legacy the shared engine and
-# Forge 47 (both with a copy of the Forge platforms' shared folders). Shared changes go to main and reach the platform
-# branches through this merge; a platform branch is never merged into main.
+# shared code (the code both Forge platforms share included) and NeoForge; forge adds Forge 61 to 66, forge-legacy
+# Forge 47 and 52. Shared changes go to main and reach the platform branches through this merge; a platform branch is
+# never merged into main.
 #
 # Run it in a checkout of a working branch made from the platform branch, with main fetched. It makes a merge commit
 # (no rebase, no force): the branch's own files are kept as they are, the files only main has are left out, and a
@@ -16,12 +16,12 @@ platform="${1:-}"
 base="${2:-origin/main}"
 case "$platform" in
 	forge)
-		own=(loader/forge loader/forge-shared mc/forge mc/forge-shared mc/platform-forge.gradle mc/forge-mixinextras.gradle
+		own=(loader/forge mc/forge mc/platform-forge.gradle
 			ci/forge .github/workflows/build-forge.yml README.md docs/FORGE.md)
 		;;
 	forge-legacy)
-		own=(loader/forge-legacy loader/forge-shared mc/forge-legacy mc/forge-shared mc/platform-forge-legacy.gradle
-			mc/forge-mixinextras.gradle ci/forge-legacy .github/workflows/build-forge-legacy.yml README.md docs/FORGE-LEGACY.md)
+		own=(loader/forge-legacy mc/forge-legacy mc/platform-forge-legacy.gradle
+			ci/forge-legacy .github/workflows/build-forge-legacy.yml README.md docs/FORGE-LEGACY.md)
 		;;
 	*)
 		echo "Usage: $0 <forge|forge-legacy> [<main ref>]" >&2

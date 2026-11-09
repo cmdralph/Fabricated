@@ -1,0 +1,75 @@
+package io.github.cmdralph.fabricated.loader;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.Optional;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import io.github.cmdralph.fabricated.core.archive.DeterministicJarWriter;
+import io.github.cmdralph.fabricated.core.archive.SafeArchive;
+import io.github.cmdralph.fabricated.core.cache.TranslationCache;
+import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
+import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
+import io.github.cmdralph.fabricated.core.resolve.NativeModules;
+import net.minecraftforge.fml.loading.FMLPaths;
+
+/**
+ * The jars nested in the Fabricated jar that Forge loads as files of their own (docs/PORTING.md §4.1): the language
+ * provider, for its plugin layer, and the in-game mod. Forge reads a mod file from a path, so each is copied into the
+ * translation cache, content-addressed, and written once.
+ */
+final class NestedJars {
+	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
+	/** The language provider ({@code FMLModType: LANGPROVIDER}). */
+	static final String LANG_PROVIDER = "lang-provider.jar";
+	/** Fabricated's in-game mod. */
+	static final String GAME_MOD = "game-mod.jar";
+
+	private NestedJars() {
+	}
+
+	/** The path of a nested jar in the cache, copied there if it isn't yet. */
+	static Path extract(String name) throws IOException {
+		FabricatedConfig config = FabricatedConfig.load(FMLPaths.CONFIGDIR.get());
+		return extract(name, new TranslationCache(FMLPaths.GAMEDIR.get(), config.cacheEnabled(), config.verifyIntegrity()));
+	}
+
+	/** The path of a nested jar in {@code cache}, copied there if it isn't yet. */
+	static Path extract(String name, TranslationCache cache) throws IOException {
+		// The in-game mod's copy is found by the hash its build recorded, without reading the jar (PERF-2); a jar the build
+		// recorded none for, or whose copy isn't in the cache, is read and stored by its own.
+		String recorded = name.equals(GAME_MOD) ? FabricatedInfo.get().gameModSha256() : "";
+		if (!recorded.isEmpty()) {
+			Optional<Path> stored = cache.storedNested(recorded);
+			if (stored.isPresent()) return stored.get();
+		}
+		byte[] data = FabricatedInfo.readOptional(name);
+		if (data == null) throw new IOException("The Fabricated jar is missing " + name);
+		Path path = cache.storeNested(data);
+		if (!Files.isRegularFile(path)) throw new IOException("Could not extract " + name);
+		if (!recorded.isEmpty() && !TranslationCache.nestedSha(path).equals(recorded)) {
+			LOGGER.warn("Fabricated's {} isn't the one its build recorded: the Fabricated jar may be damaged", name);
+		}
+		return path;
+	}
+
+	/**
+	 * The in-game mod's jar without what stands down for the modules other mods provide (the provider policy), in the
+	 * cache, content-addressed: Forge reads a mod file, and its mixin configs from the manifest, from one path.
+	 *
+	 * @param configs the in-game mod's mixin configs, by file name
+	 */
+	static Path withoutStandingDown(SafeArchive gameMod, NativeModules.StandDown standDown, Map<String, MixinConfigFile> configs, TranslationCache cache)
+			throws IOException {
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		DeterministicJarWriter.write(out, NativeModules.withoutStandingDown(gameMod, standDown, configs));
+		Path path = cache.storeNested(out.toByteArray());
+		if (!Files.isRegularFile(path)) throw new IOException("Could not write the in-game mod without the modules other mods provide");
+		return path;
+	}
+}
