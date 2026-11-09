@@ -176,16 +176,28 @@ that fixes or closes it.
 | CORPUS-25 | P3 | Terralith (26.3 server corpus, every run since at least run 420) | About 130 warnings per server run from NeoForge's `ModifiableBiomeInfo`: "Cannot modify spawn settings of biome terralith:alpha_islands, found unexpected attribute modifier OverrideModifier[]" (the first of them; runs 40241680133 and 40244234167). NeoForge 26.3 refuses to modify the spawns of a biome whose `natural_mob_spawns` attribute uses a modifier other than `overlay` (`ModifiableBiomeInfo`, read in its source), so biome modifiers can't add spawns to those biomes. | Open, likely Terralith's: the count fits every Terralith biome declaring an `override` modifier, which would warn on NeoForge without Fabricated too; UNVERIFIED, as Terralith's 26.x data isn't in its public repository. |
 ## Compatibility baseline (task 4)
 
-The extended runs of 2026-11-09 on `main` (42624614743), `forge` (42624619386) and `forge-legacy` (42624625243): every
-corpus run passes on every version (informational), and every gate holds but one, since fixed (FRAPI-12).
+The extended runs of 2026-11-09 on `main` (42624614743, then 42682663433), `forge` (42624619386, then 42682670119) and
+`forge-legacy` (42624625243, then 42682675827). Every gate holds but those since fixed (FRAPI-12, CI-10). A corpus run is
+informational, so it reports "pass" whatever its checks say (CI-11 makes it count its failed checks); read by whether
+the game reached its world, 14 of the second round's 40 corpus runs didn't, the advanced corpus on Forge among them
+for the first time.
 
 | Where | What | Status |
 |---|---|---|
-| NeoForge 1.21.1, advanced client | Figura disabled by pre-flight: its armor layer hooks don't occur in NeoForge's `HumanoidArmorLayer.renderArmorPiece` | Fixed (PRE-20), verified on a local client; the next extended run confirms it in the corpus |
+| NeoForge 1.21.1, advanced client | Figura disabled by pre-flight: its armor layer hooks don't occur in NeoForge's `HumanoidArmorLayer.renderArmorPiece` | Fixed (PRE-20), confirmed in the second round's corpus |
 | NeoForge 1.21.11, advanced corpus | Biomes O' Plenty's Fabric build disabled by pre-flight: its `Entity.updateFluidOnEyes` redirect doesn't occur in NeoForge's method | Not repaired (CORPUS-22): NeoForge replaced the fluid tags on the eyes with its fluid types; its NeoForge build is the way |
 | Forge 47, client corpus | Porting Lib's GUI utilities disabled by pre-flight: a `@ModifyArgs` call in `GuiGraphics` Forge changed | Not repaired (CORPUS-93): Forge gathers the tooltip components itself, which the module ports; Create's Forge build is the way |
 | Forge 47, corpus | ModernFix names Fabric Loader's error GUI (`net.fabricmc.loader.impl.gui`), which Fabricated doesn't provide | No change: only lambdas `ModernFixPreLaunchFabric.onPreLaunch` never calls name it (read in 5.25.2+mc1.20.1) |
 | Every version | Fabric Language Kotlin names Fabric Loader's old `LanguageAdapter` (CORPUS-38) | Open, no mod seen needing it |
+| Forge 64 to 66, advanced server | Debugify's `CactusBlockMixin` (a MixinExtras expression with `@Local` definitions) fails Mixin's injection check in `Blocks.<clinit>`, which pre-flight passed: the server stops | Open |
+| Forge 61, advanced server | FrozenLib's mutable shadow of `MobCategory`'s `$VALUES`, where Forge extends the enum: `EntityType.<clinit>` throws | Open |
+| Forge 61 to 66, advanced client | ReplayMod's mixin plugin adds configs while Mixin selects, which Forge's Mixin gives no environment: the client stops at launch | Open |
+| Forge 47, advanced corpus | Origins' Fabric jar carries Connector's placeholder `mods.toml`, which Forge reads as a Forge mod needing Connector: Forge refuses the launch | Open |
+| Forge 64 to 66, client corpus | ShulkerBoxTooltip's `BundleMouseActionsMixin` (`@WrapOperation`s sharing locals in a method with `double` locals) fails verification when the menu opens (in the first round too) | Open |
+| Forge 64 to 66, advanced client | Emotecraft disabled: pre-flight fails an `@Inject` naming two methods, one of which exists, where Mixin needs one | Open |
+| Forge 47, advanced corpus | ReplayMod's 1.20.1 jar rejected for a duplicate directory entry (`assets/`) | Open |
+| Forge 47, advanced corpus | Carpet disabled, and hooks of five mods left out, at `ServerPlayer.changeDimension`, for which Forge 47 has an overload taking a teleporter; `StructureTemplate.processBlockInfos` likewise | Open |
+| Forge 61 to 66 | Constructor hooks at points other than a return left out (FrozenLib, Wover, ImmediatelyFast, owo), where CTOR-4 serves Forge 47 alone; calls of `Screen.extractRenderStateWithTooltipAndSubtitles` on Forge 64 to 66 (Architectury, FancyMenu, SpruceUI), which HOOK-2 serves on NeoForge alone | Open |
 | Forge 47, 52 and 61 to 66 | The advanced corpus didn't run on Forge | Runs on every Forge version in the extended runs (informational), with the main corpus's drops; its results set what task 4 takes on next |
 
 ## Not in this pass
