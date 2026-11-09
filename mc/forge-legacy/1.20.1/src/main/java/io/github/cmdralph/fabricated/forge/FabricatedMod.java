@@ -8,6 +8,7 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.command.FabricatedCommands;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.biome.BiomeCompat;
@@ -26,6 +27,9 @@ import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.client.event.RegisterClientCommandsEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.fml.ModLoader;
 import net.minecraftforge.fml.ModLoadingStage;
@@ -46,9 +50,9 @@ import net.minecraftforge.registries.RegistryManager;
  * the mod is constructed, the main ones as registries open, then the dedicated server or the client ones. Fabric
  * Loader runs every initializer from {@code Minecraft}'s constructor on a client, the game instance set, and so does
  * Forge 47's mod loading there ({@code ClientModLoader.begin}), so the client ones run right after the main ones, with
- * the registries still open. Fabric API on Forge's events follows. It also adds the Fabric mods discovery didn't load
- * to Forge's loading warnings, which Forge reads once every mod has loaded: the server logs them, the client shows them
- * on its warnings screen.
+ * the registries still open. Fabric API on Forge's events follows, and {@code /fabricated} ({@link FabricatedCommands}) on
+ * Forge's command events. It also adds the Fabric mods discovery didn't load to Forge's loading warnings, which Forge
+ * reads once every mod has loaded: the server logs them, the client shows them on its warnings screen.
  *
  * <p>Fabric mods register their content directly from their initializers. Forge 47 opens vanilla's registries for its
  * registration events only ({@code UNFREEZE_DATA}, then {@code LOAD_REGISTRIES}), and each registry it manages only for
@@ -87,6 +91,13 @@ public final class FabricatedMod {
 		}
 		// What discovery tells the player from now on: a Fabric mod's jar proposed for the class path (DOWNLOAD-1).
 		ForgeLoaderHooks.warnings(text -> ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text)));
+		// /fabricated, in the server's commands and, on a client, in its own, which only its player runs.
+		MinecraftForge.EVENT_BUS.addListener(EventPriority.NORMAL, false, RegisterCommandsEvent.class,
+				event -> FabricatedCommands.register(event.getDispatcher(), state, false));
+		if (!FMLLoader.getDist().isDedicatedServer()) {
+			MinecraftForge.EVENT_BUS.addListener(EventPriority.NORMAL, false, RegisterClientCommandsEvent.class,
+					event -> FabricatedCommands.register(event.getDispatcher(), state, true));
+		}
 		// Fabric storages and Forge's item and fluid handlers on blocks, each seen by the other side's code, for the transfer
 		// module of Fabric API's jar. The module is outside the plan, which the provider check reads: a mod providing it
 		// (Forgified Fabric API) has it as a Forge mod, not a Fabric mod Fabricated runs, and bridges it itself (PROVIDER-16).
