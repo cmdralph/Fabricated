@@ -39,6 +39,8 @@ import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -1557,6 +1559,7 @@ class MixinPreflightTest {
 			}
 			at.visitEnd();
 			ats.visitEnd();
+			if (handler.equals("renderPiece")) ann.visit("cancellable", true);
 			ann.visitEnd();
 			mv.visitCode();
 			mv.visitInsn(Opcodes.RETURN);
@@ -1570,7 +1573,8 @@ class MixinPreflightTest {
 		// PRE-20: NeoForge 21.1 keeps HumanoidArmorLayer.renderArmorPiece only to call an overload that also takes the
 		// limb animation's values, which render calls instead. Figura's hook at its usesInnerModel call was missing there,
 		// and its hook at the return, which restores the model parts the first one moved, would never run. A hook at its
-		// start stays, as one there may cancel the method to do its work another way (FRAPI-5's Indigo hook).
+		// start stays, as one there may cancel the method to do its work another way, and vanilla's class doesn't call the
+		// method here (ARMOR-1's test moves it where the class calls the overload in its place).
 		java.util.function.Supplier<Map<String, byte[]>> mod = () -> new HashMap<>(Map.of("com/example/mixin/Armor",
 				mixin("com/example/mixin/Armor", false, MixinPreflightTest::armorPieceHooks)));
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Armor"));
@@ -1620,6 +1624,110 @@ class MixinPreflightTest {
 			assertTrue(unmoved.methods.stream().anyMatch(m -> m.name.equals("onPiece$fabricated")), stayed.toString());
 			assertTrue(unmoved.methods.stream().noneMatch(m -> m.name.equals("postPiece$fabricated")), stayed.toString());
 		}
+	}
+
+	/**
+	 * {@code layer} ({@link #armorLayerLike}) with its pieces' methods of {@code access} and a method {@code caller()V}
+	 * calling the piece {@code calls} times (the overload taking the animation's values, where the class has it), then
+	 * jumping back to the first call where {@code looped}: as {@code HumanoidArmorLayer.render} calls
+	 * {@code renderArmorPiece} for each armour slot.
+	 */
+	private static byte[] withPieceCaller(byte[] layer, int access, String caller, int calls, boolean looped) {
+		ClassNode node = new ClassNode();
+		new ClassReader(layer).accept(node, 0);
+		boolean animated = node.methods.stream().anyMatch(m -> (m.name + m.desc).equals(PIECE_ANIMATED));
+		for (MethodNode m : node.methods) {
+			if (m.name.equals("piece")) m.access = m.access & ~(Opcodes.ACC_PUBLIC | Opcodes.ACC_PRIVATE) | access;
+		}
+		MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC, caller, "()V", null, null);
+		LabelNode first = new LabelNode();
+		method.instructions.add(first);
+		for (int i = 0; i < calls; i++) {
+			method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+			method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+			if (animated) {
+				method.instructions.add(new InsnNode(Opcodes.FCONST_0));
+				method.instructions.add(new InsnNode(Opcodes.FCONST_0));
+			}
+			String piece = animated ? PIECE_ANIMATED : PIECE;
+			method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, TARGET, "piece", piece.substring("piece".length()), false));
+		}
+		if (looped) {
+			method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+			method.instructions.add(new JumpInsnNode(Opcodes.IFNE, first));
+		}
+		method.instructions.add(new InsnNode(Opcodes.RETURN));
+		node.methods.add(method);
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		node.accept(cw);
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aHookAtTheStartOfAMethodThePlatformDeprecatedForAnOverloadMovesThereWhereItsClassCallsThatInItsPlace() throws Exception {
+		// ARMOR-1: NeoForge 21.1's HumanoidArmorLayer.render calls renderArmorPiece's overload taking the limb animation's
+		// values four times, where vanilla's calls renderArmorPiece four times, and both are private: the overload starts
+		// where and as often as vanilla's method did, so Fabric API's cancellable armour renderer hook at its start moves
+		// there. Cancelled, it skips the overload's body (vanilla's code there), as it skipped the method's on vanilla.
+		java.util.function.Supplier<Map<String, byte[]>> mod = () -> new HashMap<>(Map.of("com/example/mixin/Armor",
+				mixin("com/example/mixin/Armor", false, MixinPreflightTest::armorPieceHooks)));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Armor"));
+		BiFunction<byte[], byte[], Map<String, byte[]>> repair = (platform, vanilla) -> new MixinPreflight(new ClassIndex(Map.of(TARGET, platform)::get),
+				InstalledClasses.NONE, mod.get()::get, ClassBytesSource.EMPTY, true, true, Map.of(TARGET, vanilla)::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>());
+		byte[] vanilla = withPieceCaller(armorLayerLike(true, false), Opcodes.ACC_PRIVATE, "render", 4, false);
+		byte[] neoForge = withPieceCaller(armorLayerLike(false, true), Opcodes.ACC_PRIVATE, "render", 4, false);
+		Map<String, byte[]> classes = mod.get();
+		List<PreflightFinding> notes = new ArrayList<>();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, neoForge)::get);
+		Map<String, byte[]> repaired = new MixinPreflight(game, InstalledClasses.NONE, classes::get, ClassBytesSource.EMPTY, true, true,
+				Map.of(TARGET, vanilla)::get).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+		assertTrue(notes.stream().anyMatch(n -> n.message().contains("@Inject renderPiece targets " + PIECE + ", which NeoForge deprecated for " + PIECE_ANIMATED
+				+ "; the injector is pointed there, as its class calls it in place of each of vanilla's calls of the first")), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Armor.class")).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("renderPiece$fabricated")).findFirst().orElseThrow();
+		// It takes the overload's parameters and the same (not returnable) callback info, and stays cancellable.
+		assertEquals("(Ljava/lang/Object;IFFLorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", bridge.desc);
+		AnnotationNode moved = bridge.invisibleAnnotations.getFirst();
+		assertEquals(List.of(PIECE_ANIMATED), Annotations.value(moved, "method"));
+		assertEquals(true, Annotations.value(moved, "cancellable"));
+		assertEquals("HEAD", Annotations.value(Annotations.list(Annotations.value(moved, "at")).getFirst(), "value"));
+		// The handler gets the object, the int and that callback info, which the overload's start then tests.
+		List<Integer> loads = new ArrayList<>();
+		List<String> calls = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode load) loads.add(load.var);
+			if (insn instanceof MethodInsnNode call) calls.add(call.name + call.desc);
+		}
+		assertEquals(List.of(0, 1, 2, 5), loads);
+		assertEquals(List.of("renderPiece(Ljava/lang/Object;ILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V"), calls);
+		classes.put("com/example/mixin/Armor", repaired.get("com/example/mixin/Armor.class"));
+		assertTrue(new MixinPreflight(game, InstalledClasses.NONE, classes::get, ClassBytesSource.EMPTY, true, true, Map.of(TARGET, vanilla)::get)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().noneMatch(f -> f.severity() != Severity.INFO),
+				"the bridge fits the overload");
+
+		// It stays where the platform's class calls the overload otherwise: more often (twice for each of vanilla's calls,
+		// as NeoForge 21.1's section compiler calls tesselateBlock once per render type, FRAPI-5), from another method, or
+		// inside a loop; and where the method isn't private in vanilla's class, which other classes may call (Indigo's
+		// hook at the start of ModelBlockRenderer.tesselateBlock), or the overload isn't in the platform's.
+		Map<String, List<byte[]>> stays = Map.of(
+				"called more often", List.of(withPieceCaller(armorLayerLike(false, true), Opcodes.ACC_PRIVATE, "render", 8, false), vanilla),
+				"called from another method", List.of(withPieceCaller(armorLayerLike(false, true), Opcodes.ACC_PRIVATE, "renderOther", 4, false), vanilla),
+				"called in a loop", List.of(withPieceCaller(armorLayerLike(false, true), Opcodes.ACC_PRIVATE, "render", 4, true), vanilla),
+				"public in vanilla's class", List.of(withPieceCaller(armorLayerLike(false, true), Opcodes.ACC_PUBLIC, "render", 4, false),
+						withPieceCaller(armorLayerLike(true, false), Opcodes.ACC_PUBLIC, "render", 4, false)),
+				"public in the platform's class", List.of(withPieceCaller(armorLayerLike(false, true), Opcodes.ACC_PUBLIC, "render", 4, false), vanilla),
+				"not called by vanilla's class", List.of(withPieceCaller(armorLayerLike(false, true), Opcodes.ACC_PRIVATE, "render", 0, false),
+						withPieceCaller(armorLayerLike(true, false), Opcodes.ACC_PRIVATE, "render", 0, false)));
+		stays.forEach((why, platformAndVanilla) -> {
+			ClassNode unmoved = new ClassNode();
+			new ClassReader(repair.apply(platformAndVanilla.get(0), platformAndVanilla.get(1)).get("com/example/mixin/Armor.class")).accept(unmoved, 0);
+			assertTrue(unmoved.methods.stream().noneMatch(m -> m.name.equals("renderPiece$fabricated")), why);
+			assertTrue(unmoved.methods.stream().anyMatch(m -> m.name.equals("postPiece$fabricated")), why + ": the hook at the return moves all the same");
+		});
 	}
 
 	private static final String CRAFTING_HELPER = "net/neoforged/neoforge/common/crafting/CraftingHelper";
