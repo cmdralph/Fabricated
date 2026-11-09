@@ -6,7 +6,7 @@
 #
 # Run it in a checkout of a working branch made from the platform branch, with main fetched. It makes a merge commit
 # (no rebase, no force): the branch's own files are kept as they are, the files only main has are left out, the files
-# the branch no longer needs are deleted, and a conflict in a shared file stops it for a person to resolve. Then push
+# the branch no longer needs are deleted, and every shared file is main's. Then push
 # the working branch and open a pull request into the platform branch, whose full matrix checks the merge.
 #
 # Usage: scripts/sync-platform-branch.sh <forge|forge-legacy> [<main ref, default origin/main>]
@@ -45,13 +45,24 @@ if ! git cat-file -e "HEAD:ci/$platform/platform.sh" 2>/dev/null; then
 	exit 1
 fi
 
-# Without git's directory rename detection: the platform folders main has and the branch left out at the split look
-# renamed to it, and files main adds in them would be merged into the branch's own folders instead of being left out.
-git -c merge.directoryRenames=false merge --no-ff --no-commit "$base" || true
-# The branch's own files stay as they are, whatever main did with them (main left them out at the split).
+# Shared paths are main's: a platform branch never changes them, so the merge takes them as main has them rather than
+# merging them, which git's rename detection gets wrong across the platforms' folders (it pairs a platform's file with
+# one main moved). A shared file the branch changed since its last sync is named, as that change belongs on main.
+base_commit=$(git rev-parse "$base")
+platform_paths=()
+for path in "${own[@]}" "${mains[@]}" "${gone[@]}"; do platform_paths+=(":(exclude)$path"); done
+edited=$(git diff --name-only "$(git merge-base HEAD "$base_commit")" HEAD -- . "${platform_paths[@]}")
+if [ -n "$edited" ]; then
+	echo "warning: the branch changed these shared files since its last sync; they are taken as main has them:" >&2
+	echo "$edited" >&2
+fi
+git merge --no-ff --no-commit -s ours "$base_commit" > /dev/null
+git read-tree --reset -u "$base_commit"
+# The branch's own files stay as they are.
 for path in "${own[@]}"; do
 	if git cat-file -e "HEAD:$path" 2>/dev/null; then
 		git rm -r -q --cached --ignore-unmatch -- "$path"
+		rm -rf -- "$path"
 		git checkout HEAD -- "$path"
 	fi
 done
@@ -59,10 +70,5 @@ for path in "${mains[@]}" "${gone[@]}"; do
 	git rm -r -q --cached --ignore-unmatch -- "$path"
 	rm -rf -- "$path"
 done
-if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
-	echo "Conflicts in shared files, to resolve by hand, then commit:" >&2
-	git diff --name-only --diff-filter=U >&2
-	exit 1
-fi
 git commit -q --no-edit -m "chore: sync $platform with main" -m "Merges $(git rev-parse "$base")."
 git log --oneline -1
