@@ -43,6 +43,20 @@
       "version": "1.0.3",
       "reason": "Shipped by Fabricated: upstream's builder and accessor mixins as they are; its loading hooks are replaced by Forge's LootTableLoadEvent (REPLACE and MODIFY, once per table) and Fabricated's hook on the reload of the reloadable registries (ALL_LOADED), as on Forge 61 to 65. A table's source is decided from the id of the pack its file comes from (mods' data is a pack per mod file on Forge), where upstream reads fabric-resource-loader-v0's pack sources."
     },
+    "fabric-registry-sync-v0": {
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-registry-sync-v0.mixins.json:RegistryLoaderMixin#prependDirectoryWithNamespace"
+      ],
+      "reason": "Forge 52's Registries.elementsDirPath already reads a registry outside the minecraft namespace from data/<pack namespace>/<registry namespace>/<registry path>, the directory upstream's hook makes for a Fabric mod's dynamic registry, so with the hook the namespace went in twice and no entry of such a registry was read (REG-11, as on Forge 47)."
+    },
+    "fabric-resource-loader-v0": {
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-resource-loader-v0.client.mixins.json:GameOptionsMixin#onLoad"
+      ],
+      "reason": "Forge 52 loads the game's options before it loads mods, so upstream's hook at the return of the options' load, which enables Fabric mods' built-in packs that are enabled by default the first time the game sees them, ran before the Fabric mods' entrypoints registered those packs: it enabled none and dropped the packs it had kept. Fabricated's in-game mod does the hook's work once the entrypoints have run, before the game selects its packs (CORPUS-104, as on Forge 47)."
+    },
     "fabric-tag-api-v1": {
       "plan": "passthrough",
       "skipMixins": [

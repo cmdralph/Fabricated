@@ -14,6 +14,7 @@ import io.github.cmdralph.fabricated.forge.entity.SleepEvents;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.forge.keymapping.KeyMappingBridge;
 import io.github.cmdralph.fabricated.forge.loot.LootCompat;
+import io.github.cmdralph.fabricated.forge.resource.FabricDefaultPacks;
 import io.github.cmdralph.fabricated.forge.transfer.TransferBridge;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
@@ -95,6 +96,8 @@ public final class FabricatedMod {
 			ClientSupport.init(state);
 			// Fabric mods' key bindings, registered with Forge's key mapping event after the client entrypoints (KEYMAP-3).
 			if (ours(state, "fabric-key-binding-api-v1")) KeyMappingBridge.register(modBus);
+			// Fabric mods' built-in packs enabled by default, once their initializers registered them (CORPUS-104).
+			if (ours(state, FabricDefaultPacks.MODULE)) state.api().afterEntrypoints(FabricDefaultPacks::apply);
 		}
 		// Each entrypoint runs with a context class loader that finds Fabric mods' directories, as on Fabric (SCAN-1).
 		EntrypointRunner runner = new EntrypointRunner(state.runtime(), ModDirectoryClassLoader.contextHook(state.runtime()));
