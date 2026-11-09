@@ -34,6 +34,7 @@
     "NamespacedWrapperEntryAddedMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperPendingHoldersMixin": [],
     "ParticleEngineProvidersBridgeMixin": [],
+    "ParticleEngineRenderMixin": [],
     "PlayerListViewMixin": [],
     "ResourcePackLoaderKnownPackMixin": [],
     "TagFileRemoveMixin": ["fabric-tag-api-v1"]
