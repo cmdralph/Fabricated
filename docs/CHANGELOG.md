@@ -3,6 +3,27 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-09: Injectors into a method NeoForge deprecated for an overload (PRE-20), Biomes O' Plenty and Porting Lib's GUI utilities rechecked (task 4)
+
+- **PRE-20** (P2), fixed: pre-flight disabled Figura on the 1.21.1 advanced corpus client (extended run 42624614743).
+  NeoForge 21.1 deprecated `HumanoidArmorLayer.renderArmorPiece` for an overload that also takes the limb animation's
+  values, which its `render` calls instead; the old method only passes its parameters and six zeros on. Two of Figura's
+  hooks there, taking the method's parameters, weren't moved, as the overload repair bridged one worked-out value only,
+  and its hook at the method's return stayed on a method nothing calls. An `@Inject` handler taking a method's
+  parameters now gets them from a bridge where the method passes them on in order followed by defaults, and an
+  `@Inject` at the returns of a method the platform deprecated so, for a method it added, moves to the end of that one,
+  as at a kept constructor's (CTOR-5). Verified locally: a 1.21.1 client with Figura and Fabric API loads it with the
+  three hooks moved and reaches its world, and the 1.21.1 server part passes; no Fabric API injector moves by the new
+  end rule on 1.21.1, 1.21.11 or (read in the jars) 26.x.
+- **ARMOR-1** (P1, UNVERIFIED on real mods), opened: Fabric API's armour renderers never run on NeoForge 21.1, as their
+  hook is at the start of that deprecated method. Moving hooks at a deprecated method's start is left out of PRE-20:
+  Indigo's block renderer hook would draw Fabric models in each of NeoForge's per render type calls, where Fabricated
+  draws them once (FRAPI-5).
+- **CORPUS-22** and **CORPUS-93** rechecked against the mods CI ran: Biomes O' Plenty's Fabric build on 1.21.11 (NeoForge
+  replaced the fluid tags on the eyes with its fluid types) and Porting Lib's GUI utilities on Forge 47 (Forge gathers
+  the tooltip components itself) stay disabled; no generic repair keeps their hooks' meaning, and both have NeoForge or
+  Forge builds (Biomes O' Plenty's, Create's). The corpus baseline's rows say so.
+
 ## 2026-11-08: The v0.6.0-beta release: nested jars bounded per launch (SEC-5), the ship criteria audited, the release notes, the runs that held on the release heads gated (task 7)
 
 - **SEC-5** (P3), reopened and fixed: task 6 closed it as won't fix, but the beta's stability bar asks that the limits
