@@ -31,6 +31,7 @@
     "NamespacedWrapperEntryAddedMixin": ["fabric-registry-sync-v0"],
     "MobBucketItemBridgeMixin": [],
     "NamespacedWrapperPendingHoldersMixin": [],
+    "PackRepositorySourcesMixin": [],
     "ParticleEngineProvidersBridgeMixin": [],
     "PotionBrewingMixBridgeMixin": [],
     "RecordItemEarlySoundMixin": [],
