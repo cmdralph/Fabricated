@@ -26,6 +26,7 @@
     "LiquidBlockEarlyFluidMixin": [],
     "LivingEntityDropCaptureMixin": [],
     "LivingEntityFluidTravelMixin": [],
+    "MappedRegistryEarlyWriteMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
     "NamespacedWrapperAliasMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperEntryAddedMixin": ["fabric-registry-sync-v0"],

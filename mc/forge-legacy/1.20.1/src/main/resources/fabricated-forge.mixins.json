@@ -10,6 +10,7 @@
     "LivingEntityDropCaptureMixin",
     "LivingEntityFluidTravelMixin",
     "MappedRegistryPendingHoldersMixin",
+    "MappedRegistryEarlyWriteMixin",
     "NamespacedWrapperPendingHoldersMixin",
     "NamespacedWrapperAliasMixin",
     "NamespacedWrapperEntryAddedMixin",
