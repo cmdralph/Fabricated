@@ -26,8 +26,8 @@ import net.minecraftforge.eventbus.api.EventPriority;
  * loot hooks standing down for another mod's loot module ({@link ForgeLootProviderTest}), the command module's
  * registration event ({@link ForgeCommandTest}), the interaction module's block break events ({@link ForgeBlockBreakTest}), the entity
  * events module's sleep events ({@link ForgeSleepTest}), the registry sync module's aliases
- * ({@link ForgeRegistryAliasTest}) and entry added events ({@link ForgeRegistryEntryAddedTest}), and Forge Config API
- * Port's Fabric API ({@link ForgeConfigPortTest}).
+ * ({@link ForgeRegistryAliasTest}) and entry added events ({@link ForgeRegistryEntryAddedTest}), Forge Config API Port's
+ * Fabric API ({@link ForgeConfigPortTest}) and a Fabric mod's stable registry entries ({@link ForgePackTest}).
  */
 public final class ForgeTestMod implements ModInitializer {
 	/** The namespace of the content and data of Forge's half. */
@@ -66,6 +66,7 @@ public final class ForgeTestMod implements ModInitializer {
 		run("block break check", "fabric-events-interaction-v0", () -> ForgeBlockBreakTest.check(level));
 		run("sleep check", "fabric-entity-events-v1", () -> ForgeSleepTest.check(level));
 		run("config port check", null, ForgeConfigPortTest::check);
+		run("mod pack data check", null, () -> ForgePackTest.check(server));
 		if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) run("colour provider check", "fabric-rendering-v1", ForgeColorTest::check);
 	}
 
