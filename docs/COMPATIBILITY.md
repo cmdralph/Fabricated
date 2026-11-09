@@ -1779,8 +1779,8 @@ What else differs on Forge, for Fabric mods in general:
   from Forge's jar-in-jar locator and reads the jar itself, so each nested mod loads once, translated (JIJ-1).
 - **Placeholders for Sinytra Connector:** a Fabric jar whose `META-INF/mods.toml` only tells Forge to install Connector
   (`connector:placeholder`, as Origins 1.10.2's has) loads as the Fabric mod it is: Fabricated's mod locator keeps it
-  from Forge's mods-folder scan (MULTI-2, UNVERIFIED in the game). Any other jar with both loaders' metadata is
-  Forge's.
+  from Forge's mods-folder scan (MULTI-2, checked on a Forge 47 server with Origins 1.10.2). Any other jar with
+  both loaders' metadata is Forge's.
 - **Other copies of Fabric's parts:** a Fabric API module another Forge mod provides (one bundling Fabric API's modules)
   is that mod's, and Fabricated's copy, its mixins and its Forge hooks stand down, as on NeoForge (all five, server run
   with stand-ins; PROVIDER-1). Sinytra Connector and a second Fabricated jar are refused, the launch stopping with
@@ -1848,12 +1848,12 @@ What else differs on Forge, for Fabric mods in general:
 - **Mixins adding constants to an enum Forge makes extensible:** a mod's `@Mutable` shadow (or accessor) of such an
   enum's values array, as FrozenLib's `MobCategory` mixin has, loses `@Mutable`, so Forge's enum extender, which runs
   after Mixin and finds the array only while it is final, still finds it, and makes it writable for the mod (ENUM-8,
-  UNVERIFIED in the game). Mixin's own `@Mutable` had stopped the game as the enum loaded.
+  checked on a Forge 66 server with FrozenLib 3.0.3). Mixin's own `@Mutable` had stopped the game as the enum loaded.
 - **Mixin configs a mod adds itself:** Forge 52's and 61 to 66's Mixin (SpongePowered's 0.8.7) gives a config added
   by name alone (`Mixins.addConfiguration`, as ReplayMod's plugin adds most of its configs) no environment, and stopped
   the game reading it; the mod's calls give the default one, as Fabric's Mixin does (LOADER-6). Pre-flight doesn't
-  check such configs' mixins, which the mod's metadata doesn't list (MIXCFG-1). Whether Forge's Mixin then applies
-  ReplayMod's is UNVERIFIED.
+  check such configs' mixins, which the mod's metadata doesn't list (MIXCFG-1). ReplayMod's apply on a Forge 66 client,
+  which joins its world; on Forge 47 one of them stops the client (MIXCFG-1).
 - **Two mixins' unique fields of one name:** for the same reason, Forge's Mixin renames a private `@Unique` field only
   when its class declares one of that name, not when another mixin adds it, and two mixins' fields became one, where
   Fabric's Mixin keeps a field each: Fabric API's screen mixin and SpruceUI's both keep `tickingScreen` in `Minecraft`,
