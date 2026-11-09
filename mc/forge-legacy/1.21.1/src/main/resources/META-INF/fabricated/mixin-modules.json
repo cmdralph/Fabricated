@@ -17,6 +17,7 @@
     "BucketItemEarlyFluidMixin": [],
     "BuiltInRegistriesFreezeMixin": [],
     "BuiltInRegistriesInvoker": [],
+    "ExtendedBlockModelDeserializerMixin": [],
     "FluidTypeMixin": [],
     "ForgePayloadEncodeMixin": ["fabric-networking-api-v1"],
     "ForgeRegistryEntryAddedMixin": ["fabric-registry-sync-v0"],
