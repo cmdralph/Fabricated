@@ -31,8 +31,9 @@ configurations {
     }
     compileOnly.extendsFrom(fabricApiAnnotations)
 }
+def forgeGameDependency = minecraft.dependency(forgeArtifact)
 dependencies {
-    forgeGame minecraft.dependency(forgeArtifact)
+    forgeGame forgeGameDependency
     fabricApiAnnotations 'org.jetbrains:annotations:24.1.0'
     fabricApiAnnotations 'org.jspecify:jspecify:1.0.0'
 }
@@ -41,27 +42,41 @@ ext.gameDependencies = { SourceSet sourceSet ->
     configurations.named(sourceSet.compileOnlyConfigurationName) { extendsFrom(configurations.forgeGame, configurations.fabricApiAnnotations) }
 }
 
-// Stand-ins for the Fabric API modules Fabricated passes through on Forge that the test mod uses (the shared sources'
-// src/testmodstubs, 26.x's object builder module), next to mc/shared's: compiled against, never packaged. They name
-// the vendored fabric-api-base's types, in the in-game mod, and Fabric Loader's (a mod's container).
-sharedSources.each { sourceSets.testmodstubs.java.srcDir rootProject.file("$it/src/testmodstubs/java") }
-dependencies {
-    testmodstubsCompileOnly sourceSets.main.output
-    testmodstubsCompileOnly project(':fabric-loader-api')
+// Mojang's mappings of an obfuscated version, which mc/mc.gradle remaps Fabric API's jars with: those ForgeGradle names the
+// game with, its Mojang to obfuscated names in TSRG v2, written as the TSRG v1 core reads (the same class and member
+// lines, without the header and the parameter and static lines).
+if (project.namespace == 'INTERMEDIARY') {
+    def tsrg = layout.buildDirectory.file('mojang/mappings.tsrg')
+    def mojangTsrg = tasks.register('mojangMappingsTsrg') {
+        def source = forgeGameDependency.toObfFile
+        inputs.file(source).withPathSensitivity(PathSensitivity.NONE)
+        outputs.file(tsrg)
+        doLast {
+            tsrg.get().asFile.withWriter('UTF-8') { out ->
+                new java.util.zip.GZIPInputStream(source.get().newInputStream()).withReader('UTF-8') { reader ->
+                    reader.eachLine { line -> if (!line.startsWith('tsrg2 ') && !line.startsWith('\t\t')) out.write(line + '\n') }
+                }
+            }
+        }
+    }
+    ext.mojangMappings = mojangTsrg.map { tsrg.get() }
 }
 
-// Pass-through Fabric API modules the in-game mod and the test mod call (mc.gradle compiles 26.x against their jars,
-// 1.21.11 against src/fabricapistubs): the interaction events module, whose block break events Forge's block breaking
-// fires through the in-game mod (BREAK-1), the entity events module, whose sleep events Forge's bed handling fires
-// through it (SLEEP-1), the transfer and lookup modules, whose storages the in-game mod bridges to Forge's capabilities
-// (TransferBridge), the screen module, whose drawing and input events Forge's screen events and hooks fire through
-// it (SCREEN-1), and the registry sync module, whose entry added events Forge's registries fire through it (CORPUS-108).
-ext.passThroughCompileModules = ['fabric-events-interaction-v0', 'fabric-entity-events-v1', 'fabric-transfer-api-v1', 'fabric-api-lookup-api-v1',
-        'fabric-screen-api-v1', 'fabric-registry-sync-v0']
-// The Fabric API modules the client test mod (src/testmodfrapi, 26.x) calls beyond mc.gradle's own list: the lifecycle
-// events and networking (the renderer test's server side places its blocks as a player joins), which NeoForge's in-game
-// mod ships and Forge passes through.
-ext.passThroughTestmodfrapiModules = ['fabric-lifecycle-events-v1', 'fabric-networking-api-v1']
+// Forge's half of the test mod (mc/forge's src/testmod), beside the shared one (mc/mc.gradle): the checks of Forge's own
+// hooks, their mixins, the Fabric mod it nests (mc.gradle's testmodnested, JIJ-1), and the access widener's interface
+// injected into the server and the field Forge's coremod reads through a getter, which must stay private.
+testmodDescriptor.testmod << [entrypoints: [main: ['io.github.cmdralph.fabricated.forgetest.ForgeTestMod'],
+        client: ['io.github.cmdralph.fabricated.forgetest.ForgeTestClient']], mixins: ['fabricated-forge-testmod.mixins.json'],
+        jars: [[file: 'META-INF/jars/fabricated-forge-nested.jar']]]
+testmodDescriptor.testmodfrapi << [entrypoints: [client: ['io.github.cmdralph.fabricated.testmod.frapi.ForgeFrapiClient']]]
+// sharedSources holds GStrings, which no String equals.
+def sharedSourcePaths = sharedSources*.toString()
+// 26.x's half of the renderer test mod drives screen input through mixins (common26).
+if ('mc/forge/common26' in sharedSourcePaths) testmodDescriptor.testmodfrapi << [mixins: ['fabricated-testmod-frapi-forge.mixins.json']]
+// Fabric API's advancement module is 26.2's and later's, common26late's versions'.
+if ('mc/forge/common26late' in sharedSourcePaths) testmodDescriptor.testmod << [entrypoints: [main: ['io.github.cmdralph.fabricated.forgetest.ForgeAdvancementTest']]]
+testmodAccessWidener << 'inject-interface net/minecraft/server/MinecraftServer io/github/cmdralph/fabricated/forgetest/ForgeTestMarker' <<
+        'accessible field net/minecraft/world/item/BucketItem content Lnet/minecraft/world/level/material/Fluid;'
 
 expandProps.forge_version_range = project.forge_version_range
 
