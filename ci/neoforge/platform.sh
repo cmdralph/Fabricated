@@ -5,8 +5,7 @@ jar_globs=("fabricated-neoforge-[0-9]*+mc$mc.jar")
 testmods_dir="$root/mc/neoforge/$mc/build/testmods"
 mods_toml=META-INF/neoforge.mods.toml
 server_timeout=900
-# The server reloads its data packs once started, so reload listeners run a second time (checks.tsv's reload-again).
-server_reload=1
+# How long the server runs after its data pack reload before it is stopped.
 server_settle=10
 client_launch_id="neoforge-$loader"
 mcrt_loader=neoforge
