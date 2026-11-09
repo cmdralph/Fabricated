@@ -52,10 +52,13 @@ class RecordedFramesTest {
 		MethodNode walked = read(forge, 0);
 		assertArrayEquals(new int[] {8, 4}, RecordedFrames.counted(walked, recorded(walked)));
 		assertArrayEquals(new int[] {8, 4}, RecordedFrames.counted(walked, recorded(walked).subList(0, 1)), "the chop counted from itself");
+		// FRAME-1: as NeoForge's FML (and Fabric Loader) hand it to Mixin, expanded, and as Fabric's Mixin records it from the
+		// class read compressed: the same count.
+		MethodNode walkedExpanded = read(forge, ClassReader.EXPAND_FRAMES);
+		assertArrayEquals(new int[] {8, 4}, RecordedFrames.counted(walkedExpanded, recorded(walked)));
 
 		// Recorded from its expanded frames, as the repair records them, Mixin counts the locals there are.
 		assertArrayEquals(new int[] {7, 6}, RecordedFrames.counted(walked, recorded(RecordedFrames.withExpandedFrames(OWNER, walked))));
-		MethodNode walkedExpanded = read(forge, ClassReader.EXPAND_FRAMES);
 		assertArrayEquals(new int[] {7, 6}, RecordedFrames.counted(walkedExpanded, recorded(RecordedFrames.withExpandedFrames(OWNER, walkedExpanded))));
 	}
 
@@ -247,8 +250,9 @@ class RecordedFramesTest {
 	}
 
 	/**
-	 * The frames as Mixin 0.8.7 records a method's ({@code ClassInfo.FrameData}): each one's type, and its size
-	 * {@code Locals.computeFrameSize(frame, initialFrameSize)}, at least the method's argument slots.
+	 * The frames as Mixin 0.8.7 and Fabric's Mixin record a method's ({@code ClassInfo.FrameData}): each one's type, and its
+	 * size {@code Locals.computeFrameSize(frame, initialFrameSize)}, at least the method's argument slots (Fabric's
+	 * {@code FrameData.size}; its {@code rawSize}, without that floor, is read only at behaviour 0.9.2).
 	 */
 	private static List<RecordedFrames.Frame> recorded(MethodNode method) {
 		int initial = (method.access & Opcodes.ACC_STATIC) == 0 ? 1 : 0;

@@ -63,7 +63,7 @@ Test-mod configs (not shipped):
 
 | Config | Package | defaultRequire | Mixins |
 |---|---|---|---|
-| `mc/shared/1.20.1+/src/testmod/resources/fabricated-testmod.mixins.json` | `io.github.cmdralph.fabricated.testmod.mixin` | 1 | Plugin `TestMixinPlugin`. `BuiltInRegistriesMixin` (builds content from vanilla's registry bootstrap, CORPUS-31, and sees the built-in registries frozen, CORPUS-32), `LivingEntityMixin` (a private `self()` helper, as Fabric API's entity events module has, HIDE-1), `LivingEntitySelfMixin` (adds an interface whose default `self()` is a second one beside NeoForge's, for the default bridge, CORPUS-63), `MappedRegistryMixin` (sees a registry frozen, as Flashback does, REG-8), `MinecraftServerMixin` (`@Inject tickServer TAIL`: mixins apply), `MobMultipartMixin` (adds an interface whose default `isMultipartEntity()` is a second one beside the one `Mob` has through `Entity`, for the default bridge, DEFAULT-1), `PackRepositoryMixin` (leaves a pack repository's sources immutable, as FrozenLib does, PACK-1), `PlayerListMixin` (replaces the server's player list, POLY-1), `RegistryDataLoaderMixin` (writes to built-in registries from that class's initializer, as Wover does, REG-3); client: `client.MinecraftStopMixin` (CI diagnostics: logs who asked the game to stop), `client.MinecraftEarlyReloadListenerMixin` (registers a reload listener from `Minecraft`'s constructor, before NeoForge's event). All in `mc/shared/1.20.1+/src/testmod/java/.../mixin/` |
+| `mc/shared/1.20.1+/src/testmod/resources/fabricated-testmod.mixins.json` | `io.github.cmdralph.fabricated.testmod.mixin` | 1 | Plugin `TestMixinPlugin`. `BuiltInRegistriesMixin` (builds content from vanilla's registry bootstrap, CORPUS-31, and sees the built-in registries frozen, CORPUS-32), `LivingEntityMixin` (a private `self()` helper, as Fabric API's entity events module has, HIDE-1), `LivingEntitySelfMixin` (adds an interface whose default `self()` is a second one beside NeoForge's, for the default bridge, CORPUS-63), `MappedRegistryMixin` (sees a registry frozen, as Flashback does, REG-8), `MinecraftServerMixin` (`@Inject tickServer TAIL`: mixins apply), `MobMultipartMixin` (adds an interface whose default `isMultipartEntity()` is a second one beside the one `Mob` has through `Entity`, for the default bridge, DEFAULT-1), `PackRepositoryMixin` (leaves a pack repository's sources immutable, as FrozenLib does, PACK-1), `PlayerListMixin` (replaces the server's player list, POLY-1), `RecordedFramesMixin` (takes a local after a frame that chops one, where Mixin may count too few locals: CORPUS-79, FRAME-1), `RegistryDataLoaderMixin` (writes to built-in registries from that class's initializer, as Wover does, REG-3); client: `client.MinecraftStopMixin` (CI diagnostics: logs who asked the game to stop), `client.MinecraftEarlyReloadListenerMixin` (registers a reload listener from `Minecraft`'s constructor, before NeoForge's event). All in `mc/shared/1.20.1+/src/testmod/java/.../mixin/` |
 | `mc/shared/1.20.1+/src/testmod/resources/fabricated-testmod-mixinsemantics.mixins.json` | `io.github.cmdralph.fabricated.testmod.mixinsemantics` | 1 | Mixins applied as Fabric's Mixin applies them: `MinecraftServerCounterMixin` and `MinecraftServerCounterShadowMixin` (a `@Shadow` of a field another mixin adds, CORPUS-74), `MinecraftServerUniqueMixin` and `MinecraftServerUniqueTwinMixin` (two `@Unique` fields of one name stay a field each, CORPUS-95). All in `mc/shared/1.20.1+/src/testmod/java/.../mixinsemantics/` |
 | `mc/shared/26.x/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json` | `io.github.cmdralph.fabricated.testmod.frapi.mixin` | 1 | `BakedQuadMixin` (`@Inject <init> RETURN` with vanilla's parameters, `mc/shared/26.x/src/testmodfrapi/java/.../mixin/BakedQuadMixin.java`). Exercises pre-flight's constructor repair and handler bridge (CI's renderer API gate) |
 | `mc/shared/src/testmodbroken/resources/badmixin/fabricated-testmod-badmixin.mixins.json` | `io.github.cmdralph.fabricated.testmod.broken.mixin` | unset | `ImpossibleMixin` (`@Inject method="fabricatedMethodThatDoesNotExist" HEAD require=1`, `.../ImpossibleMixin.java`) and `UnmatchedCallMixin` (`@Inject method="tickServer"` at a call it never makes, `require=1`). Meant to fail pre-flight, which leaves their injectors out as the mixins are self-contained (`ci/neoforge/smoke-server.sh`); with pre-flight ignored, Mixin fails on each as it applies it, and the next launch leaves it out (`ci/neoforge/smoke-apply-failure.sh`, APPLY-1) |
@@ -1027,6 +1027,7 @@ Versions: 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fab
 | mixins | MobMultipartMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.Mob | none; adds `DefaultBridgeTest.OwnMultipart`, whose default `isMultipartEntity()` is a second one beside the one `Mob` has through `Entity`'s NeoForge extension (`IEntityExtension`), for the default bridge through a superclass (DEFAULT-1) | — | — | — | — |
 | mixins | PackRepositoryMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.repository.PackRepository prio=900 | @Inject → fabricatedTest$immutableSources (leaves the sources in an immutable set, PACK-1, before the hooks of the default priority) | "<init>" | RETURN | — | default |
 | mixins | PlayerListMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @Inject → fabricatedTest$replaceList (replaces the player list, POLY-1) | "<init>" | RETURN | — | default |
+| mixins | RecordedFramesMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | io.github.cmdralph.fabricated.testmod.RecordedFramesTest$Probe | @ModifyVariable → fabricatedTest$kept (the probe's StringBuilder after a chop, by type and ordinal: found where Mixin counts the locals there are, CORPUS-79; nowhere on NeoForge, as on Fabric, FRAME-1) | "probe" | INVOKE `L…/String;valueOf(L…/Object;)L…/String;` remap=false | 0 | require=0 |
 | mixins | RegistryDataLoaderMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.resources.RegistryDataLoader | @Inject → fabricatedTest$writeEarly (writes to built-in registries, REG-3) | "<clinit>" | HEAD | — | default |
 | client | client.MinecraftStopMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.Minecraft | @Inject → fabricatedTest$whoStops (CI diagnostics) | "stop" | HEAD | — | default |
 | client | client.MinecraftEarlyReloadListenerMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.Minecraft | @Inject → fabricatedTest$registerEarly (a reload listener registered before NeoForge's event) | "<init>" | INVOKE `L…/ReloadableResourceManager;registerReloadListener(L…/PreparableReloadListener;)V` | 0 | default |
@@ -1070,7 +1071,7 @@ first folder its `shared_sources` lists that has it, `mc/forge-shared` among the
 `overwrites.requireAnnotations`, which every NeoForge config sets: in the others, a method a mixin adds that its
 target already declares replaces the target's without an `@Overwrite` (MIX-3).
 
-## Forge 61 to 66 (`forge`): 84 mixins in 24 configs
+## Forge 61 to 66 (`forge`): 83 mixins in 24 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1092,7 +1093,7 @@ target already declares replaces the target's without an `@Overwrite` (MIX-3).
 | `mc/forge/common/src/main/resources/fabricated-forge-screen.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | client 2 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 21 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge/common/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 5 | 1 | true | none |
-| `mc/forge/common/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 1, client 1 | 1 | — | none |
+| `mc/forge/common/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | client 1 | 1 | — | none |
 | `mc/forge/common26/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 26.1.2, 26.2, 26.3 | client 10 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge/common26/src/main/resources/fabricated-forge-screen-chars.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.chars.mixin` | 26.1.2, 26.2, 26.3 | client 1 | 1 | — | none |
 | `mc/forge/common26/src/main/resources/fabricated-keymapping.mixins.json` | `net.fabricmc.fabric.mixin.client.keymapping` | 26.1.2, 26.2, 26.3 | client 1 | 1 | — | none |
@@ -1381,7 +1382,6 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| mixins | ForgeRecordedFramesMixin | common (1.21.11,26.1.2,26.2,26.3) | io.github.cmdralph.fabricated.forgetest.ForgeRecordedFramesTest$Probe | @ModifyVariable → fabricatedForgeTest$kept | "probe" | INVOKE `L…/String;valueOf(L…/Object;)L…/String;` | — | default |
 | client | HudHooksMixin | 1.21.11 (1.21.11) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheEnd | "render" | TAIL | — | default |
 | client | HudHooksMixin | 1.21.11 (1.21.11) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheCrosshair | "render" | INVOKE `L…/Gui;renderCrosshair(L…/GuiGraphics;L…/DeltaTracker;)V` | — | default |
 | client | HudHooksMixin | 26.1.2 (26.1.2) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheEnd | "extractRenderState" | TAIL | — | default |
@@ -1449,7 +1449,7 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | mixins | ReloadableServerRegistriesMixin | common (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
 | mixins | ReloadableServerRegistriesMixin | common (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 
-## Forge 47 (`forge-legacy`): 83 mixins in 14 configs
+## Forge 47 (`forge-legacy`): 82 mixins in 14 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1465,7 +1465,7 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.20.1 | client 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.20.1 | mixins 7 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.20.1 | client 4 | 1 | — | none |
-| `mc/forge-legacy/1.20.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.20.1 | mixins 10, client 4 | 1 | — | none |
+| `mc/forge-legacy/1.20.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.20.1 | mixins 9, client 4 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json` | `io.github.cmdralph.fabricated.testmod.frapi.mixin` | 1.20.1 | client 1 | 1 | — | none |
 
 ### `mc/forge-legacy/1.20.1/src/main/resources/fabricated-biome.mixins.json`
@@ -1668,7 +1668,6 @@ Written in Mojang's names; the test mod's jar names them in Intermediary's, its 
 |---|---|---|---|---|---|---|---|---|
 | mixins | CommandsMixin | 1.20.1 (1.20.1) | n.m.commands.Commands | @Inject → fabricatedForgeTest$beforeSetConsumer; @Unique fields fabricatedForgeTest$logged, fabricatedForgeTest$constructionLogged | "<init>" | INVOKE `L…/CommandDispatcher;setConsumer(L…/ResultConsumer;)V` remap=false | — | default |
 | mixins | CommandsMixin | 1.20.1 (1.20.1) | n.m.commands.Commands | @Inject → fabricatedForgeTest$afterDispatcher | "<init>" | INVOKE `L…/CommandDispatcher;<init>()V` shift=BY by=2 | — | default |
-| mixins | ForgeRecordedFramesMixin | 1.20.1 (1.20.1) | io.github.cmdralph.fabricated.forgetest.ForgeRecordedFramesTest$Probe | @ModifyVariable → fabricatedForgeTest$kept | "probe" | INVOKE `L…/String;valueOf(L…/Object;)L…/String;` | — | default |
 | mixins | LanguageReaderMixin | 1.20.1 (1.20.1) | n.m.locale.Language | @ModifyVariable → fabricatedForgeTest$watch | "loadFromJson(Ljava/io/InputStream;Ljava/util/function/BiConsumer;)V" | HEAD | — | default |
 | mixins | LivingEntityCapturedDropsMixin | 1.20.1 (1.20.1) | n.m.world.entity.LivingEntity prio=1500 | @Inject → fabricatedForgeTest$takeCapturedDrops | "dropAllDeathLoot" | RETURN | — | default |
 | mixins | MinecraftServerArgsMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @ModifyArgs → fabricatedForgeTest$tickChildrenArgs; @Unique fields fabricatedForgeTest$modified | "tickServer" | INVOKE `L…/MinecraftServer;tickChildren(L…/BooleanSupplier;)V` | — | default |
