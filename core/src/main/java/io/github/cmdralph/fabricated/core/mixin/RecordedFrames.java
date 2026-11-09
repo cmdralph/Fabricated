@@ -27,8 +27,9 @@ import org.objectweb.asm.tree.MethodNode;
  * ({@code PoseStack}, {@code Player}, a pair), then chops one: Mixin counted 4 + 4 - 4 and dropped the {@code PoseStack}
  * Resourceful Lib's {@code @Local} takes, so the client crashed ("Found 0 candidate variables"). Fabric's Mixin, which
  * NeoForge runs, records and counts the frames the same way from its behaviour 0.10.0 (its {@code FrameData.rawSize},
- * without the floor, is read only at 0.9.2: FRAME-1); the mod works on Fabric, where vanilla's method appends and chops one
- * local at a time, which Mixin overcounts but drops no local of.
+ * without the floor, is read only at 0.9.2: FRAME-1); the mod works on Fabric, where vanilla's method (26.1.2's: six
+ * argument slots, the {@code PoseStack} and {@code Player} appended in one frame, no chop) is counted too high but drops no
+ * local.
  *
  * <p>The repair (Fabricated's Mixin extension on Forge) records the frames of a method Mixin would count wrong
  * ({@link #counted}) again, from the method with its frames expanded ({@link #withExpandedFrames}): Mixin records an
