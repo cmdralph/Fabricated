@@ -11,7 +11,8 @@ source "$root/ci/$platform/platform.sh"
 SMOKE_CACHE="${SMOKE_CACHE-${RUNNER_TEMP:+$RUNNER_TEMP/smoke-cache}}"
 
 # cached_install <dir> <command...>: <command> installs into <dir> (relative to the current folder), once per loader
-# version. With SMOKE_INSTALL_ONLY it only fills the cache.
+# version, and once more if it fails: a loader's installer downloads its libraries itself, past curl's retries, and a
+# second run reuses what the first downloaded. With SMOKE_INSTALL_ONLY it only fills the cache.
 cached_install() {
 	local dir="$1" cache="$SMOKE_CACHE/$side/$platform-$loader"
 	shift
@@ -22,7 +23,7 @@ cached_install() {
 		echo "Copied the $side install of $platform $loader from the cache"
 		return
 	fi
-	"$@"
+	"$@" || { echo "The $side install of $platform $loader failed; trying it once more"; "$@"; } || return 1
 	if [ -n "$SMOKE_CACHE" ]; then
 		rm -rf "$cache"
 		mkdir -p "$cache"
