@@ -7,7 +7,6 @@ jar_globs=("fabricated-forge-[0-9]*+mc$mc.jar")
 testmods_dir="$root/mc/$platform/$mc/build/testmods"
 mods_toml=META-INF/mods.toml
 server_timeout=600
-server_reload=0
 client_launch_id="$mc-forge"
 mcrt_loader=lexforge
 
