@@ -131,10 +131,10 @@ tasks.register('forgeClasspathReport') {
 // --- The in-game mod's own mixins -----------------------------------------------------------------------------------
 // Forge runs the game in Mojang's names, as the in-game mod compiles, so its mixins need no refmap; Forge reads a mod's
 // mixin configs from its manifest: Fabricated's own, upstream's loot mixins (fabric-loot-api-v3, native), the loot
-// module's hooks into Forge's loot table loading, Fabric's block break events in Forge's block breaking (BREAK-1), its
-// sleep events in Forge's bed handling (SLEEP-1), its screen input events in Forge's screen input hooks (SCREEN-1),
-// Forge's item and block hooks answered from Fabric's item and block APIs, and those a version's project names
-// (game_mod_mixins).
+// module's hooks into Forge's loot table loading, Fabric's interaction and block break events in Forge's interaction
+// hooks and block breaking (BREAK-1), its sleep events in Forge's bed handling (SLEEP-1), its screen input events in
+// Forge's screen input hooks (SCREEN-1), Forge's item and block hooks answered from Fabric's item and block APIs, and
+// those a version's project names (game_mod_mixins).
 def gameModMixins = ['fabricated-forge.mixins.json', 'fabricated-loot.mixins.json', 'fabricated-forge-loot.mixins.json',
         'fabricated-forge-interaction.mixins.json', 'fabricated-forge-entity.mixins.json', 'fabricated-forge-screen.mixins.json',
         'fabricated-forge-item.mixins.json', 'fabricated-forge-block.mixins.json'] +

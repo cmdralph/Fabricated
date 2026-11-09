@@ -11,6 +11,7 @@ import io.github.cmdralph.fabricated.command.FabricatedCommands;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
+import io.github.cmdralph.fabricated.forge.interaction.InteractionEvents;
 import io.github.cmdralph.fabricated.forge.keymapping.KeyMappingBridge;
 import io.github.cmdralph.fabricated.forge.loot.LootCompat;
 import io.github.cmdralph.fabricated.forge.objectbuilder.DefaultAttributeModify;
@@ -80,6 +81,8 @@ public final class FabricatedMod {
 		}
 		// Fabric API's default attribute event, passed through, in Forge's attribute modification (see DefaultAttributeModify).
 		if (ours(state, "fabric-object-builder-api-v1")) DefaultAttributeModify.register();
+		// Fabric API's interaction callbacks, passed through, from Forge's interaction events (see InteractionEvents).
+		if (ours(state, "fabric-events-interaction-v0")) InteractionEvents.register();
 		// Fabric storages and Forge's item and fluid handlers on blocks, each seen by the other side's code, for the transfer
 		// module of Fabric API's jar. The module is outside the plans, which the provider check reads: a mod providing it
 		// has it as a Forge mod, not a Fabric mod Fabricated runs, and bridges it itself (PROVIDER-16).
