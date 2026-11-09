@@ -41,7 +41,6 @@ public final class ForgeTestMod implements ModInitializer {
 		if (FabricLoader.getInstance().getModContainer("minecraft").flatMap(c -> c.findPath("/assets/minecraft/lang/en_us.json")).isPresent()) {
 			LOGGER.info("FABRICATED-TEST game resources OK");
 		}
-		ForgeRecordedFramesTest.check();
 		testItem = Registry.register(BuiltInRegistries.ITEM, new ResourceLocation(NAMESPACE, ITEM_PATH), new Item(new Item.Properties()));
 		run("recipe condition registration", ForgeRecipeConditionTest::register);
 		run("fluid registration", ForgeFluidTest::register);

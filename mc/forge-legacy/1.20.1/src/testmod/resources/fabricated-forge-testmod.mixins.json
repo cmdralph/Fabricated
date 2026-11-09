@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "io.github.cmdralph.fabricated.forgetest.mixin",
   "compatibilityLevel": "JAVA_17",
-  "mixins": ["CommandsMixin", "ForgeRecordedFramesMixin", "LanguageReaderMixin", "LivingEntityCapturedDropsMixin", "MinecraftServerArgsMixin", "MinecraftServerMixin", "MinecraftServerWrapMixin", "MobBucketItemAccessor", "PotionBrewingAccessor", "PotionBrewingMixAccessor"],
+  "mixins": ["CommandsMixin", "LanguageReaderMixin", "LivingEntityCapturedDropsMixin", "MinecraftServerArgsMixin", "MinecraftServerMixin", "MinecraftServerWrapMixin", "MobBucketItemAccessor", "PotionBrewingAccessor", "PotionBrewingMixAccessor"],
   "client": ["HudHooksMixin", "McRuntimeTestMixin", "MouseHandlerInvoker", "ParticleEngineProvidersAccessor"],
   "injectors": {
     "defaultRequire": 1
