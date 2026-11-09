@@ -176,11 +176,13 @@ that fixes or closes it.
 | CORPUS-25 | P3 | Terralith (26.3 server corpus, every run since at least run 420) | About 130 warnings per server run from NeoForge's `ModifiableBiomeInfo`: "Cannot modify spawn settings of biome terralith:alpha_islands, found unexpected attribute modifier OverrideModifier[]" (the first of them; runs 40241680133 and 40244234167). NeoForge 26.3 refuses to modify the spawns of a biome whose `natural_mob_spawns` attribute uses a modifier other than `overlay` (`ModifiableBiomeInfo`, read in its source), so biome modifiers can't add spawns to those biomes. | Open, likely Terralith's: the count fits every Terralith biome declaring an `override` modifier, which would warn on NeoForge without Fabricated too; UNVERIFIED, as Terralith's 26.x data isn't in its public repository. |
 ## Compatibility baseline (task 4)
 
-The extended runs of 2026-11-09 on `main` (42624614743, then 42682663433), `forge` (42624619386, then 42682670119) and
-`forge-legacy` (42624625243, then 42682675827). Every gate holds but those since fixed (FRAPI-12, CI-10). A corpus run is
-informational, so it reports "pass" whatever its checks say (CI-11 makes it count its failed checks); read by whether
-the game reached its world, 14 of the second round's 40 corpus runs didn't, the advanced corpus on Forge among them
-for the first time.
+The extended runs of 2026-11-09 on `main` (42624614743, 42682663433, then 42712511916), `forge` (42624619386,
+42682670119, then 42712516460) and `forge-legacy` (42624625243, 42682675827, then 42712522675). Every gate holds but
+those since fixed (FRAPI-12, CI-10). A corpus run is informational, so it reports "pass" whatever its checks say (CI-11
+makes it count its failed checks); read by whether the game reached its world, 14 of the second round's 40 corpus runs
+didn't, the advanced corpus on Forge among them for the first time. The third round ran before ENUM-8, LOADER-6 and
+MULTI-2 were merged: on Forge every advanced corpus run stopped as in the second, and the Forge 52 client corpus stopped
+too.
 
 | Where | What | Status |
 |---|---|---|
@@ -201,6 +203,10 @@ for the first time.
 | Forge 61 to 66 | Constructor hooks at points other than a return left out (FrozenLib, Wover, ImmediatelyFast, owo), where CTOR-4 serves Forge 47 alone | Fixed (CTOR-7) for FrozenLib, Wover and ImmediatelyFast: FrozenLib's and Wover's apply on a local Forge 66 server; ImmediatelyFast's, a client's, the next extended run confirms. owo's follow Fabric Loader's and Quilt's client start hooks, which neither Forge's nor NeoForge's `Minecraft` constructor calls: left out as on NeoForge, now reported as missing |
 | Forge 66, advanced server | Wover Story's main entrypoint throws registering a `PoiType` "twice" (a local Forge 66 server with WorldWeaver 26.302.1; CI's advanced server stopped before the entrypoints, PRE-21); Fabricated disables the mod there, as the run's setting asks | Open, cause not read |
 | Forge 64 to 66, advanced client | `@WrapOperation`s of `Screen.extractRenderStateWithTooltipAndSubtitles` (Architectury, FancyMenu, SpruceUI) left out, which HOOK-2 points at NeoForge's hook | Not repaired: Forge's call, `drawScreen(graphics, x, y, delta)` of the `ForgeLayerInstance` `Gui` extends, doesn't take the screen the wrappers take as the call's receiver (*Not in this pass*); `@Inject`s there move (HOOK-3) |
+| Forge 52, client corpus | MoreCulling's cull shape mixin, which clones an array, stops the client before its window: SpongePowered's Mixin finds no class for the array as it binds the mixin's calls (third round) | Fixed (SUPER-2), then Balm's drag hooks, at a call Forge 52 moved into its own hook (WILD-1): locally the client reaches its world and exits normally |
+| Every Forge version, corpus | The test mod's object builder check fails with the corpus loaded, on the servers and the clients' integrated servers: the point-of-interest type it registers isn't the one the game finds for its block (`FAILED: [poi]`, on a local Forge 52 client); it passes without the corpus | Open: Forge has no counterpart of NeoForge's POI-1, and Wover Story's "registered twice" on Forge 66 may be the same cause |
+| Forge 52, corpus | Moonlight's registry `moonlight:custom_map_data_types` is empty at the built-in registries' check Fabric API moves to the start, which REG-6 passes over only for Forge's own registries | Open, P3 (a logged error) |
+| Forge 26.1.2, 26.2, client corpus; Forge 47, 26.1.2, client corpus | The client doesn't exit normally (26.1.2, 26.2); the client's block entities don't unload as it leaves its world (47, 26.1.2) (third round) | Open: the job logs keep only the summary; reproduce locally |
 | Forge 47, 52 and 61 to 66 | The advanced corpus didn't run on Forge | Runs on every Forge version in the extended runs (informational), with the main corpus's drops; its results set what task 4 takes on next |
 
 ## Not in this pass

@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-09: Forge 52's client corpus reaches its world: arrays in mixins, wildcard injectors (SUPER-2, WILD-1)
+
+- **SUPER-2** (P0), fixed: SpongePowered's Mixin, which Forge runs, looks up the class of a mixin's call's owner as it
+  binds the calls of a detached mixin or one in a hierarchy with mixins, and stops on an array's: MoreCulling's shape
+  cache clones an array, and the Forge 52 client corpus stopped before its window. A mixin's calls of an array's methods
+  name `Object`, which declares them, where SpongePowered's Mixin runs.
+- **WILD-1** (P0), fixed: an injector selecting every method of its target (`method = "*"`) is judged in the methods
+  Mixin scans, and its call is followed into the platform's hook: Balm's drag hooks, at a call Forge 52 moved into its
+  own hook, stopped the client next.
+- Verified: the core unit tests, CI's script tests and the mixin inventory; Forge 52 builds. Locally, the Forge 52
+  client corpus reaches its world and exits normally, 3 checks failing (the object builder's point of interest and
+  REG-6's, open).
+
 ## 2026-11-09: The advanced corpus's left-out hooks on Forge: dimension changes, Apoli's tool check and constructor heads (PRE-24, PRE-25, CTOR-7)
 
 - **PRE-24** (P1), fixed: Forge 47 moved `ServerPlayer`'s `changeDimension(ServerLevel)` into an override of the
