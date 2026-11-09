@@ -6519,6 +6519,148 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void anExpressionsArgumentDefinedByNameIsTakenByItsSlotWhereMixinDoesntKnowArgumentNames() throws Exception {
+		// PRE-21: Debugify's cactus fix wraps ?.getBlockState(pos.relative(direction)) in CactusBlock.canSurvive, defining pos
+		// as @Local(type = BlockPos.class, name = "pos", argsOnly = true). MixinExtras finds a definition's local with Mixin's
+		// discriminator, which on SpongePowered's Mixin (Forge 61 to 66) names arguments arg and their slot, as for PRE-18: the
+		// expression matched nothing, and the Forge 64 to 66 servers stopped in Blocks' initializer, "(0/1) succeeded".
+		String pos = "net/minecraft/core/BlockPos";
+		String direction = "net/minecraft/core/Direction";
+		String canSurvive = "(Ljava/lang/Object;L" + TARGET + ";L" + pos + ";)Z";
+		// canSurvive(state, level, pos): level.getBlockState(pos.relative(direction)), the direction a local named as given.
+		BiFunction<Boolean, String, byte[]> target = (names, directionName) -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PROTECTED, "canSurvive", canSurvive, null, null);
+			Label start = new Label();
+			Label loop = new Label();
+			Label end = new Label();
+			mv.visitCode();
+			mv.visitLabel(start);
+			mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitVarInsn(Opcodes.ASTORE, 4);
+			mv.visitLabel(loop);
+			mv.visitVarInsn(Opcodes.ALOAD, 2);
+			mv.visitVarInsn(Opcodes.ALOAD, 3);
+			mv.visitVarInsn(Opcodes.ALOAD, 4);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, pos, "relative", "(L" + direction + ";)L" + pos + ";", false);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "getBlockState", "(L" + pos + ";)Ljava/lang/Object;", false);
+			mv.visitInsn(Opcodes.POP);
+			mv.visitInsn(Opcodes.ICONST_1);
+			mv.visitInsn(Opcodes.IRETURN);
+			mv.visitLabel(end);
+			if (names) {
+				mv.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+				mv.visitLocalVariable("state", "Ljava/lang/Object;", null, start, end, 1);
+				mv.visitLocalVariable("level", "L" + TARGET + ";", null, start, end, 2);
+				mv.visitLocalVariable("pos", "L" + pos + ";", null, start, end, 3);
+				mv.visitLocalVariable(directionName, "L" + direction + ";", null, loop, end, 4);
+			}
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		byte[] mixin = mixin("com/example/mixin/Cactus", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "replaceBlockState", "(L" + TARGET + ";L" + pos + ";" + OPERATION + ")Ljava/lang/Object;",
+					null, null);
+			AnnotationVisitor wrap = mv.visitAnnotation(WRAP_OPERATION, true);
+			AnnotationVisitor methods = wrap.visitArray("method");
+			methods.visit(null, "canSurvive");
+			methods.visitEnd();
+			AnnotationVisitor ats = wrap.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "MIXINEXTRAS:EXPRESSION");
+			at.visitEnd();
+			ats.visitEnd();
+			wrap.visit("require", 1); // Debugify's config: defaultRequire 1
+			wrap.visitEnd();
+			AnnotationVisitor definitionsAnnotation = mv.visitAnnotation("Lcom/llamalad7/mixinextras/expression/Definitions;", false);
+			AnnotationVisitor definitions = definitionsAnnotation.visitArray("value");
+			String[][] members = {{"getBlockState", "L" + TARGET + ";getBlockState(L" + pos + ";)Ljava/lang/Object;"},
+					{"relative", "L" + pos + ";relative(L" + direction + ";)L" + pos + ";"}};
+			for (String[] member : members) {
+				AnnotationVisitor definition = definitions.visitAnnotation(null, "Lcom/llamalad7/mixinextras/expression/Definition;");
+				definition.visit("id", member[0]);
+				AnnotationVisitor method = definition.visitArray("method");
+				method.visit(null, member[1]);
+				method.visitEnd();
+				definition.visitEnd();
+			}
+			for (String[] local : new String[][] {{"pos", pos, "true"}, {"direction", direction, "false"}}) {
+				AnnotationVisitor definition = definitions.visitAnnotation(null, "Lcom/llamalad7/mixinextras/expression/Definition;");
+				definition.visit("id", local[0]);
+				AnnotationVisitor locals = definition.visitArray("local");
+				AnnotationVisitor sugar = locals.visitAnnotation(null, LOCAL);
+				sugar.visit("type", Type.getObjectType(local[1]));
+				AnnotationVisitor name = sugar.visitArray("name");
+				name.visit(null, local[0]);
+				name.visitEnd();
+				if (Boolean.parseBoolean(local[2])) sugar.visit("argsOnly", true);
+				sugar.visitEnd();
+				locals.visitEnd();
+				definition.visitEnd();
+			}
+			definitions.visitEnd();
+			definitionsAnnotation.visitEnd();
+			AnnotationVisitor expression = mv.visitAnnotation("Lcom/llamalad7/mixinextras/expression/Expression;", false);
+			AnnotationVisitor value = expression.visitArray("value");
+			value.visit(null, "?.getBlockState(pos.relative(direction))");
+			value.visitEnd();
+			expression.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 4);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Cactus"));
+		BiFunction<ClassIndex, Map<String, byte[]>, MixinPreflight> forge = (game, mod) -> new MixinPreflight(game,
+				InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge", true,
+				MixinPreflight.ConstructorInjects.UNSAFE_POINTS, false);
+		ClassIndex named = new ClassIndex(Map.of(TARGET, target.apply(true, "direction"))::get);
+
+		// Fabric's Mixin knows the names: nothing to do.
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Cactus", mixin));
+		assertTrue(preflight(named, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		assertTrue(preflight(named, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// SpongePowered's: reported before the repair, the argument taken by its slot after it; the other local stays named.
+		List<PreflightFinding> before = forge.apply(named, mod).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(before.stream().anyMatch(f -> f.message().contains("replaceBlockState's expression takes the argument pos of canSurvive")
+				&& f.message().contains("by its name")), before.toString());
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = forge.apply(named, mod).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Cactus.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.stream().anyMatch(n -> n.message().contains("@WrapOperation replaceBlockState captures in its expression the argument pos by its name,"
+				+ " which Forge's Mixin doesn't know; it takes the argument's slot, 3, instead")), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("replaceBlockState")).findFirst().orElseThrow();
+		List<AnnotationNode> locals = InjectionPoints.definitionLocals(handler);
+		assertEquals(2, locals.size());
+		assertEquals(3, Annotations.value(locals.get(0), "index"));
+		assertNull(Annotations.value(locals.get(0), "name"));
+		assertEquals(Boolean.TRUE, Annotations.value(locals.get(0), "argsOnly"));
+		assertEquals(List.of("direction"), Annotations.value(locals.get(1), "name"));
+		assertNull(Annotations.value(locals.get(1), "index"));
+		mod.put("com/example/mixin/Cactus", repaired);
+		assertTrue(forge.apply(named, mod).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// Without local variable names, the only argument of the type is it.
+		ClassIndex unnamed = new ClassIndex(Map.of(TARGET, target.apply(false, "direction"))::get);
+		Map<String, byte[]> fresh = Map.of("com/example/mixin/Cactus", mixin);
+		assertNotNull(forge.apply(unnamed, fresh).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).get("com/example/mixin/Cactus.class"));
+
+		// A local the expression defines by a name the method's table doesn't declare: the expression can't match.
+		ClassIndex renamed = new ClassIndex(Map.of(TARGET, target.apply(true, "dir"))::get);
+		List<PreflightFinding> unmatched = preflight(renamed, fresh::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, unmatched.size(), unmatched.toString());
+		assertEquals(Severity.LEFT_OUT, unmatched.getFirst().severity());
+		assertTrue(unmatched.getFirst().message().contains("MIXINEXTRAS:EXPRESSION"), unmatched.toString());
+	}
+
+	@Test
 	void anInjectorNamingSeveralMethodsNeedsOnlyOneOfThemAsMixinDoes() throws Exception {
 		// PRE-23: Emotecraft's @Inject(method = {"tick", "method_5773"}, remap = false) into Avatar, which declares no tick:
 		// Player Animation Library's mixin adds one (an @Intrinsic). Mixin fails an injector only where none of its selectors
