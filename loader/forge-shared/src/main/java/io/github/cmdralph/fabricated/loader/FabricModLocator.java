@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.minecraftforge.fml.loading.FMLPaths;
-import net.minecraftforge.fml.loading.moddiscovery.AbstractModProvider;
 import net.minecraftforge.forgespi.locating.IModLocator;
 
 /**
@@ -18,7 +17,7 @@ import net.minecraftforge.forgespi.locating.IModLocator;
  * Sinytra Connector or a second Fabricated jar in the mods folder ({@link ConflictingMods}), it hands nothing over and
  * stops the launch with the error naming them, as NeoForge's locator does.
  */
-public final class FabricModLocator extends AbstractModProvider implements IModLocator {
+public final class FabricModLocator extends ForgeModProvider implements IModLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 
 	@Override

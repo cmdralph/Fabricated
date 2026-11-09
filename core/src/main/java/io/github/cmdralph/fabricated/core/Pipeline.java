@@ -482,6 +482,12 @@ public final class Pipeline {
 				report.mod(new ModRow(m.id(), m.version(), "Fabricated", Status.PROVIDED_NATIVELY, "", ""));
 			}
 		}
+		// The installed Fabric API's modules the plan doesn't list, which a mod of the platform provides (filter skipped them).
+		for (Candidate c : scan.candidates()) {
+			if (plan.module(c.id()) != null || c.parentId() == null || !plan.isFabricApiModule(c.parentId())) continue;
+			NeoForgeMod provider = neoMods.get(ModIds.toNeoForgeId(c.id()));
+			if (provider != null) report.mod(new ModRow(c.id(), provider.version(), provider.displayName(), Status.PROVIDED_BY_MOD, "", ""));
+		}
 
 		LazyMappingTable mappingTable = null;
 		String mappingsHash = "none";

@@ -1,8 +1,7 @@
 // Shared build logic for every Minecraft version project (mc/<platform>/<version>/build.gradle applies this). What is
 // specific to the mod loader the target runs on is in mc/platform-<platform>.gradle, which this applies once the source
-// sets exist, and the loader classes in loader/<platform> (next to the shared ones in loader/common, and in
-// loader/forge-shared for both Forge platforms). The platform is the folder the version's folder is in: neoforge, forge
-// or forge-legacy.
+// sets exist, and the loader classes in loader/neoforge or, for both Forge platforms, loader/forge-shared (next to the
+// shared ones in loader/common). The platform is the folder the version's folder is in: neoforge, forge or forge-legacy.
 //
 // Each version project produces build/libs/fabricated-<loader>-<version>+mc<minecraft>.jar in the root project, the
 // loader neoforge, or forge for both Forge platforms:
@@ -94,20 +93,21 @@ def testSources = rootProject.file('mc/shared').listFiles().findAll { it.isDirec
         .collect { "mc/shared/${it}" } + sharedSources
 def testJava = { String sourceSet -> renamedJava(sourceSet, testSources.collect { rootProject.file("$it/src/$sourceSet/java") }) }
 
-// NeoForge's loader classes come in two variants, as the version's `loader_variant` property names it: those of FML 10
-// and later, on FML's own jar contents and class processors (loader/neoforge/src/fml, the default), and those of NeoForge
-// 21.1's FML 4, which runs on ModLauncher (loader/neoforge/src/modlauncher). The rest of loader/neoforge is both's.
-def loaderVariant = project.findProperty('loader_variant') ?: (platform == 'neoforge' ? 'fml' : null)
+// The loader classes come in two variants per folder, as the version's `loader_variant` property names it, beside the
+// folder's src/main, which is both's. NeoForge's: those of FML 10 and later, on FML's own jar contents and class
+// processors (loader/neoforge/src/fml, the default), and those of NeoForge 21.1's FML 4, which runs on ModLauncher
+// (src/modlauncher). Forge's: those of Forge 61 to 66, on securemodules, Mixin 0.8.7 and Mojang's names
+// (loader/forge-shared/src/modern, the default), and those of Forge 47, on securejarhandler, Mixin 0.8.5 and SRG's
+// names (src/fml47).
+def loaderDir = platform == 'neoforge' ? 'loader/neoforge' : 'loader/forge-shared'
+def loaderVariant = project.findProperty('loader_variant') ?: (platform == 'neoforge' ? 'fml' : 'modern')
 
 sourceSets {
     loader {
         java.srcDir rootProject.file('loader/common/src/main/java')
-        java.srcDir rootProject.file("loader/${platform}/src/main/java")
-        if (platform != 'neoforge') java.srcDir rootProject.file('loader/forge-shared/src/main/java')
-        resources.srcDir rootProject.file("loader/${platform}/src/main/resources")
-        if (loaderVariant) {
-            java.srcDir rootProject.file("loader/${platform}/src/${loaderVariant}/java")
-            resources.srcDir rootProject.file("loader/${platform}/src/${loaderVariant}/resources")
+        ['main', loaderVariant].each {
+            java.srcDir rootProject.file("${loaderDir}/src/${it}/java")
+            resources.srcDir rootProject.file("${loaderDir}/src/${it}/resources")
         }
         resources.srcDir 'src/fabricated/resources'
     }

@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.module.ModuleDescriptor;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -40,8 +39,6 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
-import io.github.cmdralph.fabricated.core.remap.MappingException;
-import io.github.cmdralph.fabricated.core.remap.OfficialClasses;
 import io.github.cmdralph.fabricated.core.report.LaunchPhases;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
@@ -50,14 +47,11 @@ import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
 import io.github.cmdralph.fabricated.core.runtime.PlatformProperties;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
-import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
 import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
-import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
 import io.github.cmdralph.fabricated.fabricloader.version.VersionParser;
 import net.fabricmc.loader.api.VersionParsingException;
 import net.minecraftforge.fml.loading.FMLLoader;
 import net.minecraftforge.fml.loading.FMLPaths;
-import net.minecraftforge.fml.loading.moddiscovery.AbstractModProvider;
 import net.minecraftforge.fml.loading.moddiscovery.ModFileParser;
 import net.minecraftforge.forgespi.language.IModInfo;
 import net.minecraftforge.forgespi.locating.IDependencyLocator;
@@ -67,14 +61,16 @@ import net.minecraftforge.forgespi.locating.ModFileFactory;
 /**
  * Fabricated's dependency locator on Forge (docs/PORTING.md §4.1), which Forge runs after every mod locator with the
  * files found so far, before its own jar-in-jar locator. It runs Fabricated's discovery pipeline over the Fabric jars in
- * the mods folder and hands Forge every translated Fabric mod as a mod file, the (remapped) jar overlaid with the
- * generated descriptor ({@link PlatformDescriptor#FORGE}), and Fabricated's in-game mod nested in its jar. Forge's only
- * error path here stops the game, so anything that goes wrong is logged and Fabric support is off for the launch; the
- * Fabric mods that weren't loaded are in the log, Fabricated's report and Forge's loading warnings (which the in-game mod
- * adds, as Forge reads them after loading: on the server in its log, on the client on its warnings screen).
- * In a development workspace, where the in-game mod is a mod of its own, it isn't handed over again.
+ * the mods folder and hands Forge every translated Fabric mod as a mod file, the jar remapped to the names Forge runs the
+ * game with ({@link IntermediaryMappings}) and overlaid with the generated descriptor ({@link ForgeStack#descriptor}),
+ * and Fabricated's in-game mod nested in its jar. What Forge 47 does otherwise than Forge 61 to 66 below the game is in
+ * {@link ForgeStack}, of which each has its own (mc/mc.gradle's {@code loader_variant}). Forge's only error path here
+ * stops the game, so anything that goes wrong is logged and Fabric support is off for the launch; the Fabric mods that
+ * weren't loaded are in the log, Fabricated's report and Forge's loading warnings (which the in-game mod adds, as Forge
+ * reads them after loading: on the server in its log, on the client on its warnings screen). In a development
+ * workspace, where the in-game mod is a mod of its own, it isn't handed over again.
  */
-public final class FabricDependencyLocator extends AbstractModProvider implements IDependencyLocator {
+public final class FabricDependencyLocator extends ForgeModProvider implements IDependencyLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	private static final Pattern VERSION_IN_NAME = Pattern.compile("\\d+\\.\\d+\\.\\d+");
 	/** Bounds the read of Forge's jar-in-jar options, a few hundred bytes. */
@@ -122,6 +118,11 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		Path logsDir = gameDir.resolve("logs");
 		boolean client = FMLLoader.getDist().isClient();
 		List<Path> fabricJars = FabricJars.in(FMLPaths.MODSDIR.get());
+		// A Forge jar's copy of Fabric Loader that Forge's jar-in-jar leaves out for the empty jar the in-game mod nests in
+		// its place (Forgified Fabric API's on Forge 47, PROVIDER-2): the in-game mod is handed to Forge even without Fabric
+		// mods, as only it nests that jar, and its own Fabric API modules stand down for the other jar's, as with Fabric mods.
+		List<String> loaderCopiesLeftOut = ConflictingMods.loaderCopiesLeftOut();
+		boolean inGameMod = !fabricJars.isEmpty() || !loaderCopiesLeftOut.isEmpty();
 
 		IModFile minecraft = find(loadedMods, "minecraft")
 				.orElseThrow(() -> new IllegalStateException("Forge did not provide the minecraft mod file"));
@@ -139,7 +140,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		// Fabricated's own in-game mod: loaded from the development workspace, or extracted from this jar when there is
 		// anything Fabric to load.
 		Optional<IModFile> devGameMod = find(loadedMods, ModIds.FABRICATED);
-		Path gameModJar = devGameMod.isPresent() || fabricJars.isEmpty() ? null : NestedJars.extract(NestedJars.GAME_MOD, cache);
+		Path gameModJar = devGameMod.isPresent() || !inGameMod ? null : NestedJars.extract(NestedJars.GAME_MOD, cache);
 		List<Path> fabricatedFiles = gameModJar != null ? List.of(gameModJar) : devGameMod.map(file -> List.of(file.getFilePath())).orElse(List.of());
 		phases.end("in-game mod");
 
@@ -186,8 +187,9 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		List<SafeArchive> vanillaJars = new ArrayList<>();
 		// Closed once the pipeline is done with it, however it ends.
 		try (SafeArchive archive = gameModJar == null ? null : SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS)) {
-			// Forge offers its jar-in-jar locator MixinExtras from its own libraries, and the in-game mod nests a newer one;
-			// the locator adds the newest of those and of the copies other files nest, once a file declares mixin configs.
+			// Forge 61 and later offer their jar-in-jar locator MixinExtras from their own libraries (Forge 47 ships none), and
+			// the in-game mod nests a newer one: the locator, which reads the files handed to it here too, adds the newest of
+			// those and of the copies other files nest, once a file declares mixin configs.
 			String mixinExtras = newest(newest(mixinExtrasVersion(loadedMods), archive == null ? null : nestedMixinExtras(archive)),
 					offeredMixinExtras());
 			if (archive != null) {
@@ -215,7 +217,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 			}
 
 			// Fabric mixins may target the classes of Fabricated's Fabric API and of the Forge mods (an addon's mod).
-			ForgeMods.Found forgeMods = ForgeMods.of(loadedMods, !fabricJars.isEmpty(), client, fabricApi);
+			ForgeMods.Found forgeMods = ForgeMods.of(loadedMods, inGameMod, client, fabricApi);
 			phases.end("Forge mods");
 
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
@@ -256,33 +258,20 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 			}
 			phases.end("providers");
 
-			// Forge's installer leaves vanilla in Mojang's names among the libraries (ForgeLibraries); else NeoForge's layout.
-			Optional<Path> installedVanilla = fabricJars.isEmpty() ? Optional.empty()
-					: ForgeLibraries.vanillaInMojangNames(minecraft.getFilePath(), client, mcVersion, info.namespace() == Namespace.INTERMEDIARY);
 			Pipeline.VanillaGame vanilla = fabricJars.isEmpty() ? Pipeline.VanillaGame.NONE
-					: installedVanilla.isPresent() ? vanillaGame(installedVanilla.get(), vanillaJars)
-					: VanillaGameJar.find(minecraft.getFilePath(), mcVersion, client, cache, vanillaJars);
-			if (installedVanilla.isEmpty() && info.namespace() == Namespace.INTERMEDIARY && vanilla.classes() != ClassBytesSource.EMPTY) {
-				// 1.21.11's game jar is obfuscated: read in Mojang's names through the mappings Forge's installer left (VANILLA-2).
-				vanilla = new Pipeline.VanillaGame(new OfficialClasses(vanilla.classes(), () -> {
-					try {
-						return Files.newBufferedReader(IntermediaryMappings.locateMojangMappings(mcVersion, client, config.mojangMappingsPath(),
-								minecraft.getFilePath()), StandardCharsets.UTF_8);
-					} catch (MappingException e) {
-						throw new IOException(e.getMessage(), e);
-					}
-				}), vanilla.location() + ", in Mojang's names through its mappings");
-			}
+					: ForgeStack.vanillaGame(minecraft.getFilePath(), mcVersion, client, info.namespace(), config.mojangMappingsPath(), cache,
+							vanillaJars);
 			phases.end("vanilla game");
 			// Where a locator could read the game's program arguments is open (docs/PORTING.md §4.1, question 10).
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, forgeVersion,
 					client, info.namespace(), runtimeMixinVersion(info), mixinExtras, info.mixinLowest(), info.fabricatedVersion(),
-					info.build(), !FMLLoader.isProduction(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
+					info.build(), !FMLLoader.isProduction(), gameClasses, ForgeStack.gameFiles(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, mods, forgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath, minecraft.getFilePath()),
-					new String[0], PlatformDescriptor.FORGE);
+					new String[0], ForgeStack.descriptor());
 
 			result = Pipeline.run(input).alsoProvidedElsewhere(providedModules);
+			loaderCopiesLeftOut.forEach(n -> result.report().line("Fabric API providers", n));
 			providerNotes.forEach(n -> result.report().line("Fabric API providers", n));
 			if (standDown != null && !standDown.isEmpty()) {
 				result.report().line("Fabric API providers", "Fabricated's in-game mod leaves out " + standDown.packages().size()
@@ -293,16 +282,20 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 			closeAll(vanillaJars);
 		}
 		result.runtime().install();
-		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric.
-		boolean addGameMod = gameModJar != null && (!result.mods().isEmpty() || !fabricJars.isEmpty());
+		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric,
+		// or another jar's copy of Fabric Loader is left out for the empty jar it nests.
+		boolean addGameMod = gameModJar != null && (!result.mods().isEmpty() || inGameMod);
 		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), devGameMod.isPresent() || addGameMod);
 		FabricatedState state = new FabricatedState(result, logsDir, api);
 		FabricatedState.set(state);
 		ApiHolder.install(api);
+		// The injection points pre-flight may name in Fabric mods' mixins, before Mixin reads them as the game's classes load.
+		if (!result.mods().isEmpty()) ForgeStack.registerInjectionPoints();
 		// Fabric mods' handlers in a registry's freeze, and their hooks into the game's options, wait for their main
 		// entrypoints, as on Fabric (REG-8, ENTRY-2): Forge's client creates the options before it loads mods.
 		if (devGameMod.isPresent() || addGameMod) EarlyFreeze.holdUntilMainEntrypoints();
-		// Before any Fabric mod's code runs: the property FML sets for no log marker, which Fabric mods can't read (CORPUS-60).
+		// Before any Fabric mod's code runs: the property FML sets for no log marker, which Fabric mods can't read (CORPUS-60,
+		// Ledger's configuration).
 		if ((devGameMod.isPresent() || addGameMod) && PlatformProperties.dropEmptyLogMarker()) {
 			result.report().line("Launch", "Removed the system property " + PlatformProperties.EMPTY_LOG_MARKER + ", which FML sets for an empty"
 					+ " log marker and nothing reads; a Fabric mod reading every system property as a dotted path stops on it");
@@ -314,7 +307,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 			String id = translated.candidate().id();
 			try {
 				handed.add(modFile(translated, mod.packages()));
-			} catch (RuntimeException e) {
+			} catch (IOException | RuntimeException e) {
 				// Fabric code mustn't see it as loaded, or run its entrypoints, when Forge won't load its classes.
 				LOGGER.error("Forge did not accept the translated Fabric mod {}", id, e);
 				refused.add(id);
@@ -381,13 +374,26 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 	}
 
 	/**
-	 * A translated mod as a Forge mod file: its jar with the overlay last, whose files win, and which gives the module its
-	 * manifest (Mixin reads the {@code MixinConfigs} the descriptor puts there) and the file its path. Other mods' part of
-	 * a package split with this one come first (one module has the whole package), and the files the package guard
-	 * leaves out are hidden, as is the jar-in-jar list Forge would act on ({@link FabricJars#hiddenFromForge}).
+	 * A translated mod as a Forge mod file: its jar overlaid with the generated files, which win, and which give the
+	 * module its manifest (Mixin reads the {@code MixinConfigs} the descriptor puts there). The jar handler takes those
+	 * from the first or the last path ({@link ForgeStack#OVERLAY_FIRST}), where the overlay goes; when it is first, the
+	 * filter hides from the other paths each file the overlay has. Other mods' part of a package split with this one come
+	 * before the jar (one module has the whole package), and the files the package guard leaves out are hidden, as is the
+	 * jar-in-jar list Forge would act on ({@link FabricJars#hiddenFromForge}).
 	 */
-	private IModFile modFile(TranslatedMod translated, PackageGuard.Decision packages) {
+	private IModFile modFile(TranslatedMod translated, PackageGuard.Decision packages) throws IOException {
+		Path overlay = translated.overlay().toAbsolutePath().normalize();
+		Set<String> overlaid = new HashSet<>();
+		if (ForgeStack.OVERLAY_FIRST) {
+			try (SafeArchive archive = SafeArchive.open(overlay, ArchiveLimits.DEFAULTS)) {
+				for (String name : archive.entryNames()) {
+					if (!name.endsWith("/")) overlaid.add(name);
+				}
+			}
+		}
+		String overlayBase = baseName(overlay);
 		List<Path> paths = new ArrayList<>();
+		if (ForgeStack.OVERLAY_FIRST) paths.add(overlay);
 		Map<String, Set<String>> borrowed = new HashMap<>();
 		packages.borrowed().forEach((jar, files) -> {
 			Path path = jar.toAbsolutePath().normalize();
@@ -395,10 +401,12 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 			borrowed.put(baseName(path), files);
 		});
 		paths.add(translated.jar().toAbsolutePath().normalize());
-		paths.add(translated.overlay().toAbsolutePath().normalize());
+		if (!ForgeStack.OVERLAY_FIRST) paths.add(overlay);
 		// The union file system's filter gets a path relative to one of the jars (a directory's ending in '/') and that jar.
 		BiPredicate<String, String> filter = (path, base) -> {
 			if (FabricJars.hiddenFromForge(path)) return false;
+			if (base.equals(overlayBase)) return !packages.hides(path);
+			if (!path.endsWith("/") && overlaid.contains(path)) return false;
 			Set<String> files = borrowed.get(base);
 			if (files != null) return path.endsWith("/") || files.contains(path);
 			return !packages.hides(path);
@@ -407,7 +415,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		String version = translated.candidate().metadata().getVersion().getFriendlyString();
 		SecureJar jar = SecureJar.from(secureJar -> new FabricJarMetadata(id, version, secureJar), filter, paths.toArray(Path[]::new));
 		IModFile file = ModFileFactory.FACTORY.build(jar, this, ModFileParser::modsTomlParser);
-		if (file.getModInfos().isEmpty()) throw new IllegalStateException("its generated mods.toml declares no mod");
+		if (ForgeMods.modInfos(file).isEmpty()) throw new IllegalStateException("its generated mods.toml declares no mod");
 		return file;
 	}
 
@@ -421,18 +429,6 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 	private static String baseName(Path jar) {
 		String name = jar.toString().replace('\\', '/');
 		return name.length() > 1 && name.startsWith("/") ? name.substring(1) : name;
-	}
-
-	/** Vanilla's classes from the game jar Forge's installer left in Mojang's names, its archive added to {@code opened}. */
-	private static Pipeline.VanillaGame vanillaGame(Path jar, List<SafeArchive> opened) {
-		try {
-			SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS);
-			opened.add(archive);
-			if (!archive.contains("net/minecraft/server/MinecraftServer.class")) return new Pipeline.VanillaGame(ClassBytesSource.EMPTY, "not found: " + jar + " isn't a game jar");
-			return new Pipeline.VanillaGame(name -> archive.read(name + ".class"), jar + " (Forge's installed game, in Mojang's names)");
-		} catch (IOException e) {
-			return new Pipeline.VanillaGame(ClassBytesSource.EMPTY, "not found: " + jar + " can't be read: " + e.getMessage());
-		}
 	}
 
 	/** The module layers a class's layer reads, itself included; the boot layer when the class is in none. */
@@ -449,7 +445,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 
 	private static Optional<IModFile> find(Iterable<IModFile> files, String modId) {
 		for (IModFile file : files) {
-			for (IModInfo info : file.getModInfos()) {
+			for (IModInfo info : ForgeMods.modInfos(file)) {
 				if (info.getModId().equals(modId)) return Optional.of(file);
 			}
 		}
@@ -522,7 +518,8 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 	/**
 	 * The MixinExtras version Forge offers its jar-in-jar locator from its own libraries: its loader's
 	 * {@code jarjar_options.json} lists {@code mixinextras-forge} (Forge 61 and later), which discovery saw neither nested
-	 * in a file nor on its own layers (MIXEXT-3). Null when Forge offers none.
+	 * in a file nor on its own layers (MIXEXT-3). Null when Forge offers none, as Forge 47, whose loader's module is named
+	 * {@code fmlloader} and has no such options.
 	 */
 	private static String offeredMixinExtras() {
 		for (ModuleLayer layer : layersOf(FabricDependencyLocator.class)) {
@@ -547,7 +544,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 	}
 
 	private static String ownVersion(IModFile file) {
-		for (IModInfo mod : file.getModInfos()) {
+		for (IModInfo mod : ForgeMods.modInfos(file)) {
 			if (mod.getModId().startsWith("mixinextras")) return mod.getVersion().toString();
 		}
 		String fromManifest = file.getSecureJar().moduleDataProvider().getManifest().getMainAttributes().getValue("Implementation-Version");

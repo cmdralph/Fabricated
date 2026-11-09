@@ -1,18 +1,21 @@
 package io.github.cmdralph.fabricated.loader;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
-import java.util.Optional;
+import java.util.List;
 import java.util.Set;
 
+import io.github.cmdralph.fabricated.core.Pipeline;
+import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
+import io.github.cmdralph.fabricated.core.archive.SafeArchive;
+import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+
 /**
- * Where Forge's installer leaves the game (docs/PORTING.md §4.1, read in the forge branch's server smoke): in
- * {@code <libraries>/net/minecraft/<side>/<mc>/}, {@code <side>-<mc>-unpacked.jar} is vanilla as Mojang's bundler holds
- * it (obfuscated on 1.21.11, in Mojang's names on 26.x), and on 1.21.11 {@code -official.jar} is vanilla in Mojang's
- * names and {@code -mappings.tsrg} Mojang's mappings. Forge's own jar is among the same libraries, and is the path of
- * the {@code minecraft} mod file.
+ * Where Forge's installer leaves the game: among the libraries, in {@code <libraries>/net/minecraft/<side>/<version>/},
+ * the files {@link ForgeStack} names, which differ between Forge 47 and Forge 61 to 66.
  */
 final class ForgeLibraries {
 	private ForgeLibraries() {
@@ -44,17 +47,15 @@ final class ForgeLibraries {
 		return libraries.resolve("net").resolve("minecraft").resolve(side).resolve(version).resolve(side + "-" + version + "-" + suffix);
 	}
 
-	/**
-	 * Vanilla in Mojang's names, as the installer left it: {@code -official.jar}, and where the game isn't obfuscated
-	 * (26.x) {@code -unpacked.jar}.
-	 */
-	static Optional<Path> vanillaInMojangNames(Path gameFile, boolean client, String version, boolean obfuscated) {
-		for (Path libraries : directories(gameFile)) {
-			Path official = gameFile(libraries, client, version, "official.jar");
-			if (Files.isRegularFile(official)) return Optional.of(official);
-			Path unpacked = gameFile(libraries, client, version, "unpacked.jar");
-			if (!obfuscated && Files.isRegularFile(unpacked)) return Optional.of(unpacked);
+	/** Vanilla's classes from a game jar Forge's installer left, in the names Forge runs the game with, its archive added to {@code opened}. */
+	static Pipeline.VanillaGame installedGame(Path jar, String names, List<SafeArchive> opened) {
+		try {
+			SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS);
+			opened.add(archive);
+			if (!archive.contains("net/minecraft/server/MinecraftServer.class")) return new Pipeline.VanillaGame(ClassBytesSource.EMPTY, "not found: " + jar + " isn't a game jar");
+			return new Pipeline.VanillaGame(name -> archive.read(name + ".class"), jar + " (Forge's installed game, in " + names + ")");
+		} catch (IOException e) {
+			return new Pipeline.VanillaGame(ClassBytesSource.EMPTY, "not found: " + jar + " can't be read: " + e.getMessage());
 		}
-		return Optional.empty();
 	}
 }

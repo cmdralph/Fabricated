@@ -14,16 +14,16 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the p
 
 - **Branches** (`roadmap.md`, *Branches*): each platform is on its own branch, with the same folder structure. `main`
   holds the shared code (`core`, `api`, `fabric-loader-api`, `loader/common`, `mc/shared`, `mc/mc.gradle`, the code
-  both Forge platforms share, the shared CI scripts and the documents) and NeoForge (`loader/neoforge`,
-  `mc/neoforge`, `ci/neoforge`). `forge` adds Minecraft Forge 61 to 66 (`loader/forge`, `mc/forge`, `ci/forge`),
-  `forge-legacy` Forge 47 for 1.20.1 and Forge 52 for 1.21.1 (`loader/forge-legacy`, `mc/forge-legacy`,
-  `ci/forge-legacy`). Work on `main` goes from `claude/dev`, Forge work from `claude/dev-forge` or
+  both Forge platforms share, the shared CI scripts and the documents) and NeoForge (`loader/neoforge`, `mc/neoforge`,
+  `ci/neoforge`). `forge` adds Minecraft Forge 61 to 66 (`mc/forge`, `ci/forge`), `forge-legacy` Forge 47 for 1.20.1
+  and Forge 52 for 1.21.1 (`mc/forge-legacy`, `ci/forge-legacy`); both build the discovery services in `main`'s
+  `loader/forge-shared`. Work on `main` goes from `claude/dev`, Forge work from `claude/dev-forge` or
   `claude/dev-forge-legacy` (cut from the platform branch), one pull request per task, its full matrix green. Shared
   changes reach the platform branches by merge only: `scripts/sync-platform-branch.sh` merges `main` into a working
-  branch made from the platform branch, keeping its own platform and leaving NeoForge's out. A platform branch is never
-  merged into `main` or into a working branch for it: it would bring its platform along, and a second merge base,
-  which GitHub reports as a conflict and on which no CI runs. Before a release every platform branch is synced with
-  `main`. 1.20.1 targets Forge 47.4, and modern Forge builds with ForgeGradle (`RESEARCH.md` §8).
+  branch made from the platform branch, keeping its own platform and leaving NeoForge's out. A platform branch is
+  never merged into `main` or into a working branch for it: it would bring its platform along, and a second merge
+  base, which GitHub reports as a conflict and on which no CI runs. Before a release every platform branch is synced
+  with `main`. 1.20.1 targets Forge 47.4, and modern Forge builds with ForgeGradle (`RESEARCH.md` §8).
 - **Shared modules stay Java 17** (the owner's decision D2, 2026-10-21): `core`, `api` and `fabric-loader-api` compile
   their main code with `release = 17`, so the build rejects what 1.20.1's Java 17 can't load. Not available there: a
   `List`'s `getFirst`/`getLast`/`removeFirst`/`addFirst` (Java 21's sequenced collections: use `get(0)`,
@@ -200,7 +200,7 @@ vendored modules in `mc/neoforge/<version>/src/fabricapi` and the bridges in `mc
 | Seam | How | Type-safe? |
 |---|---|---|
 | Which code a version gets | Gradle source directories (the version's `shared_sources` property, read by `mc/mc.gradle`): each version compiles only its own and the shared folders it lists, under `mc/<platform>/` or, for an entry with a slash, from the repository root (`mc/forge-shared`: what Forge 61 to 66 and Forge 47 compile as it is) | compile-time |
-| Which loader a version builds for | The folder its project is in, `mc/<platform>/<version>` (`neoforge`, `forge` or `forge-legacy`): `mc/platform-<platform>.gradle` (build plugin, mod descriptor, `gameDependencies`) and `loader/<platform>` (discovery services) next to `loader/common`. A branch holds its own platform's folders (`main` NeoForge's); `-Pfabricated.platforms` picks among them (all it holds by default) | compile-time |
+| Which loader a version builds for | The folder its project is in, `mc/<platform>/<version>` (`neoforge`, `forge` or `forge-legacy`): `mc/platform-<platform>.gradle` (build plugin, mod descriptor, `gameDependencies`) and the discovery services next to `loader/common`: `loader/neoforge`, or `loader/forge-shared` for both Forge platforms, each with the variant the version's `loader_variant` names (NeoForge's `fml` or `modlauncher`, Forge's `modern` or `fml47`, `mc/mc.gradle`). A branch holds its own platform's folders (`main` NeoForge's); `-Pfabricated.platforms` picks among them (all it holds by default) | compile-time |
 | Discovery services → FML | `META-INF/services` in the `loader` source set: `IModFileCandidateLocator`, `IDependencyLocator`, `IModLanguageLoader`, `ClassProcessor` | compile-time against FML SPI |
 | Version facts → core | `META-INF/fabricated/version.properties` (generated: Minecraft version, namespace, Mixin versions) and `fabric-api-plan.json` (data, per version) | data, validated when parsed |
 | Discovery → in-game mod | `FabricatedState.get()` (a `volatile` static in `loader`, published once discovery ends) | compile-time |

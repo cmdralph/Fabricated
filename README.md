@@ -35,8 +35,8 @@ ci/smoke.sh forge 26.2 server                                 # the version's se
 ```
 
 The Forge code is in:
-- `loader/forge`: Forge's discovery services, a mod locator and a dependency locator, with the language provider and
-  the transformation service in `loader/forge-shared`, which Forge 47 shares.
+- `loader/forge-shared`: Forge's discovery services (a mod locator, a dependency locator, the transformation service
+  and the language provider), which Forge 47 shares, with Forge 61 to 66's own below the game in `src/modern`.
 - `mc/forge/<version>` and `mc/forge/common*`: the in-game mod and Forge's half of the Fabric test mods in
   `mc/shared`, with the code Forge 47 compiles as it is in `mc/forge-shared`.
 - `ci/forge/platform.sh`: how CI's shared harness builds, installs and launches Forge.

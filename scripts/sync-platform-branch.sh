@@ -16,11 +16,12 @@ platform="${1:-}"
 base="${2:-origin/main}"
 case "$platform" in
 	forge)
-		own=(loader/forge mc/forge mc/platform-forge.gradle ci/forge README.md docs/FORGE.md)
+		own=(mc/forge mc/platform-forge.gradle ci/forge README.md docs/FORGE.md)
+		gone=(loader/forge)
 		;;
 	forge-legacy)
-		own=(loader/forge-legacy mc/forge-legacy mc/platform-forge-legacy.gradle ci/forge-legacy README.md docs/FORGE-LEGACY.md)
-		gone=(ci/forge-legacy/ffapi-anatomy.py)
+		own=(mc/forge-legacy mc/platform-forge-legacy.gradle ci/forge-legacy README.md docs/FORGE-LEGACY.md)
+		gone=(loader/forge-legacy ci/forge-legacy/ffapi-anatomy.py)
 		;;
 	*)
 		echo "Usage: $0 <forge|forge-legacy> [<main ref>]" >&2
