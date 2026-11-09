@@ -74,6 +74,16 @@ def renamedJava = { String sourceSet, List<File> dirs ->
 }
 def sharedJava = { String sourceSet -> renamedJava(sourceSet, sharedSources.collect { rootProject.file("$it/src/$sourceSet/java") }) }
 
+// The Fabric test mods' sources every platform's project for a Minecraft version builds, in mc/shared/<group>, as the
+// version's `testmod_sources` property lists the groups. A group is named by the versions it serves: every version from
+// 1.21.1 (1.21.1+), 1.21.1 and 1.21.11 (1.21.x), 1.21.11 and later (1.21.11+), 26.x, 26.1.2 and 26.2 (26.1-26.2), 26.2 and
+// later (26.2+), or one version (1.21.1, 1.21.11, 26.1.2, 26.3). They are Fabric mods' code. What a check asks of the
+// platform, and the checks of the platform's own hooks, are the platform's half of the test mods: in its shared folders
+// and the version's own (src/testmod, src/testmodfrapi), with TestPlatform and FrapiPlatform, which every platform's half
+// has, so the shared checks compile against each platform's.
+def testSources = (project.findProperty('testmod_sources') ?: '').split(',')*.trim().findAll { it }.collect { "mc/shared/${it}" } + sharedSources
+def testJava = { String sourceSet -> renamedJava(sourceSet, testSources.collect { rootProject.file("$it/src/$sourceSet/java") }) }
+
 // NeoForge's loader classes come in two variants, as the version's `loader_variant` property names it: those of FML 10
 // and later, on FML's own jar contents and class processors (loader/neoforge/src/fml, the default), and those of NeoForge
 // 21.1's FML 4, which runs on ModLauncher (loader/neoforge/src/modlauncher). The rest of loader/neoforge is both's.
@@ -100,8 +110,8 @@ sourceSets {
         resources.srcDirs = ['src/main/resources'] + sharedSources.collect { rootProject.file("$it/src/main/resources") }
     }
     testmod {
-        java.srcDir sharedJava('testmod')
-        sharedSources.each { resources.srcDir rootProject.file("$it/src/testmod/resources") }
+        java.srcDir testJava('testmod')
+        testSources.each { resources.srcDir rootProject.file("$it/src/testmod/resources") }
     }
     // Test sources every platform shares, in mc/shared: the broken test mods,
     testmodbroken {
@@ -400,13 +410,10 @@ tasks.register('testmods') {
 }
 
 // --- A Fabric mod using Fabric's renderer API, for the client smoke test with Fabric API (ci/neoforge/smoke-client.sh)
-// The first shared source folder that has one (26.x's), or the version's own.
-def frapiTestmodDir = sharedSources.collect { rootProject.file("$it/src/testmodfrapi") }.find { it.isDirectory() } ?: file('src/testmodfrapi')
 sourceSets {
     testmodfrapi {
-        // Set, not added to Gradle's default (src/testmodfrapi), which on 1.21.11 is the same folder.
-        java.srcDirs = [new File(frapiTestmodDir, 'java')]
-        resources.srcDirs = [new File(frapiTestmodDir, 'resources')]
+        java.srcDir testJava('testmodfrapi')
+        testSources.each { resources.srcDir rootProject.file("$it/src/testmodfrapi/resources") }
     }
 }
 gameDependencies(sourceSets.testmodfrapi)
@@ -422,8 +429,10 @@ def frapiTestmodJar = tasks.register('testmodFrapiJar', Jar) {
     destinationDirectory = testmodsDir
     from sourceSets.testmodfrapi.output
 }
-// Not where the version has none: NeoForge would report the empty jar as a broken mod file.
-if (frapiTestmodDir.isDirectory()) tasks.named('testmods') { dependsOn frapiTestmodJar }
+// Not where the version has none: NeoForge would report a jar without its fabric.mod.json as a broken mod file.
+if ((testSources.collect { rootProject.file(it) } + [projectDir]).any { new File(it, 'src/testmodfrapi/resources/fabric.mod.json').isFile() }) {
+    tasks.named('testmods') { dependsOn frapiTestmodJar }
+}
 
 // --- Fabric API, at compile time only ----------------------------------------------------------------------------
 // The module jars of the Fabric API release in this version's plan; Fabricated never ships them. The in-game mod compiles

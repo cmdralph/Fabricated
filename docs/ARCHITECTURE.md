@@ -102,9 +102,10 @@ Fabricated/
 ├── mc/
 │   ├── mc.gradle            Shared build logic: source sets, shared source folders, jars, test mods
 │   ├── platform-*.gradle    Each platform's part of it (plugin settings, mod descriptor, game dependencies)
-│   ├── shared/              Test sources every platform compiles (broken test mods, stand-ins)
+│   ├── shared/              Sources every platform compiles: src (broken test mods, stand-ins), and the Fabric
+│   │                        test mods by Minecraft version (1.21.1+, 1.21.x, 1.21.11+, 26.x, 26.1-26.2, 26.2+, ...)
 │   ├── neoforge/
-│   │   ├── common/          Code every NeoForge version compiles: bridges, mixins, the test mods (src/testmod)
+│   │   ├── common/          Code every NeoForge version compiles: bridges, mixins, the test mods' NeoForge half
 │   │   ├── common121/       Code 1.21.1 and 1.21.11 compile (transfer, networking, loot and biome ports)
 │   │   ├── common12111/     Code 1.21.11 and all 26.x compile (NeoForge's transfer API bridges, hooks
 │   │   │                    whose targets differ on NeoForge 21.1)
