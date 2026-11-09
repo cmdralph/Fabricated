@@ -844,6 +844,40 @@ class PipelineTest {
 	}
 
 	/**
+	 * SEC-10: Fabric's class path ignores a jar's module descriptor, where NeoForge's loader makes the jar the module it
+	 * describes, whose layer then fails to resolve if it requires a module nobody has (FML 12, read in its classes).
+	 * The descriptors, at the root and a multi-release jar's, are left out, as the jars without one load.
+	 */
+	@Test
+	void aJarsModuleDescriptorIsLeftOutAsFabricsClassPathIgnoresIt(@TempDir Path game) throws Exception {
+		ClassWriter descriptor = new ClassWriter(0);
+		descriptor.visit(Opcodes.V17, Opcodes.ACC_MODULE, "module-info", null, null, null);
+		org.objectweb.asm.ModuleVisitor module = descriptor.visitModule("hostile.mod", 0, null);
+		module.visitRequire("java.base", Opcodes.ACC_MANDATED, null);
+		module.visitRequire("nobody.has.this", 0, null);
+		module.visitEnd();
+		descriptor.visitEnd();
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path described = TestJars.create().fabricModJson(TestJars.modJson("described", "1.0", ""))
+				.bytes("module-info.class", descriptor.toByteArray())
+				.bytes("META-INF/versions/17/module-info.class", descriptor.toByteArray())
+				.bytes("com/described/A.class", TestJars.emptyClass("com/described/A", "java/lang/Object"))
+				.write(mods.resolve("described.jar"));
+		Path plain = TestJars.create().fabricModJson(TestJars.modJson("plain", "1.0", ""))
+				.bytes("com/plain/A.class", TestJars.emptyClass("com/plain/A", "java/lang/Object"))
+				.write(mods.resolve("plain.jar"));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(described, plain), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null, List.of()));
+
+		Map<String, PackageGuard.Decision> packages = result.mods().stream().collect(Collectors.toMap(m -> m.translated().candidate().id(), Pipeline.LoadedMod::packages));
+		assertTrue(packages.get("described").hides("module-info.class") && packages.get("described").hides("META-INF/versions/17/module-info.class"),
+				result.report().render());
+		assertFalse(packages.get("described").hides("com/described/A.class"));
+		assertEquals(Set.of(), packages.get("plain").hiddenFiles(), "a jar without one is left as it is");
+		assertTrue(result.report().render().contains("has a module descriptor"), result.report().render());
+	}
+
+	/**
 	 * A launch whose translations all come from the cache doesn't read the mapping table; a mod asking to map a name
 	 * then has it read (PERF-2).
 	 */
