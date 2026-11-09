@@ -58,10 +58,11 @@ final class TestPlatform {
 
 	/**
 	 * Forge makes a mod's registries in its NewRegistryEvent only, which it posts before Fabric's initializers run: no
-	 * Forge mod makes one later.
+	 * Forge mod makes one later, so there is none to make.
 	 */
 	static <T> void createTrackedRegistry(ResourceKey<Registry<T>> key) {
-		throw new IllegalStateException("Forge makes a mod's registries in NewRegistryEvent only, before Fabric's initializers run: " + key);
+		throw new UnsupportedOperationException("Forge makes a mod's registries in its NewRegistryEvent only, which it posts before Fabric's"
+				+ " initializers run, so no Forge mod makes one later (" + key.identifier() + ")");
 	}
 
 	/** Whether a left click starting to break a block, as the platform's hook fires it, was cancelled. */

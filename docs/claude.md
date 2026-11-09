@@ -179,7 +179,7 @@ mc/neoforge/<version>        (one Gradle project per Minecraft version, MDG)
   │     compileOnly: the jars of the plan's pass-through Fabric API modules (typed calls), in Mojang's names: as
   │       published on 26.x, remapped from Intermediary's by core's remapper on 1.21.1 and 1.21.11 (remapFabricApi)
   ├─ source sets testmod, testmodbroken, testmodfrapi  ──compileOnly──► Fabric API (all its modules), fabric-loader-api, api
-  │     sources: the groups of mc/shared the version's `testmod_sources` lists (by Minecraft version, for every
+  │     sources: the groups of mc/shared whose names say they serve the version (by Minecraft version, for every
   │       platform), and the platform's half (TestPlatform, FrapiPlatform, its own hooks' checks) in its folders
   └─ fabricatedJar = loader classes + core + fabric-loader-api + api + META-INF/fabricated/game-mod.jar (main)
 ```

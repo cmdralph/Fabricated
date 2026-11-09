@@ -5,7 +5,7 @@
   "plugin": "io.github.cmdralph.fabricated.forge.rendering.FrapiMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "client": ["IndigoBlockRendererMixin", "IndigoEmitterMixin", "MultiPartModelMixin", "MultiPartSharedStateMixin", "WeightedVariantsMixin", "EntityBlockModelMixin",
-    "ScreenEffectParticleMixin", "BlockMarkerParticleMixin", "TerrainParticleSpriteMixin", "ParticleLevelAccessor"],
+    "ScreenEffectParticleMixin", "BlockMarkerParticleMixin", "TerrainParticleSpriteMixin", "ParticleLevelAccessor", "BlockStateModelDefaultMixin"],
   "injectors": {
     "defaultRequire": 1
   }

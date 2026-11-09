@@ -1,0 +1,10 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "io.github.cmdralph.fabricated.forge.block.late.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["BlockEnchantPowerMixin", "LiquidBlockFlowMixin"],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

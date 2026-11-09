@@ -2,6 +2,9 @@ package io.github.cmdralph.fabricated.testmod;
 
 import org.jspecify.annotations.Nullable;
 
+import com.mojang.serialization.Lifecycle;
+
+import net.minecraft.core.RegistrationInfo;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.Identifier;
@@ -24,6 +27,10 @@ final class TestCompat {
 	static final @Nullable String PROVIDERS_DEFAULT_PACK = null;
 
 	private TestCompat() {
+	}
+
+	static Identifier id(String namespace, String path) {
+		return Identifier.fromNamespaceAndPath(namespace, path);
 	}
 
 	static <T> T value(Registry<T> registry, Identifier id) {
@@ -57,5 +64,10 @@ final class TestCompat {
 
 	static <T extends Entity> EntityType<T> build(EntityType.Builder<T> builder, ResourceKey<EntityType<?>> key) {
 		return builder.build(key);
+	}
+
+	/** The lifecycle the registry gave the entry, null for none. */
+	static <T> @Nullable Lifecycle lifecycle(Registry<T> registry, ResourceKey<T> key) {
+		return registry.registrationInfo(key).map(RegistrationInfo::lifecycle).orElse(null);
 	}
 }
