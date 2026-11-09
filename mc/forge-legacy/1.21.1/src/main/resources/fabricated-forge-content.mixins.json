@@ -1,0 +1,10 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "io.github.cmdralph.fabricated.forge.content.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["FurnaceFuelTableMixin"],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
