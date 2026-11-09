@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8.5",
+  "package": "io.github.cmdralph.fabricated.forge.item.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "fabricated-forge.refmap.json",
+  "mixins": [
+    "ItemForgeHooksMixin",
+    "ItemStackForgeHooksMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

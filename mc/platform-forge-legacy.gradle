@@ -137,6 +137,9 @@ def gameModMixins = [
         // handling (SLEEP-1): upstream's hooks look for vanilla's calls, which Forge replaced.
         'fabricated-forge-interaction.mixins.json',
         'fabricated-forge-entity.mixins.json',
+        // Fabric API's item hooks where Forge's item stack asks Forge's own (its crafting remainder, attribute modifiers
+        // and tool check), and Forge's equipment slot hook.
+        'fabricated-forge-item.mixins.json',
         // Fabric API's fuels in vanilla's fuel table, which Forge's burn times read (FUEL-1), and its brewing recipes
         // built with Forge's constructor of a brewing mix (BREW-1).
         'fabricated-forge-content.mixins.json',

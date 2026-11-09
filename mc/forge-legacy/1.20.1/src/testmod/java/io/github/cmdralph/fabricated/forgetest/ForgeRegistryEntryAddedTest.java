@@ -6,6 +6,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import net.fabricmc.fabric.api.event.registry.RegistryEntryAddedCallback;
 import net.fabricmc.loader.api.FabricLoader;
@@ -20,6 +21,11 @@ import net.fabricmc.loader.api.FabricLoader;
 public final class ForgeRegistryEntryAddedTest {
 	private static final ResourceLocation VANILLA_API = new ResourceLocation(ForgeTestMod.NAMESPACE, "entry_added_vanilla");
 	private static final ResourceLocation FORGE_API = new ResourceLocation(ForgeTestMod.NAMESPACE, "entry_added_forge");
+	/** How another mod's module answers, as its source reads (Forgified Fabric API's, read in its 1.20.1 build). */
+	private static final Map<String, String> PROVIDERS_ANSWERS = Map.of(
+			"vanilla_api", "its event fires from Forge's registry wrapper (NamespacedWrapperMixin, as registerMapping returns) with the id the"
+					+ " registration asked for, which one by name leaves -1 for Forge's registry to pick",
+			"forge_api", "its event fires from Forge's registry wrapper only, which a registration through Forge's own API doesn't go through");
 
 	private ForgeRegistryEntryAddedTest() {
 	}
@@ -37,14 +43,18 @@ public final class ForgeRegistryEntryAddedTest {
 			Item forge = new Item(new Item.Properties());
 			Object forgeItems = Class.forName("net.minecraftforge.registries.ForgeRegistries").getField("ITEMS").get(null);
 			forgeItems.getClass().getMethod("register", ResourceLocation.class, Object.class).invoke(forgeItems, FORGE_API, forge);
-			List<String> expected = List.of(VANILLA_API + " " + items.getId(vanilla), FORGE_API + " " + items.getId(forge));
-			if (heard.equals(expected)) {
-				ForgeTestMod.LOGGER.info("FABRICATED-TEST registry entry added events OK");
-			} else {
-				ForgeTestMod.LOGGER.error("FABRICATED-TEST registry entry added events FAILED: heard {}, expected {}", heard, expected);
-			}
+			List<String> failed = new ArrayList<>();
+			if (!heardOnce(heard, VANILLA_API, items.getId(vanilla))) failed.add("vanilla_api");
+			if (!heardOnce(heard, FORGE_API, items.getId(forge))) failed.add("forge_api");
+			if (!failed.isEmpty()) ForgeTestMod.LOGGER.warn("FABRICATED-TEST registry entry added events heard {}", heard);
+			ForgeTestMod.report("registry entry added events", failed, "fabric-registry-sync-v0", PROVIDERS_ANSWERS);
 		} catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
 			ForgeTestMod.LOGGER.error("FABRICATED-TEST registry entry added events FAILED", e);
 		}
+	}
+
+	/** Whether the listener heard of the entry once, by its name and raw id, with the registry holding it. */
+	private static boolean heardOnce(List<String> heard, ResourceLocation id, int rawId) {
+		return heard.stream().filter(line -> line.startsWith(id + " ")).toList().equals(List.of(id + " " + rawId));
 	}
 }

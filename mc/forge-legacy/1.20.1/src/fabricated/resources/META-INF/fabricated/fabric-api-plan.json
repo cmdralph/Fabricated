@@ -49,9 +49,10 @@
     "fabric-registry-sync-v0": {
       "plan": "passthrough",
       "skipMixins": [
-        "fabric-registry-sync-v0.mixins.json:SaveLoadingMixin"
+        "fabric-registry-sync-v0.mixins.json:SaveLoadingMixin",
+        "fabric-registry-sync-v0.mixins.json:RegistryLoaderMixin#prependDirectoryWithNamespace"
       ],
-      "reason": "Forge 47 loads the data pack registries from its own list, which upstream's mixin replaced with vanilla's and the Fabric mods', losing Forge's biome and structure modifiers: Fabricated adds the Fabric mods' dynamic registries to Forge's list instead."
+      "reason": "Forge 47 loads the data pack registries from its own list, which upstream's mixin replaced with vanilla's and the Fabric mods', losing Forge's biome and structure modifiers: Fabricated adds the Fabric mods' dynamic registries to Forge's list instead. Forge 47's registry loader already reads a registry outside the minecraft namespace from data/<pack namespace>/<registry namespace>/<registry path> (ForgeHooks.prefixNamespace), the directory upstream's hook makes for a Fabric mod's dynamic registry, so with the hook the namespace went in twice and no entry of such a registry was read."
     },
     "fabric-rendering-v1": {
       "plan": "passthrough",
