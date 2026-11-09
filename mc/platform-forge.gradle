@@ -69,9 +69,13 @@ if (project.namespace == 'INTERMEDIARY') {
 testmodDescriptor.testmod << [entrypoints: [main: ['io.github.cmdralph.fabricated.forgetest.ForgeTestMod'],
         client: ['io.github.cmdralph.fabricated.forgetest.ForgeTestClient']], mixins: ['fabricated-forge-testmod.mixins.json'],
         jars: [[file: 'META-INF/jars/fabricated-forge-nested.jar']]]
-testmodDescriptor.testmodfrapi << [entrypoints: [client: ['io.github.cmdralph.fabricated.testmod.frapi.ForgeFrapiClient']]]
 // sharedSources holds GStrings, which no String equals.
 def sharedSourcePaths = sharedSources*.toString()
+// Forge's half of the renderer test mod, where the version has one (Forge 61 to 66; not Forge 52, which has no renderer seam).
+def forgeFrapiClient = 'src/testmodfrapi/java/io/github/cmdralph/fabricated/testmod/frapi/ForgeFrapiClient.java'
+if (([projectDir] + sharedSourcePaths.collect { rootProject.file(it) }).any { new File(it, forgeFrapiClient).isFile() }) {
+    testmodDescriptor.testmodfrapi << [entrypoints: [client: ['io.github.cmdralph.fabricated.testmod.frapi.ForgeFrapiClient']]]
+}
 // 26.x's half of the renderer test mod drives screen input through mixins (common26).
 if ('mc/forge/common26' in sharedSourcePaths) testmodDescriptor.testmodfrapi << [mixins: ['fabricated-testmod-frapi-forge.mixins.json']]
 // Fabric API's advancement module is 26.2's and later's, common26late's versions'.
@@ -134,12 +138,14 @@ tasks.register('forgeClasspathReport') {
 // mixin configs from its manifest: Fabricated's own, upstream's loot mixins (fabric-loot-api-v3, native), the loot
 // module's hooks into Forge's loot table loading, Fabric's interaction and block break events in Forge's interaction
 // hooks and block breaking (BREAK-1), its sleep events in Forge's bed handling (SLEEP-1), its screen input events in
-// Forge's screen input hooks (SCREEN-1), Forge's item and block hooks answered from Fabric's item and block APIs, and
-// those a version's project names (game_mod_mixins).
+// Forge's screen input hooks (SCREEN-1), Forge's item and block hooks answered from Fabric's item and block APIs, those
+// of them the version's sources have (Forge 61 to 66's all, from mc/forge/common; Forge 52's some), and those a version's
+// project names (game_mod_mixins). checkForgeJar refuses a config of the jar that none of them names.
 def gameModMixins = ['fabricated-forge.mixins.json', 'fabricated-loot.mixins.json', 'fabricated-forge-loot.mixins.json',
         'fabricated-forge-interaction.mixins.json', 'fabricated-forge-entity.mixins.json', 'fabricated-forge-screen.mixins.json',
-        'fabricated-forge-item.mixins.json', 'fabricated-forge-block.mixins.json'] +
-        (project.findProperty('game_mod_mixins') ?: '').toString().split(',')*.trim().findAll { it }
+        'fabricated-forge-item.mixins.json', 'fabricated-forge-block.mixins.json'].findAll { config ->
+            sourceSets.main.resources.srcDirs.any { new File(it, config).isFile() }
+        } + (project.findProperty('game_mod_mixins') ?: '').toString().split(',')*.trim().findAll { it }
 
 afterEvaluate {
     tasks.named('gameModJar', Jar) {
