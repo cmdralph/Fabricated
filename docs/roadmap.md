@@ -65,9 +65,10 @@ version (`core`, 536 unit tests), and none of the goals is at risk there. The de
 
 **Parity gaps.**
 
-1. **Minecraft 1.21.1 has no Forge build.** Forge 52 (52.1.21 is the newest) runs on ModLauncher, as Forge 47 does,
-   and Fabric mods for 1.21.1 use Intermediary names, as on NeoForge 1.21.1, so it reuses the remapping path NeoForge
-   1.21.1 has and the Forge loader `forge-legacy` has (task 3).
+1. **Minecraft 1.21.1 has no Forge build.** Forge 52 (52.1.21 is the newest) is modern Forge's generation below the
+   game: ForgeGradle 7, Mojang's names at runtime, the same module stack and installer as Forge 61, and Mixin 0.8.7;
+   like Forge 47 it has EventBus 6, JavaScript coremods and no MixinExtras. Fabric mods for 1.21.1 use Intermediary
+   names, remapped to Mojang's as on NeoForge 1.21.1 and Forge 61 (task 3).
 2. **The three platforms don't run the same tests.** The NeoForge test mods report 100 named checks, Forge 61 to 66's
    65 and Forge 47's 67; only 21 are common to all three. Each platform has its own test mod sources, Fabric API
    stand-ins and smoke scripts. The fix is one suite per Minecraft version, shared on `main` and built by every platform
