@@ -721,6 +721,7 @@ public final class ModTranslator {
 				if (node == null) continue;
 				List<String> targets = mixinTargets(node);
 				renameHidingMethods(node, targets, classes, entries, translated, overlay, notes);
+				if (MixinCompat.looksUpArrayOwners(env.runtimeMixinVersion())) objectOwnedArrayCalls(node, translated, overlay, notes);
 				if (MixinCompat.rebindsInterfaceSuperCalls(env.runtimeMixinVersion())) alignDetachedSuper(node, targets, classes, translated, overlay, notes);
 				// The interfaces the kept mixins add to their targets.
 				if (node.interfaces.isEmpty()) continue;
@@ -805,6 +806,21 @@ public final class ModTranslator {
 		}
 		renames.forEach((key, renamed) -> notes.add("Mixin " + mixin.name.replace('/', '.') + "'s private method " + key
 				+ " renamed " + renamed + ": under its own name it would hide the default method of that name its target inherits (HIDE-1)"));
+	}
+
+	/**
+	 * Has a kept mixin's calls of an array's methods name {@code Object}, where Mixin would stop on them (SUPER-2, see
+	 * {@link DetachedSupers#callsArrayMethods}).
+	 */
+	private static void objectOwnedArrayCalls(ClassNode mixin, FileView files, Map<String, byte[]> overlay, List<String> notes)
+			throws ArchiveException {
+		if (!DetachedSupers.callsArrayMethods(mixin)) return;
+		String name = mixin.name + ".class";
+		byte[] data = files.read(name);
+		if (data == null) return;
+		overlay.put(name, DetachedSupers.objectOwnedArrayCalls(data));
+		notes.add("Mixin " + mixin.name.replace('/', '.') + "'s calls of an array's methods name Object, which declares them: the"
+				+ " running Mixin looks up an array's class as it binds a mixin's calls, and would fail the target (SUPER-2)");
 	}
 
 	/**

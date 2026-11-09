@@ -63,17 +63,20 @@ public final class MixinCompat {
 	 * (CORPUS-74), and a {@code @Unique} field of the same name isn't renamed (CORPUS-95). All three also reuse an earlier
 	 * injector's locals for a long or double without checking its second slot (PRE-22: {@code Target.allocateArgMapLocal},
 	 * read in 0.8.5 and 0.8.7; Fabric's checks it, read in 0.16.4 and 0.17.4). From 0.8.6 they give a config a mod adds by
-	 * its name alone ({@code Mixins.addConfiguration(String)}) no environment (LOADER-6).
+	 * its name alone ({@code Mixins.addConfiguration(String)}) no environment (LOADER-6). All three look up the class of
+	 * each virtual call's owner, an array included, as they bind the calls of a detached mixin or one in a hierarchy with
+	 * mixins (SUPER-2: {@code MixinTargetContext.transformMethodRef}, read in 0.8.5 and 0.8.7; Fabric's skips arrays, read
+	 * in 0.16.4).
 	 */
 	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects, boolean argumentNames,
 			boolean exactStaticInjects, boolean rebindsInterfaceSuperCalls, boolean seesMixinFields, boolean overlapsWideArguments,
-			boolean addedConfigsWithoutEnvironment) {
+			boolean addedConfigsWithoutEnvironment, boolean looksUpArrayOwners) {
 	}
 
 	private static final Map<String, Upstream> UPSTREAM = Map.of(
-			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true, true, false, true, false),
-			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false, true, true),
-			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false, true, true));
+			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true, true, false, true, false, true),
+			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false, true, true, true),
+			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false, true, true, true));
 	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
 	private static final Pattern MINECRAFT = Pattern.compile("(\\d+)\\.(\\d+)(?:\\.(\\d+))?");
 
@@ -259,6 +262,16 @@ public final class MixinCompat {
 	public static boolean addedConfigsWithoutEnvironment(String runtimeMixinVersion) {
 		Upstream upstream = upstream(runtimeMixinVersion);
 		return upstream != null && upstream.addedConfigsWithoutEnvironment();
+	}
+
+	/**
+	 * Whether the running Mixin looks up the class of a mixin's virtual call's owner, an array included, as it binds the
+	 * calls of a detached mixin or one in a hierarchy with mixins, and stops on an array's (SUPER-2): SpongePowered's
+	 * releases do. False for a version not known here.
+	 */
+	public static boolean looksUpArrayOwners(String runtimeMixinVersion) {
+		Upstream upstream = upstream(runtimeMixinVersion);
+		return upstream != null && upstream.looksUpArrayOwners();
 	}
 
 	/**
