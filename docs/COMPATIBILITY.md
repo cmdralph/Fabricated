@@ -23,7 +23,7 @@ isn't supported says why, in the notes under the matrix.
 | Mixins: pre-flight, its repairs, MixinExtras | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Access wideners, class tweakers, injected interfaces, `@Environment` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | `config/fabricated.json` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| The `/fabricated` command | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
+| The `/fabricated` command | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Refusals with an error naming the jars (Sinytra Connector, two Fabricated jars) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | **Fabric API** | | | | | | | | | | | |
 | Every module of the official jar loads, server and client | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ⏳ 3 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 |
@@ -38,7 +38,7 @@ isn't supported says why, in the notes under the matrix.
 | Client modules: key mappings, HUD, screens, client commands | ✅ | ◐ 7 | ✅ | ✅ | ✅ | ◐ 7 | ⏳ 3 | ◐ 7 | ✅ | ✅ | ✅ |
 | Fabric mods' hooks inside the HUD method | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 8 | ⏳ 3 | ◐ 8 | ◐ 8 | ◐ 8 | ◐ 8 |
 | Mod Menu config screens in the platform's mod list | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
-| Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ⏳ 3 | ⏳ 3 | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 |
+| Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ✅ | ⏳ 3 | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 |
 | Platform mods' properties as Fabric custom values, and the reverse | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ⏳ 3 | ⚪ | ⚪ | ⚪ | ⚪ |
 | **Fabric's renderer API and models** | | | | | | | | | | | |
 | Model loading: plugins, modifiers, Fabric model formats | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
@@ -50,7 +50,7 @@ isn't supported says why, in the notes under the matrix.
 | Level-aware particle sprites | ⚪ | ⚪ | ◐ 11 | ◐ 11 | ◐ 11 | ⚪ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Another registered renderer (Sodium's, Forgified Fabric API's) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | **Other mods** | | | | | | | | | | | |
-| Forgified Fabric API beside Fabricated | ✅ 12 | — | ✅ 12 | ✅ 12 | — | ◐ 12 | ⏳ 3 | ❌ 13 | ❌ 13 | ❌ 13 | ❌ 13 |
+| Forgified Fabric API beside Fabricated | ✅ 12 | — | ✅ 12 | ✅ 12 | — | ✅ 12 | ⏳ 3 | ❌ 13 | ❌ 13 | ❌ 13 | ❌ 13 |
 | Sodium and Iris for the platform | ✅ | ✅ | ✅ | ✅ | ✅ | — 14 | — 14 | — 14 | — 14 | — 14 | — 14 |
 | The Fabric builds of Sodium and Iris, with a shader pack | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
 | Essential's Fabric build | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⏳ 3 | ✅ | ✅ | ✅ | ✅ |
@@ -90,8 +90,6 @@ Notes:
     (PART-5).
 12. Forgified Fabric API's modules are used as they are, and Fabricated's copies of them stand down. What its modules do
     differently is theirs (*Mods that bring Fabric API or Fabric Loader*). It has no build for NeoForge 1.21.11 or 26.3.
-    On Forge 47, a registry a Fabric initializer makes and a `DynamicRegistries` registry don't work with it yet
-    (PROVIDER-20, PROVIDER-21, task 3).
 13. Forgified Fabric API's builds for these versions are NeoForge's, and a jar carrying its own copy of Fabric Loader
     is refused.
 14. Sodium and Iris have no Forge builds for these versions.
@@ -101,7 +99,7 @@ Notes:
 16. The shared suite runs, with Forge's half of it; each shared check Forge doesn't pass yet is listed in `ci/checks.tsv`
     with its reason, and is a cell of this matrix.
 17. Modrinth has Forge builds of WTHIT and Simple Voice Chat for these versions, which CI checks; JEI, REI and Jade have
-    none, so their plugins are converted the same way but unchecked on Forge.
+    none, so their plugins are converted the same way but unchecked on Forge 61 to 66 (on Forge 47 CI checks all five).
 
 ## How CI tests it
 
@@ -1592,15 +1590,22 @@ by the server runs (the colours, screens, key mappings and config screens by the
   where the item overrides it, and on Forge 61 a stack's crafting remainder from `getRecipeRemainder`, which its
   furnaces, brewing stands and crafting ask (Forge 64 to 66 share the method with Fabric's). On Forge 61 Fabric's
   `DefaultItemComponentEvents.MODIFY` reaches an item whose components were asked before the registries froze: Forge
-  builds an item's components once, and builds them again once Fabric API changed them. An item overriding Forge's
-  hooks (a Forge mod's) keeps its own answers.
+  builds an item's components once, and builds them again once Fabric API changed them. On Forge 47 (with Fabric API,
+  server and client) the equipment slot answers Forge's hook too, a stack's crafting remainder, which its crafting,
+  furnaces and brewing stands ask through Forge's `getCraftingRemainingItem`, is `getRecipeRemainder`'s, and where
+  Forge's item stack asks the item for its attribute modifiers and whether it is the tool for a block, Fabric's
+  `getAttributeModifiers` and `isSuitableFor` answer for an item overriding them (Forge's answer stands otherwise, its
+  tools' tiers sorted) and `ModifyItemAttributeModifiersCallback` changes the modifiers before Forge's own event, as
+  upstream's hooks into vanilla's calls Forge replaced did; Fabric API 0.92.12 has no enchanting event or creator mod.
+  An item overriding Forge's hooks (a Forge mod's) keeps its own answers.
 - **Blocks:** a block in Fabric's `fabric:can_climb_trapdoor_above` tag makes the open trapdoor above it climbable
   through Forge's `makesOpenTrapdoorAboveClimbable`, whose ladder check never reaches vanilla's that upstream's hook
-  extends (Forge 61 to 66, with Fabric API). On Forge 65 and 66 a block's enchanting power is Fabric's
-  `getProvidedEnchantmentPower` through Forge's `getEnchantPowerBonus`, which Forge's enchanting table sums (the plans
-  leave out upstream's table hooks, which would replace Forge's sum and lose a Forge mod's block's power), and
-  `FluidFlowEvents.ALLOW` is asked where Forge asks its fluid interactions in place of vanilla's check, as a liquid is
-  placed and as its neighbour changes (the shared suite's block check, server and client).
+  extends (Forge 61 to 66, with Fabric API; Fabric API 0.92.12 has no such tag). On Forge 65 and 66 a block's
+  enchanting power is Fabric's `getProvidedEnchantmentPower` through Forge's `getEnchantPowerBonus`, which Forge's
+  enchanting table sums (the plans leave out upstream's table hooks, which would replace Forge's sum and lose a Forge
+  mod's block's power), and `FluidFlowEvents.ALLOW` is asked where Forge asks its fluid interactions in place of
+  vanilla's check, as a liquid is placed and as its neighbour changes (the shared suite's block check, server and
+  client).
 - **Screens:** a screen's initialization and drawing events fire, and a key press, a key release, a character typed, a
   mouse click and its release on a screen ask `ScreenKeyboardEvents` and `ScreenMouseEvents`, whose refusals hold (Forge
   64 to 66, with Fabric API, client run). Forge calls a screen's input handlers and draws it through hooks of its own,
@@ -1655,6 +1660,14 @@ by the server runs (the colours, screens, key mappings and config screens by the
   rest. Architectury gives a spawn egg its entity type from a listener on that event: Artifacts' egg kept none, and EMI's,
   JEI's and REI's listings of its creative tab failed (EMI's own plugin with them). Where Forgified Fabric API provides
   the module, its own copy fires the event.
+- **Registries made early and late (Forge 47):** a registry a Fabric mod adds to the root registry, and an entry it adds
+  to a vanilla registry, from code that runs before the main entrypoints, such as `RegistryDataLoader`'s class
+  initializer Wover hooks, are taken (with Fabric API's jar and with Forgified Fabric API, server and client; REG-10, as
+  REG-3 on NeoForge): Forge 47 freezes the root again once it made its own registries, and its data pack registry event
+  loads that class right after. A data pack registry a Fabric mod makes through `DynamicRegistries` loads its entries
+  from `data/<namespace>/<registry namespace>/<path>`, Forge's path and Fabric's (REG-11). With Forgified Fabric API,
+  a registry a Fabric initializer builds with `FabricRegistryBuilder` joins the root registry, and one it makes through
+  `DynamicRegistries` is a data pack registry, synced, as with Fabric API's jar (PROVIDER-20, PROVIDER-21).
 - **Recipe slots on the network (Forge 61 to 66):** an empty optional ingredient, a shaped recipe's empty slot, is sent
   as vanilla sends it, an empty item list, and read back as empty (server run; CORPUS-83). Forge's patch of vanilla's
   codec threw writing it, so with Fabric API, whose recipe sync sends the recipes Fabric mods' clients need, a shaped
@@ -1873,9 +1886,7 @@ instead. Unless a task is named, nothing is planned for them yet.
 **Not supported on Forge** (Forge's code differs where upstream hooks in):
 
 - **Item API.** On Forge 61 to 66, `allowContinuingBlockBreaking` as the stack changes while mining (client), where
-  Forge asks its own hook. On Forge 47, a Fabric item's stack-aware recipe remainder (`FabricItem.getRecipeRemainder`)
-  in furnaces, brewing stands and crafting, and its per-stack attribute modifiers and `isSuitableFor`, where Forge's own
-  per-stack hooks apply.
+  Forge asks its own hook.
 - **Content registries.** On Forge 64 to 66, an `EntityFluidInteractionRegistry` behaviour: entities swim, travel,
   sprint and float a boat in a fluid as its Forge fluid type lets them, which for a Fabric fluid is Fabricated's,
   treating it as water when it is tagged `minecraft:water` and as air otherwise.
@@ -1892,7 +1903,8 @@ instead. Unless a task is named, nothing is planned for them yet.
 - **Forge 47's interface mixins.** Its Mixin (0.8.5) applies no injector in an interface mixin. Fabricated applies an
   `@Inject` at `HEAD`, `RETURN` or `TAIL` there itself (INTERFACE-1): the oxidizable blocks registry's (the test mod's
   pair is in vanilla's oxidation map, server run) and `TooltipComponentCallback`'s (rendering-v1, its shape in core's
-  tests). Other injectors in an interface mixin, such as the recipe remainder's above, are lost there.
+  tests). Other injectors in an interface mixin are lost there; the recipe remainder's work is done through Forge's own
+  hook (*Items* above).
 - **Sound (Forge 47).** A Fabric sound instance's own audio stream (`FabricSoundInstance.getAudioStream`).
 - **Other hooks inside the HUD method.** A Fabric mod's mixin inside vanilla's HUD method (`Gui.render`; on Forge 64
   `Gui.extractRenderState`, on 65 and 66 `Hud.extractRenderState`) that wraps or redirects one of vanilla's calls,

@@ -63,6 +63,11 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	public static volatile boolean immutablePackSources;
 	private static Item testItem;
 
+	/** An id in the test mod's namespace, for its parts outside this package, which can't reach {@code TestCompat}. */
+	public static Identifier id(String path) {
+		return TestCompat.id("fabricated_testmod", path);
+	}
+
 	/** A registry vanilla's own code adds to the root while mods start, which works on Fabric (REG-3: Wover's). */
 	private static void lateRegistry() {
 		if (addRegistry("late")) LOGGER.info("FABRICATED-TEST late registry OK");

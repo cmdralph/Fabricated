@@ -32,7 +32,7 @@ public final class OtherModPlugins {
 		@Override
 		public Identifier getPluginUid() {
 			log("jei", "called");
-			return Identifier.fromNamespaceAndPath("fabricated_testmod", "jei");
+			return TestMod.id("jei");
 		}
 	}
 
