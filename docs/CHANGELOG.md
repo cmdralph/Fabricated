@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-08: The v0.6.0-beta release: nested jars bounded per launch (SEC-5), the ship criteria audited, the release notes (task 7)
+## 2026-11-08: The v0.6.0-beta release: nested jars bounded per launch (SEC-5), the ship criteria audited, the release notes, the runs that held on the release heads gated (task 7)
 
 - **SEC-5** (P3), reopened and fixed: task 6 closed it as won't fix, but the beta's stability bar asks that the limits
   on nested jars hold across all the jars of a launch (item 4), so the decision didn't stand. All the top-level jars of
@@ -23,14 +23,38 @@ One entry per working session, newest first: what changed, and how it was verifi
   mc-runtime-test stopped it (CORPUS-48, this run only; the run before passed), and the advanced server's `/reload`
   fails in Wover's code, on Fabric as here (**CORPUS-113**, new, open, not Fabricated's: read in Wover's source, its
   biome tags' handler drops the context the biome registry's bootstrap made once the tags first load, and a `/reload`
-  loads the tags again without that bootstrap). Which informational targets become gates before the beta is the
-  owner's call (criterion 2), asked today.
+  loads the tags again without that bootstrap). Which informational targets become gates before the beta was the
+  owner's call (criterion 2): each whose run passes two extended runs on the release heads, the rest shipping as known
+  limits (the owner's decision).
 - **The release notes** (`docs/releases/v0.6.0-beta.md`): what changed since v0.5.1-alpha on NeoForge, Forge 61 to 66
   and Forge 47, Fabric's renderer API by platform, upgrading and the known limits. `README.md`'s status says beta, and
   `ARCHITECTURE.md` the launch's budget.
-- **Verified:** core's tests (`./gradlew -Pfabricated.coreOnly=true :core:test`).
-- **Next:** this change synced to `forge` and `forge-legacy`, two extended runs on each branch's release head, then the
-  draft release for the owner to check and publish.
+- **Two extended runs on each release head**, every job passing: `main` 42533784185 and 42535987817 (on `6bda4de`),
+  `forge` 42535034947 and 42536321030 (on `5ef9f3a`), `forge-legacy` 42534631585 and 42536323160 (on `a0a8f4b`).
+- **The targets' runs that held on both are gates** (criterion 2, as the owner decided). On `main`: the client with
+  Fabric API (every version), Sodium for NeoForge on 1.21.11, its 26.x run with Iris (whose log's checks were gates
+  already), Forgified Fabric API and Sodium for NeoForge on 1.21.1's client, Continuity (every version), Forgified
+  Fabric API's renderer (1.21.1, 26.1.2 and 26.2), Sodium and Iris for NeoForge with CI's shader pack (26.x), their
+  Fabric builds with it (every version), Sodium Extra and Reese's Sodium Options next to Sodium for NeoForge (26.1.2
+  and 26.2), and OneConfig with PolyPlus (every version). On `forge`, Forge 66's glow outline; on `forge-legacy`, the
+  client with Forgified Fabric API. Each gate checks what both runs' logs showed: every smoke check passes, and its
+  own checks where it has them (the named mods load, Iris uses the pack, every block comes through the other renderer,
+  Continuity's connected textures reach a chunk section, no Fabric mod is disabled).
+- **Known limits instead**, in the release notes: the corpora, as 1.21.1's advanced client stays on Origins' screen
+  (CORPUS-66) and corpus clients with Xaero's World Map hang as mc-runtime-test stops them (CORPUS-48, 26.2 and 26.3),
+  in both runs and both the mods' own; 26.3's Sodium addons, whose builds there ask for a newer Sodium (0.9.3-beta.4)
+  than the one CI pins with its Iris (0.9.3-beta.1, CI-4); and OneConfig and PolyPlus on Forge, not run. Decided here:
+  the newest NeoForge build's server run stays informational, as it is no target (it tries a build the release doesn't
+  pin, ahead of time), and so do the Forge branches' listings of the newest Forge builds and of the libraries on the
+  compile classpath, which check nothing.
+- **`COMPATIBILITY.md` and the Forge tables matched to CI** (criterion 4): 1.21.11's loot API row (v2 loads too),
+  1.21.1's rows for 0.116's deprecated and client-only modules, the native module count on 1.21.1 in the roadmap (19:
+  particles and key bindings), the viewers' run (a gate since task 5), the corpus state on the release head; on the
+  Forge branches, Forge 47's resource conditions and renderer API rows (they load whole: the warnings are repairs) and
+  the overlay's flicker fix, which applies on Forge 47 too.
+- **Verified:** core's tests (`./gradlew -Pfabricated.coreOnly=true :core:test`); the gates on the final tree in an
+  extended run on each branch's pull request.
+- **Next:** the draft release for the owner to check and publish.
 
 ## 2026-11-08: Cached launches measured and shortened, the cache shared between launches, library modules the platform lacks, the Forge mixins inventoried (task 6)
 
