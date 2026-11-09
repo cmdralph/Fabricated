@@ -75,6 +75,49 @@ class CandidateScannerTest {
 		assertTrue(result.notes().contains("holder's mixin config shared.mixins.json is in its nested jar shared, which applies it"), result.notes().toString());
 	}
 
+	/**
+	 * PLAT-7: Origins 1.10.2 nests, through Apoli and AdditionalEntityAttributes, MixinExtras 0.2.0-beta.6's Fabric jar
+	 * under Loom's id {@code com_github_llamalad7_mixinextras}, with its {@code mixinextras.init.mixins.json}. Its classes
+	 * were left out for the platform's MixinExtras, but Mixin found its config first under the name of the platform's
+	 * init config, so MixinExtras never started and a local Forge 47 server stopped applying Fabric API's {@code @Local}
+	 * injectors. A jar whose classes are all of a library the platform provides and that has mixin configs is that
+	 * library's own jar, whatever its id, and isn't loaded. Without a mixin config (GSON-1's jar shading part of Gson), with
+	 * a class of its own, or with classes only in a family the platform ships in part (LWJGL), a jar still loads.
+	 */
+	@Test
+	void aCopyOfAPlatformLibraryWithMixinConfigsIsNotLoaded(@TempDir Path game) throws Exception {
+		String init = "\"mixins\":[\"mixinextras.init.mixins.json\"]";
+		byte[] plugin = TestJars.emptyClass("com/llamalad7/mixinextras/platform/fabric/MixinExtrasConfigPlugin", "java/lang/Object");
+		byte[] mixinExtras = TestJars.create().fabricModJson(TestJars.modJson("com_github_llamalad7_mixinextras", "0.2.0-beta.6", init))
+				.text("mixinextras.init.mixins.json", "{\"minVersion\":\"0.8\",\"plugin\":\"com.llamalad7.mixinextras.platform.fabric.MixinExtrasConfigPlugin\"}")
+				.bytes("com/llamalad7/mixinextras/platform/fabric/MixinExtrasConfigPlugin.class", plugin)
+				.toBytes();
+		byte[] shade = TestJars.create().fabricModJson(TestJars.modJson("shade", "1.0", ""))
+				.bytes("com/google/gson/internal/Shaded.class", TestJars.emptyClass("com/google/gson/internal/Shaded", "java/lang/Object"))
+				.toBytes();
+		byte[] withOwnClass = TestJars.create().fabricModJson(TestJars.modJson("lib", "1.0", init.replace("mixinextras.init", "lib")))
+				.text("lib.mixins.json", "{\"package\":\"com.example.lib.mixin\",\"mixins\":[]}")
+				.bytes("com/llamalad7/mixinextras/platform/fabric/MixinExtrasConfigPlugin.class", plugin)
+				.bytes("com/example/lib/Own.class", TestJars.emptyClass("com/example/lib/Own", "java/lang/Object"))
+				.toBytes();
+		byte[] nanoVg = TestJars.create().fabricModJson(TestJars.modJson("nanovg", "1.0", init.replace("mixinextras.init", "nanovg")))
+				.text("nanovg.mixins.json", "{\"package\":\"org.lwjgl.nanovg.mixin\",\"mixins\":[]}")
+				.bytes("org/lwjgl/nanovg/NanoVG.class", TestJars.emptyClass("org/lwjgl/nanovg/NanoVG", "java/lang/Object"))
+				.toBytes();
+		Path holder = TestJars.create()
+				.fabricModJson(TestJars.modJson("holder", "1.0", "\"jars\":[{\"file\":\"META-INF/jars/mixinextras.jar\"},{\"file\":\"META-INF/jars/shade.jar\"},"
+						+ "{\"file\":\"META-INF/jars/lib.jar\"},{\"file\":\"META-INF/jars/nanovg.jar\"}]"))
+				.bytes("META-INF/jars/mixinextras.jar", mixinExtras)
+				.bytes("META-INF/jars/shade.jar", shade)
+				.bytes("META-INF/jars/lib.jar", withOwnClass)
+				.bytes("META-INF/jars/nanovg.jar", nanoVg)
+				.write(game.resolve("holder.jar"));
+		CandidateScanner.Result result = new CandidateScanner(new TranslationCache(game, true, true), ArchiveLimits.DEFAULTS).scan(List.of(holder));
+		assertEquals(List.of("holder", "lib", "nanovg", "shade"), result.candidates().stream().map(Candidate::id).sorted().toList());
+		assertTrue(result.notes().contains("holder.jar!/META-INF/jars/mixinextras.jar bundles com_github_llamalad7_mixinextras, a copy of a library"
+				+ " NeoForge already provides, with mixin configs naming its classes; the bundled copy is not loaded (PLAT-7)"), result.notes().toString());
+	}
+
 	/** As Polymer's bundle nests its packet library: bundled, core, networking, common, then the library (LIMIT-2). */
 	@Test
 	void aLibraryNestedFourJarsDeepLoads(@TempDir Path game) throws Exception {

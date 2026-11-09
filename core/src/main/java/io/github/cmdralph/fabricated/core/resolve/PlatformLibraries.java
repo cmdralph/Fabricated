@@ -71,6 +71,24 @@ public final class PlatformLibraries {
 	}
 
 	/**
+	 * Whether a jar's classes are all a platform library's: it has classes, and each is in a package of
+	 * {@link #PROVIDED_PACKAGES} outside {@link #PARTIAL_FAMILIES}, whose packages are the platform's only where it has
+	 * their classes (PLAT-7). Those classes are all left out for the platform's.
+	 *
+	 * @param classFiles the jar's class files, by name ({@code com/llamalad7/mixinextras/MixinExtrasBootstrap.class})
+	 */
+	public static boolean onlyLibraryClasses(Collection<String> classFiles) {
+		if (classFiles.isEmpty()) return false;
+		for (String file : classFiles) {
+			if (!isProvided(file)) return false;
+			for (String family : PARTIAL_FAMILIES) {
+				if (file.startsWith(family)) return false;
+			}
+		}
+		return true;
+	}
+
+	/**
 	 * Whether a mod's package (internal form, e.g. {@code org/lwjgl/nanovg}) is a platform library's. In a family of
 	 * {@link #PARTIAL_FAMILIES} it is where the platform's loaders have one of its classes: the family's modules the
 	 * platform ships may be on no module layer (the game's LWJGL on FML 10 and later), so its packages aren't all among

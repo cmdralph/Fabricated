@@ -3,6 +3,30 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-09: The advanced corpus's stops on Forge: FrozenLib, ReplayMod and Origins (ENUM-8, LOADER-6, MULTI-2, PLAT-7)
+
+- **ENUM-8** (P0), fixed: FrozenLib's `@Shadow @Final @Mutable` of `MobCategory`'s values array made it non-final
+  before Forge's enum extender, which finds the array only while it is final, ran; the Forge 61 server stopped as the
+  enum loaded. Pre-flight drops `@Mutable` (and the shadow's `@Final`) from such a shadow or accessor, and the extender
+  makes the array writable itself.
+- **LOADER-6** (P0), fixed: SpongePowered's Mixin 0.8.6 and 0.8.7 (Forge 52, 61 to 66) give a config a mod adds by name
+  alone no environment; ReplayMod's plugin adds most of its configs so, and every Forge 61 to 66 client stopped at
+  launch. The mod's calls go to the overload that gives the default environment.
+- **MULTI-2** (P0), fixed: a Fabric jar whose `mods.toml` is a placeholder for Sinytra Connector (Origins 1.10.2's) is a
+  Fabric mod on Forge too; Fabricated's mod locator keeps it from Forge's mods-folder scan, where Forge refused the
+  launch for the missing `connectormod`.
+- **PLAT-7** (P0), fixed: past MULTI-2, Origins' nested MixinExtras Fabric jar, under an id Loom generated, loaded with
+  its init config, which shadowed the platform's of the same name, and MixinExtras never started on Forge 47. A
+  platform library's own jar with mixin configs isn't loaded, whatever its id.
+- **MIXCFG-1** open: pre-flight doesn't check the configs a mod adds from its code; one of ReplayMod 1.20.1's stops a
+  Forge 47 client once its jar is accepted, so SafeArchive keeps refusing its repeated `assets/` entry until then
+  (SEC-11, open). Origins on a Forge 47 server stops next on Apoli's
+  `@ModifyVariable` in `ServerPlayerGameMode.destroyBlock` (compatibility baseline).
+- Verified: the core unit tests, CI's script tests and the mixin inventory; Forge 66 and Forge 47 build. Locally, a
+  Forge 66 server with FrozenLib 3.0.3 starts with its mixin applied; a Forge 66 client with ReplayMod 1.21.11 applies
+  its added configs and joins its world (54 checks pass, none fail); a Forge 47 server loads Origins 1.10.2 as a Fabric
+  mod, and MixinExtras starts there.
+
 ## 2026-11-09: The Fabric builds of Sodium and Iris on Forge 52 (IRIS-2, FRAPI-13)
 
 - **IRIS-2** (P1), fixed: pre-flight disabled Iris's Fabric build on Forge 52, whose vanilla `ParticleEngine.render`,
