@@ -35,8 +35,8 @@ ci/build.sh forge-legacy 1.20.1                               # the jar and the 
 ```
 
 The Forge 47 code is in:
-- `loader/forge-legacy`: Forge 47's discovery services, with the language provider and the transformation service in
-  `loader/forge-shared`, which Forge 61 to 66 share.
+- `loader/forge-shared`: Forge's discovery services (a mod locator, a dependency locator, the transformation service
+  and the language provider), which Forge 61 to 66 share, with Forge 47's own below the game in `src/fml47`.
 - `mc/forge-legacy/1.20.1`: the in-game mod, reobfuscated to SRG's names, and the test mod in Intermediary's names,
   with the code Forge 61 to 66 compile as it is in `mc/forge-shared`.
 
