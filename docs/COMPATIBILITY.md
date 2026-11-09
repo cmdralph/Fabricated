@@ -1761,9 +1761,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   (Indigo) calls a block model's emitter, a Fabric model that throws fails alone. The block is drawn from the model's
   parts (on Forge 47 by Forge's renderer, from the quads the model gives it), the failure is logged once and listed in
   the report, and the model's class is drawn that way from then on, but not the class of a model wrapping it (as
-  Continuity's wrap others). A transform it left pushed is popped, so it never reaches another block. The renderer test
-  mod checks each of these with a model that throws in a chunk section, as a multipart model's part, inside a model
-  wrapping it, and on Forge 61 to 66 as a minecart's block. The outline Fabric's renderer draws around a glowing falling
+  Continuity's wrap others). A transform it left pushed never reaches another block: it is popped from Indigo's
+  emitter, and on Forge 64 to 66 a model drawn into another renderer's (Sodium's Fabric build) draws into an emitter of
+  Fabricated's, dropped after a throw (FRAPI-12). The renderer test mod checks each of these with a model that throws
+  in a chunk section, as a multipart model's part, inside a model wrapping it, and on Forge 61 to 66 as a minecart's
+  block. The outline Fabric's renderer draws around a glowing falling
   block is checked on Forge 65 and, since task 7, on Forge 66. Fabricated's guards apply only with Fabric's renderer API
   installed (they name its types), and the two that sit in methods upstream replaces (blocks drawn as entities, and the
   breaking overlay on Forge 64) apply after upstream's replacement.

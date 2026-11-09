@@ -181,11 +181,10 @@ that fixes or closes it.
 ## Compatibility baseline (task 4)
 
 The extended runs of 2026-11-09 on `main` (42624614743), `forge` (42624619386) and `forge-legacy` (42624625243): every
-corpus run passes on every version (informational), and every gate holds but one.
+corpus run passes on every version (informational), and every gate holds but one, since fixed (FRAPI-12).
 
 | Where | What | Status |
 |---|---|---|
-| Forge 64 to 66 clients with the Fabric builds of Sodium and Iris | The renderer API test mod's leaked transform check fails: a transform a Fabric block model pushed before it threw, drawn in an entity, reaches the next quads, as Forge's seam pops transforms only on Indigo's emitter | Task 4, a gate |
 | NeoForge 1.21.1, advanced client | Figura disabled by pre-flight: its armor layer hooks don't occur in NeoForge's `HumanoidArmorLayer.renderArmorPiece` | Task 4 |
 | NeoForge 1.21.11, advanced corpus | Biomes O' Plenty's Fabric build disabled by pre-flight: its `Entity.updateFluidOnEyes` redirect doesn't occur in NeoForge's method | Task 4 |
 | Forge 47, client corpus | Porting Lib's GUI utilities disabled by pre-flight: a `@ModifyArgs` call in `GuiGraphics` Forge changed | Task 4 |
