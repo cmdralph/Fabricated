@@ -272,9 +272,6 @@ fi
 # and listed in the report, a wrapper whose wrapped model threw isn't blamed, and the transform it left pushed never
 # reaches another block. A Fabric block model's level-aware particle sprite reaches the screen effect inside it, its
 # block markers and its breaking particles, where Forge asks the model with its model data (PART-4). Gates.
-seen() {
-	if grep -q -- "$1" "$log" 2>/dev/null; then echo "SEEN: $2"; else echo "NOT SEEN: $2 (no '$1')"; fi
-}
 # Under another renderer of Fabric's API (Sodium's Fabric build, run with the test mod in the difficult mods' job),
 # Fabric API's Indigo stands down and that renderer draws Fabric's block models itself: in its own chunk sections, which
 # it meshes, and wherever it is asked to draw a block. Fabricated's guard (FRAPI rule 8) is its seam into Indigo, and
@@ -319,8 +316,9 @@ elif [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
 	if [ "$mc" != 1.21.11 ]; then
 		check "FABRICATED-TEST model deserializer OK" "fabric-model-loading-api-v1 (with Fabric API): a model file of a Fabric type was read by its Fabric deserializer"
 	fi
-	# 26.1.2 draws no outline around moving blocks; on 26.3 it isn't seen yet (informational below).
-	if [ "$mc" = 26.2 ]; then
+	# 26.1.2 draws no outline around moving blocks. On 26.3 the check is a gate since it held on both of v0.6.0-beta's
+	# release head extended runs (task 7, CI-1).
+	if [ "$mc" = 26.2 ] || [ "$mc" = 26.3 ]; then
 		check "FABRICATED-TEST frapi moving block outline OK" "fabric-renderer-api-v1 (with Fabric API): a glowing falling Fabric block model's outline was drawn by Fabric's renderer"
 	fi
 	check "FABRICATED-TEST frapi broken model fallback OK" "FRAPI rule 8: a Fabric model that threw in a chunk section was drawn from its parts"
@@ -357,12 +355,6 @@ elif [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
 	if grep -q "FABRICATED-TEST frapi leaked transform FAILED" "$log"; then
 		echo "FAIL: FRAPI rule 8: a transform a broken model left pushed reached another block"
 		fail=1
-	fi
-	if [ "$mc" = 26.3 ]; then
-		echo "::group::Fabric's renderer API on Forge 66 (informational)"
-		seen "FABRICATED-TEST frapi level render events fire" "Fabric's level render events fire (the outline check counts frames with them)"
-		seen "FABRICATED-TEST frapi moving block outline OK" "a glowing falling Fabric block model's outline was drawn by Fabric's renderer"
-		echo "::endgroup::"
 	fi
 	if [ "$fail" = 1 ]; then
 		echo "::group::The renderer test mod's lines in the game log"
