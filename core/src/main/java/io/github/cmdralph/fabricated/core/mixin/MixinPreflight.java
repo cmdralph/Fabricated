@@ -199,9 +199,24 @@ public final class MixinPreflight extends PreflightPart {
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins,
 			boolean readsLocalTypes, boolean seesMixinFields, boolean handsOffConstructorArguments) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, interfaceInjectors,
+				constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields,
+				handsOffConstructorArguments, false);
+	}
+
+	/**
+	 * @param overlapsWideArguments whether the running Mixin may store a long or double over another local where it reuses
+	 *                              an earlier injector's locals for an injector's values, as SpongePowered's releases do
+	 *                              (PRE-22): a MixinExtras wrapper whose value would overwrite one of its mixin's
+	 *                              shared locals so fails ({@link ArgumentLocals})
+	 */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
+			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins,
+			boolean readsLocalTypes, boolean seesMixinFields, boolean handsOffConstructorArguments, boolean overlapsWideArguments) {
 		super(new PreflightClasses(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader,
 				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields,
-				handsOffConstructorArguments));
+				handsOffConstructorArguments, overlapsWideArguments));
 		this.repairer = new MixinRepairs(classes, this);
 	}
 
@@ -810,7 +825,36 @@ public final class MixinPreflight extends PreflightPart {
 	void checkMembers(ClassNode mixin, ClassNode target, Context ctx) {
 		int findingsBefore = ctx.out().size();
 		checkMembersOf(mixin, target, ctx);
+		if (overlapsWideArguments) checkArgumentLocals(mixin, target, ctx, findingsBefore);
 		checkGroups(mixin, ctx, findingsBefore);
+	}
+
+	/**
+	 * The MixinExtras wrappers of the mixin that the running Mixin would store a long or double for over one of the
+	 * mixin's shared locals (PRE-22: ShulkerBoxTooltip's three {@code @WrapOperation}s into
+	 * {@code BundleMouseActions.onMouseScrolled}, sharing two locals, stopped the Forge 64 to 66 clients with a
+	 * {@code VerifyError} as the test mod's menu opened); the injectors found failing from {@code from} on are no longer
+	 * there. Mixin applies such a wrapper whatever its {@code require}, and the class then fails as it loads.
+	 */
+	private void checkArgumentLocals(ClassNode mixin, ClassNode target, Context ctx, int from) {
+		Set<String> failing = new HashSet<>();
+		for (PreflightFinding f : ctx.out().subList(from, ctx.out().size())) {
+			if (!ctx.mixinDotted().equals(f.mixin()) || f.severity() == Severity.INFO) continue;
+			if (f.handler() == null) {
+				if (f.severity() != Severity.WARN) return;
+			} else {
+				failing.add(f.handler());
+			}
+		}
+		for (ArgumentLocals.Overlap overlap : ArgumentLocals.overlaps(mixin, target, failing, ctx)) {
+			ctx.injector(overlap.handler(), 1, "@" + PreflightAsm.simpleName(overlap.injector().desc) + " " + overlap.handler().name + " wraps "
+							+ ArgumentLocals.describe(overlap.node()) + " in " + overlap.method().name + overlap.method().desc + " in "
+							+ target.name.replace('/', '.') + ", whose " + overlap.value().getClassName() + " " + loader + "'s Mixin would store over"
+							+ " the local this mixin shares as " + overlap.share() + " (@Share): it reuses an earlier injector's locals for the values"
+							+ " without checking that a long or double's second slot is one of them (Fabric's Mixin checks), so the class would fail"
+							+ " verification",
+					"The feature this hook serves doesn't work on this " + loader + ".");
+		}
 	}
 
 	/**

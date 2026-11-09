@@ -6661,6 +6661,94 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aWrappersLongOrDoubleThatMixinWouldStoreOverASharedLocalFails() throws Exception {
+		// PRE-22: ShulkerBoxTooltip's three @WrapOperations into BundleMouseActions.onMouseScrolled share two locals. Forge's
+		// Mixin (SpongePowered's 0.8.7) stores the first call's ItemStack in slot 12, MixinExtras then allocates the shared
+		// locals (13 and 14), the third call's four values go in 12, 15, 16 and 17, and the second call's double in 12 and 13,
+		// over a shared local: Target.allocateArgMapLocal takes the slot after a reused local unchecked. The Forge 64 to 66
+		// clients stopped with "Bad local variable type ... double_2nd (locals[13])" as the test mod's menu opened.
+		String ref = "Lcom/llamalad7/mixinextras/sugar/ref/LocalRef;";
+		String share = "Lcom/llamalad7/mixinextras/sugar/Share;";
+		// scroll(double, String): count(String), then next(double, int, int), then this.toggle(String, int, int).
+		ClassWriter tw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		tw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor scroll = tw.visitMethod(Opcodes.ACC_PUBLIC, "scroll", "(DLjava/lang/String;)Z", null, null);
+		scroll.visitCode();
+		scroll.visitVarInsn(Opcodes.ALOAD, 3);
+		scroll.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "count", "(Ljava/lang/String;)I", false);
+		scroll.visitVarInsn(Opcodes.ISTORE, 4);
+		scroll.visitVarInsn(Opcodes.DLOAD, 1);
+		scroll.visitVarInsn(Opcodes.ILOAD, 4);
+		scroll.visitVarInsn(Opcodes.ILOAD, 4);
+		scroll.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "next", "(DII)I", false);
+		scroll.visitVarInsn(Opcodes.ISTORE, 5);
+		scroll.visitVarInsn(Opcodes.ALOAD, 0);
+		scroll.visitVarInsn(Opcodes.ALOAD, 3);
+		scroll.visitVarInsn(Opcodes.ILOAD, 4);
+		scroll.visitVarInsn(Opcodes.ILOAD, 5);
+		scroll.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "toggle", "(Ljava/lang/String;II)V", false);
+		scroll.visitInsn(Opcodes.ICONST_1);
+		scroll.visitInsn(Opcodes.IRETURN);
+		scroll.visitMaxs(0, 0);
+		scroll.visitEnd();
+		tw.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, tw.toByteArray())::get);
+		// The handlers: the wrapped call's values, the Operation, then two @Share LocalRefs, "context" and "provider".
+		Map<String, String[]> wrappers = Map.of(
+				"count", new String[] {"changeCount", "(Ljava/lang/String;" + OPERATION + ref + ref + ")I", "L" + TARGET + ";count(Ljava/lang/String;)I"},
+				"next", new String[] {"nextSelection", "(DII" + OPERATION + ref + ref + ")I", "L" + TARGET + ";next(DII)I"},
+				"toggle", new String[] {"toggleItems", "(L" + TARGET + ";Ljava/lang/String;II" + OPERATION + ref + ref + ")V",
+						"L" + TARGET + ";toggle(Ljava/lang/String;II)V"});
+		Function<List<String>, byte[]> mixinOf = order -> mixin("com/example/mixin/Bundle", false, cw -> {
+			for (String call : order) {
+				String[] w = wrappers.get(call);
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, w[0], w[1], null, null);
+				int params = Type.getArgumentTypes(w[1]).length;
+				String[] shared = {"context", "provider"};
+				for (int s = 0; s < 2; s++) {
+					AnnotationVisitor sugar = mv.visitParameterAnnotation(params - 2 + s, share, false);
+					sugar.visit("value", shared[s]);
+					sugar.visitEnd();
+				}
+				AnnotationVisitor wrap = mv.visitAnnotation(WRAP_OPERATION, true);
+				AnnotationVisitor methods = wrap.visitArray("method");
+				methods.visit(null, "scroll(DLjava/lang/String;)Z");
+				methods.visitEnd();
+				AnnotationVisitor ats = wrap.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", "INVOKE");
+				at.visit("target", w[2]);
+				at.visitEnd();
+				ats.visitEnd();
+				wrap.visitEnd();
+				mv.visitEnd();
+			}
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Bundle"));
+		BiFunction<Boolean, byte[], List<PreflightFinding>> check = (overlaps, mixin) -> new MixinPreflight(game, InstalledClasses.NONE,
+				Map.of("com/example/mixin/Bundle", mixin)::get, ClassBytesSource.EMPTY, true, true, ClassBytesSource.EMPTY, "Forge", true,
+				MixinPreflight.ConstructorInjects.UNSAFE_POINTS, false, false, false, true, false, false, overlaps)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+
+		// ShulkerBoxTooltip's order: the double's wrapper fails, and the two sharing its locals go with it.
+		List<PreflightFinding> findings = check.apply(true, mixinOf.apply(List.of("count", "toggle", "next")));
+		assertEquals(3, findings.size(), findings.toString());
+		assertTrue(findings.stream().allMatch(f -> f.severity() == Severity.LEFT_OUT), findings.toString());
+		PreflightFinding overlap = findings.getFirst();
+		assertEquals("nextSelection(DII" + OPERATION + ref + ref + ")I", overlap.handler());
+		assertTrue(overlap.message().contains("@WrapOperation nextSelection wraps the call to net.minecraft.world.Thing.next(DII)I in scroll"
+				+ "(DLjava/lang/String;)Z in net.minecraft.world.Thing, whose double Forge's Mixin would store over the local this mixin shares"
+				+ " as context (@Share)"), overlap.message());
+		assertTrue(findings.stream().anyMatch(f -> f.message().startsWith("The injector of changeCount") && f.message().contains("goes with that of nextSelection")),
+				findings.toString());
+		assertTrue(findings.stream().anyMatch(f -> f.message().startsWith("The injector of toggleItems")), findings.toString());
+		// Wrapped first, the double takes locals of its own: nothing to report.
+		assertTrue(check.apply(true, mixinOf.apply(List.of("count", "next", "toggle"))).isEmpty());
+		// Fabric's Mixin checks the second slot.
+		assertTrue(check.apply(false, mixinOf.apply(List.of("count", "toggle", "next"))).isEmpty());
+	}
+
+	@Test
 	void anInjectorNamingSeveralMethodsNeedsOnlyOneOfThemAsMixinDoes() throws Exception {
 		// PRE-23: Emotecraft's @Inject(method = {"tick", "method_5773"}, remap = false) into Avatar, which declares no tick:
 		// Player Animation Library's mixin adds one (an @Intrinsic). Mixin fails an injector only where none of its selectors

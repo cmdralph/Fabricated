@@ -76,6 +76,12 @@ final class PreflightClasses {
 	 */
 	final boolean handsOffConstructorArguments;
 
+	/**
+	 * Whether the running Mixin may store a long or double over another local where it reuses an earlier injector's
+	 * locals for an injector's values ({@link ArgumentLocals}, PRE-22): Forge's does.
+	 */
+	final boolean overlapsWideArguments;
+
 	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
 	final String loader;
 
@@ -108,8 +114,9 @@ final class PreflightClasses {
 	PreflightClasses(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins, boolean readsLocalTypes,
-			boolean seesMixinFields, boolean handsOffConstructorArguments) {
+			boolean seesMixinFields, boolean handsOffConstructorArguments, boolean overlapsWideArguments) {
 		this.handsOffConstructorArguments = handsOffConstructorArguments;
+		this.overlapsWideArguments = overlapsWideArguments;
 		this.enumMixins = enumMixins;
 		this.readsLocalTypes = readsLocalTypes;
 		this.seesMixinFields = seesMixinFields;
