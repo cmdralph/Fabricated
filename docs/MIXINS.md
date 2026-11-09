@@ -63,8 +63,8 @@ Test-mod configs (not shipped):
 
 | Config | Package | defaultRequire | Mixins |
 |---|---|---|---|
-| `mc/shared/1.21.1+/src/testmod/resources/fabricated-testmod.mixins.json` | `io.github.cmdralph.fabricated.testmod.mixin` | 1 | Plugin `TestMixinPlugin`. `BuiltInRegistriesMixin` (builds content from vanilla's registry bootstrap, CORPUS-31, and sees the built-in registries frozen, CORPUS-32), `LivingEntityMixin` (a private `self()` helper, as Fabric API's entity events module has, HIDE-1), `LivingEntitySelfMixin` (adds an interface whose default `self()` is a second one beside NeoForge's, for the default bridge, CORPUS-63), `MappedRegistryMixin` (sees a registry frozen, as Flashback does, REG-8), `MinecraftServerMixin` (`@Inject tickServer TAIL`: mixins apply), `MobMultipartMixin` (adds an interface whose default `isMultipartEntity()` is a second one beside the one `Mob` has through `Entity`, for the default bridge, DEFAULT-1), `PackRepositoryMixin` (leaves a pack repository's sources immutable, as FrozenLib does, PACK-1), `PlayerListMixin` (replaces the server's player list, POLY-1), `RegistryDataLoaderMixin` (writes to built-in registries from that class's initializer, as Wover does, REG-3); client: `client.MinecraftStopMixin` (CI diagnostics: logs who asked the game to stop), `client.MinecraftEarlyReloadListenerMixin` (registers a reload listener from `Minecraft`'s constructor, before NeoForge's event). All in `mc/shared/1.21.1+/src/testmod/java/.../mixin/` |
-| `mc/shared/1.21.1+/src/testmod/resources/fabricated-testmod-mixinsemantics.mixins.json` | `io.github.cmdralph.fabricated.testmod.mixinsemantics` | 1 | Mixins applied as Fabric's Mixin applies them: `MinecraftServerCounterMixin` and `MinecraftServerCounterShadowMixin` (a `@Shadow` of a field another mixin adds, CORPUS-74), `MinecraftServerUniqueMixin` and `MinecraftServerUniqueTwinMixin` (two `@Unique` fields of one name stay a field each, CORPUS-95). All in `mc/shared/1.21.1+/src/testmod/java/.../mixinsemantics/` |
+| `mc/shared/1.20.1+/src/testmod/resources/fabricated-testmod.mixins.json` | `io.github.cmdralph.fabricated.testmod.mixin` | 1 | Plugin `TestMixinPlugin`. `BuiltInRegistriesMixin` (builds content from vanilla's registry bootstrap, CORPUS-31, and sees the built-in registries frozen, CORPUS-32), `LivingEntityMixin` (a private `self()` helper, as Fabric API's entity events module has, HIDE-1), `LivingEntitySelfMixin` (adds an interface whose default `self()` is a second one beside NeoForge's, for the default bridge, CORPUS-63), `MappedRegistryMixin` (sees a registry frozen, as Flashback does, REG-8), `MinecraftServerMixin` (`@Inject tickServer TAIL`: mixins apply), `MobMultipartMixin` (adds an interface whose default `isMultipartEntity()` is a second one beside the one `Mob` has through `Entity`, for the default bridge, DEFAULT-1), `PackRepositoryMixin` (leaves a pack repository's sources immutable, as FrozenLib does, PACK-1), `PlayerListMixin` (replaces the server's player list, POLY-1), `RegistryDataLoaderMixin` (writes to built-in registries from that class's initializer, as Wover does, REG-3); client: `client.MinecraftStopMixin` (CI diagnostics: logs who asked the game to stop), `client.MinecraftEarlyReloadListenerMixin` (registers a reload listener from `Minecraft`'s constructor, before NeoForge's event). All in `mc/shared/1.20.1+/src/testmod/java/.../mixin/` |
+| `mc/shared/1.20.1+/src/testmod/resources/fabricated-testmod-mixinsemantics.mixins.json` | `io.github.cmdralph.fabricated.testmod.mixinsemantics` | 1 | Mixins applied as Fabric's Mixin applies them: `MinecraftServerCounterMixin` and `MinecraftServerCounterShadowMixin` (a `@Shadow` of a field another mixin adds, CORPUS-74), `MinecraftServerUniqueMixin` and `MinecraftServerUniqueTwinMixin` (two `@Unique` fields of one name stay a field each, CORPUS-95). All in `mc/shared/1.20.1+/src/testmod/java/.../mixinsemantics/` |
 | `mc/shared/26.x/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json` | `io.github.cmdralph.fabricated.testmod.frapi.mixin` | 1 | `BakedQuadMixin` (`@Inject <init> RETURN` with vanilla's parameters, `mc/shared/26.x/src/testmodfrapi/java/.../mixin/BakedQuadMixin.java`). Exercises pre-flight's constructor repair and handler bridge (CI's renderer API gate) |
 | `mc/shared/src/testmodbroken/resources/badmixin/fabricated-testmod-badmixin.mixins.json` | `io.github.cmdralph.fabricated.testmod.broken.mixin` | unset | `ImpossibleMixin` (`@Inject method="fabricatedMethodThatDoesNotExist" HEAD require=1`, `.../ImpossibleMixin.java`) and `UnmatchedCallMixin` (`@Inject method="tickServer"` at a call it never makes, `require=1`). Meant to fail pre-flight, which leaves their injectors out as the mixins are self-contained (`ci/neoforge/smoke-server.sh`); with pre-flight ignored, Mixin fails on each as it applies it, and the next launch leaves it out (`ci/neoforge/smoke-apply-failure.sh`, APPLY-1) |
 
@@ -1011,36 +1011,36 @@ Versions: 26.1.2, 26.2 · package `net.fabricmc.fabric.mixin.biome` · required=
 
 ### Test-mod configs (not shipped in the Fabricated jar)
 
-### `mc/shared/1.21.1+/src/testmod/resources/fabricated-testmod.mixins.json`
+### `mc/shared/1.20.1+/src/testmod/resources/fabricated-testmod.mixins.json`
 
 Versions: 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.testmod.mixin` · required=true · defaultRequire=1 · plugin=`TestMixinPlugin` (checks the test mod's language adapter ran first) · overwrites.requireAnnotations=true
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| mixins | BuiltInRegistriesMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.registries.BuiltInRegistries | @Inject → fabricatedTest$buildContent (builds content as vanilla's bootstrap creates the registries' contents, CORPUS-31) | "createContents" | TAIL | — | default |
-| mixins | BuiltInRegistriesMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.registries.BuiltInRegistries | @Inject → fabricatedTest$frozen (sees the built-in registries frozen, as Wover does, CORPUS-32) | "freeze" | HEAD | — | default |
-| mixins | LivingEntityMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @Inject → fabricatedTest$useSelf; adds a @Unique private self(), the helper Fabric API's entity events module has (HIDE-1) | "getMaxHealth" | HEAD | — | default |
-| mixins | LivingEntitySelfMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | none; adds `DefaultBridgeTest.OwnSelf`, whose default `self()` is a second one beside NeoForge's `ILivingEntityExtension.self()`, for the default bridge (CORPUS-11, CORPUS-63) | — | — | — | — |
-| mixins | LootTableBuilderNamingMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.level.storage.loot.LootTable$Builder | @Inject → fabricatedTest$named; adds `LootNamedAsBuilt` (names the table it builds where MODIFY asked, as Porting Lib Loot does, CORPUS-90) | "build" | RETURN | — | default |
-| mixins | MappedRegistryMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricatedTest$freezing (sees a registry frozen, as Flashback does; never before the main initializers, REG-8) | "freeze" | HEAD | — | default |
-| mixins | MinecraftServerMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | @Inject → fabricatedTest$afterTick | "tickServer" | TAIL | — | default |
-| mixins | MobMultipartMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.Mob | none; adds `DefaultBridgeTest.OwnMultipart`, whose default `isMultipartEntity()` is a second one beside the one `Mob` has through `Entity`'s NeoForge extension (`IEntityExtension`), for the default bridge through a superclass (DEFAULT-1) | — | — | — | — |
-| mixins | PackRepositoryMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.repository.PackRepository prio=900 | @Inject → fabricatedTest$immutableSources (leaves the sources in an immutable set, PACK-1, before the hooks of the default priority) | "<init>" | RETURN | — | default |
-| mixins | PlayerListMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @Inject → fabricatedTest$replaceList (replaces the player list, POLY-1) | "<init>" | RETURN | — | default |
-| mixins | RegistryDataLoaderMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.resources.RegistryDataLoader | @Inject → fabricatedTest$writeEarly (writes to built-in registries, REG-3) | "<clinit>" | HEAD | — | default |
-| client | client.MinecraftStopMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.Minecraft | @Inject → fabricatedTest$whoStops (CI diagnostics) | "stop" | HEAD | — | default |
-| client | client.MinecraftEarlyReloadListenerMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.Minecraft | @Inject → fabricatedTest$registerEarly (a reload listener registered before NeoForge's event) | "<init>" | INVOKE `L…/ReloadableResourceManager;registerReloadListener(L…/PreparableReloadListener;)V` | 0 | default |
+| mixins | BuiltInRegistriesMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.registries.BuiltInRegistries | @Inject → fabricatedTest$buildContent (builds content as vanilla's bootstrap creates the registries' contents, CORPUS-31) | "createContents" | TAIL | — | default |
+| mixins | BuiltInRegistriesMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.registries.BuiltInRegistries | @Inject → fabricatedTest$frozen (sees the built-in registries frozen, as Wover does, CORPUS-32) | "freeze" | HEAD | — | default |
+| mixins | LivingEntityMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @Inject → fabricatedTest$useSelf; adds a @Unique private self(), the helper Fabric API's entity events module has (HIDE-1) | "getMaxHealth" | HEAD | — | default |
+| mixins | LivingEntitySelfMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | none; adds `DefaultBridgeTest.OwnSelf`, whose default `self()` is a second one beside NeoForge's `ILivingEntityExtension.self()`, for the default bridge (CORPUS-11, CORPUS-63) | — | — | — | — |
+| mixins | LootTableBuilderNamingMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.level.storage.loot.LootTable$Builder | @Inject → fabricatedTest$named; adds `LootNamedAsBuilt` (names the table it builds where MODIFY asked, as Porting Lib Loot does, CORPUS-90) | "build" | RETURN | — | default |
+| mixins | MappedRegistryMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricatedTest$freezing (sees a registry frozen, as Flashback does; never before the main initializers, REG-8) | "freeze" | HEAD | — | default |
+| mixins | MinecraftServerMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | @Inject → fabricatedTest$afterTick | "tickServer" | TAIL | — | default |
+| mixins | MobMultipartMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.Mob | none; adds `DefaultBridgeTest.OwnMultipart`, whose default `isMultipartEntity()` is a second one beside the one `Mob` has through `Entity`'s NeoForge extension (`IEntityExtension`), for the default bridge through a superclass (DEFAULT-1) | — | — | — | — |
+| mixins | PackRepositoryMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.repository.PackRepository prio=900 | @Inject → fabricatedTest$immutableSources (leaves the sources in an immutable set, PACK-1, before the hooks of the default priority) | "<init>" | RETURN | — | default |
+| mixins | PlayerListMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @Inject → fabricatedTest$replaceList (replaces the player list, POLY-1) | "<init>" | RETURN | — | default |
+| mixins | RegistryDataLoaderMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.resources.RegistryDataLoader | @Inject → fabricatedTest$writeEarly (writes to built-in registries, REG-3) | "<clinit>" | HEAD | — | default |
+| client | client.MinecraftStopMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.Minecraft | @Inject → fabricatedTest$whoStops (CI diagnostics) | "stop" | HEAD | — | default |
+| client | client.MinecraftEarlyReloadListenerMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.Minecraft | @Inject → fabricatedTest$registerEarly (a reload listener registered before NeoForge's event) | "<init>" | INVOKE `L…/ReloadableResourceManager;registerReloadListener(L…/PreparableReloadListener;)V` | 0 | default |
 
-### `mc/shared/1.21.1+/src/testmod/resources/fabricated-testmod-mixinsemantics.mixins.json`
+### `mc/shared/1.20.1+/src/testmod/resources/fabricated-testmod-mixinsemantics.mixins.json`
 
 Versions: 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.testmod.mixinsemantics` · required=true · defaultRequire=1 · overwrites.requireAnnotations=true
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| mixins | MinecraftServerCounterMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | @Inject → fabricatedTest$count; adds a @Unique tick counter (CORPUS-74) | "tickServer" | HEAD | — | default |
-| mixins | MinecraftServerCounterShadowMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer (priority 1200) | @Inject → fabricatedTest$checkShared; @Shadow of the counter the other mixin adds (CORPUS-74) | "tickServer" | TAIL | — | default |
-| mixins | MinecraftServerUniqueMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | @Inject → fabricatedTest$countOne; a @Unique field of the twin's name (CORPUS-95) | "tickServer" | HEAD | — | default |
-| mixins | MinecraftServerUniqueTwinMixin | shared 1.21.1+/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | @Inject → fabricatedTest$countTen, fabricatedTest$checkOwn; a @Unique field of the other's name (CORPUS-95) | "tickServer" | HEAD, TAIL | — | default |
+| mixins | MinecraftServerCounterMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | @Inject → fabricatedTest$count; adds a @Unique tick counter (CORPUS-74) | "tickServer" | HEAD | — | default |
+| mixins | MinecraftServerCounterShadowMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer (priority 1200) | @Inject → fabricatedTest$checkShared; @Shadow of the counter the other mixin adds (CORPUS-74) | "tickServer" | TAIL | — | default |
+| mixins | MinecraftServerUniqueMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | @Inject → fabricatedTest$countOne; a @Unique field of the twin's name (CORPUS-95) | "tickServer" | HEAD | — | default |
+| mixins | MinecraftServerUniqueTwinMixin | shared 1.20.1+/testmod (1.20.1,1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | @Inject → fabricatedTest$countTen, fabricatedTest$checkOwn; a @Unique field of the other's name (CORPUS-95) | "tickServer" | HEAD, TAIL | — | default |
 
 ### `mc/shared/26.x/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json`
 
@@ -1126,6 +1126,49 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.damage.mixin` 
 | mixins | LivingEntityDamageMixin | common (1.21.11) | n.m.world.entity.LivingEntity | @WrapOperation → fabricated$noteDamageDealt | "hurtServer" | INVOKE `L…/LivingEntity;applyItemBlocking(L…/ServerLevel;L…/DamageSource;F)F` | — | default |
 | mixins | LivingEntityDamageMixin | common (1.21.11) | n.m.world.entity.LivingEntity | @Inject → fabricated$afterDamage | "hurtServer" | TAIL | — | default |
 
+### `mc/forge/1.21.11/src/main/resources/fabricated-forge-item.mixins.json`
+
+Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.item.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | ItemForgeHooksMixin | 1.21.11 (1.21.11) | n.m.world.item.Item | no injectors; adds methods getEquipmentSlot, canApplyAtEnchantingTable, getCreatorModId (Forge's item hooks, answered from Fabric's item API) | | | | |
+| mixins | ItemRecipeRemainderMixin | 1.21.11 (1.21.11) | n.m.world.item.Item | no injectors; adds method getCraftingRemainder(ItemStack) (Forge's, answered from Fabric's getRecipeRemainder) | | | | |
+| mixins | ItemBuiltComponentsMixin | 1.21.11 (1.21.11) | n.m.world.item.Item | @Inject → fabricated$buildAgainOnceChanged; @Shadow components, builtComponents; @Unique fields fabricated$builtFrom | "components()Lnet/minecraft/core/component/DataComponentMap;" | HEAD | — | default |
+
+### `mc/forge/common26/src/main/resources/fabricated-forge-item.mixins.json`
+
+Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.forge.item.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | ItemForgeHooksMixin | common26 (26.1.2, 26.2, 26.3) | n.m.world.item.Item | no injectors; adds methods getEquipmentSlot, canApplyAtEnchantingTable, getCreatorModId (Forge's item hooks, answered from Fabric's item API) | | | | |
+
+### `mc/forge/common/src/main/resources/fabricated-forge-block.mixins.json`
+
+Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.forge.block.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | BlockForgeHooksMixin | common (1.21.11, 26.1.2, 26.2, 26.3) | n.m.world.level.block.Block | no injectors; adds method makesOpenTrapdoorAboveClimbable (Forge's ladder rule, or a block in Fabric's trapdoor tag) | | | | |
+
+### `mc/forge/common26late/src/main/resources/fabricated-forge-block-late.mixins.json`
+
+Versions: 26.2, 26.3 · package `io.github.cmdralph.fabricated.forge.block.late.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | BlockEnchantPowerMixin | common26late (26.2, 26.3) | n.m.world.level.block.Block | no injectors; adds method getEnchantPowerBonus (Fabric's provided enchantment power for a block in the power-provider tag) | | | | |
+| mixins | LiquidBlockFlowMixin | common26late (26.2, 26.3) | n.m.world.level.block.LiquidBlock | @WrapOperation → fabricated$allowFlow | "onPlace", "neighborChanged" | INVOKE `L…/FluidInteractionRegistry;canInteract(L…/Level;L…/BlockPos;)Z` | — | require=2 |
+
+### `mc/forge/26.3/src/main/resources/fabricated-forge-biome.mixins.json`
+
+Versions: 26.3 · package `io.github.cmdralph.fabricated.forge.biome.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | ModifiableBiomeInfoAttributesMixin | 26.3 (26.3) | n.mf.common.world.ModifiableBiomeInfo (remap=false) | @Inject → fabricated$keepAttributes | "applyBiomeModifiers" | HEAD | — | default |
+
 ### `mc/forge/1.21.11/src/main/resources/fabricated-forge-frapi.mixins.json`
 
 Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.rendering.mixin` · required=true · defaultRequire=1 · plugin=`FrapiMixinPlugin` · overwrites.requireAnnotations=—
@@ -1145,6 +1188,7 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.rendering.mixi
 | client | ScreenEffectParticleMixin | 1.21.11 (1.21.11) | n.m.client.renderer.ScreenEffectRenderer | @Inject → fabricated$keepOverlayBlock; @Unique fields fabricated$overlay, fabricated$overlayLevel | "getOverlayBlock" | RETURN | — | default |
 | client | ScreenEffectParticleMixin | 1.21.11 (1.21.11) | n.m.client.renderer.ScreenEffectRenderer | @WrapOperation → fabricated$levelAwareSprite | "renderScreenEffect" | INVOKE `L…/BlockModelShaper;getParticleIcon(L…/BlockState;)L…/TextureAtlasSprite;` | — | default |
 | client | TerrainParticleSpriteMixin | 1.21.11 (1.21.11) | n.m.client.particle.TerrainParticle | @WrapOperation → fabricated$levelAwareSprite | "updateSprite" | INVOKE `L…/BlockModelShaper;getParticleIcon(L…/BlockState;L…/Level;L…/BlockPos;)L…/TextureAtlasSprite;` | — | default |
+| client | BlockStateModelDefaultMixin | 1.21.11 (1.21.11) | n.m.client.renderer.block.model.BlockStateModel | no injectors; adds the default method emitQuads (a model without its own collects its parts with Forge's model data and the level) | | | | |
 
 ### `mc/forge/1.21.11/src/main/resources/fabricated-forge-loot.mixins.json`
 
@@ -1244,6 +1288,7 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 |---|---|---|---|---|---|---|---|---|
 | mixins | ServerPlayerGameModeBreakMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeBreak; @Shadow level, player | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayer;preventsBlockDrops()Z` cancellable=true | — | default |
 | mixins | ServerPlayerGameModeBreakMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.level.ServerPlayerGameMode | @WrapOperation → fabricated$afterBreak | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;removeBlock(L…/BlockPos;Z)Z` | — | default |
+| mixins | ForgeHooksUseOnMixin | common (1.21.11, 26.1.2, 26.2, 26.3) | n.mf.common.ForgeHooks | @WrapOperation → fabricated$useOnEvent | "onPlaceItemIntoWorld" | INVOKE `L…/Item;useOn(L…/UseOnContext;)L…/InteractionResult;` | — | default |
 
 ### `mc/forge/common/src/main/resources/fabricated-forge-screen.mixins.json`
 
@@ -1363,6 +1408,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.forge.ren
 | client | BlockMarkerParticleMixin | common26 (26.1.2,26.2,26.3) | n.m.client.particle.BlockMarker | @Redirect → fabricated$levelAwareMaterial | "<init>(Lnet/minecraft/client/multiplayer/ClientLevel;DDDLnet/minecraft/world/level/block/state/BlockState;)V" | INVOKE `L…/BlockStateModel;particleMaterial(L…/ModelData;)L…/Material$Baked;` | — | default |
 | client | TerrainParticleSpriteMixin | common26 (26.1.2,26.2,26.3) | n.m.client.particle.TerrainParticle | @WrapOperation → fabricated$levelAwareMaterial | "updateSprite" | INVOKE `L…/BlockStateModel;particleMaterial(L…/ModelData;)L…/Material$Baked;` @Local | — | default |
 | client | ParticleLevelAccessor | common26 (26.1.2,26.2,26.3) | n.m.client.particle.Particle | @Accessor → fabricated$level | "level" |  | — | default |
+| client | BlockStateModelDefaultMixin | common26 (26.1.2, 26.2, 26.3) | n.m.client.renderer.block.model.BlockStateModel | no injectors; adds the default method emitQuads (a model without its own collects its parts with Forge's model data and the level) | | | | |
 
 ### `mc/forge/common26/src/main/resources/fabricated-forge-screen-chars.mixins.json`
 
@@ -1403,7 +1449,7 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | mixins | ReloadableServerRegistriesMixin | common (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
 | mixins | ReloadableServerRegistriesMixin | common (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 
-## Forge 47 (`forge-legacy`): 85 mixins in 13 configs
+## Forge 47 (`forge-legacy`): 86 mixins in 13 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1414,11 +1460,11 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-entity.mixins.json` | `io.github.cmdralph.fabricated.forge.entity.mixin` | 1.20.1 | mixins 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 1.20.1 | client 6 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.20.1 | mixins 1 | 1 | — | none |
-| `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.20.1 | mixins 24, client 4 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.20.1 | mixins 26, client 4 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.20.1 | client 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.20.1 | mixins 7 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.20.1 | client 4 | 1 | — | none |
-| `mc/forge-legacy/1.20.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.20.1 | mixins 18, client 4 | 1 | — | none |
+| `mc/forge-legacy/1.20.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.20.1 | mixins 10, client 4 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json` | `io.github.cmdralph.fabricated.testmod.frapi.mixin` | 1.20.1 | client 1 | 1 | — | none |
 
 ### `mc/forge-legacy/1.20.1/src/main/resources/fabricated-biome.mixins.json`
@@ -1549,6 +1595,8 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | RecordItemEarlySoundMixin | 1.20.1 (1.20.1) | n.m.world.item.RecordItem | @Inject → fabricated$soundItselfIfUnregistered | "<init>(ILnet/minecraft/sounds/SoundEvent;Lnet/minecraft/world/item/Item$Properties;I)V" | TAIL | — | default |
 | mixins | PotionBrewingMixBridgeMixin | 1.20.1 (1.20.1) | n.m.world.item.alchemy.PotionBrewing$Mix | no injectors; adds methods fabricated$get$f_43532_, fabricated$get$f_43534_; @Shadow f_43532_, f_43534_ | | | | |
 | mixins | MobBucketItemBridgeMixin | 1.20.1 (1.20.1) | n.m.world.item.MobBucketItem | no injectors; adds methods fabricated$get$f_151134_; @Shadow getFishType | | | | |
+| mixins | PackRepositorySourcesMixin | 1.20.1 (1.20.1) | n.m.server.packs.repository.PackRepository | @Inject → fabricated$keepSourcesMutable (a set a Fabric mod made immutable is made mutable again before Forge adds a pack finder, PACK-1); @Shadow f_10497_ | "addPackFinder" remap=false | HEAD | — | default |
+| mixins | PlayerListViewMixin | 1.20.1 (1.20.1) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, as POLY-1 and POLY-2); @Shadow f_11196_ | "getPlayers" | RETURN | — | default |
 | client | ParticleEngineProvidersBridgeMixin | 1.20.1 (1.20.1) | n.m.client.particle.ParticleEngine | no injectors; adds methods fabricated$get$f_107293_; @Shadow f_107293_; @Unique fields fabricated$providersById | | | | |
 | client | ExtendedBlockModelDeserializerMixin | 1.20.1 (1.20.1) | forge.client.model.ExtendedBlockModelDeserializer | @WrapOperation → fabricated$fabricLoader | "deserialize(Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lnet/minecraft/client/renderer/block/model/BlockModel;" | INVOKE `L…/ExtendedBlockModelDeserializer;deserializeGeometry(L…/JsonDeserializationContext;L…/JsonObject;)L…/IUnbakedGeometry;` | — | default |
 | client | GuiHudSeamsMixin | 1.20.1 (1.20.1) | n.m.client.gui.Gui | no injectors; implements HudSeams; adds methods fabricated$startHud, fabricated$start$m_280421_, fabricated$end$m_280421_; @Unique fields fabricated$hudGoesOn | | | | |
@@ -1601,35 +1649,27 @@ Versions: 1.20.1 · package `net.fabricmc.fabric.mixin.client.particle` · requi
 
 Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forgetest.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
 
+Written in Mojang's names; the test mod's jar names them in Intermediary's, its refmap from Mixin's annotation processor (`mc/platform-forge-legacy.gradle`). The accessors of fields Forge 47 replaced name them in Intermediary's, `remap = false`.
+
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| mixins | BuiltInRegistriesMixin | 1.20.1 (1.20.1) | n.m.class_7923 | @Inject → fabricatedForgeTest$buildContent | "method_47487" | TAIL | — | default |
-| mixins | BuiltInRegistriesMixin | 1.20.1 (1.20.1) | n.m.class_7923 | @Inject → fabricatedForgeTest$frozen | "method_47491" | HEAD | — | default |
-| mixins | CommandsMixin | 1.20.1 (1.20.1) | n.m.class_2170 | @Inject → fabricatedForgeTest$beforeSetConsumer; @Unique fields fabricatedForgeTest$logged, fabricatedForgeTest$constructionLogged | "<init>" | INVOKE `L…/CommandDispatcher;setConsumer(L…/ResultConsumer;)V` | — | default |
-| mixins | CommandsMixin | 1.20.1 (1.20.1) | n.m.class_2170 | @Inject → fabricatedForgeTest$afterDispatcher | "<init>" | INVOKE `L…/CommandDispatcher;<init>()V` shift=BY by=2 | — | default |
+| mixins | CommandsMixin | 1.20.1 (1.20.1) | n.m.commands.Commands | @Inject → fabricatedForgeTest$beforeSetConsumer; @Unique fields fabricatedForgeTest$logged, fabricatedForgeTest$constructionLogged | "<init>" | INVOKE `L…/CommandDispatcher;setConsumer(L…/ResultConsumer;)V` remap=false | — | default |
+| mixins | CommandsMixin | 1.20.1 (1.20.1) | n.m.commands.Commands | @Inject → fabricatedForgeTest$afterDispatcher | "<init>" | INVOKE `L…/CommandDispatcher;<init>()V` shift=BY by=2 | — | default |
 | mixins | ForgeRecordedFramesMixin | 1.20.1 (1.20.1) | io.github.cmdralph.fabricated.forgetest.ForgeRecordedFramesTest$Probe | @ModifyVariable → fabricatedForgeTest$kept | "probe" | INVOKE `L…/String;valueOf(L…/Object;)L…/String;` | — | default |
-| mixins | LanguageReaderMixin | 1.20.1 (1.20.1) | n.m.class_2477 | @ModifyVariable → fabricatedForgeTest$watch | "method_29425(Ljava/io/InputStream;Ljava/util/function/BiConsumer;)V" | HEAD | — | default |
-| mixins | LivingEntityCapturedDropsMixin | 1.20.1 (1.20.1) | n.m.class_1309 prio=1500 | @Inject → fabricatedForgeTest$takeCapturedDrops | "method_16080" | RETURN | — | default |
-| mixins | LivingEntitySelfMixin | 1.20.1 (1.20.1) | n.m.class_1309 | no injectors; implements ForgeDefaultBridgeTest.OwnSelf | | | | |
-| mixins | LootTableBuilderNamingMixin | 1.20.1 (1.20.1) | n.m.class_52$class_53 | @Inject → fabricatedForgeTest$named; implements ForgeLootTest.NamedAsBuilt; adds methods fabricatedForgeTest$nameAsBuilt; @Unique fields fabricatedForgeTest$name | "method_338" | RETURN | — | default |
-| mixins | MinecraftServerArgsMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @ModifyArgs → fabricatedForgeTest$tickChildrenArgs; @Unique fields fabricatedForgeTest$modified | "method_3748" | INVOKE `L…/MinecraftServer;method_3813(L…/BooleanSupplier;)V` | — | default |
-| mixins | MinecraftServerCounterMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @Inject → fabricatedForgeTest$count; @Unique fields fabricatedForgeTest$ticks | "method_3748" | HEAD | — | default |
-| mixins | MinecraftServerCounterShadowMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer prio=1200 | @Inject → fabricatedForgeTest$checkShared; @Shadow fabricatedForgeTest$ticks; @Unique fields fabricatedForgeTest$checked | "method_3748" | TAIL | — | default |
-| mixins | MinecraftServerMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @Inject → fabricatedForgeTest$afterTick; @Shadow method_30611, method_30002, method_3847, method_3734, method_3772; @Unique fields fabricatedForgeTest$logged | "method_3748" | TAIL | — | default |
-| mixins | MinecraftServerUniqueMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @Inject → fabricatedForgeTest$countOne; @Unique fields fabricatedForgeTest$uniqueCount | "method_3748" | HEAD | — | default |
-| mixins | MinecraftServerUniqueTwinMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @Inject → fabricatedForgeTest$countTen; @Unique fields fabricatedForgeTest$uniqueCount, fabricatedForgeTest$uniqueChecked | "method_3748" | HEAD | — | default |
-| mixins | MinecraftServerUniqueTwinMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @Inject → fabricatedForgeTest$checkOwn | "method_3748" | TAIL | — | default |
-| mixins | MinecraftServerWrapMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @WrapMethod → fabricatedForgeTest$wrapTick; @Unique fields fabricatedForgeTest$wrapped | "method_3748" |  | — | default |
-| mixins | MobBucketItemAccessor | 1.20.1 (1.20.1) | n.m.class_1785 | @Accessor → fabricatedtest$type | "field_7991" |  | — | default |
-| mixins | MobMultipartMixin | 1.20.1 (1.20.1) | n.m.class_1308 | no injectors; implements ForgeDefaultBridgeTest.OwnMultipart | | | | |
-| mixins | PotionBrewingAccessor | 1.20.1 (1.20.1) | n.m.class_1845 | @Accessor → fabricatedtest$potionMixes | "field_8956" |  | — | default |
-| mixins | PotionBrewingMixAccessor | 1.20.1 (1.20.1) | n.m.class_1845$class_1846 | @Accessor → fabricatedtest$from | "field_8962" |  | — | default |
-| mixins | PotionBrewingMixAccessor | 1.20.1 (1.20.1) | n.m.class_1845$class_1846 | @Accessor → fabricatedtest$to | "field_8961" |  | — | default |
-| client | HudHooksMixin | 1.20.1 (1.20.1) | n.m.class_329 | @Inject → fabricatedForgeTest$atTheStart; @Unique fields fabricatedForgeTest$started, fabricatedForgeTest$endedCancelled, fabricatedForgeTest$endReported | "method_1753" | HEAD cancellable=true | — | default |
-| client | HudHooksMixin | 1.20.1 (1.20.1) | n.m.class_329 | @Inject → fabricatedForgeTest$atTheEnd | "method_1753" | TAIL | — | default |
+| mixins | LanguageReaderMixin | 1.20.1 (1.20.1) | n.m.locale.Language | @ModifyVariable → fabricatedForgeTest$watch | "loadFromJson(Ljava/io/InputStream;Ljava/util/function/BiConsumer;)V" | HEAD | — | default |
+| mixins | LivingEntityCapturedDropsMixin | 1.20.1 (1.20.1) | n.m.world.entity.LivingEntity prio=1500 | @Inject → fabricatedForgeTest$takeCapturedDrops | "dropAllDeathLoot" | RETURN | — | default |
+| mixins | MinecraftServerArgsMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @ModifyArgs → fabricatedForgeTest$tickChildrenArgs; @Unique fields fabricatedForgeTest$modified | "tickServer" | INVOKE `L…/MinecraftServer;tickChildren(L…/BooleanSupplier;)V` | — | default |
+| mixins | MinecraftServerMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @Inject → fabricatedForgeTest$afterTick (runs Forge 47's half's checks); @Shadow overworld, getLevel, getCommands, getRecipeManager; @Unique fields fabricatedForgeTest$checked | "tickServer" | TAIL | — | default |
+| mixins | MinecraftServerWrapMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @WrapMethod → fabricatedForgeTest$wrapTick; @Unique fields fabricatedForgeTest$wrapped | "tickServer" |  | — | default |
+| mixins | MobBucketItemAccessor | 1.20.1 (1.20.1) | n.m.world.item.MobBucketItem | @Accessor → fabricatedtest$type | "field_7991" remap=false |  | — | default |
+| mixins | PotionBrewingAccessor | 1.20.1 (1.20.1) | n.m.world.item.alchemy.PotionBrewing | @Accessor → fabricatedtest$potionMixes | "POTION_MIXES" |  | — | default |
+| mixins | PotionBrewingMixAccessor | 1.20.1 (1.20.1) | n.m.world.item.alchemy.PotionBrewing$Mix | @Accessor → fabricatedtest$from | "field_8962" remap=false |  | — | default |
+| mixins | PotionBrewingMixAccessor | 1.20.1 (1.20.1) | n.m.world.item.alchemy.PotionBrewing$Mix | @Accessor → fabricatedtest$to | "field_8961" remap=false |  | — | default |
+| client | HudHooksMixin | 1.20.1 (1.20.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheStart; @Unique fields fabricatedForgeTest$started, fabricatedForgeTest$endedCancelled, fabricatedForgeTest$endReported | "render" | HEAD cancellable=true | — | default |
+| client | HudHooksMixin | 1.20.1 (1.20.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheEnd | "render" | TAIL | — | default |
 | client | McRuntimeTestMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedForgeTest$holdForServerChecks | "tickHook" | HEAD cancellable=true | — | default |
-| client | MouseHandlerInvoker | 1.20.1 (1.20.1) | n.m.class_312 | @Invoker → fabricatedtest$onPress | "method_1601" |  | — | default |
-| client | ParticleEngineProvidersAccessor | 1.20.1 (1.20.1) | n.m.class_702 | @Accessor → fabricatedtest$providers | "field_3835" |  | — | default |
+| client | MouseHandlerInvoker | 1.20.1 (1.20.1) | n.m.client.MouseHandler | @Invoker → fabricatedtest$onPress | "onPress" |  | — | default |
+| client | ParticleEngineProvidersAccessor | 1.20.1 (1.20.1) | n.m.client.particle.ParticleEngine | @Accessor → fabricatedtest$providers | "field_3835" remap=false |  | — | default |
 
 ### `mc/forge-legacy/1.20.1/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json`
 
