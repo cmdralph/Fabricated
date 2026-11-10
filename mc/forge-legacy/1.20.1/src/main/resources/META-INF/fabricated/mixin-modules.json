@@ -37,6 +37,7 @@
     "NamespacedWrapperPendingHoldersMixin": [],
     "PackRepositorySourcesMixin": [],
     "PlayerListViewMixin": [],
+    "PoiTypesByStateMixin": [],
     "ParticleEngineProvidersBridgeMixin": [],
     "PotionBrewingMixBridgeMixin": [],
     "RecordItemEarlySoundMixin": [],
