@@ -1,7 +1,11 @@
 package io.github.cmdralph.fabricated.core.translate;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -111,6 +115,48 @@ class DetachedSupersTest {
 		target("game/Wrapper", RECORD);
 		byte[] data = mixin("<T:Ljava/lang/Object;>Ljava/lang/Object;Lgame/Part;", true, false);
 		assertEquals("<T:Ljava/lang/Object;>Ljava/lang/Record;Lgame/Part;", node(DetachedSupers.rewrite(data, RECORD)).signature);
+	}
+
+	/** A mixin whose copy(String[]) and copyInts(int[]) clone their argument, as MoreCulling's shape cache does. */
+	private static byte[] cloningMixin() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "mod/CloningMixin", null, OBJECT, null);
+		for (String[] method : new String[][] {{"copy", "[Ljava/lang/String;"}, {"copyInts", "[I"}}) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, method[0], "(" + method[1] + ")" + method[1], null, null);
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, method[1], "clone", "()Ljava/lang/Object;", false);
+			mv.visitTypeInsn(Opcodes.CHECKCAST, method[1]);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void anArraysMethodsAreCalledThroughObject() throws ReflectiveOperationException {
+		byte[] data = cloningMixin();
+		assertTrue(DetachedSupers.callsArrayMethods(node(data)));
+		assertFalse(DetachedSupers.callsArrayMethods(node(mixin(null, true, true))), "no call of an array's method");
+
+		byte[] rewritten = DetachedSupers.objectOwnedArrayCalls(data);
+		assertEquals(List.of(OBJECT + ".clone"), calls(node(rewritten), "copy"));
+		assertEquals(List.of(OBJECT + ".clone"), calls(node(rewritten), "copyInts"));
+		assertFalse(DetachedSupers.callsArrayMethods(node(rewritten)));
+		// The JVM verifies and runs the calls through Object from a class in another package, as a target's would.
+		Class<?> loaded = new ClassLoader(null) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				if (!name.equals("mod.CloningMixin")) throw new ClassNotFoundException(name);
+				return defineClass(name, rewritten, 0, rewritten.length);
+			}
+		}.loadClass("mod.CloningMixin");
+		String[] shapes = {"a", "b"};
+		String[] copy = (String[]) loaded.getMethod("copy", String[].class).invoke(null, (Object) shapes);
+		assertNotSame(shapes, copy);
+		assertArrayEquals(shapes, copy);
+		assertArrayEquals(new int[] {1, 2}, (int[]) loaded.getMethod("copyInts", int[].class).invoke(null, (Object) new int[] {1, 2}));
 	}
 
 	@Test

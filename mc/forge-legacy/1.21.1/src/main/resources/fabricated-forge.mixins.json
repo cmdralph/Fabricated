@@ -4,7 +4,7 @@
   "package": "io.github.cmdralph.fabricated.forge.mixin",
   "plugin": "io.github.cmdralph.fabricated.forge.FabricatedMixinPlugin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["FluidTypeMixin", "LivingEntityFluidTravelMixin", "MappedRegistryPendingHoldersMixin", "NamespacedWrapperPendingHoldersMixin", "NamespacedWrapperEarlyWriteMixin", "NamespacedWrapperAliasMixin", "NamespacedWrapperEntryAddedMixin", "ForgeRegistryEntryAddedMixin", "BuiltInRegistriesFreezeMixin", "BuiltInRegistriesInvoker", "GameDataFreezeMixin", "TagFileRemoveMixin", "IngredientNetworkCodecMixin", "ForgePayloadEncodeMixin", "ResourcePackLoaderKnownPackMixin", "BucketItemEarlyFluidMixin", "PlayerListViewMixin", "LivingEntityDropCaptureMixin", "MobBucketItemBridgeMixin", "BiomeWeatherWriteMixin", "BiomeClimateAccessor", "ModifiableBiomeInfoAccessor"],
+  "mixins": ["FluidTypeMixin", "LivingEntityFluidTravelMixin", "MappedRegistryPendingHoldersMixin", "NamespacedWrapperPendingHoldersMixin", "NamespacedWrapperEarlyWriteMixin", "NamespacedWrapperAliasMixin", "NamespacedWrapperEntryAddedMixin", "ForgeRegistryEntryAddedMixin", "BuiltInRegistriesFreezeMixin", "BuiltInRegistriesInvoker", "GameDataFreezeMixin", "TagFileRemoveMixin", "IngredientNetworkCodecMixin", "ForgePayloadEncodeMixin", "ResourcePackLoaderKnownPackMixin", "BucketItemEarlyFluidMixin", "PlayerListViewMixin", "PoiTypesMixin", "LivingEntityDropCaptureMixin", "MobBucketItemBridgeMixin", "BiomeWeatherWriteMixin", "BiomeClimateAccessor", "ModifiableBiomeInfoAccessor"],
   "client": ["LiquidBlockRendererSpritesMixin", "ExtendedBlockModelDeserializerMixin", "ParticleEngineProvidersBridgeMixin", "ParticleEngineRenderMixin"],
   "injectors": {
     "defaultRequire": 1

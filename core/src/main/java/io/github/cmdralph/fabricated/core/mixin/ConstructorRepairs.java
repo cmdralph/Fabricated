@@ -90,8 +90,18 @@ final class ConstructorRepairs extends PreflightPart {
 	 * {@code Minecraft}'s constructor, just after it makes the particle engine). A cancellable one stays as it is there:
 	 * 0.8.5 would let it return before the constructor's end, which the later releases and Fabric's Mixin refuse. Returns
 	 * a description of each point changed.
+	 * <p>
+	 * On 0.8.6 and 0.8.7, whose constructor checks are Fabric's but whose points aren't {@code unsafe} by default (CTOR-7),
+	 * two points pre-flight doesn't place are marked too, as Fabric's Mixin takes them: {@code CTOR_HEAD}, which finds an
+	 * instruction after that call (and which these releases refuse to parse without {@code unsafe}: FrozenLib's shelf hook
+	 * into {@code PistonMovingBlockEntity}'s constructor, ImmediatelyFast's into {@code FontTexture}'s); and {@code HEAD}
+	 * with a static handler, which Mixin takes before that call (Wover's into
+	 * {@code MultiNoiseBiomeSourceParameterList}'s). An instance handler at {@code HEAD} stays: Fabric's Mixin refuses it
+	 * too. {@link MixinRepairs} runs this again on an injector a later repair pointed at another constructor (FrozenLib's
+	 * advancement hook, which the overload repair moves into the constructor Forge's {@code ServerAdvancementManager}
+	 * moved its code into).
 	 */
-	List<String> constructorPointRepairs(AnnotationNode injector, List<ClassNode> targets, Context ctx) {
+	List<String> constructorPointRepairs(MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx) {
 		if (constructorInjects == ConstructorInjects.AFTER_DELEGATE || !injector.desc.equals(MixinNames.INJECT)) return List.of();
 		boolean returnsOnly = constructorInjects == ConstructorInjects.RETURNS_ONLY;
 		if (returnsOnly && Boolean.TRUE.equals(Annotations.value(injector, "cancellable"))) return List.of();
@@ -100,7 +110,16 @@ final class ConstructorRepairs extends PreflightPart {
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 			Integer shift = shift(at);
-			if (!PLACED_POINTS.contains(point) || shift == null || Boolean.TRUE.equals(Annotations.value(at, "unsafe"))) continue;
+			if (Boolean.TRUE.equals(Annotations.value(at, "unsafe"))) continue;
+			if (!returnsOnly && (point.equals("CTOR_HEAD") || point.equals("HEAD") && (handler.access & Opcodes.ACC_STATIC) != 0)) {
+				String where = constructorsDelegating(injector, targets, ctx);
+				if (where == null) continue;
+				Annotations.put(at, "unsafe", true);
+				changed.add("the constructor of " + where + " at @At(\"" + point + "\")" + (point.equals("HEAD") ? ", before its super() call, with a static handler" : "")
+						+ ", which " + loader + "'s Mixin takes only at a point marked unsafe; it is so marked, as Fabric's Mixin takes it");
+				continue;
+			}
+			if (!PLACED_POINTS.contains(point) || shift == null) continue;
 			String target = Annotations.value(at, "target") instanceof String t ? ctx.resolve(t) : null;
 			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
 			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
@@ -175,8 +194,24 @@ final class ConstructorRepairs extends PreflightPart {
 		String moved = constructor.name + constructor.desc + ", which " + loader + " keeps only to call " + delegate.name + delegate.desc
 				+ "; the injector is pointed there, and its handler is given the arguments the first was called with (a construction through"
 				+ " the other alone, which Fabric doesn't have, doesn't call it)";
-		for (String marked : constructorPointRepairs(injector, List.of(target), ctx)) moved += "; it injects into " + marked;
+		for (String marked : constructorPointRepairs(handler, injector, List.of(target), ctx)) moved += "; it injects into " + marked;
 		return List.of(moved);
+	}
+
+	/**
+	 * The classes whose constructors the injector selects, where it selects some and each has a call to its delegate
+	 * constructor ({@link #delegateCall}); null otherwise.
+	 */
+	private static String constructorsDelegating(AnnotationNode injector, List<ClassNode> targets, Context ctx) {
+		Set<String> where = new java.util.TreeSet<>();
+		for (ClassNode t : targets) {
+			for (MethodNode m : PreflightAsm.selectedMethods(injector, t, ctx)) {
+				if (!m.name.equals("<init>")) continue;
+				if (delegateCall(m, t) < 0) return null;
+				where.add(t.name.replace('/', '.'));
+			}
+		}
+		return where.isEmpty() ? null : String.join(", ", where);
 	}
 
 	/** How many instructions Mixin moves a point by ({@code shift}, with {@code by}); null for a shift it doesn't name. */
