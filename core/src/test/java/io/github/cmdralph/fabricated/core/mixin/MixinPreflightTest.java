@@ -2422,6 +2422,73 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aMixinWhoseFieldInitialisersBranchOrStoreArrayElementsHasTheirValuesComputedByMethodsWhereForgesMixinRefusesThem(@TempDir Path dir)
+			throws Exception {
+		// PRE-28: Cobblemon's ItemRendererMixin sets its model path field to one of two names, as javac writes it a jump in
+		// the initialiser Mixin merges into the target's constructors, which SpongePowered's Mixin refuses ("Unsupported JUMP
+		// opcode in initialiser"); the Forge 52 client stopped. An array element's store there it refuses too (Cobblemon's
+		// ModelLoaderMixin). A branch in the constructor's own body, which Mixin doesn't merge, and Fabric's Mixin, which
+		// takes both, pass.
+		String mixin = "@org.spongepowered.asm.mixin.Mixin(net.minecraft.world.Thing.class) public class ";
+		Map<String, byte[]> classes = new HashMap<>(TestSources.compile(dir, TestSources.MIXIN_ANNOTATIONS, Map.of(
+				"net/minecraft/world/Thing.java", "package net.minecraft.world; public class Thing { public void tick() { } }",
+				"com/example/mixin/Branching.java", "package com.example.mixin;\n" + mixin + "Branching {\n"
+						+ "\tprivate final String path = System.getProperty(\"fabric\") != null ? \"fabric_resource\" : \"standalone\";\n"
+						+ "\tprivate final int plain = 3;\n}\n",
+				"com/example/mixin/Slots.java", "package com.example.mixin;\n" + mixin + "Slots {\n"
+						+ "\tprivate final java.util.List<String> folders = java.util.Arrays.asList(\"egg\", \"tm\");\n}\n",
+				"com/example/mixin/Body.java", "package com.example.mixin;\n" + mixin + "Body {\n\tprivate int count;\n\n"
+						+ "\tBody() {\n\t\tif (System.getProperty(\"fabric\") != null) count = 1;\n\t}\n}\n",
+				// A value storing a local (the pattern's): not outlined.
+				"com/example/mixin/Pattern.java", "package com.example.mixin;\n" + mixin + "Pattern {\n"
+						+ "\tprivate final boolean empty = System.getProperty(\"fabric\") instanceof String s && s.isEmpty();\n}\n")));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Branching", "Slots", "Body", "Pattern"));
+		Function<Boolean, MixinPreflight> preflight = restricts -> new MixinPreflight(new ClassIndex(classes::get), InstalledClasses.NONE,
+				classes::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge", true, MixinPreflight.ConstructorInjects.UNSAFE_POINTS,
+				false, false, false, true, false, false, true, true, restricts);
+
+		List<PreflightFinding> found = preflight.apply(true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.mixin().equals("com.example.mixin.Branching") && f.handler() == null
+				&& f.message().equals("Its field initialisers, which Mixin merges into the constructors of its target, branch, which Forge's Mixin refuses"
+						+ " there (Fabric's Mixin takes it)")), found.toString());
+		assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.mixin().equals("com.example.mixin.Slots")
+				&& f.message().contains("load or store an array element")), found.toString());
+		assertTrue(found.stream().noneMatch(f -> "com.example.mixin.Body".equals(f.mixin()) && f.severity() != Severity.INFO), found.toString());
+		assertTrue(preflight.apply(false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+				.noneMatch(f -> f.severity() != Severity.INFO), "Fabric's Mixin takes them");
+		assertTrue(preflight.apply(false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+
+		// Each value is computed by a method the initialiser calls, which Mixin merges as the mixin's others.
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight.apply(true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(Set.of("com/example/mixin/Branching.class", "com/example/mixin/Slots.class"), repaired.keySet(), notes.toString());
+		assertTrue(notes.stream().anyMatch(n -> n.mixin().equals("com.example.mixin.Branching") && n.message().equals("The initialisers of its field(s)"
+				+ " path branch or load or store an array element, which Forge's Mixin refuses as it merges them into the constructors of its target;"
+				+ " each value is computed by a method the mixin adds (fabricated$init$<field>), as Fabric's Mixin merges them (PRE-28)")), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Branching.class")).accept(node, 0);
+		MethodNode value = node.methods.stream().filter(m -> m.name.equals("fabricated$init$path")).findFirst().orElseThrow();
+		assertEquals("()Ljava/lang/String;", value.desc);
+		assertEquals(Opcodes.ACC_PRIVATE, value.access);
+		assertNotNull(Annotations.find(value, "Lorg/spongepowered/asm/mixin/Unique;"));
+		repaired.forEach((name, bytes) -> classes.put(name.substring(0, name.length() - ".class".length()), bytes));
+		List<PreflightFinding> after = preflight.apply(true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.stream().noneMatch(f -> f.severity() != Severity.INFO && !"com.example.mixin.Pattern".equals(f.mixin())), after.toString());
+		assertTrue(after.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && "com.example.mixin.Pattern".equals(f.mixin())), after.toString());
+
+		// The classes verify, and their fields get the values they got.
+		BytesClassLoader loader = new BytesClassLoader(classes);
+		for (String[] field : new String[][] {{"Branching", "path", "standalone"}, {"Branching", "plain", "3"}, {"Slots", "folders", "[egg, tm]"}}) {
+			Class<?> type = loader.loadClass("com.example.mixin." + field[0]);
+			java.lang.reflect.Constructor<?> constructor = type.getDeclaredConstructor();
+			constructor.setAccessible(true);
+			java.lang.reflect.Field read = type.getDeclaredField(field[1]);
+			read.setAccessible(true);
+			assertEquals(field[2], String.valueOf(read.get(constructor.newInstance())));
+		}
+	}
+
+	@Test
 	void anInjectionAtTheReturnOfAMethodNeoForgeNoLongerCallsWrapsTheCallItMakesInstead() throws Exception {
 		// DEPRECATED-2: NeoForge 21.1 builds Ingredient's codecs with CraftingHelper.makeIngredientCodec, where vanilla's
 		// static initializer calls Ingredient.codec(boolean), which it keeps, deprecated, and never calls: Fabric API's

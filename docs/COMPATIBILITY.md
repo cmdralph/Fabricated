@@ -1864,6 +1864,19 @@ What else differs on Forge, for Fabric mods in general:
   by its type finds more than one where the method has one in scope. Pre-flight names the one in scope by its ordinal
   among those Mixin keeps, and leaves the hook out where that can't be told (PRE-26: FrozenLib 1.9.3's gravity hook in
   `AbstractMinecart.tick` on Forge 47, which had stopped a server; checked on a Forge 47 server with FrozenLib 1.9.3).
+- **The libraries Fabric's Mixin carries:** Fabric's Mixin carries Guava and Gson in its own package
+  (`org.spongepowered.include`), which some Fabric mods name (Wover's item API); Forge's Mixin carries none. A mod's
+  references there name the game's own Guava and Gson instead (LIB-3: BetterEnd's, BetterNether's, BCLib's and Wover's
+  entrypoints on Forge 52 and 64 to 66; checked on a Forge 66 server and a Forge 52 server and client).
+- **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
+  into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
+  computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't
+  repair so (PRE-28: Cobblemon's item renderer and model loader hooks, which had stopped a Forge 52 client; checked on a
+  Forge 52 client).
+- **Pack sources a mod leaves immutable:** a Fabric mod adding a pack source the vanilla way, with a new immutable set,
+  keeps it on every Forge version, as on NeoForge (PACK-1): the set is made mutable again before Forge adds its pack
+  finders (PACK-11: FrozenLib's resource pack API, which had stopped a Forge 61 client; checked on a Forge 61 client
+  with FrozenLib 2.3).
 - **Constructor heads:** Forge 61 to 66's Mixin takes `@At("CTOR_HEAD")`, and `HEAD` with a static handler, only marked
   unsafe, which Fabric's Mixin's points are by default: pre-flight marks them, and a hook it moves into another
   constructor, as it marks call points there (CTOR-7: FrozenLib's, ImmediatelyFast's and Wover's hooks; FrozenLib's

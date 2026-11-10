@@ -3,6 +3,45 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: Forge's fourth-round stops: Mixin's Guava, field initialisers, pack sources (LIB-3, PRE-28, PACK-11)
+
+- **LIB-3** (P0), fixed: Fabric's Mixin carries Guava and Gson in its own package, and Wover's item API uses that Guava;
+  Forge's Mixin carries neither, so on Forge 52 and 64 to 66 BetterEnd's, BetterNether's, BCLib's and Wover's
+  entrypoints failed and the advanced servers stopped. A mod's references there now name the game's own Guava and Gson,
+  where the running Mixin lacks them.
+- **PRE-28** (P0), fixed: Forge's Mixin refuses a mixin whose field initialisers branch or store into an array, which
+  Fabric's Mixin merges; Cobblemon's item renderer hook stopped the Forge 52 client. Pre-flight computes such a field's
+  value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't repair so.
+- **PACK-11** (P0), fixed: FrozenLib's resource pack API left the client's pack sources immutable and Forge 61's own
+  pack finders couldn't be added, which stopped the client; the fix NeoForge and Forge 47 had (PACK-1) now runs on every
+  Forge version.
+- Open: Wover Story's two point-of-interest types are equal, and Forge's registry takes them for one (REG-13); no
+  generic fix. Forge 47's advanced client stopped on FrozenLib's gravity hook, fixed by PRE-26 since; the
+  `MixinExtrasBootstrap` exception the digest shows is a harmless debug-level probe.
+- Verified: the core unit tests, CI's script tests and the mixin inventory; Forge 47, 52, 61 and 66 build. Locally a
+  Forge 66 advanced server starts, where the fourth round's never did, with every Fabric entrypoint but Wover Story's
+  running; a Forge 52 advanced client repairs Cobblemon's two mixins and applies the item renderer's, and its Fabric
+  entrypoints run, before it stops on Apoli's HUD hook (open); a Forge 52 advanced server runs its entrypoints and then
+  stops creating its world in Forge's registry snapshot (open); a Forge 61 advanced client joins its world and exits
+  normally, every check passing, where the fourth round's stopped as it started.
+
+## 2026-11-10: A startup and memory benchmark in CI
+
+- **The benchmark:** each version's server part measures, in its run with Fabric API, what the JVM's threads allocate
+  during Fabricated's discovery in the first launch (every Fabric mod translated) and in a second with everything
+  cached, and the live heap once the server started, after a full GC. `ci/bench.py` compares them with their baselines
+  in `ci/bench.tsv` and writes the table to the job's summary. A metric more than 10% over its baseline fails, unless
+  the pull request records the new value there with its reason. Wall times are only reported.
+- **CI-1:** Forge 52's run with the Fabric builds of Sodium and Iris gates now, having held on two extended runs in a
+  row.
+- Discovery's log line and the report's *Launch timings* also say what the JVM allocated meanwhile ("2702 ms, 894 MB
+  allocated"); counting it takes about 2 ms of a NeoForge launch.
+- NeoForge 26.2 and 26.3, which don't build locally, are recorded from CI's run, where the local baselines of the
+  other three held within 1%. Every Forge version is only reported until a run records it.
+- Verified: the core unit tests, CI's script tests and the mixin inventory; the workflow with actionlint. Locally the
+  Fabric API server ran three times each on NeoForge 1.21.1, 1.21.11 and 26.1.2 (1.21.1 four more times while choosing
+  the metrics): the allocations held within 1% and the heap within 2%, and each run passed the comparison.
+
 ## 2026-11-10: FrozenLib's gravity hook on Forge 47 (PRE-26)
 
 - **PRE-26** (P0), fixed: Forge's Mixin keeps a local among those it finds at a point after the local's scope has ended,

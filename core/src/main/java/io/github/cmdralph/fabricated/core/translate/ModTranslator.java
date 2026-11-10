@@ -147,6 +147,7 @@ public final class ModTranslator {
 	private final io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits;
 	private final PlatformRenames renames;
 	private final PlatformStatics statics;
+	private final ShadedLibraries shaded;
 	private final RetypedFields retyped;
 	private final PrivateFieldReads privateReads;
 	/** Whether the mod's own additions of mixin configs need Mixin's default environment given (LOADER-6). */
@@ -158,6 +159,7 @@ public final class ModTranslator {
 		this.limits = limits;
 		this.renames = PlatformRenames.of(env.untransformable(), env.game(), env.descriptor().replacedMods().containsKey("forgeconfigapiport"));
 		this.statics = new PlatformStatics(env.untransformable());
+		this.shaded = new ShadedLibraries(env.untransformable());
 		this.retyped = RetypedFields.of(env.game());
 		this.privateReads = PrivateFieldReads.of(env.game(), env.descriptor().privateFields(), env.bridgedFields());
 		this.addedConfigsNeedEnvironment = MixinCompat.addedConfigsWithoutEnvironment(env.runtimeMixinVersion());
@@ -553,9 +555,10 @@ public final class ModTranslator {
 	 * Puts the mod's classes that use members NeoForge renamed (see {@link PlatformRenames}), with the references
 	 * renamed, into {@code target}, those calling a loader's methods the platform made static through its accessor, with
 	 * the calls made static ({@link PlatformStatics}, noted), those reading resources through a class, with the reads
-	 * made to look beyond the mod's module as on Fabric ({@link ResourceLookups}), and those adding mixin configs to a Mixin
-	 * that gives them no environment, with the default one given ({@link AddedMixinConfigs}, noted); returns how many used
-	 * renamed members.
+	 * made to look beyond the mod's module as on Fabric ({@link ResourceLookups}), those naming the libraries Fabric's Mixin
+	 * carries where the running Mixin doesn't, with the game's own named ({@link ShadedLibraries}, noted), and those adding
+	 * mixin configs to a Mixin that gives them no environment, with the default one given ({@link AddedMixinConfigs},
+	 * noted); returns how many used renamed members.
 	 */
 	private int applyRenames(Map<String, byte[]> target, Collection<String> entries, FileView files, List<String> notes) throws ArchiveException {
 		int count = 0;
@@ -573,6 +576,13 @@ public final class ModTranslator {
 			}
 			byte[] adapted = ResourceLookups.apply(renamed != null ? renamed : data);
 			if (adapted != null) renamed = adapted;
+			byte[] unshaded = shaded.apply(renamed != null ? renamed : data);
+			if (unshaded != null) {
+				notes.add(name.substring(0, name.length() - ".class".length()).replace('/', '.') + " names the libraries Fabric's Mixin carries in its"
+						+ " own package (" + ShadedLibraries.SHADED.replace('/', '.') + "), which " + env.descriptor().loaderName() + "'s Mixin doesn't;"
+						+ " the references name the game's own (LIB-3)");
+				renamed = unshaded;
+			}
 			byte[] configured = addedConfigsNeedEnvironment ? AddedMixinConfigs.withEnvironment(renamed != null ? renamed : data) : null;
 			if (configured != null) {
 				notes.add(name.substring(0, name.length() - ".class".length()).replace('/', '.') + " adds mixin configs to Mixin by their names"
@@ -616,7 +626,8 @@ public final class ModTranslator {
 				MixinCompat.argumentNames(env.runtimeMixinVersion()), MixinCompat.exactStaticInjects(env.runtimeMixinVersion()),
 				MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion()), MixinCompat.readsLocalTypes(env.runtimeMixinVersion()),
 				MixinCompat.seesMixinFields(env.runtimeMixinVersion()), env.descriptor().handsOffConstructorArguments(),
-				MixinCompat.overlapsWideArguments(env.runtimeMixinVersion()), MixinCompat.keepsLocalsPastScope(env.runtimeMixinVersion()));
+				MixinCompat.overlapsWideArguments(env.runtimeMixinVersion()), MixinCompat.keepsLocalsPastScope(env.runtimeMixinVersion()),
+				MixinCompat.restrictsInitialisers(env.runtimeMixinVersion()));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();
