@@ -7519,6 +7519,59 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aMixinReplacingAFieldThePlatformGivesItsOwnObjectIsReported() throws Exception {
+		// POI-2: NeoForge's and Forge's PoiTypes.TYPE_BY_STATE is their registry callbacks' map; Lithium's static initializer
+		// replaces it with a copy, which the callbacks' later entries never reach.
+		java.util.function.Function<Boolean, byte[]> target = platform -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "TYPES", "Ljava/util/Map;", null, null).visitEnd();
+			MethodVisitor init = cw.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+			init.visitCode();
+			if (platform) {
+				init.visitMethodInsn(Opcodes.INVOKESTATIC, "net/minecraftforge/registries/GameData$Callbacks", "stateMap", "()Ljava/util/Map;", false);
+			} else {
+				init.visitTypeInsn(Opcodes.NEW, "java/util/HashMap");
+				init.visitInsn(Opcodes.DUP);
+				init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/HashMap", "<init>", "()V", false);
+			}
+			init.visitFieldInsn(Opcodes.PUTSTATIC, TARGET, "TYPES", "Ljava/util/Map;");
+			init.visitInsn(Opcodes.RETURN);
+			init.visitMaxs(0, 0);
+			init.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		byte[] mixin = mixin("com/example/mixin/Types", false, cw -> {
+			FieldVisitor field = cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "TYPES", "Ljava/util/Map;", null, null);
+			field.visitAnnotation(MixinNames.SHADOW, true).visitEnd();
+			field.visitAnnotation(MixinNames.MUTABLE, true).visitEnd();
+			field.visitEnd();
+			MethodVisitor init = cw.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+			init.visitCode();
+			init.visitTypeInsn(Opcodes.NEW, "java/util/HashMap");
+			init.visitInsn(Opcodes.DUP);
+			init.visitFieldInsn(Opcodes.GETSTATIC, "com/example/mixin/Types", "TYPES", "Ljava/util/Map;");
+			init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/HashMap", "<init>", "(Ljava/util/Map;)V", false);
+			init.visitFieldInsn(Opcodes.PUTSTATIC, "com/example/mixin/Types", "TYPES", "Ljava/util/Map;");
+			init.visitInsn(Opcodes.RETURN);
+			init.visitMaxs(0, 0);
+			init.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Types"));
+		ClassIndex platform = new ClassIndex(Map.of(TARGET, target.apply(true))::get);
+		List<PreflightFinding> findings = preflight(platform, Map.of("com/example/mixin/Types", mixin)::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, findings.size(), findings.toString());
+		assertTrue(findings.getFirst().message().contains("replaces " + TARGET.replace('/', '.') + ".TYPES, which is GameData.Callbacks.stateMap"),
+				findings.toString());
+		// The target's own map, as vanilla's: replacing it is the mod's business.
+		ClassIndex vanilla = new ClassIndex(Map.of(TARGET, target.apply(false))::get);
+		assertTrue(preflight(vanilla, Map.of("com/example/mixin/Types", mixin)::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	@Test
 	void anInjectorSelectingEveryMethodIsJudgedByTheMethodsMixinScans() throws Exception {
 		// WILD-1: a bare "*" selects each method of the target but its static ones, for a handler that isn't static.
 		byte[] found = mixin("com/example/mixin/Every", false, cw -> inject(cw, "every", "*", "INVOKE", "L" + TARGET + ";helper(I)V", 1, null));
