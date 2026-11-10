@@ -87,7 +87,7 @@ public final class InterfaceInjects {
 		}
 		if (points.isEmpty()) return "it names no injection point";
 		if (Type.getReturnType(handler.desc).getSort() != Type.VOID) return "its handler returns a value";
-		if (hasParameterAnnotations(handler)) return "its handler's parameters are annotated (sugar or @Coerce)";
+		if (OverloadRepairs.hasParameterAnnotations(handler)) return "its handler's parameters are annotated (sugar or @Coerce)";
 		Type[] handlerArgs = Type.getArgumentTypes(handler.desc);
 		if (handlerArgs.length == 0) return "its handler takes no callback info";
 
@@ -320,13 +320,6 @@ public final class InterfaceInjects {
 			if (!known.contains(annotation.values.get(i))) return "its " + kind + " sets " + annotation.values.get(i);
 		}
 		return null;
-	}
-
-	private static boolean hasParameterAnnotations(MethodNode method) {
-		for (int i = 0; i < Type.getArgumentTypes(method.desc).length; i++) {
-			if (!Annotations.ofParameter(method, i).isEmpty()) return true;
-		}
-		return false;
 	}
 
 	private static List<String> strings(Object value) {

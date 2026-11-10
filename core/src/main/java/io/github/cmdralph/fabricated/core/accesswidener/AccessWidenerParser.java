@@ -72,7 +72,7 @@ public final class AccessWidenerParser {
 			if (enumExtensions && (first.equals("extend-enum") || first.equals(TRANSITIVE + "extend-enum"))) {
 				if (tokens.length != 3) throw new AccessWidenerException(lineNo, "Expected 'extend-enum <class> <constant>'");
 				checkClassName(tokens[1], lineNo);
-				enums.add(new EnumExtension(tokens[1], tokens[2], lineNo));
+				enums.add(new EnumExtension(tokens[1], tokens[2]));
 				continue;
 			}
 

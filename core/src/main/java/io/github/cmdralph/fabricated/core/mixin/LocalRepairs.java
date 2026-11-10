@@ -47,7 +47,7 @@ final class LocalRepairs extends PreflightPart {
 		Type type = Type.getReturnType(handler.desc);
 		Integer slot = argumentSlotInEvery(injector, targets, names, type.getDescriptor()::equals, type, ctx);
 		if (slot == null) return List.of();
-		removeValue(injector, "name");
+		Annotations.remove(injector, "name");
 		Annotations.put(injector, "index", slot);
 		return List.of(takesSlot(names, slot));
 	}
@@ -79,7 +79,7 @@ final class LocalRepairs extends PreflightPart {
 						: desc -> desc.startsWith("L") || desc.startsWith("[");
 				Integer slot = argumentSlotInEvery(injector, targets, names, accepts, held, ctx);
 				if (slot == null) continue;
-				removeValue(local, "name");
+				Annotations.remove(local, "name");
 				Annotations.put(local, "index", slot);
 				repaired.add(takesSlot(names, slot));
 			}
@@ -90,7 +90,7 @@ final class LocalRepairs extends PreflightPart {
 			List<?> names = (List<?>) Annotations.value(local, "name");
 			Integer slot = argumentSlotInEvery(injector, targets, names, held.getDescriptor()::equals, held, ctx);
 			if (slot == null) continue;
-			removeValue(local, "name");
+			Annotations.remove(local, "name");
 			Annotations.put(local, "index", slot);
 			repaired.add("in its expression " + takesSlot(names, slot));
 		}
@@ -153,18 +153,6 @@ final class LocalRepairs extends PreflightPart {
 	private String takesSlot(List<?> names, int slot) {
 		return "the argument " + names.get(0) + " by its name, which " + loader + "'s Mixin doesn't know; it takes the argument's slot, "
 				+ slot + ", instead";
-	}
-
-	/** Removes an annotation's value. */
-	private static void removeValue(AnnotationNode annotation, String key) {
-		if (annotation.values == null) return;
-		for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
-			if (key.equals(annotation.values.get(i))) {
-				annotation.values.remove(i + 1);
-				annotation.values.remove(i);
-				return;
-			}
-		}
 	}
 
 	/** The slot of the method's argument that its local variable table names one of {@code names}, of a type {@code accepts}; null when none. */

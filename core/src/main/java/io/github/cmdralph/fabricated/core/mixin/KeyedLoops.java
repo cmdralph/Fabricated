@@ -186,17 +186,7 @@ public final class KeyedLoops {
 
 	/** The mixin's new field holding the keys while the bridge calls {@code handler}: private, {@code @Unique}, of the list's type. */
 	private static FieldNode keysField(ClassNode mixin, MethodNode handler, FieldNode list) {
-		String base = "fabricated$" + handler.name + "$keys";
-		String name = base;
-		for (int i = 2; taken(mixin, name); i++) name = base + i;
-		FieldNode field = new FieldNode(Opcodes.ACC_PRIVATE, name, list.desc, null, null);
-		field.visibleAnnotations = new ArrayList<>(List.of(new AnnotationNode(MixinNames.UNIQUE)));
-		mixin.fields.add(field);
-		return field;
-	}
-
-	private static boolean taken(ClassNode mixin, String name) {
-		return mixin.fields.stream().anyMatch(f -> f.name.equals(name));
+		return PreflightAsm.uniqueField(mixin, "fabricated$" + handler.name + "$keys", list.desc);
 	}
 
 	/**
