@@ -13,7 +13,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - Open: YUNG's Extras' Fabric jar carries its Forge build's biome modifiers, which Forge applies beside what the mod's
   Fabric code adds, so desert decorations go in twice and Biomes O' Plenty's lush desert stops chunk generation
   (MODIFIER-2): the Forge 52 advanced server and client stop there next. Drawing a Fabric mod's HUD layers on NeoForge
-  21.1 (HUD-7) takes a pre-flight repair and a NeoForge bridge, a design left to decide.
+  21.1 (HUD-7) takes a pre-flight repair and a NeoForge bridge; not in this release.
 - Verified: the core unit tests, CI's script tests and the mixin inventory on every branch; Forge 47, 52, 61 and 66
   build. Locally the Forge 52 advanced server and client create their levels, where they stopped before; the Forge 47
   and Forge 66 server parts pass, every check of their runs.
