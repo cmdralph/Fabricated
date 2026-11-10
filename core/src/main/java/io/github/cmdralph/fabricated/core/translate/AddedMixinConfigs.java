@@ -1,12 +1,20 @@
 package io.github.cmdralph.fabricated.core.translate;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
+import org.objectweb.asm.tree.MethodNode;
 
 /**
  * The mixin configs a Fabric mod's code adds to Mixin itself, through {@code Mixins.addConfiguration(String)}: ReplayMod's
@@ -16,6 +24,9 @@ import org.objectweb.asm.Opcodes;
  * environment, read in their classes), and Mixin stopped the game reading it ({@code NullPointerException} in
  * {@code MixinConfig.onLoad}, "this.env" is null). There the calls go to the overload taking a config source, with none,
  * which gives the default environment in every Mixin since 0.8.6, as Fabric's one-argument form does.
+ *
+ * <p>Pre-flight checks such a config as a listed one where the mod's code names it by a constant, as ReplayMod's does
+ * (MIXCFG-1): {@link #added} finds those names.
  */
 final class AddedMixinConfigs {
 	private static final String MIXINS = "org/spongepowered/asm/mixin/Mixins";
@@ -27,10 +38,48 @@ final class AddedMixinConfigs {
 	private AddedMixinConfigs() {
 	}
 
+	/**
+	 * The configs a class adds to Mixin by name: {@code names}, those it gives as constants, and whether it adds others
+	 * ({@code computed}) by names its code computes, which can't be read here.
+	 */
+	record Added(List<String> names, boolean computed) {
+	}
+
+	/** What {@code classFile} adds to Mixin through {@code Mixins}' methods adding configs, or null when it calls none. */
+	static Added added(byte[] classFile) {
+		if (!callsAdd(classFile)) return null;
+		ClassNode node = new ClassNode();
+		new ClassReader(classFile).accept(node, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+		Set<String> names = new TreeSet<>();
+		boolean computed = false;
+		for (MethodNode method : node.methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC || !call.owner.equals(MIXINS)
+						|| !call.name.startsWith(ADD)) continue;
+				// A constant name is javac's ldc right before the call, or right before the source given as null, a variable
+				// or a field. Any other argument is computed, a label between them too (code jumping to the call, as a
+				// choice of two names does).
+				AbstractInsnNode name = call.desc.equals(BY_NAME) ? call.getPrevious()
+						: call.desc.equals(BY_NAME_AND_SOURCE) && pushesSource(call.getPrevious()) ? call.getPrevious().getPrevious() : null;
+				if (name instanceof LdcInsnNode ldc && ldc.cst instanceof String constant) names.add(constant);
+				else computed = true;
+			}
+		}
+		return names.isEmpty() && !computed ? null : new Added(List.copyOf(names), computed);
+	}
+
+	private static boolean pushesSource(AbstractInsnNode insn) {
+		return insn != null && (insn.getOpcode() == Opcodes.ACONST_NULL || insn.getOpcode() == Opcodes.ALOAD || insn.getOpcode() == Opcodes.GETSTATIC);
+	}
+
+	private static boolean callsAdd(byte[] classFile) {
+		String text = new String(classFile, StandardCharsets.ISO_8859_1);
+		return text.contains(MIXINS) && text.contains(ADD);
+	}
+
 	/** {@code classFile} with its calls of {@code Mixins.addConfiguration(String)} given the default environment, or null when it makes none. */
 	static byte[] withEnvironment(byte[] classFile) {
-		String text = new String(classFile, StandardCharsets.ISO_8859_1);
-		if (!text.contains(MIXINS) || !text.contains(ADD)) return null;
+		if (!callsAdd(classFile)) return null;
 		boolean[] changed = {false};
 		ClassReader reader = new ClassReader(classFile);
 		ClassWriter writer = new ClassWriter(reader, 0);
