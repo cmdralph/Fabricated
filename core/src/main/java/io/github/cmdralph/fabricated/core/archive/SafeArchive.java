@@ -157,12 +157,12 @@ public final class SafeArchive implements Closeable {
 		}
 	}
 
-	/** All entry names (including directories) in archive order. */
 	/** The uncompressed size the archive's entries declare (unchecked until read, but within the limits). */
 	public long declaredUncompressedSize() {
 		return declaredSize;
 	}
 
+	/** All entry names (including directories) in archive order. */
 	public List<String> entryNames() {
 		return List.copyOf(entries.keySet());
 	}
