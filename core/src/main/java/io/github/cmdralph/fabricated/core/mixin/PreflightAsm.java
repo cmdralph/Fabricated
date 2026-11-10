@@ -12,6 +12,7 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.MethodNode;
 
 /**
@@ -137,6 +138,23 @@ final class PreflightAsm {
 			if (Annotations.all(m).stream().noneMatch(a -> isInjector(a.desc))) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * A new private {@code @Unique} field of {@code mixin}, which Mixin merges as the mixin's own: named {@code base}, or
+	 * {@code base} and a number where the mixin has a field of that name.
+	 */
+	static FieldNode uniqueField(ClassNode mixin, String base, String desc) {
+		String name = base;
+		for (int i = 2; hasField(mixin, name); i++) name = base + i;
+		FieldNode field = new FieldNode(Opcodes.ACC_PRIVATE, name, desc, null, null);
+		field.visibleAnnotations = new ArrayList<>(List.of(new AnnotationNode(MixinNames.UNIQUE)));
+		mixin.fields.add(field);
+		return field;
+	}
+
+	private static boolean hasField(ClassNode mixin, String name) {
+		return mixin.fields.stream().anyMatch(f -> f.name.equals(name));
 	}
 
 	static boolean declares(ClassNode target, String name, String desc) {

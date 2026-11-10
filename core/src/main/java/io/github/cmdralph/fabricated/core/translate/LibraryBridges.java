@@ -53,7 +53,7 @@ final class LibraryBridges {
 	private static final String FIELD = "java/lang/reflect/Field";
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
 	private static final String ACCESSOR = "Lorg/spongepowered/asm/mixin/gen/Accessor;";
-	/** The annotations of Mixin a bridged mixin's members may have: none changes what the mixin does. */
+	/** The annotations of Mixin a bridged or adapted mixin's members may have ({@link LibraryAdapters}): none changes what the mixin does. */
 	private static final Set<String> ALLOWED = Set.of(SHADOW, "Lorg/spongepowered/asm/mixin/Unique;", "Lorg/spongepowered/asm/mixin/Final;",
 			"Lorg/spongepowered/asm/mixin/Mutable;", Annotations.MIXIN);
 	private static final String CAST = "fabricated$cast";
@@ -421,7 +421,7 @@ final class LibraryBridges {
 	}
 
 	/** Whether the constructor only calls {@code Object}'s. */
-	private static boolean trivialConstructor(MethodNode m) {
+	static boolean trivialConstructor(MethodNode m) {
 		List<Integer> opcodes = new ArrayList<>();
 		for (AbstractInsnNode insn : m.instructions) {
 			if (insn.getOpcode() >= 0) opcodes.add(insn.getOpcode());
@@ -429,7 +429,7 @@ final class LibraryBridges {
 		return opcodes.equals(List.of(Opcodes.ALOAD, Opcodes.INVOKESPECIAL, Opcodes.RETURN));
 	}
 
-	private static boolean allowed(List<AnnotationNode> annotations) {
+	static boolean allowed(List<AnnotationNode> annotations) {
 		if (annotations == null) return true;
 		for (AnnotationNode a : annotations) {
 			boolean mixinOwn = a.desc.startsWith("Lorg/spongepowered/asm/mixin/") || a.desc.startsWith("Lcom/llamalad7/mixinextras/");
@@ -463,7 +463,7 @@ final class LibraryBridges {
 		return false;
 	}
 
-	private static void replace(List<Object> types, String from, String to) {
+	static void replace(List<Object> types, String from, String to) {
 		if (types == null) return;
 		types.replaceAll(t -> from.equals(t) ? to : t);
 	}

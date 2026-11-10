@@ -204,10 +204,6 @@ public final class MixinFailures {
 			this.launch = Objects.requireNonNull(launch, "launch");
 		}
 
-		public Path file() {
-			return file;
-		}
-
 		/**
 		 * The failures recorded with this launch's builds, except those of a mod whose jar is another now: those, and the
 		 * others recorded with other builds, are dropped from the file. A file that can't be read or holds what isn't a

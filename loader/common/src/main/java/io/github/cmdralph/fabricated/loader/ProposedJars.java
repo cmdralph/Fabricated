@@ -45,11 +45,6 @@ final class ProposedJars extends URLClassLoader {
 		this.warning = warning;
 	}
 
-	/** Puts the loader in front of {@code game}'s fallback where the platform makes it {@code game}'s parent. */
-	static void install(ClassLoader game, Path gameDir, Consumer<String> warning) {
-		install(game, game.getParent(), gameDir, warning);
-	}
-
 	/**
 	 * Puts the loader in front of {@code fallback}, once; {@code game} is the class loader of the mods' modules, and
 	 * {@code fallback} the loader the platform made its fallback.

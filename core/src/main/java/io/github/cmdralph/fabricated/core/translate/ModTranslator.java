@@ -1893,7 +1893,6 @@ public final class ModTranslator {
 		}).orElse(null);
 	}
 
-	/** The classes a mixin's {@code @Mixin} names, as internal names. */
 	/**
 	 * The first intermediary class name ({@code net/minecraft/class_1234}) a config's mixins target, or null. Those are
 	 * the names obfuscated Minecraft versions run Fabric mods with; unobfuscated ones (26.x) have none of them, and Mixin
@@ -1908,6 +1907,7 @@ public final class ModTranslator {
 		return null;
 	}
 
+	/** The classes a mixin's {@code @Mixin} names, as internal names. */
 	static List<String> mixinTargets(ClassNode mixin) {
 		AnnotationNode ann = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
 		List<String> targets = new ArrayList<>();

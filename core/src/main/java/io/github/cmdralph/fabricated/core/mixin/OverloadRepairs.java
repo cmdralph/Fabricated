@@ -734,7 +734,7 @@ final class OverloadRepairs extends PreflightPart {
 	}
 
 	/** Whether any parameter of {@code handler} carries an annotation (MixinExtras sugar, {@code @Coerce}). */
-	private static boolean hasParameterAnnotations(MethodNode handler) {
+	static boolean hasParameterAnnotations(MethodNode handler) {
 		for (int i = 0; i < Type.getArgumentTypes(handler.desc).length; i++) {
 			if (!Annotations.ofParameter(handler, i).isEmpty()) return true;
 		}
