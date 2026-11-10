@@ -2463,6 +2463,32 @@ class PipelineTest {
 	}
 
 	@Test
+	void aModWhoseMixinsAreOfANewerJavaThanTheGamesIsDisabled(@TempDir Path game) throws Exception {
+		// JAVA-1: Ledger 1.3.18's classes are Java 21's and its depends names no Java; Mixin made LivingEntity a Java 21
+		// class, which Forge 47's Java 17 couldn't load. A mixin of the running Java loads as before.
+		int running = Runtime.version().feature();
+		byte[] newer = mixinClass("com/ledger/mixin/LivingEntityMixin", TARGET, "tick");
+		newer[6] = (byte) ((running + 45) >> 8);
+		newer[7] = (byte) (running + 45);
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path ledger = TestJars.create().fabricModJson(TestJars.modJson("ledger", "1.0", "\"mixins\":[\"ledger.mixins.json\"]"))
+				.text("ledger.mixins.json", "{\"required\":true,\"package\":\"com.ledger.mixin\",\"mixins\":[\"LivingEntityMixin\"]}")
+				.bytes("com/ledger/mixin/LivingEntityMixin.class", newer)
+				.write(mods.resolve("ledger.jar"));
+		Path current = TestJars.create().fabricModJson(TestJars.modJson("current", "1.0", "\"mixins\":[\"current.mixins.json\"]"))
+				.text("current.mixins.json", "{\"required\":true,\"package\":\"com.current.mixin\",\"mixins\":[\"ThingMixin\"]}")
+				.bytes("com/current/mixin/ThingMixin.class", mixinClass("com/current/mixin/ThingMixin", TARGET, "tick"))
+				.write(mods.resolve("current.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(ledger, current), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		assertEquals(List.of("current"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("ledger")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().contains("com.ledger.mixin.LivingEntityMixin is a class of Java " + (running + 1))
+				&& row.detail().contains("Java " + running + " can't load"), row.detail());
+	}
+
+	@Test
 	void aFieldFabricatedsOwnMixinRestoresIsTheGamesForPreflight(@TempDir Path game) throws Exception {
 		// PIP-1: Fabricated's mixin gives GuiRenderer back vanilla's map of picture-in-picture renderers, which NeoForge
 		// replaced; malilib shadows it. Fabricated's unique and shadowed fields aren't the game's.

@@ -200,6 +200,8 @@ public final class ModTranslator {
 		List<String> after = loadAfter.stream().sorted().distinct().toList();
 		String key = Hashing.sha256(String.join("|", candidate.sha256(), env.minecraftVersion(), env.neoForgeVersion(),
 				env.side(), env.fabricatedBuild(), Integer.toString(TranslationEnvironment.TRANSLATION_SCHEMA),
+				// A mod built for a newer Java is refused on an older one (JAVA-1).
+				"java " + Runtime.version().feature(),
 				env.mappingsHash(), env.runtimeMixinVersion(), String.valueOf(env.mixinExtrasVersion()), override.fingerprint(), String.join(",", after),
 				// Not only the jar's: a config a containing mod declares may come with it.
 				candidate.metadata().mixins().toString(), env.unsupportedPackages().toString(),
@@ -697,6 +699,13 @@ public final class ModTranslator {
 			}
 			configs.put(entry.config(), config);
 			refmaps.put(entry.config(), refmap);
+			String newer = newerJavaMixin(config, translated);
+			if (newer != null) {
+				int running = Runtime.version().feature();
+				throw new TranslationException("Built for a newer Java: its mixin " + newer + ", and Mixin makes the game class it changes a class"
+						+ " of that Java too, which this game's Java " + running + " can't load", "Install the mod's build for Java " + running
+						+ ", or run the game on the Java the mod needs.");
+			}
 			if (env.namespace() == Namespace.OFFICIAL) {
 				String intermediary = intermediaryTarget(config, classes);
 				if (intermediary != null) {
@@ -1881,6 +1890,23 @@ public final class ModTranslator {
 		}
 		return new PreflightFinding(severity, String.valueOf(m.get("config")), m.get("mixin") instanceof String s ? s : null,
 				String.valueOf(m.get("message")), String.valueOf(m.get("suggestion")));
+	}
+
+	/**
+	 * A config's first mixin of this side whose class file is of a newer Java than the game runs, named with that Java;
+	 * null for none (JAVA-1). Mixin raises the class version of a class it changes to its mixin's, and the JVM then can't
+	 * load that class: Ledger 1.3.18 for 1.20.1, built for Java 21 without saying so in its {@code depends}, stopped a
+	 * Forge 47 server on Java 17 as {@code LivingEntity} loaded. Read from the class file's header, which every Java's
+	 * class files have, ASM's or not.
+	 */
+	private String newerJavaMixin(MixinConfigFile config, FileView mod) throws ArchiveException {
+		for (String mixin : config.mixinsFor(env.clientSide())) {
+			byte[] data = mod.read(config.internalName(mixin) + ".class");
+			if (data == null || data.length < 8) continue;
+			int java = ((data[6] & 0xFF) << 8 | data[7] & 0xFF) - 44;
+			if (java > Runtime.version().feature()) return config.internalName(mixin).replace('/', '.') + " is a class of Java " + java;
+		}
+		return null;
 	}
 
 	/** Reads classes as the mod will load: the game's and installed jars' first, then the mod's; memoised, null when absent. */
