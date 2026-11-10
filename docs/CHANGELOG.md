@@ -3,6 +3,21 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: A retyped field's accessor for other mods' calls; REG-14 on every Forge version (ACC-6)
+
+- **ACC-6** (P0), fixed: Forge retypes a chunk generator's features field, and Wover's generator module calls its
+  biome module's accessor of it with vanilla's type, which only that module's own calls followed: the Forge 52
+  advanced server and client stopped creating their levels. Such an accessor keeps a method of vanilla's type for
+  other mods' calls; each mod is still translated on its own.
+- **REG-14** now runs on Forge 47 and Forge 61 to 66 too.
+- Open: YUNG's Extras' Fabric jar carries its Forge build's biome modifiers, which Forge applies beside what the mod's
+  Fabric code adds, so desert decorations go in twice and Biomes O' Plenty's lush desert stops chunk generation
+  (MODIFIER-2): the Forge 52 advanced server and client stop there next. Drawing a Fabric mod's HUD layers on NeoForge
+  21.1 (HUD-7) takes a pre-flight repair and a NeoForge bridge, a design left to decide.
+- Verified: the core unit tests, CI's script tests and the mixin inventory on every branch; Forge 47, 52, 61 and 66
+  build. Locally the Forge 52 advanced server and client create their levels, where they stopped before; the Forge 47
+  and Forge 66 server parts pass, every check of their runs.
+
 ## 2026-11-10: Forge 52's advanced corpus stops: Apoli's HUD layers, a registry value a mod changes (HUD-6, VANILLA-4, REG-14)
 
 - **HUD-6** (P0), fixed: Forge 52 keeps the HUD layers vanilla's `Gui` adds by name and fills vanilla's lists only as
