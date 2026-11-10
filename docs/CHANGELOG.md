@@ -10,6 +10,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   cached, and the live heap once the server started, after a full GC. `ci/bench.py` compares them with their baselines
   in `ci/bench.tsv` and writes the table to the job's summary. A metric more than 10% over its baseline fails, unless
   the pull request records the new value there with its reason. Wall times are only reported.
+- **CI-1:** Forge 52's run with the Fabric builds of Sodium and Iris gates now, having held on two extended runs in a
+  row.
 - Discovery's log line and the report's *Launch timings* also say what the JVM allocated meanwhile ("2702 ms, 894 MB
   allocated"); counting it takes about 2 ms of a NeoForge launch.
 - Not recorded yet: NeoForge 26.2 and 26.3, which don't build locally, and every Forge version, which the benchmark
