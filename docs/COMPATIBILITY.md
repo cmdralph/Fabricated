@@ -1858,8 +1858,12 @@ What else differs on Forge, for Fabric mods in general:
   those in scope gets the ordinal vanilla's local has in Forge's code, where Forge's patch declares one of the type
   elsewhere, and is left out where that can't be told and the ordinal is past the locals Mixin can see (PRE-25: Apoli's
   tool check in `ServerPlayerGameMode.destroyBlock` on Forge 47, which had stopped a server with Origins; checked on a
-  Forge 47 server with Origins 1.10.2). FrozenLib 1.9.3's gravity hook in `AbstractMinecart.tick`, a `@Local double` by
-  its type, still stops a Forge 47 server: Forge 47's Mixin counts locals past their scope there (PRE-26, open).
+  Forge 47 server with Origins 1.10.2).
+- **A local taken by its type where Forge's Mixin keeps others:** Forge's Mixin keeps a local among those it finds at a
+  point after the local's scope has ended, where only same frames come between, so a MixinExtras `@Local` taking a local
+  by its type finds more than one where the method has one in scope. Pre-flight names the one in scope by its ordinal
+  among those Mixin keeps, and leaves the hook out where that can't be told (PRE-26: FrozenLib 1.9.3's gravity hook in
+  `AbstractMinecart.tick` on Forge 47, which had stopped a server; checked on a Forge 47 server with FrozenLib 1.9.3).
 - **Constructor heads:** Forge 61 to 66's Mixin takes `@At("CTOR_HEAD")`, and `HEAD` with a static handler, only marked
   unsafe, which Fabric's Mixin's points are by default: pre-flight marks them, and a hook it moves into another
   constructor, as it marks call points there (CTOR-7: FrozenLib's, ImmediatelyFast's and Wover's hooks; FrozenLib's

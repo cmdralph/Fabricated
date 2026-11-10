@@ -3,6 +3,18 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: FrozenLib's gravity hook on Forge 47 (PRE-26)
+
+- **PRE-26** (P0), fixed: Forge's Mixin keeps a local among those it finds at a point after the local's scope has ended,
+  where only same frames come between, so FrozenLib 1.9.3's `@Local double` at the first `Vec3.add` call in
+  `AbstractMinecart.tick` found four doubles on Forge 47, where the method has one in scope, and a server with FrozenLib
+  stopped. Pre-flight counts a `@Local` taken by its type among the locals Forge's Mixin keeps, and names the one in scope
+  by its ordinal among them; where that can't be told and Mixin keeps more than one, the hook is left out.
+- Verified: the core unit tests, CI's script tests and the mixin inventory; Forge 47 builds. Locally, a Forge 47 server
+  with Fabric API, FrozenLib, Origins, Carpet, Balm, GlitchCore and Polymer applies FrozenLib's gravity hook, which takes
+  the gravity, and starts and stops normally (95 checks pass, none fails); the Forge 47 server part (7 runs, 407 checks)
+  passes, none failing.
+
 ## 2026-11-10: Points of interest with Lithium, and mods mapping them themselves on Forge (POI-2, POI-3)
 
 - **POI-2** (P1), fixed: Lithium's Fabric build replaces the platform's map of point-of-interest block states with a copy
