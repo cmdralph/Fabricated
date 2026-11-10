@@ -236,6 +236,9 @@ tasks.register('forgeClasspathReport') {
 afterEvaluate {
     tasks.named('gameModJar', Jar) {
         from(gameModRefmap)
+        // What upstream's wideners of the natively shipped modules open (BIOME-6), in Forge 47's names. Not in
+        // src/main/resources, whose access transformer ModDevGradle applies to the game the in-game mod compiles against.
+        from(file('src/fabricapi/accesstransformer.cfg')) { into 'META-INF' }
         manifest.attributes('MixinConfigs': gameModMixins.join(','))
     }
     // ModDevGradle moves the jar as built (Mojang's names) to build/devlibs and writes the reobfuscated one here.
