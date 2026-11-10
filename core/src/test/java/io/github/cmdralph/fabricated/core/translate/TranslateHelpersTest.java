@@ -296,6 +296,11 @@ class TranslateHelpersTest {
 		assertFalse(MixinCompat.overlapsWideArguments("0.16.4+mixin.0.8.7"), "Fabric's Mixin, NeoForge 21.1's");
 		assertFalse(MixinCompat.overlapsWideArguments("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
 		assertFalse(MixinCompat.overlapsWideArguments(null));
+		// PRE-26: whether a local stays among those Mixin finds at a point once its scope has ended, through same frames.
+		assertTrue(MixinCompat.keepsLocalsPastScope("0.8.5+Jenkins-b310.git-1"), "Forge 47");
+		assertTrue(MixinCompat.keepsLocalsPastScope("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
+		assertFalse(MixinCompat.keepsLocalsPastScope("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
+		assertFalse(MixinCompat.keepsLocalsPastScope(null));
 		// SUPER-2: whether an array's class is looked up as a detached mixin's calls are bound.
 		assertTrue(MixinCompat.looksUpArrayOwners("0.8.5+Jenkins-b310.git-1"), "Forge 47");
 		assertTrue(MixinCompat.looksUpArrayOwners("0.8.7+Jenkins-b321.git-4"), "Forge 52 and 61 to 66");
