@@ -3717,6 +3717,82 @@ class MixinPreflightTest {
 				"each hook applies where vanilla's call went");
 	}
 
+	@Test
+	void anInjectionAtEveryCallVanillaMakesOnceIsPinnedToItWhereThePatchAddsOneOnTheSamePath() throws Exception {
+		// VANILLA-4: as Forge 52's Gui constructor, which reads layers where vanilla does and again to resolve Forge's
+		// layers: Apoli's @Inject at every read ran twice. A call the patch adds behind a branch, which a pass may skip,
+		// and a hook other than an @Inject, are left as they are.
+		Map<String, byte[]> vanilla = Map.of(TARGET, helperCallAddedLater(false, false));
+		for (boolean branch : new boolean[] {false, true}) {
+			ClassIndex forge = new ClassIndex(Map.of(TARGET, helperCallAddedLater(true, branch))::get);
+			Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Every", mixin("com/example/mixin/Every", false, cw -> {
+				atHelperCall(cw, INJECT, "hook", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null);
+				atHelperCall(cw, REDIRECT, "redirect", "(L" + TARGET + ";I)V", null);
+			})));
+			MixinConfigFile config = MixinConfigFile.parse(config(true, "Every"));
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+			if (branch) {
+				assertEquals(List.of(), notes, "a pass may skip the added call");
+				continue;
+			}
+			assertEquals(1, notes.size(), notes.toString());
+			assertTrue(notes.get(0).message().contains("@Inject hook") && notes.get(0).message().contains("pinned to vanilla's (ordinal 0 here)"), notes.toString());
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired.get("com/example/mixin/Every.class")).accept(node, 0);
+			Map<String, AnnotationNode> points = new HashMap<>();
+			for (MethodNode m : node.methods) {
+				for (AnnotationNode ann : Annotations.all(m)) {
+					Object at = Annotations.value(ann, "at");
+					if (at != null) points.put(m.name, at instanceof AnnotationNode one ? one : Annotations.list(at).getFirst());
+				}
+			}
+			assertEquals(0, Annotations.value(points.get("hook"), "ordinal"));
+			assertNull(Annotations.value(points.get("redirect"), "ordinal"), "a redirect takes the patch's call as well");
+		}
+	}
+
+	/**
+	 * Game class: {@code tick()} calls {@code helper(0)} and {@code done()}; with {@code patched} it calls {@code helper(5)}
+	 * after them, as a patch adds a call at a method's end (behind a jump over it with {@code branch}).
+	 */
+	private static byte[] helperCallAddedLater(boolean patched, boolean branch) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+		tick.visitCode();
+		tick.visitVarInsn(Opcodes.ALOAD, 0);
+		tick.visitInsn(Opcodes.ICONST_0);
+		tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(I)V", false);
+		tick.visitVarInsn(Opcodes.ALOAD, 0);
+		tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "done", "()V", false);
+		Label end = new Label();
+		if (patched) {
+			if (branch) {
+				tick.visitInsn(Opcodes.ICONST_1);
+				tick.visitJumpInsn(Opcodes.IFEQ, end);
+			}
+			tick.visitVarInsn(Opcodes.ALOAD, 0);
+			tick.visitInsn(Opcodes.ICONST_5);
+			tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(I)V", false);
+		}
+		tick.visitLabel(end);
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		for (String name : List.of("helper(I)V", "done()V")) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, name.substring(0, name.indexOf('(')), name.substring(name.indexOf('(')), null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
 	/**
 	 * Game class: {@code tick()} as Camera.setup's mirrored rotation, {@code helper(-x)} in vanilla and, with {@code patched},
 	 * {@code helper(-x, -roll)} as NeoForge 21.1's patch made it, between statements the two differ in and before one
