@@ -77,6 +77,18 @@ public final class Annotations {
 		ann.values.add(value);
 	}
 
+	/** Removes attribute {@code key}, when set. */
+	public static void remove(AnnotationNode ann, String key) {
+		if (ann.values == null) return;
+		for (int i = 0; i + 1 < ann.values.size(); i += 2) {
+			if (key.equals(ann.values.get(i))) {
+				ann.values.remove(i + 1);
+				ann.values.remove(i);
+				return;
+			}
+		}
+	}
+
 	/** The annotations an attribute holds: one annotation, or an array of them; none for anything else. */
 	public static List<AnnotationNode> list(Object value) {
 		List<AnnotationNode> ret = new ArrayList<>();
