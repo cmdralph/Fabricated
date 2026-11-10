@@ -2076,16 +2076,19 @@ class PipelineTest {
 		String biomeModifier = "data/tectonic/neoforge/biome_modifier/desert_decorations.json";
 		String structureModifier = "data/tectonic/neoforge/structure_modifier/swamp_structures.json";
 		// MODIFIER-2: and its Forge build's, which Forge 47 to 66 apply from any jar, gated by Forge's conditions or in a
-		// pack overlay's folder alike.
+		// pack overlay's folder alike; MODIFIER-3: two of them, which must not turn into one object.
 		String forgeBiomeModifier = "data/tectonic/forge/biome_modifier/desert_decorations.json";
-		String forgeStructureModifier = "increased_height/data/tectonic/forge/structure_modifier/swamp_structures.json";
+		String otherForgeBiomeModifier = "increased_height/data/tectonic/forge/biome_modifier/vanilla_desert_well_removal.json";
+		String forgeStructureModifier = "data/tectonic/forge/structure_modifier/swamp_structures.json";
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path tectonic = TestJars.create().fabricModJson(TestJars.modJson("tectonic", "1.0", ""))
 				.text(biomeModifier, "{\"type\": \"neoforge:add_features\", \"biomes\": \"#c:is_desert\", \"features\": \"tectonic:bush\", \"step\": \"vegetal_decoration\"}")
 				.text(structureModifier, "{\"type\": \"neoforge:add_spawns\"}")
 				.text(forgeBiomeModifier, "{\"forge:conditions\": [{\"type\": \"forge:mod_loaded\", \"modid\": \"tectonic\"}], \"type\": \"forge:add_features\","
 						+ " \"biomes\": \"#forge:is_desert\", \"features\": \"tectonic:bush\", \"step\": \"vegetal_decoration\"}")
-				.text(forgeStructureModifier, "{\"type\": \"forge:add_spawns\"}")
+				.text(otherForgeBiomeModifier, "{\"type\": \"forge:remove_features\", \"biomes\": \"#forge:is_desert\", \"features\": \"minecraft:desert_well\","
+						+ " \"steps\": \"surface_structures\"}")
+				.text(forgeStructureModifier, "{\"type\": \"forge:none\"}")
 				.text(modifier, "{\"neoforge:conditions\": [{\"type\": \"tectonic:config\"}], \"type\": \"lithostitched:add_features\"}")
 				.text(plain, "{\"amplitudes\": [1.0]}")
 				.text(builtinMetadata, "{\"pack\": {\"pack_format\": 48}, \"neoforge:overlays\": {\"entries\": [{\"directory\": \"increased_height\","
@@ -2102,9 +2105,13 @@ class PipelineTest {
 			assertEquals(Map.of("type", "neoforge:add_features", "biomes", List.of(), "features", List.of(), "step", "vegetal_decoration"),
 					Json.parseObject(overlay.readText(biomeModifier)), "the NeoForge build's biome modifier is turned off");
 			assertEquals(Map.of("type", "neoforge:clear_spawns", "structures", List.of()), Json.parseObject(overlay.readText(structureModifier)));
-			// Forge's none, which every Forge version has for both, so the mod's Fabric code alone adds its features.
-			assertEquals(Map.of("type", "forge:none"), Json.parseObject(overlay.readText(forgeBiomeModifier)), "the Forge build's biome modifier is turned off");
-			assertEquals(Map.of("type", "forge:none"), Json.parseObject(overlay.readText(forgeStructureModifier)));
+			// As Forge's modifier every Forge version has, over nothing, each file one: Forge's none is one instance, which a
+			// registry takes once (Forge 47's Fabric API and 26.1.2's game refused the second); the mod's Fabric code alone
+			// adds its features.
+			Map<String, Object> off = Map.of("type", "forge:add_features", "biomes", List.of(), "features", List.of(), "step", "vegetal_decoration");
+			assertEquals(off, Json.parseObject(overlay.readText(forgeBiomeModifier)), "the Forge build's biome modifier is turned off");
+			assertEquals(off, Json.parseObject(overlay.readText(otherForgeBiomeModifier)), "and its second one, in an overlay's folder");
+			assertNull(overlay.read(forgeStructureModifier), "Forge has no structure modifier but its one none: the jar's stays");
 		}
 		// PROVIDER-3: its container shows its files as NeoForge reads them, to mods reading them through it (Forgified
 		// Fabric API's resource loader), from a copy of its jar: the jar itself is left as it is.
@@ -2453,6 +2460,43 @@ class PipelineTest {
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("barrel")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
 		assertTrue(row.detail().contains("obfuscated names") && row.detail().contains("net.minecraft.class_4184"), row.detail());
+	}
+
+	@Test
+	void aModWhoseMixinsAreOfANewerJavaThanTheGamesIsDisabled(@TempDir Path game) throws Exception {
+		// JAVA-1: Ledger 1.3.18's classes are Java 21's and its depends names no Java; Mixin made LivingEntity a Java 21
+		// class, which Forge 47's Java 17 couldn't load. So would a mod whose entrypoint is a newer Java's. A config with
+		// a plugin may leave such a mixin out, as lattice's does for Minecraft versions it isn't for: its mod loads.
+		int running = Runtime.version().feature();
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path ledger = TestJars.create().fabricModJson(TestJars.modJson("ledger", "1.0", "\"mixins\":[\"ledger.mixins.json\"]"))
+				.text("ledger.mixins.json", "{\"required\":true,\"package\":\"com.ledger.mixin\",\"mixins\":[\"LivingEntityMixin\"]}")
+				.bytes("com/ledger/mixin/LivingEntityMixin.class", newerJava(mixinClass("com/ledger/mixin/LivingEntityMixin", TARGET, "tick")))
+				.write(mods.resolve("ledger.jar"));
+		Path started = TestJars.create().fabricModJson(TestJars.modJson("started", "1.0", "\"entrypoints\":{\"main\":[\"com.started.Main\"]}"))
+				.bytes("com/started/Main.class", newerJava(mixinClass("com/started/Main", TARGET, "tick")))
+				.write(mods.resolve("started.jar"));
+		Path lattice = TestJars.create().fabricModJson(TestJars.modJson("lattice", "1.0", "\"mixins\":[\"lattice.mixins.json\"]"))
+				.text("lattice.mixins.json", "{\"required\":true,\"package\":\"com.lattice.mixin\",\"plugin\":\"com.lattice.Plugin\","
+						+ "\"mixins\":[\"ThingMixin\"]}")
+				.bytes("com/lattice/mixin/ThingMixin.class", newerJava(mixinClass("com/lattice/mixin/ThingMixin", TARGET, "tick")))
+				.write(mods.resolve("lattice.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(ledger, started, lattice), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		assertEquals(List.of("lattice"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		for (String disabled : List.of("ledger", "started")) {
+			Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals(disabled)).findFirst().orElseThrow();
+			assertEquals(Report.Status.DISABLED, row.status());
+			assertTrue(row.detail().contains("is a class of Java " + (running + 1)) && row.detail().contains("Java " + running + " can't load"), row.detail());
+		}
+	}
+
+	/** A class file made one of the Java after the running one. */
+	private static byte[] newerJava(byte[] data) {
+		int major = Runtime.version().feature() + 45;
+		data[6] = (byte) (major >> 8);
+		data[7] = (byte) major;
+		return data;
 	}
 
 	@Test
