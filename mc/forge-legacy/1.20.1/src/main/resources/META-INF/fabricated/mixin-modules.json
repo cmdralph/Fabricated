@@ -21,6 +21,7 @@
     "FluidTypeMixin": [],
     "ForgeGuiHudSeamsMixin": [],
     "ForgeRegistryEntryAddedMixin": ["fabric-registry-sync-v0"],
+    "ForgeRegistryRekeyMixin": [],
     "GameDataFreezeMixin": [],
     "GuiHudSeamsMixin": [],
     "IngredientForgeNetworkMixin": ["fabric-recipe-api-v1"],

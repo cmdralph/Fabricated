@@ -16,6 +16,7 @@
     "NamespacedWrapperAliasMixin",
     "NamespacedWrapperEntryAddedMixin",
     "ForgeRegistryEntryAddedMixin",
+    "ForgeRegistryRekeyMixin",
     "BuiltInRegistriesFreezeMixin",
     "BuiltInRegistriesInvoker",
     "BuiltInRegistriesValidateMixin",
