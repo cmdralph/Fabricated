@@ -22,6 +22,7 @@
     "ForgeLayeredDrawVanillaLayersMixin": [],
     "ForgePayloadEncodeMixin": ["fabric-networking-api-v1"],
     "ForgeRegistryEntryAddedMixin": ["fabric-registry-sync-v0"],
+    "ForgeRegistryRekeyMixin": [],
     "GameDataFreezeMixin": [],
     "IngredientNetworkCodecMixin": [],
     "LayeredDrawLayersAccessor": [],
