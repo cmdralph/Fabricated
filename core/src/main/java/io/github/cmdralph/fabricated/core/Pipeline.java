@@ -564,7 +564,7 @@ public final class Pipeline {
 	/** The result, once its phases' times are in its report. */
 	private Result timed(Result result) {
 		phases.end("assembly");
-		report.line(LaunchPhases.SECTION, "Fabric mods: " + phases + " (" + phases.totalMillis() + " ms)");
+		report.line(LaunchPhases.SECTION, "Fabric mods: " + phases + " (" + phases.totals() + ")");
 		return result;
 	}
 
