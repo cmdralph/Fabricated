@@ -195,8 +195,8 @@ Forge, the advanced server reaches its world on Forge 61, and the others stop as
 runs, 38 reach their world; the advanced servers start on Forge 52, 61, 65 and 66 (failing only CORPUS-113, the
 ingredient checks Polymer's codec fails, CORPUS-114, and REG-13 on Forge 66), and the advanced clients reach their worlds
 on Forge 61, 65 and 66, and on Forge 52 and NeoForge 1.21.1 wait on Origins' screen (CORPUS-66). Forge 47's and Forge 64's
-advanced runs stop on MODIFIER-2's no-op modifier registered twice, and Forge 47's server on a class built for Java 21
-(rows below). Some clients with the main corpus don't exit within the harness's limit (NeoForge 1.21.1, 26.2 and 26.3,
+advanced runs stopped on MODIFIER-2's no-op modifier registered twice (fixed since, MODIFIER-3), and Forge 47's server on
+Ledger's mixin built for Java 21 (fixed since, JAVA-1; rows below). Some clients with the main corpus don't exit within the harness's limit (NeoForge 1.21.1, 26.2 and 26.3,
 Forge 52): on 26.2 and 26.3 Xaero's World Map's world unload handler deadlocks with the integrated server's stop
 (CORPUS-48, the mod's).
 
