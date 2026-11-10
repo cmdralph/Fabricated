@@ -195,7 +195,6 @@ jobs:
           path: |
             dist/
             notes.md
-            docs/CHANGELOG.md
           if-no-files-found: error
       - name: ${{ needs.pin.outputs.mode == 'dry-run' && 'Show the release' || 'Create the release' }}
         env:
@@ -235,7 +234,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      # The script from this workflow's commit, the jars and the changelog from the release job.
+      # The script from this workflow's commit, the jars and the notes from the release job.
       - uses: actions/checkout@v4
         with:
           sparse-checkout: ci
@@ -252,6 +251,6 @@ jobs:
         run: |
           set -euo pipefail
           (cd release/dist && sha256sum --check --strict --quiet SHA256SUMS.txt)
-          args=(release/docs/CHANGELOG.md release/dist/*.jar)
+          args=(release/notes.md release/dist/*.jar)
           [ "$MODE" = publish ] || args=(--dry-run "${args[@]}")
           python3 -I ci/curseforge.py "${args[@]}"
