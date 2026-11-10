@@ -3,6 +3,25 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: Turned-off Forge modifiers kept apart, mods built for a newer Java disabled, record component names on SRG (MODIFIER-3, JAVA-1, REMAP-5)
+
+- **MODIFIER-3** (P0), fixed: MODIFIER-2 made each of a Fabric jar's Forge biome modifiers Forge's `forge:none`, one
+  object, so YUNG's Extras' three put it under three names and Forge 47's and 64's registries refused the second. Each
+  is now Forge's `add_features` into no biome, a new object for each file. Forge has no structure modifier that changes
+  nothing but `forge:none`, so a Fabric jar's Forge structure modifiers stay as they are (MODIFIER-4, open).
+- **JAVA-1** (P0), fixed: Ledger's 1.20.1 jar is built for Java 21, and Mixin raised `LivingEntity` to its mixin's
+  class version, which Forge 47's Java 17 can't load. A Fabric mod whose entrypoint classes, or the mixins of a config
+  without a plugin, are of a newer Java than the game's is now not loaded, with the Java it needs.
+- **REMAP-5** (P1), fixed: Intermediary gives a record component's field and its accessor one name, which SRG names
+  apart, so Bobby's accessor of `OptionInstance$IntRange` kept its intermediary name on Forge 47 and its entrypoint
+  failed. A selector's descriptor now picks the member where the name alone maps to two.
+- **BIOME-6** (open): BCLib sets a final field of `BiomeGenerationSettings` that Fabric API's biome module's access
+  widener opens on Fabric, and Forge 47's native module doesn't; it now stops the Forge 47 advanced corpus.
+- Verified: the core unit tests (558); CI's script tests and the mixin inventory; Forge 47, 52 and 64 build. Locally a
+  Forge 64 advanced server starts, failing only the ingredient checks (CORPUS-114); the Forge 47 advanced server, with
+  Ledger disabled, and client, with Bobby's accessor applied, load their registries and create their worlds, then stop
+  on BIOME-6; a Forge 52 advanced server is as before.
+
 ## 2026-11-10: The v0.6.0-beta.2 release notes and version
 
 - **Fabricated 0.6.0-beta.2** adds Minecraft 1.21.1 on Forge (Forge 52), runs one test suite on every loader and
