@@ -2465,27 +2465,38 @@ class PipelineTest {
 	@Test
 	void aModWhoseMixinsAreOfANewerJavaThanTheGamesIsDisabled(@TempDir Path game) throws Exception {
 		// JAVA-1: Ledger 1.3.18's classes are Java 21's and its depends names no Java; Mixin made LivingEntity a Java 21
-		// class, which Forge 47's Java 17 couldn't load. A mixin of the running Java loads as before.
+		// class, which Forge 47's Java 17 couldn't load. So would a mod whose entrypoint is a newer Java's. A config with
+		// a plugin may leave such a mixin out, as lattice's does for Minecraft versions it isn't for: its mod loads.
 		int running = Runtime.version().feature();
-		byte[] newer = mixinClass("com/ledger/mixin/LivingEntityMixin", TARGET, "tick");
-		newer[6] = (byte) ((running + 45) >> 8);
-		newer[7] = (byte) (running + 45);
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path ledger = TestJars.create().fabricModJson(TestJars.modJson("ledger", "1.0", "\"mixins\":[\"ledger.mixins.json\"]"))
 				.text("ledger.mixins.json", "{\"required\":true,\"package\":\"com.ledger.mixin\",\"mixins\":[\"LivingEntityMixin\"]}")
-				.bytes("com/ledger/mixin/LivingEntityMixin.class", newer)
+				.bytes("com/ledger/mixin/LivingEntityMixin.class", newerJava(mixinClass("com/ledger/mixin/LivingEntityMixin", TARGET, "tick")))
 				.write(mods.resolve("ledger.jar"));
-		Path current = TestJars.create().fabricModJson(TestJars.modJson("current", "1.0", "\"mixins\":[\"current.mixins.json\"]"))
-				.text("current.mixins.json", "{\"required\":true,\"package\":\"com.current.mixin\",\"mixins\":[\"ThingMixin\"]}")
-				.bytes("com/current/mixin/ThingMixin.class", mixinClass("com/current/mixin/ThingMixin", TARGET, "tick"))
-				.write(mods.resolve("current.jar"));
-		Pipeline.Result result = Pipeline.run(input(game, List.of(ledger, current), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		Path started = TestJars.create().fabricModJson(TestJars.modJson("started", "1.0", "\"entrypoints\":{\"main\":[\"com.started.Main\"]}"))
+				.bytes("com/started/Main.class", newerJava(mixinClass("com/started/Main", TARGET, "tick")))
+				.write(mods.resolve("started.jar"));
+		Path lattice = TestJars.create().fabricModJson(TestJars.modJson("lattice", "1.0", "\"mixins\":[\"lattice.mixins.json\"]"))
+				.text("lattice.mixins.json", "{\"required\":true,\"package\":\"com.lattice.mixin\",\"plugin\":\"com.lattice.Plugin\","
+						+ "\"mixins\":[\"ThingMixin\"]}")
+				.bytes("com/lattice/mixin/ThingMixin.class", newerJava(mixinClass("com/lattice/mixin/ThingMixin", TARGET, "tick")))
+				.write(mods.resolve("lattice.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(ledger, started, lattice), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
 
-		assertEquals(List.of("current"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
-		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("ledger")).findFirst().orElseThrow();
-		assertEquals(Report.Status.DISABLED, row.status());
-		assertTrue(row.detail().contains("com.ledger.mixin.LivingEntityMixin is a class of Java " + (running + 1))
-				&& row.detail().contains("Java " + running + " can't load"), row.detail());
+		assertEquals(List.of("lattice"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		for (String disabled : List.of("ledger", "started")) {
+			Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals(disabled)).findFirst().orElseThrow();
+			assertEquals(Report.Status.DISABLED, row.status());
+			assertTrue(row.detail().contains("is a class of Java " + (running + 1)) && row.detail().contains("Java " + running + " can't load"), row.detail());
+		}
+	}
+
+	/** A class file made one of the Java after the running one. */
+	private static byte[] newerJava(byte[] data) {
+		int major = Runtime.version().feature() + 45;
+		data[6] = (byte) (major >> 8);
+		data[7] = (byte) major;
+		return data;
 	}
 
 	@Test

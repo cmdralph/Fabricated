@@ -272,6 +272,8 @@ public final class ModTranslator {
 				// Fabric ASM's enum additions, as enum mixins of a config of their own (CORPUS-80).
 				List<MixinEntry> generatedConfigs = earlyRisers(candidate, files, classEntries, overlay, classes, findings,
 						table != null ? table::mapClass : UnaryOperator.identity());
+				String newerEntrypoint = newerJavaEntrypoint(candidate.metadata(), files);
+				if (newerEntrypoint != null) throw newerJava("its entrypoint " + newerEntrypoint);
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files, classEntries, overlay, findings,
 						installedClasses, enumEntries, enumTargets, classes, bridges, notes, widened, generatedConfigs);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
@@ -700,12 +702,7 @@ public final class ModTranslator {
 			configs.put(entry.config(), config);
 			refmaps.put(entry.config(), refmap);
 			String newer = newerJavaMixin(config, translated);
-			if (newer != null) {
-				int running = Runtime.version().feature();
-				throw new TranslationException("Built for a newer Java: its mixin " + newer + ", and Mixin makes the game class it changes a class"
-						+ " of that Java too, which this game's Java " + running + " can't load", "Install the mod's build for Java " + running
-						+ ", or run the game on the Java the mod needs.");
-			}
+			if (newer != null) throw newerJava("its mixin " + newer + ", and Mixin makes the game class it changes a class of that Java too");
 			if (env.namespace() == Namespace.OFFICIAL) {
 				String intermediary = intermediaryTarget(config, classes);
 				if (intermediary != null) {
@@ -1896,17 +1893,47 @@ public final class ModTranslator {
 	 * A config's first mixin of this side whose class file is of a newer Java than the game runs, named with that Java;
 	 * null for none (JAVA-1). Mixin raises the class version of a class it changes to its mixin's, and the JVM then can't
 	 * load that class: Ledger 1.3.18 for 1.20.1, built for Java 21 without saying so in its {@code depends}, stopped a
-	 * Forge 47 server on Java 17 as {@code LivingEntity} loaded. Read from the class file's header, which every Java's
-	 * class files have, ASM's or not.
+	 * Forge 47 server on Java 17 as {@code LivingEntity} loaded. A config with a plugin is passed over, as the plugin may
+	 * leave such mixins out: lattice 1.3, which Axiom nests, is a Java 17 mod whose plugin applies its Java 21 mixins on
+	 * Minecraft 1.20.5 and later only.
 	 */
 	private String newerJavaMixin(MixinConfigFile config, FileView mod) throws ArchiveException {
+		if (config.plugin() != null) return null;
 		for (String mixin : config.mixinsFor(env.clientSide())) {
-			byte[] data = mod.read(config.internalName(mixin) + ".class");
-			if (data == null || data.length < 8) continue;
-			int java = ((data[6] & 0xFF) << 8 | data[7] & 0xFF) - 44;
-			if (java > Runtime.version().feature()) return config.internalName(mixin).replace('/', '.') + " is a class of Java " + java;
+			String newer = newerJavaClass(config.internalName(mixin), mod);
+			if (newer != null) return newer;
 		}
 		return null;
+	}
+
+	/** The mod's first entrypoint class of a newer Java than the game runs, named with that Java; null for none (JAVA-1). */
+	private static String newerJavaEntrypoint(FabricModMetadata md, FileView mod) throws ArchiveException {
+		for (List<EntrypointSpec> specs : md.entrypoints().values()) {
+			for (EntrypointSpec spec : specs) {
+				int member = spec.value().indexOf("::");
+				String newer = newerJavaClass((member < 0 ? spec.value() : spec.value().substring(0, member)).replace('.', '/'), mod);
+				if (newer != null) return newer;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * A class of the mod whose class file is of a newer Java than the game runs, as "name is a class of Java N"; null
+	 * otherwise. Read from the class file's header, which every Java's class files have, ASM's or not.
+	 */
+	private static String newerJavaClass(String internalName, FileView mod) throws ArchiveException {
+		byte[] data = mod.read(internalName + ".class");
+		if (data == null || data.length < 8) return null;
+		int java = ((data[6] & 0xFF) << 8 | data[7] & 0xFF) - 44;
+		return java > Runtime.version().feature() ? internalName.replace('/', '.') + " is a class of Java " + java : null;
+	}
+
+	/** Why a mod built for a newer Java than the game runs is disabled (JAVA-1). */
+	private static TranslationException newerJava(String what) {
+		int running = Runtime.version().feature();
+		return new TranslationException("Built for a newer Java: " + what + ", which this game's Java " + running + " can't load",
+				"Install the mod's build for Java " + running + ", or run the game on the Java the mod needs.");
 	}
 
 	/** Reads classes as the mod will load: the game's and installed jars' first, then the mod's; memoised, null when absent. */
