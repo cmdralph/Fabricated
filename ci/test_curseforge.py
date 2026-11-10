@@ -44,26 +44,14 @@ VERSIONS = [
     {"id": 9638, "gameVersionTypeID": 75208, "name": "Client", "slug": "client"},
     {"id": 9639, "gameVersionTypeID": 75208, "name": "Server", "slug": "server"},
 ]
-CHANGELOG = """# Fabricated: changelog
-
-## 0.6.0 (2026-12-01)
-
-The release.
-
-## 0.6.0-beta.2 (2026-11-20)
+NOTES = """# Fabricated v0.6.0-beta.2
 
 - Forge 52 for Minecraft 1.21.1.
 - CurseForge deployment.
 
-### Fixes
+## Fixes
 
 - One.
-
-## v0.6.0-beta (2026-11-09)
-
-- The beta.
-
-## 0.5.1-alpha (2026-10-01)
 """
 
 
@@ -112,15 +100,16 @@ class Pure(unittest.TestCase):
                 curseforge.java_version(minecraft)
 
     def test_changelog(self):
-        self.assertEqual(curseforge.changelog(CHANGELOG, "0.6.0-beta.2"),
-                         "- Forge 52 for Minecraft 1.21.1.\n- CurseForge deployment.\n\n### Fixes\n\n- One.")
-        self.assertEqual(curseforge.changelog(CHANGELOG, "0.6.0"), "The release.")
-        self.assertEqual(curseforge.changelog(CHANGELOG, "0.6.0-beta"), "- The beta.")
-        self.assertIsNone(curseforge.changelog(CHANGELOG, "0.5.1-alpha"), "an empty section is none")
-        self.assertIsNone(curseforge.changelog(CHANGELOG, "0.5.1"))
-        self.assertIsNone(curseforge.changelog(CHANGELOG, "6.0"))
-        self.assertIsNone(curseforge.changelog("## 10.6.0\n\nx\n", "0.6.0"))
-        self.assertIsNone(curseforge.changelog("Text naming 0.6.0 outside a heading.\n", "0.6.0"))
+        self.assertEqual(curseforge.changelog(NOTES, "0.6.0-beta.2"),
+                         "- Forge 52 for Minecraft 1.21.1.\n- CurseForge deployment.\n\n## Fixes\n\n- One.")
+        self.assertEqual(curseforge.changelog("\n# Fabricated 0.6.0\n\nThe release.\n", "0.6.0"), "The release.")
+        self.assertIsNone(curseforge.changelog(NOTES, "0.6.0-beta"))
+        self.assertIsNone(curseforge.changelog(NOTES, "0.6.0"))
+        self.assertIsNone(curseforge.changelog(NOTES, "6.0-beta.2"))
+        self.assertIsNone(curseforge.changelog("# Fabricated v0.6.0-beta\n\n", "0.6.0-beta"), "a title alone is none")
+        self.assertIsNone(curseforge.changelog("# 10.6.0\n\nx\n", "0.6.0"))
+        self.assertIsNone(curseforge.changelog("## 0.6.0\n\nx\n", "0.6.0"), "a section isn't a title")
+        self.assertIsNone(curseforge.changelog("## Builds\n\n# Fabricated 0.6.0\n", "0.6.0"), "the title is first")
 
     def test_resolve(self):
         def ids(loader, minecraft):
@@ -150,8 +139,8 @@ class Uploads(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.dir = Path(directory.name)
-        self.changelog = self.dir / "CHANGELOG.md"
-        self.changelog.write_text(CHANGELOG, encoding="utf-8")
+        self.notes = self.dir / "notes.md"
+        self.notes.write_text(NOTES, encoding="utf-8")
         self.jars = []
         for name in ("fabricated-neoforge-0.6.0-beta.2+mc26.3.jar", "fabricated-forge-0.6.0-beta.2+mc1.20.1.jar"):
             (self.dir / name).write_bytes(b"PK\x03\x04 " + name.encode())
@@ -167,7 +156,7 @@ class Uploads(unittest.TestCase):
         with mock.patch.dict(curseforge.os.environ, env, clear=True), \
                 mock.patch.object(curseforge.urllib.request, "urlopen", urlopen or fail), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-            code = curseforge.main([*args, str(self.changelog), *map(str, self.jars)])
+            code = curseforge.main([*args, str(self.notes), *map(str, self.jars)])
         return code, out.getvalue()
 
     def test_dry_run_without_token(self):
@@ -194,7 +183,7 @@ class Uploads(unittest.TestCase):
         self.assertNotIn("123456", out)
 
     def test_dry_run_warns_and_publish_fails_on_what_is_missing(self):
-        self.changelog.write_text("## 0.5.1-alpha\n\n- Old.\n", encoding="utf-8")
+        self.notes.write_text("# Fabricated v0.5.1-alpha\n\n- Old.\n", encoding="utf-8")
         types = [t for t in TYPES if t["slug"] != "minecraft-26-3"]
         urlopen = mock.Mock(side_effect=lambda r, timeout: answer(
             types if r.full_url.endswith("/version-types") else VERSIONS))
@@ -202,7 +191,7 @@ class Uploads(unittest.TestCase):
         code, out = self.main(["--dry-run"], env, urlopen)
         self.assertEqual(code, 0, out)
         self.assertIn("warning: ", out)
-        self.assertIn("no '## ' section", out)
+        self.assertIn("doesn't open with a '# ' title naming 0.6.0-beta.2", out)
         self.assertIn("no game version 26.3", out)
         code, out = self.main([], env, urlopen)
         self.assertEqual(code, 1, out)
@@ -226,7 +215,7 @@ class Uploads(unittest.TestCase):
         body = posts[0].data.decode("latin-1")
         metadata = json.loads(body.split('name="metadata"\r\n\r\n', 1)[1].split("\r\n", 1)[0])
         self.assertEqual(metadata, {
-            "changelog": "- Forge 52 for Minecraft 1.21.1.\n- CurseForge deployment.\n\n### Fixes\n\n- One.",
+            "changelog": "- Forge 52 for Minecraft 1.21.1.\n- CurseForge deployment.\n\n## Fixes\n\n- One.",
             "changelogType": "markdown", "displayName": "Fabricated 0.6.0-beta.2 for NeoForge 26.3",
             "gameVersions": [13003, 10150, 13500, 9638, 9639], "releaseType": "beta"})
         self.assertIn('filename="fabricated-neoforge-0.6.0-beta.2+mc26.3.jar"', body)
