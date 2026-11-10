@@ -1467,11 +1467,11 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 1.20.1 | client 6 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.20.1 | mixins 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-item.mixins.json` | `io.github.cmdralph.fabricated.forge.item.mixin` | 1.20.1 | mixins 2 | 1 | — | none |
-| `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.20.1 | mixins 29, client 4 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.20.1 | mixins 30, client 4 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.20.1 | client 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.20.1 | mixins 7 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.20.1 | client 4 | 1 | — | none |
-| `mc/forge-legacy/1.20.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.20.1 | mixins 10, client 4 | 1 | — | none |
+| `mc/forge-legacy/1.20.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.20.1 | mixins 11, client 4 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json` | `io.github.cmdralph.fabricated.testmod.frapi.mixin` | 1.20.1 | client 1 | 1 | — | none |
 
 ### `mc/forge-legacy/1.20.1/src/main/resources/fabricated-biome.mixins.json`
@@ -1618,6 +1618,7 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | MobBucketItemBridgeMixin | 1.20.1 (1.20.1) | n.m.world.item.MobBucketItem | no injectors; adds methods fabricated$get$f_151134_; @Shadow getFishType | | | | |
 | mixins | PackRepositorySourcesMixin | mc/forge-shared (1.20.1) | n.m.server.packs.repository.PackRepository | @Inject → fabricated$keepSourcesMutable (a set a Fabric mod made immutable is made mutable again before Forge adds a pack finder, PACK-1); @Shadow f_10497_ | "addPackFinder" remap=false | HEAD | — | default |
 | mixins | PlayerListViewMixin | 1.20.1 (1.20.1) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, as POLY-1 and POLY-2); @Shadow f_11196_ | "getPlayers" | RETURN | — | default |
+| mixins | PoiTypesByStateMixin | 1.20.1 (1.20.1) | n.m.world.entity.ai.village.poi.PoiTypes | @ModifyExpressionValue → fabricated$storingTypes (the map of types by state is a view of Forge's that stores a holder's type, POI-4) | "<clinit>" | INVOKE `L…/GameData;getBlockStatePointOfInterestTypeMap()L…/Map;` remap=false | — | default |
 | client | ParticleEngineProvidersBridgeMixin | 1.20.1 (1.20.1) | n.m.client.particle.ParticleEngine | no injectors; adds methods fabricated$get$f_107293_; @Shadow f_107293_; @Unique fields fabricated$providersById | | | | |
 | client | ExtendedBlockModelDeserializerMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | forge.client.model.ExtendedBlockModelDeserializer | @WrapOperation → fabricated$fabricLoader | "deserialize(Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lnet/minecraft/client/renderer/block/model/BlockModel;" | INVOKE `L…/ExtendedBlockModelDeserializer;deserializeGeometry(L…/JsonDeserializationContext;L…/JsonObject;)L…/IUnbakedGeometry;` | — | default |
 | client | GuiHudSeamsMixin | 1.20.1 (1.20.1) | n.m.client.gui.Gui | no injectors; implements HudSeams; adds methods fabricated$startHud, fabricated$start$m_280421_, fabricated$end$m_280421_; @Unique fields fabricated$hudGoesOn | | | | |
@@ -1684,6 +1685,7 @@ Written in Mojang's names; the test mod's jar names them in Intermediary's, its 
 | mixins | MinecraftServerMixin | 1.20.1 (1.20.1) | n.m.server.MinecraftServer | @Inject → fabricatedForgeTest$afterTick (runs Forge 47's half's checks); @Shadow overworld, getLevel, getCommands, getRecipeManager; @Unique fields fabricatedForgeTest$checked | "tickServer" | TAIL | — | default |
 | mixins | MinecraftServerWrapMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.server.MinecraftServer | @WrapMethod → fabricatedForgeTest$wrapTick; @Unique fields fabricatedForgeTest$wrapped | "tickServer" |  | — | default |
 | mixins | MobBucketItemAccessor | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.world.item.MobBucketItem | @Accessor → fabricatedtest$type | "field_7991" remap=false |  | — | default |
+| mixins | PoiTypesAccessor | 1.20.1 (1.20.1) | n.m.world.entity.ai.village.poi.PoiTypes | @Accessor → fabricatedtest$typeByState (typed as vanilla's, holders: POI-4's check) | "TYPE_BY_STATE" |  | — | default |
 | mixins | PotionBrewingAccessor | 1.20.1 (1.20.1) | n.m.world.item.alchemy.PotionBrewing | @Accessor → fabricatedtest$potionMixes | "POTION_MIXES" |  | — | default |
 | mixins | PotionBrewingMixAccessor | 1.20.1 (1.20.1) | n.m.world.item.alchemy.PotionBrewing$Mix | @Accessor → fabricatedtest$from | "field_8962" remap=false |  | — | default |
 | mixins | PotionBrewingMixAccessor | 1.20.1 (1.20.1) | n.m.world.item.alchemy.PotionBrewing$Mix | @Accessor → fabricatedtest$to | "field_8961" remap=false |  | — | default |

@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: Point-of-interest holders a Fabric mod stores kept as the platform's types (POI-4)
+
+- **POI-4** (P0), fixed: BCLib puts vanilla's holders into the map of point-of-interest types by block state, which
+  Forge 47 keeps by type, so a barrel placed in world generation stopped the Forge 47 advanced client. Forge 47's
+  in-game mod has the field hold a view of Forge's map whose writes store a holder's type, so every reader, Forge's
+  own included, finds Forge's values. Forge 47's test mod stores a holder as BCLib does (`forge-legacy-poi-holder`).
+- **LOOT-3** stays open: repairing a mod's own call of a constructor Forge changed needs a pass Fabricated doesn't have.
+- **NET-14** (open): past POI-4 the Forge 47 advanced client joins its world and loses its connection, a custom
+  payload reaching a play handler without Fabric API's networking addon.
+- Verified: CI's script tests and the mixin inventory; Forge 47 builds. Locally on Forge 47 the advanced client's
+  integrated server generates its world and passes its checks; the advanced server, the server and client parts and
+  the server corpus pass, pre-flight leaving Lithium's replacement of the map out (POI-2).
+
 ## 2026-11-10: What the natively shipped Fabric API modules' wideners open, opened (BIOME-6)
 
 - **BIOME-6** (P0), fixed: BCLib sets a final field of `BiomeGenerationSettings` without `@Mutable`, which works on
