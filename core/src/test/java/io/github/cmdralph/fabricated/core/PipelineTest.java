@@ -2076,16 +2076,19 @@ class PipelineTest {
 		String biomeModifier = "data/tectonic/neoforge/biome_modifier/desert_decorations.json";
 		String structureModifier = "data/tectonic/neoforge/structure_modifier/swamp_structures.json";
 		// MODIFIER-2: and its Forge build's, which Forge 47 to 66 apply from any jar, gated by Forge's conditions or in a
-		// pack overlay's folder alike.
+		// pack overlay's folder alike; MODIFIER-3: two of them, which must not turn into one object.
 		String forgeBiomeModifier = "data/tectonic/forge/biome_modifier/desert_decorations.json";
-		String forgeStructureModifier = "increased_height/data/tectonic/forge/structure_modifier/swamp_structures.json";
+		String otherForgeBiomeModifier = "increased_height/data/tectonic/forge/biome_modifier/vanilla_desert_well_removal.json";
+		String forgeStructureModifier = "data/tectonic/forge/structure_modifier/swamp_structures.json";
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path tectonic = TestJars.create().fabricModJson(TestJars.modJson("tectonic", "1.0", ""))
 				.text(biomeModifier, "{\"type\": \"neoforge:add_features\", \"biomes\": \"#c:is_desert\", \"features\": \"tectonic:bush\", \"step\": \"vegetal_decoration\"}")
 				.text(structureModifier, "{\"type\": \"neoforge:add_spawns\"}")
 				.text(forgeBiomeModifier, "{\"forge:conditions\": [{\"type\": \"forge:mod_loaded\", \"modid\": \"tectonic\"}], \"type\": \"forge:add_features\","
 						+ " \"biomes\": \"#forge:is_desert\", \"features\": \"tectonic:bush\", \"step\": \"vegetal_decoration\"}")
-				.text(forgeStructureModifier, "{\"type\": \"forge:add_spawns\"}")
+				.text(otherForgeBiomeModifier, "{\"type\": \"forge:remove_features\", \"biomes\": \"#forge:is_desert\", \"features\": \"minecraft:desert_well\","
+						+ " \"steps\": \"surface_structures\"}")
+				.text(forgeStructureModifier, "{\"type\": \"forge:none\"}")
 				.text(modifier, "{\"neoforge:conditions\": [{\"type\": \"tectonic:config\"}], \"type\": \"lithostitched:add_features\"}")
 				.text(plain, "{\"amplitudes\": [1.0]}")
 				.text(builtinMetadata, "{\"pack\": {\"pack_format\": 48}, \"neoforge:overlays\": {\"entries\": [{\"directory\": \"increased_height\","
@@ -2102,9 +2105,13 @@ class PipelineTest {
 			assertEquals(Map.of("type", "neoforge:add_features", "biomes", List.of(), "features", List.of(), "step", "vegetal_decoration"),
 					Json.parseObject(overlay.readText(biomeModifier)), "the NeoForge build's biome modifier is turned off");
 			assertEquals(Map.of("type", "neoforge:clear_spawns", "structures", List.of()), Json.parseObject(overlay.readText(structureModifier)));
-			// Forge's none, which every Forge version has for both, so the mod's Fabric code alone adds its features.
-			assertEquals(Map.of("type", "forge:none"), Json.parseObject(overlay.readText(forgeBiomeModifier)), "the Forge build's biome modifier is turned off");
-			assertEquals(Map.of("type", "forge:none"), Json.parseObject(overlay.readText(forgeStructureModifier)));
+			// As Forge's modifier every Forge version has, over nothing, each file one: Forge's none is one instance, which a
+			// registry takes once (Forge 47's Fabric API and 26.1.2's game refused the second); the mod's Fabric code alone
+			// adds its features.
+			Map<String, Object> off = Map.of("type", "forge:add_features", "biomes", List.of(), "features", List.of(), "step", "vegetal_decoration");
+			assertEquals(off, Json.parseObject(overlay.readText(forgeBiomeModifier)), "the Forge build's biome modifier is turned off");
+			assertEquals(off, Json.parseObject(overlay.readText(otherForgeBiomeModifier)), "and its second one, in an overlay's folder");
+			assertNull(overlay.read(forgeStructureModifier), "Forge has no structure modifier but its one none: the jar's stays");
 		}
 		// PROVIDER-3: its container shows its files as NeoForge reads them, to mods reading them through it (Forgified
 		// Fabric API's resource loader), from a copy of its jar: the jar itself is left as it is.

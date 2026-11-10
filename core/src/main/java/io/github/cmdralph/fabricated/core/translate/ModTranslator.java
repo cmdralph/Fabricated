@@ -113,11 +113,13 @@ public final class ModTranslator {
 	private static final String NEOFORGE_CONDITIONS = "neoforge:conditions";
 	private static final String REDIRECT = "Lorg/spongepowered/asm/mixin/injection/Redirect;";
 	/**
-	 * A NeoForge or Forge biome or structure modifier, which that loader applies from any jar and Fabric never reads
-	 * (MODIFIER-1, MODIFIER-2): NeoForge's folders, and Forge's, which Forge 47 to 66 read alike (a registry outside
-	 * {@code minecraft}'s namespace in a folder named for it). Each loader reads only its own.
+	 * A NeoForge biome or structure modifier, or a Forge biome modifier, which that loader applies from any jar and Fabric
+	 * never reads (MODIFIER-1, MODIFIER-2): NeoForge's folders, and Forge's, which Forge 47 to 66 read alike (a registry
+	 * outside {@code minecraft}'s namespace in a folder named for it). Each loader reads only its own. Forge's structure
+	 * modifiers stay: Forge's one structure modifier that changes nothing, {@code forge:none}, decodes to one shared
+	 * instance, which a registry refuses under a second name (MODIFIER-3).
 	 */
-	private static final Pattern PLATFORM_MODIFIER = Pattern.compile("(^|.*/)data/[^/]+/(neoforge|forge)/(biome_modifier|structure_modifier)/.+\\.json");
+	private static final Pattern PLATFORM_MODIFIER = Pattern.compile("(^|.*/)data/[^/]+/(neoforge/biome_modifier|neoforge/structure_modifier|forge/biome_modifier)/.+\\.json");
 	/**
 	 * Modifiers of NeoForge's that change nothing, to turn one off with: features added to no biome, spawns cleared from
 	 * no structure. NeoForge's own {@code neoforge:none} is gone from 26.x's biome modifiers and 26.3's structure modifiers.
@@ -125,8 +127,12 @@ public final class ModTranslator {
 	private static final byte[] NO_BIOME_MODIFIER = "{\"type\": \"neoforge:add_features\", \"biomes\": [], \"features\": [], \"step\": \"vegetal_decoration\"}\n"
 			.getBytes(StandardCharsets.UTF_8);
 	private static final byte[] NO_STRUCTURE_MODIFIER = "{\"type\": \"neoforge:clear_spawns\", \"structures\": []}\n".getBytes(StandardCharsets.UTF_8);
-	/** Forge's modifier that changes nothing, which Forge 47 to 66 register as a biome and as a structure modifier. */
-	private static final byte[] NO_FORGE_MODIFIER = "{\"type\": \"forge:none\"}\n".getBytes(StandardCharsets.UTF_8);
+	/**
+	 * Forge's, the same: features added to no biome, a new modifier each file, which Forge 47 to 66 decode alike. Not
+	 * {@code forge:none}, whose one instance a registry refuses under a second name (MODIFIER-3).
+	 */
+	private static final byte[] NO_FORGE_BIOME_MODIFIER = "{\"type\": \"forge:add_features\", \"biomes\": [], \"features\": [], \"step\": \"vegetal_decoration\"}\n"
+			.getBytes(StandardCharsets.UTF_8);
 	/** NeoForge's global loot modifiers: on 1.21.11 those its list (below) names, on 26.x every file. */
 	private static final Pattern LOOT_MODIFIER = Pattern.compile("(^|.*/)data/[^/]+/loot_modifiers/.+\\.json");
 	private static final String LOOT_MODIFIER_LIST = "data/neoforge/loot_modifiers/global_loot_modifiers.json";
@@ -294,8 +300,11 @@ public final class ModTranslator {
 					// cycle). A jar Forge loads as its own mod, a multi-loader jar among them, isn't translated.
 					Matcher modifier = PLATFORM_MODIFIER.matcher(name);
 					if (modifier.matches()) {
-						overlay.put(name, modifier.group(2).equals("forge") ? NO_FORGE_MODIFIER
-								: modifier.group(3).equals("biome_modifier") ? NO_BIOME_MODIFIER : NO_STRUCTURE_MODIFIER);
+						overlay.put(name, switch (modifier.group(2)) {
+							case "forge/biome_modifier" -> NO_FORGE_BIOME_MODIFIER;
+							case "neoforge/biome_modifier" -> NO_BIOME_MODIFIER;
+							default -> NO_STRUCTURE_MODIFIER;
+						});
 						rewritten.add(name);
 						modifiers++;
 						continue;
