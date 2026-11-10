@@ -14,7 +14,6 @@ import java.util.jar.Manifest;
 
 import cpw.mods.jarhandling.JarContents;
 import cpw.mods.jarhandling.JarContentsBuilder;
-import cpw.mods.jarhandling.SecureJar;
 import cpw.mods.modlauncher.Launcher;
 import cpw.mods.modlauncher.api.IModuleLayerManager;
 import net.neoforged.fml.loading.FMLLoader;
