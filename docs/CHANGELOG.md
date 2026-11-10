@@ -248,7 +248,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - Verified locally: Forge 52's and Forge 47's server and client parts, and Forge 66's server part, pass with 0 FAIL;
   without the fixes the Forge 52 runs fail the drop capture check and disable the test mod over its accessors.
 
-## 2026-11-09: Forge 52 at parity (task 3), the security and robustness review (task 5)
+## 2026-11-09: Forge 52 at parity, the security and robustness review
 
 - **Forge 52 (1.21.1)**: ITEM-1, INTERACT-1, FRAPI-11, CFG-4, FUEL-2, LAMBDA-10 and PACK-10 fixed, HUD-5 closed (no
   fault), FLUID-4's hook moved to upstream's point. Most of the code is Forge 47's or Forge 61's, moved into
@@ -277,7 +277,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   Verified locally: the 1.21.1 client part (the armour renderer check failing without the change) and server part,
   the clients with Fabric API on 1.21.11 and 26.1.2, and those Sodium and Iris runs pass.
 
-## 2026-11-09: Injectors into a method NeoForge deprecated for an overload (PRE-20), Biomes O' Plenty and Porting Lib's GUI utilities rechecked (task 4)
+## 2026-11-09: Injectors into a method NeoForge deprecated for an overload (PRE-20), Biomes O' Plenty and Porting Lib's GUI utilities rechecked
 
 - **PRE-20** (P2), fixed: pre-flight disabled Figura on the 1.21.1 advanced corpus client (extended run 42624614743).
   NeoForge 21.1 deprecated `HumanoidArmorLayer.renderArmorPiece` for an overload that also takes the limb animation's
@@ -298,20 +298,21 @@ One entry per working session, newest first: what changed, and how it was verifi
   the tooltip components itself) stay disabled; no generic repair keeps their hooks' meaning, and both have NeoForge or
   Forge builds (Biomes O' Plenty's, Create's). The corpus baseline's rows say so.
 
-## 2026-11-08: The v0.6.0-beta release: nested jars bounded per launch (SEC-5), the ship criteria audited, the release notes, the runs that held on the release heads gated (task 7)
+## 2026-11-08: The v0.6.0-beta release: nested jars bounded per launch (SEC-5), the ship criteria audited, the release notes, the runs that held on the release heads gated
 
-- **SEC-5** (P3), reopened and fixed: task 6 closed it as won't fix, but the beta's stability bar asks that the limits
-  on nested jars hold across all the jars of a launch (item 4), so the decision didn't stand. All the top-level jars of
-  a launch now share one budget for what their nested jars extract to the cache, eight top-level jars' worth (8192
-  jars, and 4 GiB with the default `maxTotalUncompressedBytes`), and each keeps its own (1024 jars and that limit). A
-  nested jar past either is rejected, the report naming the limit, and takes nothing from either; before, a rejected
-  jar still counted against its top-level jar. The size is several times a large pack's: a top-level jar's own budget
-  was already far above any mod's, Fabric API nesting one jar per module. `CandidateScannerTest` covers fourteen jars
-  each within its own budget, of whose libraries the launch's takes twelve. SEC-5 moves to the top of `FINDINGS.md`.
-- **Task 6 on the Forge branches**, done: #317 into `forge` (`e36f420`) and #318 into `forge-legacy` (`b76710d`), synced
-  from #316: the loaders on the lazy mapping table and the in-game mod found by its recorded hash, the discovery
-  phases' timings in the report, CI-3 in their smoke scripts and CI-4's pins on Forge 61 to 66. Verified in PR runs
-  42529794259 and 42529805694 and extended runs 42529812463 and 42529814940: every job passed.
+- **SEC-5** (P3), reopened and fixed: the optimization pass closed it as won't fix, but the beta's stability bar asks
+  that the limits on nested jars hold across all the jars of a launch (item 4), so the decision didn't stand. All the
+  top-level jars of a launch now share one budget for what their nested jars extract to the cache, eight top-level jars'
+  worth (8192 jars, and 4 GiB with the default `maxTotalUncompressedBytes`), and each keeps its own (1024 jars and that
+  limit). A nested jar past either is rejected, the report naming the limit, and takes nothing from either; before, a
+  rejected jar still counted against its top-level jar. The size is several times a large pack's: a top-level jar's own
+  budget was already far above any mod's, Fabric API nesting one jar per module. `CandidateScannerTest` covers fourteen
+  jars each within its own budget, of whose libraries the launch's takes twelve. SEC-5 moves to the top of
+  `FINDINGS.md`.
+- **The optimization pass on the Forge branches**, done: #317 into `forge` (`e36f420`) and #318 into `forge-legacy`
+  (`b76710d`), synced from #316: the loaders on the lazy mapping table and the in-game mod found by its recorded hash,
+  the discovery phases' timings in the report, CI-3 in their smoke scripts and CI-4's pins on Forge 61 to 66. Verified
+  in PR runs 42529794259 and 42529805694 and extended runs 42529812463 and 42529814940: every job passed.
 - **The ship criteria audited** against the release heads before this change (`main`'s extended run 42527530813, the
   Forge branches' above): every gate passed on every version, and no P0 or P1 is open. The informational runs' misses
   are the corpora's: on 1.21.1 the advanced client stays on Origins' screen (CORPUS-66) and the corpus client hung as
@@ -344,14 +345,14 @@ One entry per working session, newest first: what changed, and how it was verifi
   compile classpath, which check nothing.
 - **`COMPATIBILITY.md` and the Forge tables matched to CI** (criterion 4): 1.21.11's loot API row (v2 loads too),
   1.21.1's rows for 0.116's deprecated and client-only modules, the native module count on 1.21.1 in the roadmap (19:
-  particles and key bindings), the viewers' run (a gate since task 5), the corpus state on the release head; on the
-  Forge branches, Forge 47's resource conditions and renderer API rows (they load whole: the warnings are repairs) and
-  the overlay's flicker fix, which applies on Forge 47 too.
+  particles and key bindings), the viewers' run (a gate since the compatibility work), the corpus state on the release
+  head; on the Forge branches, Forge 47's resource conditions and renderer API rows (they load whole: the warnings are
+  repairs) and the overlay's flicker fix, which applies on Forge 47 too.
 - **Verified:** core's tests (`./gradlew -Pfabricated.coreOnly=true :core:test`); the gates on the final tree in an
   extended run on each branch's pull request.
 - **Next:** the draft release for the owner to check and publish.
 
-## 2026-11-08: Cached launches measured and shortened, the cache shared between launches, library modules the platform lacks, the Forge mixins inventoried (task 6)
+## 2026-11-08: Cached launches measured and shortened, the cache shared between launches, library modules the platform lacks, the Forge mixins inventoried
 
 - **Launch timings:** discovery's log line names how long each phase took (the in-game mod, platform packages, NeoForge
   mods, providers, the vanilla game, the pipeline, the hand-over), and the report has a "Launch timings" section with
@@ -405,13 +406,13 @@ One entry per working session, newest first: what changed, and how it was verifi
   entity near spawn left the check nothing to see (in both clients the terrain block was at the chest's place). The
   chest now goes behind the player. PROVIDER-19's miss on the client with Forgified Fabric API, which has that test
   mod too, is likely the same. CI-5 moves to `FINDINGS.md`.
-- **Task 4's hand-offs:** `MIXINS.md` has the Forge branches' configs, the test mods' included (84 mixins in 24
-  configs on `forge`, 85 in 13 on `forge-legacy`), generated from their sources in its per-config tables' format, so
-  `scripts/check-mixin-inventory.py` passes on each branch. Found on the way: the Forge configs but one leave
-  `overwrites.requireAnnotations` unset (**MIX-3**, open). **PERF-4** (a Fabric model's first throw in a chunk
-  section held a Forge 47 worker about 1.4 s): Indigo builds vanilla's crash report for the throw, which gathers the
-  system's details, before Fabricated's guard sees it; Forge 61 to 66 guard Indigo's own call into the model. Decided:
-  no change before the beta, as it comes with a broken model and rule 8 pays it once per model class.
+- **Hand-offs from the renderer API work:** `MIXINS.md` has the Forge branches' configs, the test mods' included (84
+  mixins in 24 configs on `forge`, 85 in 13 on `forge-legacy`), generated from their sources in its per-config tables'
+  format, so `scripts/check-mixin-inventory.py` passes on each branch. Found on the way: the Forge configs but one leave
+  `overwrites.requireAnnotations` unset (**MIX-3**, open). **PERF-4** (a Fabric model's first throw in a chunk section
+  held a Forge 47 worker about 1.4 s): Indigo builds vanilla's crash report for the throw, which gathers the system's
+  details, before Fabricated's guard sees it; Forge 61 to 66 guard Indigo's own call into the model. Decided: no change
+  before the beta, as it comes with a broken model and rule 8 pays it once per model class.
 - **Cleanup:** access widener records no longer keep the `transitive` flag nothing read. Decided, kept: the
   `fabricapi-overrides` copies between versions (ten of the 19 files are identical copies of four classes, and the
   import script applies each version's to its own import) and the retired config keys, so 0.5 configs don't warn.
@@ -425,11 +426,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   gate on the Fabric builds of Sodium and Iris failed on Sodium's new beta (CI-4); extended run 42524794672 on
   `8f7f353`, with the Fabric builds pinned: every job passed, 26.3's mods included, but 26.1.2's mods (CI-5); PR run
   42526436993 on `66894c7`. CI-5's fix is checked by the PR run and the extended run on #316's last commit.
-- **Next:** the Forge branches' task 6 changes (the shared code by the sync script, their loaders on the lazy mapping
+- **Next:** these changes on the Forge branches (the shared code by the sync script, their loaders on the lazy mapping
   table and the in-game mod found by its recorded hash, the discovery phases' timings, CI-3 in their smoke scripts,
-  CI-4's pins for the difficult mods' Sodium and Iris), then task 7, the release.
+  CI-4's pins for the difficult mods' Sodium and Iris), then the release.
 
-## 2026-11-04: Fabric mods' command argument types and attribute modifications on a client with Forgified Fabric API (PROVIDER-12, PROVIDER-18), CORPUS-48 closed, PRE-19 verified (task 5)
+## 2026-11-04: Fabric mods' command argument types and attribute modifications on a client with Forgified Fabric API (PROVIDER-12, PROVIDER-18), CORPUS-48 closed, PRE-19 verified
 
 - **PROVIDER-12** (P0 for packs with Forgified Fabric API on NeoForge 21.1, 26.1.2 and 26.2 clients with a Fabric mod
   registering its own command argument type; was P2): read in its sources, its command API keeps the argument types
@@ -479,7 +480,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   theirs (`ci/corpus-summary.sh`), and in extended run 41870373636 the Forge 47 corpus server and client moved Puzzles
   Lib's break speed hook to `getDigSpeed`, which Mixin applied with no failure. It moves to `FINDINGS.md`.
 
-## 2026-11-04: SIG-3 verified, Fabric models' level-aware particle sprites on Forge (PART-4), and Forgified Fabric API on Forge 47 (PROVIDER-14 to 16, task 5)
+## 2026-11-04: SIG-3 verified, Fabric models' level-aware particle sprites on Forge (PART-4), and Forgified Fabric API on Forge 47 (PROVIDER-14 to 16)
 
 - **SIG-3 verified** on Forge 61 (`forge` #310's sync): the 1.21.11 client with Fabric API logged "frapi outline
   extraction event OK" and "frapi end extraction event OK" (run 41831625310). It moves to `FINDINGS.md`.
@@ -497,7 +498,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **PART-5** opened (P3 on NeoForge 26.x clients): the same screen effect asks the plain sprite on NeoForge 26.1.2 to
   26.3, whose plans leave upstream's hook out with nothing in its place; on 26.3 NeoForge's own lookup is the reason,
   which the plans don't name. NeoForge's `updateSprite` is level-aware already, so only the screen effect is left.
-  Decision: P3 for task 5 or 6, as the view from inside a block is the only place it shows.
+  Decision: P3, as the view from inside a block is the only place it shows.
 - **Forgified Fabric API on Forge 47** coexists (`forge-legacy` #311): its Forge build for 1.20.1 (0.92.6) runs beside
   Fabricated, its modules used as they are. The server with it is a gate on every run since it passed two extended
   runs in a row (41833110379 and 41840874477, CI-1); the client with it is informational, in extended runs, and
@@ -516,7 +517,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   none of them. The bridge now registers only where the transfer module is a Fabric mod Fabricated runs, on both Forge
   branches. Verified in extended run 41843817779.
 
-## 2026-11-04: HUD-4 verified, and a refmap's full descriptor into a method Forge gave a parameter (SIG-3, task 5)
+## 2026-11-04: HUD-4 verified, and a refmap's full descriptor into a method Forge gave a parameter (SIG-3)
 
 - **HUD-4 verified** on Forge 47 (`forge-legacy` #308) and Forge 61 to 66 (`forge` #307): the test mods' hooks in the
   HUD method run on every Forge version, at its start and end on Forge 47 (a cancel at the start stops the drawing) and
@@ -530,7 +531,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   `MixinPreflightTest.anInjectionWhoseSelectorNamesVanillasDescriptorIsBridgedIntoTheMethodTheBuildGaveMoreParameters`.
   SIG-1's test named the method alone, as Ledger's selector does. To verify on Forge 61 in the Forge sync.
 
-## 2026-11-04: Fabric mods' own HUD hooks on Forge (HUD-4, task 5)
+## 2026-11-04: Fabric mods' own HUD hooks on Forge (HUD-4)
 
 - **HUD-4** (P1 on Forge clients for mods drawing on the HUD from their own mixins: malilib, and so MiniHUD, Tweakeroo
   and Litematica): Forge 61 to 66's patch of vanilla's HUD method (`Gui.render`; on 26.1.2 `Gui.extractRenderState`,
@@ -552,7 +553,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   `...AtTheStartOrEndOfAMethodThePlatformNeverCallsIsPointedAtFabricatedsSeam`; `RestoredFieldsTest` for the seams.
   No test had a mixin into code a patch skips, and no Forge test mod hooked the HUD method itself.
 
-## 2026-11-04: Item storages in items on Forge 61 to 66 and NeoForge 1.21.1, Iris's and Flashback's Fabric builds on Forge, and PLUGIN-1, IRIS-1 and CORPUS-89 verified (task 5)
+## 2026-11-04: Item storages in items on Forge 61 to 66 and NeoForge 1.21.1, Iris's and Flashback's Fabric builds on Forge, and PLUGIN-1, IRIS-1 and CORPUS-89 verified
 
 - **Item storages in items** (`forge` #298, and NeoForge 1.21.1 here): a Fabric mod's bag or backpack
   (`ItemStorage.ITEM`) and a Forge or NeoForge mod's item handler of a stack now see each other on Forge 61 to 66 and
@@ -583,7 +584,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   launch on Forge 66, which timed out once in 41812044187, passed in 41814772147; the Forge corpus summaries now print a
   timed-out game's main threads from the dump CI takes before it stops the game, should it recur.
 
-## 2026-11-04: Iris's particle hook on Forge 47 (IRIS-1), MixinConstraints' Forge abstraction on Forge 64 to 66 (PLUGIN-1), malilib's set, Sodium and Essential on Forge, and mods extending a nested mod that isn't loading (CORPUS-89) (task 5)
+## 2026-11-04: Iris's particle hook on Forge 47 (IRIS-1), MixinConstraints' Forge abstraction on Forge 64 to 66 (PLUGIN-1), malilib's set, Sodium and Essential on Forge, and mods extending a nested mod that isn't loading (CORPUS-89)
 
 - **IRIS-1, the particle hook** (P1 for Iris's Fabric build on Forge 47; `main` #303): Iris redirects the read of
   `ParticleEngine.RENDER_ORDER` in `render`, the list vanilla's loop goes over, so that each of its passes renders the
@@ -638,7 +639,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   constructor's arguments to the one Forge moved its code into (IRIS-1's shader hook). The evidence steps were read
   and are removed.
 
-## 2026-11-04: A Fabric hook into the window's creation on Forge 66 (ENTRY-4), Iris's shader hook on Forge 47 (IRIS-1, in part), Essential's key hooks on Forge 61 to 66 (GROUP-2), and ENTRY-3 verified (task 5)
+## 2026-11-04: A Fabric hook into the window's creation on Forge 66 (ENTRY-4), Iris's shader hook on Forge 47 (IRIS-1, in part), Essential's key hooks on Forge 61 to 66 (GROUP-2), and ENTRY-3 verified
 
 - **Verified:** ENTRY-3 on Forge 64 and 65, in `forge` #298's extended run 41796106172: Sodium and Iris reach their
   worlds with the renderer test mod there and on Forge 61, under Sodium's renderer. Its row moves to FINDINGS. In the
@@ -667,7 +668,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   repaired as an injector alone is: these two move to the hooks' calls. Members of a group with others are still left
   to their group, as each is the mod's alternative for code that differs.
 
-## 2026-11-04: The command an effect comes from in Fabric API's effect events (EFFECT-1), a Fabric hook into the client's constructor on Forge (ENTRY-3), and the difficult mods' first Forge runs (task 5)
+## 2026-11-04: The command an effect comes from in Fabric API's effect events (EFFECT-1), a Fabric hook into the client's constructor on Forge (ENTRY-3), and the difficult mods' first Forge runs
 
 - **EFFECT-1** (P2; `main` #300, `forge` #298): Fabric API's effect events now tell their listeners which command gave
   an effect, on NeoForge 21.11 and 26.x and on Forge 61 to 66. Upstream sets that in a hook into Brigadier, which both
@@ -691,7 +692,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   mods' broken models throw only through that guard (Sodium's renderer has none, as on Fabric). Forge 47's run adds
   Indium, which Fabric mods' block models need under Sodium 0.5 on Fabric too.
 
-## 2026-11-04: Fabric mods' built-in packs enabled by default on Forge 47 (CORPUS-104), CORPUS-104 and PROVIDER-13 verified, and CORPUS-88 and CORPUS-112 closed (task 5)
+## 2026-11-04: Fabric mods' built-in packs enabled by default on Forge 47 (CORPUS-104), CORPUS-104 and PROVIDER-13 verified, and CORPUS-88 and CORPUS-112 closed
 
 - **Verified:** CORPUS-104 on Forge 61 to 66, in extended run 41782561336 (#291). The test mod's built-in pack
   enabled by default is selected, and the corpus clients log no unreadable pack (Artifacts', Terralith's) and reach
@@ -713,7 +714,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **CI:** forge #294's evidence steps (their shell run locally under `bash -e`, with a log with the failure, one
   without, and none) served CORPUS-88 and CORPUS-112 and were then removed, so forge's workflow is as it was.
 
-## 2026-11-04: Fabric mods' block model loaders and language files on Forge 47 (CORPUS-92, CORPUS-100, CORPUS-102), Fabric mods' built-in packs enabled by default on Forge 61 to 66 (CORPUS-104), and CORPUS-109 verified (task 5)
+## 2026-11-04: Fabric mods' block model loaders and language files on Forge 47 (CORPUS-92, CORPUS-100, CORPUS-102), Fabric mods' built-in packs enabled by default on Forge 61 to 66 (CORPUS-104), and CORPUS-109 verified
 
 - **Verified:** CORPUS-92 and CORPUS-102, in `forge-legacy`'s extended run 41776560917 (#289, main synced in). The
   Forge 47 corpus client fails none of Supplementaries' or Create's block models. CORPUS-109, in the same run: the test
@@ -744,7 +745,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **CORPUS-89** (open): the rule planned for it (a mod whose nested mod doesn't load is disabled with it) would disable
   Farmer's Delight and Create through Porting Lib's GUI utilities (CORPUS-93), so it needs a narrower rule.
 
-## 2026-11-04: Fabric API's registry entry added event on Forge's registries (CORPUS-108 and CORPUS-111), a translated mod's platform id in Fabric Loader's API (CORPUS-109), CORPUS-105, CORPUS-107 and CORPUS-110 verified, and CORPUS-106 closed (task 5)
+## 2026-11-04: Fabric API's registry entry added event on Forge's registries (CORPUS-108 and CORPUS-111), a translated mod's platform id in Fabric Loader's API (CORPUS-109), CORPUS-105, CORPUS-107 and CORPUS-110 verified, and CORPUS-106 closed
 
 - **Verified:** CORPUS-105, CORPUS-107 and CORPUS-110, in `forge-legacy`'s extended runs 41766943119 and 41770251158
   (#283, main synced in). Both Forge 47 corpora reach a world now. The client joins its world and quits as
@@ -783,7 +784,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **Tests:** `PipelineTest` asks for a translated mod by its platform id. The `forge` and `forge-legacy` test mods'
   `ForgeRegistryEntryAddedTest` (#286, #287) checks the entry added event.
 
-## 2026-11-04: Porting Lib's drop capture on Forge 47 (CORPUS-105), Fabric mods' own reads of fields Forge 47 retyped (CORPUS-107), and CORPUS-87, CORPUS-98, CORPUS-99, CORPUS-103, NET-11 and SELF-3 verified (task 5)
+## 2026-11-04: Porting Lib's drop capture on Forge 47 (CORPUS-105), Fabric mods' own reads of fields Forge 47 retyped (CORPUS-107), and CORPUS-87, CORPUS-98, CORPUS-99, CORPUS-103, NET-11 and SELF-3 verified
 
 - **Verified:** CORPUS-87, CORPUS-98, CORPUS-99 and CORPUS-103, in `forge-legacy`'s extended run 41762493256 (#281,
   main synced in). The Forge 47 corpus client got past its first resource reload and its first tick, with no Mixin
@@ -822,7 +823,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   shape from an in-game mod directory. The `forge-legacy` test mod's drop capture check (`ForgeDropCaptureTest`) and its
   fluid type check's fix are in #283.
 
-## 2026-11-04: Fabric mods' hooks into constructors on Forge 47 through Fabricated's own injection point (CORPUS-103), Fabric API's custom ingredients and Porting Lib's crafting size on Forge 47 (CORPUS-99, NET-11), and CORPUS-95, CORPUS-97 and CORPUS-101 verified (task 5)
+## 2026-11-04: Fabric mods' hooks into constructors on Forge 47 through Fabricated's own injection point (CORPUS-103), Fabric API's custom ingredients and Porting Lib's crafting size on Forge 47 (CORPUS-99, NET-11), and CORPUS-95, CORPUS-97 and CORPUS-101 verified
 
 - **CORPUS-103** (`ConstructorPoint`, new; `ConstructorRepairs.constructorPointRepairs`; forge-legacy's
   `ConstructorInjectionPoint`, new): with CORPUS-101 fixed, the Forge 47 corpus client stopped later in its first
@@ -860,7 +861,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   unsafe on 0.8.7, and one at the `super()` call, left out on both. CTOR-2's test checks the point on 0.8.5. 487 core
   tests pass.
 
-## 2026-11-04: A mixin's own field that the platform declares final (CORPUS-101), two mixins' unique fields of one name on Forge (CORPUS-95), Fabric API's recipe conditions on Forge 47 (CORPUS-97), Fabric jars' loot modifier lists left as they are on Forge (CORPUS-98), AppleSkin's tooltip mixin verified on Forge 47 (CORPUS-96), and the Forge 47 corpus's evidence read (CORPUS-87, CORPUS-93, CORPUS-97 to 99, CORPUS-102) (task 5)
+## 2026-11-04: A mixin's own field that the platform declares final (CORPUS-101), two mixins' unique fields of one name on Forge (CORPUS-95), Fabric API's recipe conditions on Forge 47 (CORPUS-97), Fabric jars' loot modifier lists left as they are on Forge (CORPUS-98), AppleSkin's tooltip mixin verified on Forge 47 (CORPUS-96), and the Forge 47 corpus's evidence read (CORPUS-87, CORPUS-93, CORPUS-97 to 99, CORPUS-102)
 
 - **CORPUS-98** (`PlatformDescriptor.readsNeoForgeLootModifiers`, new): the CORPUS-23 overlay turns off a Fabric jar's
   global loot modifiers with NeoForge's never-condition, which only NeoForge reads. On Forge it replaced Farmer's
@@ -928,7 +929,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   `PipelineTest.onForgeAFabricJarsLootModifiersAreItsOwn` checks that on Forge's descriptor a jar's `forge` and
   `neoforge` lists and its modifier stay the jar's own. 487 core tests pass.
 
-## 2026-11-03: Platform mods' static handlers for Fabric mods' methods on Forge 47 (CORPUS-87), AppleSkin's tooltip mixin circular again (CORPUS-96), the Forge corpus fixes of #268 and #271 verified (CORPUS-79, CORPUS-90, CORPUS-91, CORPUS-94), and the Forge corpus's next stops (CORPUS-95, CORPUS-97 to 100) (task 5)
+## 2026-11-03: Platform mods' static handlers for Fabric mods' methods on Forge 47 (CORPUS-87), AppleSkin's tooltip mixin circular again (CORPUS-96), the Forge corpus fixes of #268 and #271 verified (CORPUS-79, CORPUS-90, CORPUS-91, CORPUS-94), and the Forge corpus's next stops (CORPUS-95, CORPUS-97 to 100)
 
 - **CORPUS-87** (`NativeModMixins`, new; `FabricClassTransforms.beforeMixin`): ImmediatelyFast's Forge side, which
   Forge 47 loads natively, has a mixin into AppleSkin's `HUDOverlayHandler` with a static `@Inject` handler, written
@@ -970,7 +971,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   mixin without its target among its interfaces, and a mixin with one injector applied and one left out to stay listed.
 - **CI:** core tests locally (484); the PR run on this change.
 
-## 2026-11-03: Mob buckets' entity type on Forge 47 (CORPUS-94), Forge 66's own loot table naming (CORPUS-90), and the Forge syncs of #270 (task 5)
+## 2026-11-03: Mob buckets' entity type on Forge 47 (CORPUS-94), Forge 66's own loot table naming (CORPUS-90), and the Forge syncs of #270
 
 - **CORPUS-94** (`MixinRepairs.retypedFieldBridge`): pre-flight points an accessor of a field the platform replaced at
   the bridge Fabricated's in-game mod adds for it, as it did for a field the platform gave another type (CORPUS-37).
@@ -990,7 +991,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   accessor of a field the target no longer has invokes it; without it, pre-flight reports the field missing.
 - **CI:** core tests locally (480); the PR run on this change.
 
-## 2026-11-03: Forge's compressed frames (CORPUS-79), Porting Lib Loot's table names (CORPUS-90), interface mixins' injectors on Forge 47 (CORPUS-91), and Forge 47's corpus fixes verified (task 5)
+## 2026-11-03: Forge's compressed frames (CORPUS-79), Porting Lib Loot's table names (CORPUS-90), interface mixins' injectors on Forge 47 (CORPUS-91), and Forge 47's corpus fixes verified
 
 - **Verified on Forge 47** (extended run 41703581030, after #267): CORPUS-86 (the corpus server loaded Moonlight's
   data packs), CORPUS-37 (Porting Lib's accessors and the modules needing them loaded on the server and client),
@@ -1066,7 +1067,7 @@ One entry per working session, newest first: what changed, and how it was verifi
     a copy.
 - **CI:** core tests locally (479); the PR and extended runs on this change.
 
-## 2026-11-03: Moonlight's codec on Forge 47 (CORPUS-86), owo's and Porting Lib's fixes, and Forge's miscounted frames (CORPUS-79, task 5)
+## 2026-11-03: Moonlight's codec on Forge 47 (CORPUS-86), owo's and Porting Lib's fixes, and Forge's miscounted frames (CORPUS-79)
 
 - **Verified:** CORPUS-85 (#261 on `forge`; extended run 41682699918): the Forge 65 and 66 corpus clients joined their
   worlds. CORPUS-72 (extended run 41681558702, after #265's sync): Magna and Modern Industrialization loaded on the
@@ -1124,7 +1125,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **CI:** core build and tests pass locally (476 tests). The syncs into `forge-legacy` and `forge` carry these, with
   the Forge halves of CORPUS-37 and CORPUS-79, and their extended runs verify them.
 
-## 2026-11-03: Magna's hammers on Forge 47 (CORPUS-72), and Forge's recipe book `init` for Farmer's Delight (CORPUS-80, task 5)
+## 2026-11-03: Magna's hammers on Forge 47 (CORPUS-72), and Forge's recipe book `init` for Farmer's Delight (CORPUS-80)
 
 - **CORPUS-72** (`CallRepairs.movedCallRepairs`, `vanillasPlace` and `movedInto`, new; `PatchAlignment.token` now
   package-wide): pre-flight disabled Magna on Forge 47, and Modern Industrialization, whose items extend Magna's tools
@@ -1164,7 +1165,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **CI:** core build and tests pass locally (468 tests); the mixin inventory check passes. #263 (forge-legacy) and #261
   (forge) carry the earlier fixes; the next syncs carry these, and Forge 47's extended run verifies them.
 
-## 2026-11-03: Fabric ASM's enum additions, for Farmer's Delight on Forge 47 (CORPUS-80, task 5)
+## 2026-11-03: Fabric ASM's enum additions, for Farmer's Delight on Forge 47 (CORPUS-80)
 
 - **CORPUS-80 on Forge 47** (`EarlyRisers`, `ModTranslator.earlyRisers`, new; `ModTranslator.processMixins`):
   Farmer's Delight adds its recipe book types and search categories with Fabric ASM, whose Mixin plugin can't run on
@@ -1200,7 +1201,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **CI:** core build and tests pass locally (467 tests). `forge-legacy` takes the fix by the next sync, and its
   extended run verifies it on the Forge 47 corpus.
 
-## 2026-11-03: MoreCulling's shadow of an inherited method on Forge 47 (CORPUS-84), and eleven findings verified (task 5)
+## 2026-11-03: MoreCulling's shadow of an inherited method on Forge 47 (CORPUS-84), and eleven findings verified
 
 - **CORPUS-84** (`MixinRepairs.inheritedShadowRepair`, new; `MixinPreflight.checkMembersOf`): the Forge 47 corpus
   client stopped baking models, as Mixin applied MoreCulling's `MultipartBakedModel_cacheMixin`.
@@ -1242,7 +1243,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **CI:** core build and tests pass locally (461 tests); the fetch script's choice was checked against Modrinth-shaped
   version lists. The Forge branches take the fixes by the next sync.
 
-## 2026-11-03: Farmer's Delight's enum constants on Forge 61 to 66 (CORPUS-80, task 5)
+## 2026-11-03: Farmer's Delight's enum constants on Forge 61 to 66 (CORPUS-80)
 
 - **CORPUS-80** (`EnumValuesMixins.holderClass`, `withHeldConstants`, `initReturns`, `ModTranslator.valuesMixin`):
   pre-flight disabled Farmer's Delight on Forge 61 to 66.
@@ -1281,7 +1282,7 @@ One entry per working session, newest first: what changed, and how it was verifi
     without the fix.
 - **CI:** core build and tests pass locally (460 tests).
 
-## 2026-11-03: interface mixins Mixin would take for accessor mixins (CORPUS-76), the game's other packages (CORPUS-82), and four findings verified (task 5)
+## 2026-11-03: interface mixins Mixin would take for accessor mixins (CORPUS-76), the game's other packages (CORPUS-82), and four findings verified
 
 - **CORPUS-76** (`AccessorShapedMixins`, `ModTranslator.leaveOutHandlers`): the Forge 47 corpus client stopped with
   `ClassCircularityError: ClientTooltipComponent`. AppleSkin's `TooltipComponentMixin` extends its target
@@ -1319,7 +1320,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   the local now takes slot 1. It fails without the fix.
 - **CI:** core build and tests pass locally. The Forge branches take both fixes by the sync.
 
-## 2026-11-03: Forge 64's own spawn list (CORPUS-78), and the corpus after the sync (task 5)
+## 2026-11-03: Forge 64's own spawn list (CORPUS-78), and the corpus after the sync
 
 - **CORPUS-78, fixed again** (`PlatformCoremods.forge`): after the first fix the Forge 61 and 65 corpus servers start
   with Friends and Foes (extended run 41632339327), but the Forge 64 one stopped in world generation on its static
@@ -1345,7 +1346,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   late, and the game stopped before the check ended (run 41640138317).
 - **CI:** core build and tests pass locally. The Forge branches take the fix by the sync.
 
-## 2026-11-03: two Forge pre-flight fixes (CORPUS-74, CORPUS-78), and the Forge corpus stops (task 5)
+## 2026-11-03: two Forge pre-flight fixes (CORPUS-74, CORPUS-78), and the Forge corpus stops
 
 - **CORPUS-74** (`MixinRepairs.sharedFieldRepair`, `MixinCompat.shadowsMixinFields`): the Forge 26.2 corpus client
   crashed on MoreCulling's shadow of the mesh Fabric API's renderer mixin adds to `BlockModelRenderState` (extended run
@@ -1378,7 +1379,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   one extended, one rewritten). The Forge branches take the core fixes by the sync, with a test mod check on all five
   Forge versions.
 
-## 2026-11-03: Forgified Fabric API's modules on Forge 47, and owo's slot mixin (task 5)
+## 2026-11-03: Forgified Fabric API's modules on Forge 47, and owo's slot mixin
 
 - **PROVIDER-13** (`NativeModules.modules`, `NativeModules.standDown`, `Pipeline.providedElsewhere`,
   `Pipeline.Result.alsoProvidedElsewhere`): with coexisting tried on forge-legacy (3b8bdf4), the Forge 47 server with
@@ -1398,7 +1399,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   Mixin does, such a local now leaves the table, which only debuggers read.
 - **CI:** core tests pass locally (450, four of them new). #248 (Forge 61 to 66) merged as 2625f01.
 
-## 2026-11-03: Forge's enum factories and Lithium's chest (task 5)
+## 2026-11-03: Forge's enum factories and Lithium's chest
 
 - **ENUM-7 on Forge, again** (`EnumValuesMixins`): after the last sync (extended run 41574438102) every Forge 61 to 66
   corpus server and client stopped as `MobCategory` loaded, in `MobCategory.init`: Forge's `create` factory registers
@@ -1415,7 +1416,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **CI:** core tests pass locally (446, one of them new). The Forge branches take this by the sync (#248, #249), with
   extended runs to verify ENUM-7 on Forge 61 to 66 and CORPUS-69 on Forge 47.
 
-## 2026-11-03: the Forge corpus stops after the sync (task 5)
+## 2026-11-03: the Forge corpus stops after the sync
 
 - **ENUM-7 on Forge** (`EnumValuesMixins`): after the sync, the Forge 66 corpus client and server got past Mixin and
   stopped in Forge's own enum extender as `MobCategory` loaded (extended run 41569829683): Forge makes that enum
@@ -1433,7 +1434,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **CI:** core tests pass locally (445, two of them new). The Forge branches take this by the sync (#248, #249), with
   extended runs to verify ENUM-7, SHARE-1 and CORPUS-68.
 
-## 2026-11-02: compatibility, the difficult mods' Fabric builds first (task 5, `main`'s half)
+## 2026-11-02: compatibility, the difficult mods' Fabric builds first
 
 - **The difficult mods' Fabric builds load on NeoForge** (the owner's decision 3, 2026-11-01): Sodium, Iris, Essential
   (its container and loader), malilib and Flashback load by default (`8cf0106`). A compatibility plan entry now names
@@ -1636,7 +1637,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   check (it passes on the 26.1.2 Sodium and Iris clients); the fixes' findings name the run that verified
   each.
 
-## 2026-11-02: Fabric's renderer API, the Forge branches' half (task 4 done)
+## 2026-11-02: Fabric's renderer API, the Forge branches' half
 
 - **Forge 61 to 66** (#244):
   - **Rule 8 at Indigo's entry points** (`4169249`): upstream's hooks send every block through Fabric's renderer on
@@ -1680,18 +1681,18 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **Workflows** (`main`): `check.yml`'s Forge build also builds the failing test mod the Forge server smoke installs,
   and `scripts/sync-platform-branch.sh` merges without git's directory rename detection, which took files `main` adds
   in a platform folder a branch left out at the split for renames into the branch's own folders.
-- **Found, for task 5:** the two guards in upstream's overwritten methods are required injectors, so a mod that
-  overwrites the same method at a priority above 1100 would stop the launch (none known); PACK-6's default-enabled
-  packs on Forge are upstream's own code, unchecked there. **For task 6:** on Forge 47 a Fabric model's first throw
-  in a chunk section held its worker about 1.4 s before rule 8's fallback ran (likely Indigo's crash report for the
-  throw, whose system details query the hardware; not measured), and a model wrapping a broken one throws at each
-  rebuild of its section; and `scripts/check-mixin-inventory.py` finds the Forge configs' mixins missing from
-  `MIXINS.md` (41 on each Forge branch before R5, 59 on `forge` and 47 on `forge-legacy` after), which the Forge
-  workflows don't run.
+- **Found, for the compatibility work:** the two guards in upstream's overwritten methods are required injectors, so a
+  mod that overwrites the same method at a priority above 1100 would stop the launch (none known); PACK-6's
+  default-enabled packs on Forge are upstream's own code, unchecked there. **For the optimization pass:** on Forge 47 a
+  Fabric model's first throw in a chunk section held its worker about 1.4 s before rule 8's fallback ran (likely
+  Indigo's crash report for the throw, whose system details query the hardware; not measured), and a model wrapping a
+  broken one throws at each rebuild of its section; and `scripts/check-mixin-inventory.py` finds the Forge configs'
+  mixins missing from `MIXINS.md` (41 on each Forge branch before R5, 59 on `forge` and 47 on `forge-legacy` after),
+  which the Forge workflows don't run.
 - **Verified:** the Forge pull requests' full matrices (41421652876 and 41423804163, every gate on every version), and `main`'s
   half's last run, 41406901450 (#243, every gate).
 
-## 2026-11-02: Fabric's renderer API, `main`'s half (task 4)
+## 2026-11-02: Fabric's renderer API, `main`'s half
 
 - **Rule 8 on every NeoForge seam** (R1, `44d841b`): a Fabric block model that throws in a chunk section, as a moving
   block, with the breaking overlay, as an entity's block or while its parts are made from its quads is drawn by
@@ -1723,8 +1724,9 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **Forgified Fabric API's renderer beside Fabricated's seams** (R7, `a8fbe84`, extended runs, informational): every
   block the test mod logs names the seam that sent it to Fabric's renderer. With Forgified Fabric API's renderer,
   Fabricated's seams stand down on 1.21.1, 26.1.2 and 26.2 (extended run 41400541531; no 1.21.11 or 26.3 build).
-- **Found, for task 5:** MODEL-4 (1.21.1's model modifiers skip a model baked as another's part or parent) and
-  CORPUS-56 (no connected textures from Continuity on any version; its sprite hook left out on 1.21.11 and 26.x).
+- **Found, for the compatibility work:** MODEL-4 (1.21.1's model modifiers skip a model baked as another's part or
+  parent) and CORPUS-56 (no connected textures from Continuity on any version; its sprite hook left out on 1.21.11 and
+  26.x).
 - **Decided:** 26.x's breaking overlay hands Fabric models `Blocks.AIR` and `BlockPos.ZERO`, as upstream does (its own
   TODO): parity, no fix. R8 (level-aware material flags) stays a candidate. On 1.21.1 a minecart's block comes from
   vanilla's quads, as upstream draws it on Fabric. R6 and R7 stay informational until CI-1's rule makes them gates.
@@ -1740,9 +1742,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   the terrain checks; the default-enabled pack. Core: `ThrowSiteTest`, `DefaultPackTrackerTest`.
 - **Verified:** core's 368 tests locally, with `ThrowSiteTest` and `DefaultPackTrackerTest`; the mixin inventory check;
   run 41404975032, every gate but 1.21.1's wrapped model fallback (fixed in `dd65318`); R6's and R7's results in their
-  bullets. This pull request's final full matrix is cited in task 4's checkpoint, after the Forge branches.
+  bullets. This pull request's final full matrix is cited in the Forge branches' half's entry.
 
-## 2026-11-02: Parity, the Forge branches' half (task 3 done)
+## 2026-11-02: Parity, the Forge branches' half
 
 - **`forge` and `forge-legacy` synced with `main`** (#240, #241): the engine's PRE-18, CORPUS-33 and LAMBDA-8 fixes,
   checked on Forge where a run reaches them: CORPUS-33 by a Fabric biome modification on Forge 61 to 66 (and
@@ -1781,20 +1783,21 @@ One entry per working session, newest first: what changed, and how it was verifi
   test mod for Fabric API's client modules (key mapping, HUD, screens with synthetic input, client commands,
   lifecycle); on 1.20.1 a fuel and a brewing recipe.
 - **Docs:** `docs/FORGE.md` and `docs/FORGE-LEGACY.md` drop "experimental", take their module tables from the green
-  runs, say which run checks each bridge on which versions, and list what is unsupported on Forge, with the task that
-  takes each on: rendering hooks Forge's code can't take (task 4), item storages in items, the effect events' command
-  context, Fabric mods' own HUD mixins, which apply to vanilla's HUD method but never run, and Forgified Fabric API
-  (task 5), and what Forge's code rules out (interface mixins on Forge 47, some item, lifecycle and object builder
-  hooks). The plans' last UNVERIFIED notes are resolved from Forge's sources.
-- **Found, for task 5:** CORPUS-53 (the Forge 61 to 66 corpus clients stop as the game bootstraps, as in v0.5.1),
-  CORPUS-54 (a corpus mod's crop growth hook pre-flight passes, on Forge 61 and 47), CORPUS-55 (Forge 47's corpus
-  client), and HUD-3 (NeoForge's HUD wrapping misses vanilla's conditions around three elements). PRE-18's end-to-end
-  check on Forge waits behind CORPUS-53.
-- **Decided:** the owner chose to refuse Forgified Fabric API on Forge now and try coexisting in task 5 (2026-11-02).
+  runs, say which run checks each bridge on which versions, and list what is unsupported on Forge, with the work that
+  takes each on: rendering hooks Forge's code can't take (the renderer API work), item storages in items, the effect
+  events' command context, Fabric mods' own HUD mixins, which apply to vanilla's HUD method but never run, and Forgified
+  Fabric API (the compatibility work), and what Forge's code rules out (interface mixins on Forge 47, some item,
+  lifecycle and object builder hooks). The plans' last UNVERIFIED notes are resolved from Forge's sources.
+- **Found, for the compatibility work:** CORPUS-53 (the Forge 61 to 66 corpus clients stop as the game bootstraps, as in
+  v0.5.1), CORPUS-54 (a corpus mod's crop growth hook pre-flight passes, on Forge 61 and 47), CORPUS-55 (Forge 47's
+  corpus client), and HUD-3 (NeoForge's HUD wrapping misses vanilla's conditions around three elements). PRE-18's
+  end-to-end check on Forge waits behind CORPUS-53.
+- **Decided:** the owner chose to refuse Forgified Fabric API on Forge now and try coexisting in the compatibility work
+  (2026-11-02).
 - **Verified:** the Forge pull requests' full matrices (runs 41382942938 and 41385466464, every gate on every
   version) and extended runs (41385577023 and 41386136422, the corpus runs informational).
 
-## 2026-11-02: Parity, `main`'s half (task 3)
+## 2026-11-02: Parity, `main`'s half
 
 - **NeoForge 21.1:**
   - **KEYMAP-2** (new, P0): Fabric API's key binding module refused every key binding, as NeoForge 21.1 creates the
@@ -1816,14 +1819,14 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **CI gates added:** 1.21.1's JSON loader conditions, its key binding with the saved key, and the failing test mod's
   unregistered holder (CORPUS-42's drop) on every NeoForge server; the client test mod compiles against the pass-through
   modules a platform adds (`passThroughTestmodfrapiModules`).
-- **Found, for task 5:** CORPUS-50 (Supplementaries' missing tags), CORPUS-51 (FrozenLib's registry mixin) and CORPUS-52
-  (ImmediatelyFast's depth state) on the 1.21.1 corpora.
-- **Decided:** the owner deferred Forge's item storages in items and the effect events' hook to task 5, listed as
-  unsupported until then.
+- **Found, for the compatibility work:** CORPUS-50 (Supplementaries' missing tags), CORPUS-51 (FrozenLib's registry
+  mixin) and CORPUS-52 (ImmediatelyFast's depth state) on the 1.21.1 corpora.
+- **Decided:** the owner deferred Forge's item storages in items and the effect events' hook to the compatibility work,
+  listed as unsupported until then.
 - **Verified:** 350 core tests locally; diagnostics runs 41354788270 (KEYMAP-2, CORPUS-44 and 45 on the 1.21.1
   corpora) and 41362521380 (CORPUS-46 and 49); this pull request's full matrix and an extended run.
 
-## 2026-11-01: The Forge branches' CI from what a change touches (task 2 done)
+## 2026-11-01: The Forge branches' CI from what a change touches
 
 - **`forge` and `forge-legacy` synced with `main`** (#237, #238, by `scripts/sync-platform-branch.sh`): the quick
   check's stand-down, the picker's `--full` and `--all` modes, the docs and version 0.6.0.
@@ -1842,7 +1845,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   and `matrix.target` references resolve, the picker on each branch's tree gives its versions and pins, the exit
   timeout on a simulated hang and a normal exit; both pull requests' full matrices green.
 
-## 2026-11-01: CI runs what a change touches, in parallel parts (task 2, `main`)
+## 2026-11-01: CI runs what a change touches, in parallel parts
 
 - **The full matrix from what changed** (`ci/changed-targets.py --full`): a pull request runs the versions it touches (a
   version's own folder that version, shared code all of them), a release tag or a run by hand all of them, and a merge
@@ -1873,7 +1876,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   `SMOKE_EXIT_TIMEOUT`), with its threads dumped and the run failed as a timeout would, not at the run's own limit of
   10 minutes. Found by the extended run: CORPUS-48 (new, P2), the 26.2 and 26.3 corpus clients' integrated servers
   waiting in Xaero's World Map's world unload once mc-runtime-test stopped them; in v0.5.1's tag run they exited in
-  about a minute. Whether a player's own quit hangs is UNVERIFIED (task 5).
+  about a minute. Whether a player's own quit hangs is UNVERIFIED.
 - **Verified:** the picker's modes locally on sample changes; both workflows parse and every `steps`, `needs` and
   `matrix` reference resolves; each step's condition evaluated per version and part; this pull request's full matrix
   and an extended run by hand, every gate passing (41347057558 and 41347080112 on the last commit); the quick check
@@ -1881,7 +1884,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   finish line and one that exits, and in CI stopping the 26.3 corpus client 2 minutes after its world, with Xaero's
   World Map's unload in its thread dump again (41347080112).
 
-## 2026-11-01: The v0.6.0-beta pass starts; the project and the spec rethought (task 1)
+## 2026-11-01: The v0.6.0-beta pass starts; the project and the spec rethought
 
 - **The owner's brief** (2026-11-01): leave alpha, with every branch and Minecraft version at beta quality, in seven
   tasks (roadmap, *The v0.6.0-beta pass*). **The owner's decisions:** all three platforms are held to one stability bar,
@@ -1893,8 +1896,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   and no gated client with Fabric API, and the Forge loaders don't call the engine's provider policy and refusals. Every
   item still experimental has a decision and a task; thirteen informational CI runs each become a gate or go.
 - **The beta, redefined** for every platform: the stability bar (now with isolation after code runs), the
-  compatibility targets per platform, the ship criteria and what blocks it. **Plans:** FRAPI (R1 to R8, task 4) and the
-  difficult mods (task 5), each with its CI gate.
+  compatibility targets per platform, the ship criteria and what blocks it. **Plans:** FRAPI (R1 to R8) and the
+  difficult mods, each with its CI gate.
 - **The roadmap** lost its history: the rethinks and decisions of 2026-10-27 and 2026-10-28 and the v0.5.0 plan became
   *Standing decisions* (what still holds; the reasoning stays in this file's entries). ARCHITECTURE's goals and
   non-goals and RESEARCH §4 follow decision 3; `claude.md` allows a session's own working branch.
@@ -1902,7 +1905,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **Version 0.6.0** in development (`gradle.properties`, README's status, ARCHITECTURE), as v0.5.1-alpha is published.
 - **Verified:** documents and the version only; the `coreOnly` build and its unit tests pass locally.
 
-## 2026-10-28: v0.5.1-alpha carries the follow-up's fixes (task 4 of the v0.5.1-alpha follow-up)
+## 2026-10-28: v0.5.1-alpha carries the follow-up's fixes
 
 - **The owner's decision:** the world-join crash made the v0.5.1-alpha draft unusable for real packs, so its fixes ship
   in the same release, rebuilt, rather than a later one. The version is 0.5.1 again on `main` (it was 0.6.0 since
@@ -1916,7 +1919,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   ModLauncher (10.2.6) leaves the fallback unset, and a local Forge 61 server (1.21.11) read the stats without the fix.
   The Forge branches' sync passes ModLauncher's boot layer loader on both, so `forge-shared` stays one.
 
-## 2026-10-28: Fabricated's file by name in a crash report (task 3 of the v0.5.1-alpha follow-up)
+## 2026-10-28: Fabricated's file by name in a crash report
 
 - **Fabricated's in-game mod** showed in a crash report's mod list as its cached file, a SHA-256
   (`b175323ddb...jar` in the owner's report). It is now a cache entry like the translated mods,
@@ -1926,7 +1929,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   error, the missing `ambientsounds` warning and Mixin's "is public and should be specified in value" warnings.
 - **Verified:** locally, the 1.21.1 server: FML logs `Found mod file "fabricated.jar"`, every check passes (63).
 
-## 2026-10-28: OneConfig's mixins against Fabric's behaviour (task 2 of the v0.5.1-alpha follow-up)
+## 2026-10-28: OneConfig's mixins against Fabric's behaviour
 
 - **Checked, as the owner asked:** OneConfig's mixin plugin asks Fabric Loader nothing (it applies every mixin but its
   toggles), and its config is registered once. Mixin's "Renaming @Accessor method oneconfig$all ..." is Mixin's own
@@ -1946,7 +1949,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   public sources, and Mixin's. OneConfig itself runs in CI's informational Polyfrost run only (its 1.21.1 log shows the
   same `oneconfig$map` warning).
 
-## 2026-10-28: Vanilla can't read Gson's internals on 1.21.1 (task 1 of the v0.5.1-alpha follow-up)
+## 2026-10-28: Vanilla can't read Gson's internals on 1.21.1
 
 - **The owner's report** (the reference pack on v0.5.1-alpha): joining a world crashed the integrated server with
   "NoClassDefFoundError: com/google/gson/internal/Streams" in vanilla's `ServerStatsCounter.parseLocal`, and OneConfig
@@ -1974,7 +1977,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   (which FML 11 lists among its plugins) beside a Fabric jar bundling its package: the Fabric copy is left out on 26.1.2
   and on 1.21.1, every check passing (63). The new client run, Kotlin for Forge and Fabric Language Kotlin in CI.
 
-## 2026-10-28: Start of 0.6.0, toward 0.6.0-beta (end of task 6)
+## 2026-10-28: Start of 0.6.0, toward 0.6.0-beta
 
 - **v0.5.1-alpha** is a draft release (the owner's choice), built by the release workflow from `main` at `7163547`
   (after #227), `forge` at `aff5b0e` and `forge-legacy` at `5a1ff6a`, for the owner to publish.
@@ -1986,7 +1989,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   baseline; and ship criteria. What blocks it today: SER-1, CORPUS-44 to 46, FRAPI-5, SEC-5, the informational runs
   not yet gates, PERF-2. The roadmap's *Next release* says 0.6.0-beta.
 
-## 2026-10-28: v0.5.1-alpha (task 6 of the v0.5.x update)
+## 2026-10-28: v0.5.1-alpha
 
 - **Version 0.5.1** (the owner's choice: a patch release of v0.5.0-alpha), API 1.1.0 as T1 made it.
 - **Release notes:** `docs/releases/v0.5.1-alpha.md`. README (its status, Connector refused), ARCHITECTURE (the
@@ -2021,7 +2024,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   check and both refusals on all five versions among them; with Forgified Fabric API the test mod's registry is made on
   1.21.1, 26.1.2 and 26.2, and the 1.21.1 client joins a world and exits normally where it waited before.
 
-## 2026-10-28: Cleanup (task 5 of the v0.5.x update)
+## 2026-10-28: Cleanup
 
 - **Duplicated logic merged:** `Pipeline`'s two maps of NeoForge mods by id now share one rule, the newest copy of a
   mod (as NeoForge loads), where `providedElsewhere` had kept the first it met; one byte search for an annotation
@@ -2042,7 +2045,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   two classes for three lines); access widener `transitive` flags and the retired config keys (roadmap, *Noted at the
   cleanup*). No public API change (`docs/API.md` unchanged).
 
-## 2026-10-28: Sharing packs with Sinytra's ecosystem (task 3 of the v0.5.x update)
+## 2026-10-28: Sharing packs with Sinytra's ecosystem
 
 - **The specification, rechecked** against what packs hold (roadmap, *Rethink, 2026-10-28*): Fabricated replaces
   Sinytra Connector and shares packs with its libraries. Who owns what, in one table: Connector and a second Fabricated
@@ -2055,7 +2058,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **Corrected:** the roadmap's statements of the one-tree model (its vision, the 2026-10-27 rethink's first item, the
   parity table), now each platform's own branch. No code changed.
 
-## 2026-10-28: Coexistence fixes and refusals (task 4 of the v0.5.x update)
+## 2026-10-28: Coexistence fixes and refusals
 
 - **The reference pack** (the owner's 1.21.1 log, report and mod list: Forgified Fabric API, Sodium and about 130
   Fabric mods): it stopped on PROVIDER-1's `ResolutionException`, fixed in T1. Of its seven disabled mods, five were the version and
@@ -2086,7 +2089,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   passes every check; the Connector and second-jar refusals stop the launch with the error on 1.21.1 (FML 4) and
   26.1.2 (FML 11). The real Forgified Fabric API runs are CI's only.
 
-## 2026-10-28: A branch per platform (task 2 of the v0.5.x update)
+## 2026-10-28: A branch per platform
 
 - **The owner's request:** `main` is NeoForge's branch with the shared engine; Forge and Forge 47 code each live only
   on their own branch, with the same folder structure. This replaces the one tree of 2026-10-26 to 2026-10-27
@@ -2102,7 +2105,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   so a sync merge never conflicts on it; `forge-shared` is kept on both Forge branches, and a change to it is made on
   both.
 
-## 2026-10-28: Sharing the game with Forgified Fabric API (task 1 of the v0.5.x update)
+## 2026-10-28: Sharing the game with Forgified Fabric API
 
 - **The owner's report:** a v0.5.0-alpha 1.21.1 pack with Forgified Fabric API and Sodium for NeoForge stopped before
   any mod ran: "ResolutionException: Modules fabricated and fabric_screen_handler_api_v1 export package
@@ -2145,8 +2148,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   stopping; the other versions' were as before.
 - **The owner's decision:** fix the 1.21.1 corpus first, in its own pull request, then release.
 - **Fixed** (each with its cause in `FINDINGS.md`):
-  - **CORPUS-39:** `FabricBlockSettings.create()` was missing on 1.21.1 (TechReborn, Traveler's Backpack): task 3
-    had merged it into `of()`, but both keep Fabric's own names in Intermediary.
+  - **CORPUS-39:** `FabricBlockSettings.create()` was missing on 1.21.1 (TechReborn, Traveler's Backpack): an earlier
+    change had merged it into `of()`, but both keep Fabric's own names in Intermediary.
   - **CORPUS-40:** vanilla's block entity type builder (1.21.1 only) lacked Fabric's injected `build()` (Farmer's
     Delight).
   - **CORPUS-41:** NeoForge 21.1 refuses mods' calls to vanilla's `EntityDataSerializers.registerSerializer`, which
@@ -2256,7 +2259,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   first run fetched; REI 16 names its common plugins `REIServerPlugin`, so the test mod's REI plugin is a class per
   version. The client smoke checks the native particles module on 1.21.1, and a gate checks Fabric API's client
   modules there (colour providers, the HUD callback) in the run with the Fabric API jar.
-- Decided here: **Fabric renderer API models in chunk sections on 1.21.1 come after this task** (FRAPI-5, open):
+- Decided here: **Fabric renderer API models in chunk sections on 1.21.1 come after this change** (FRAPI-5, open):
   1.21.11's bridge is built on that version's block model parts, so 1.21.1 needs one of its own, measured on its
   corpus first. The module loads.
 - Decided here: **Forge for 1.21.1 is not in this release.** It is Forge 52, an older FML and ModLauncher than the
@@ -2308,7 +2311,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - Verification: the core build and its tests (`MixinPreflightTest`, `PipelineTest`, `PlatformLibrariesTest`); local
   Forge 66 and Forge 47 server smokes after each change, with and without Fabric API (27, 35, 34 and 40 checks);
   build-forge run 40570195894 and build-forge-legacy run 40570200260 on `d43a19e`, with their corpus logs. The full
-  matrix runs on this task's pull request.
+  matrix runs on this change's pull request.
 
 ## 2026-10-27: the design rethought against its goals, and CI in two tiers
 
@@ -2336,7 +2339,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   2.0.10 never applies an access transformer to an anonymous class, here NeoForge's own `HolderSet$1 contents()`. CI
   builds them, for a reason still UNVERIFIED.
 - Verification: `actionlint` on every workflow, `bash -n` on the scripts, `ci/changed-targets.py` on sample path sets,
-  two local Forge 66 server smokes sharing one install. The full matrix runs on this task's pull request.
+  two local Forge 66 server smokes sharing one install. The full matrix runs on this change's pull request.
 
 ## 2026-10-27: Fabric's after-damage event on Forge 61 and 64
 
