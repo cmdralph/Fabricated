@@ -130,20 +130,27 @@ Run the game with the Fabric mod, then open an issue with:
 
 ## Releasing
 
-A release is cut by hand with the Release workflow (`.github/workflows/release.yml`), run from `main`. It builds all ten
-jars from three commits it pins when it starts: NeoForge's five from `main`, Forge 61 to 66's four from `forge` and
-Forge 47's from `forge-legacy` (their heads by default), each with the build its platform's CI uses, from an empty
-Gradle cache. A failed build is tried once more (a platform's maven can time out), and every build runs to the end.
+A release is cut by hand with the Release workflow (`.github/workflows/release.yml`), run from `main`. It pins one
+commit of each branch when it starts (their heads by default) and runs that commit's full matrix, extended, each
+branch's to the end even when another's fails. The jars those runs build, from an empty Gradle cache, are the release:
+eleven, one per platform and Minecraft version, named `fabricated-<neoforge|forge>-<version>+mc<minecraft>.jar`.
+NeoForge's five come from `main`, Forge 61 to 66's four from `forge`, and Forge 47's and Forge 52's from
+`forge-legacy`.
 
 1. Merge the release's work into `main`, then sync `forge` and `forge-legacy` with it
-   (`scripts/sync-platform-branch.sh`, a pull request each), all three with their CI green, and check that
-   `fabricated_version` in `gradle.properties` is the release's version on each.
-2. Write the notes as `docs/releases/<tag>.md` (for example `docs/releases/v0.4.0-alpha.md`) and merge them into
-   `main`. They become the release's text, so links are full URLs (a relative link resolves against the release page).
-   The workflow appends the commits the jars were built from and the jars' SHA-256 checksums.
-3. Run the workflow with mode `build`, and check the jars and checksums in the run's summary.
-4. Run it again with mode `draft` or `publish`. A tag with a suffix (`-alpha`) makes a pre-release. GitHub creates the
-   tag at `main`'s pinned commit when the release is published; no tag is pushed from a working copy.
+   (`scripts/sync-platform-branch.sh`, a pull request each), all three with their CI green. `fabricated_version` in
+   `gradle.properties` must be the tag's version, without its `v`, on each: the workflow stops otherwise.
+2. Write the notes as `docs/releases/<tag>.md` (for example `docs/releases/v0.6.0-beta.2.md`), and a
+   `docs/CHANGELOG.md` entry whose heading names the version, and merge them into `main`. The notes become the GitHub
+   release's text and the entry each CurseForge file's changelog, so links in both are full URLs (a relative link
+   resolves against the release page). The workflow appends the commits the jars were built from and the jars'
+   SHA-256 checksums.
+3. Run the workflow with mode `dry-run` (the default), and check the jars, the checksums and what would be uploaded to
+   CurseForge in the run's summary and log.
+4. Run it again with mode `draft` (a draft GitHub release) or `publish` (a published one, its jars uploaded to
+   CurseForge, which needs the variable `CURSEFORGE_PROJECT_ID` and the secret `CURSEFORGE_TOKEN`). A tag with a
+   pre-release suffix (`-beta.2`) makes a pre-release on GitHub and a beta on CurseForge (`-alpha`, an alpha). GitHub
+   creates the tag at `main`'s pinned commit when the release is published; no tag is pushed from a working copy.
 
 ## Licensing
 

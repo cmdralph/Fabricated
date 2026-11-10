@@ -7,12 +7,15 @@ isn't supported says why, in the notes under the matrix.
 ## Support matrix
 
 ✅ supported, checked by a CI gate · ◐ supported with a gap (note) · ❌ unsupported (note gives the reason) ·
-⚪ supported, not yet checked in CI · ⏳ planned in the v0.6.0-beta.2 pass (`roadmap.md`, task) · — doesn't exist there
+⚪ supported, not yet checked in CI · ❔ not checked in CI, and whether it works is unknown (the note says what is
+missing) · — doesn't exist there
 
 | | NeoForge 1.21.1 | NeoForge 1.21.11 | NeoForge 26.1.2 | NeoForge 26.2 | NeoForge 26.3 | Forge 1.20.1 | Forge 1.21.1 | Forge 1.21.11 | Forge 26.1.2 | Forge 26.2 | Forge 26.3 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Loader build CI pins | 21.1.265 | 21.11.45 | 26.1.2.116 | 26.2.0.90 | 26.3.0.95 | 47.4.28 | 52.1.21 | 61.2.4 | 64.1.5 | 65.1.5 | 66.1.0 |
 | Fabric API CI pins | 0.116.17 | 0.141.6 | 0.155.3 | 0.161.0 | 0.164.0 | 0.92.12 | 0.116.17 | 0.141.6 | 0.155.3 | 0.161.0 | 0.164.0 |
+| Loader versions the jar requires (its `mods.toml`) | `[21.1,21.2)` | `[21.11,21.12)` | `[26.1.2,26.1.3)` | `[26.2,26.3)` | `[26.3,26.4)` | `[47,)` | `[52,)` | `[61,)` | `[64,)` | `[65,)` | `[66,)` |
+| Minecraft versions the jar requires | `[1.21.1,1.21.2)` | `[1.21.11,1.21.12)` | `[26.1,26.2)` | `[26.2,26.3)` | `[26.3,26.4)` | `[1.20.1,1.20.2)` | `[1.21.1,1.21.2)` | `[1.21.11,1.21.12)` | `[26.1,26.2)` | `[26.2,26.3)` | `[26.3,26.4)` |
 | Fabric mods' names | Intermediary, remapped | Intermediary, remapped | Mojang | Mojang | Mojang | Intermediary, remapped to SRG | Intermediary, remapped | Intermediary, remapped | Mojang | Mojang | Mojang |
 | **Loading** | | | | | | | | | | | |
 | Discovery, translation, the cache, the report | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -28,17 +31,17 @@ isn't supported says why, in the notes under the matrix.
 | **Fabric API** | | | | | | | | | | | |
 | Every module of the official jar loads, server and client | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 |
 | Networking: play and configuration payloads | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Networking: login queries | ❌ 3 | ❌ 3 | ❌ 3 | ❌ 3 | ❌ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 | ⚪ ⏳ 3 |
+| Networking: login queries | ❌ 3 | ❌ 3 | ❌ 3 | ❌ 3 | ❌ 3 | ❔ 3 | ❔ 3 | ❔ 3 | ❔ 3 | ❔ 3 | ❔ 3 |
 | Registries, registry sync, resource and data packs, load conditions | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
 | Item, block, entity, interaction and lifecycle events | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 | ◐ 4 |
 | Fabric fluids as the platform's fluid types | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Biome modifications: features, spawns, climate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Transfer API and the platform's item and fluid handlers, on blocks and in items | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 5 | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Team Reborn Energy and the platform's energy | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 | ⏳ 3 |
+| Team Reborn Energy and the platform's energy | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ❌ 6 | ❌ 6 | ❌ 6 | ❌ 6 | ❌ 6 | ❌ 6 |
 | Client modules: key mappings, HUD, screens, client commands | ✅ | ◐ 7 | ✅ | ✅ | ✅ | ◐ 7 | ◐ 7 | ◐ 7 | ✅ | ✅ | ✅ |
 | Fabric mods' hooks inside the HUD method | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 8 | ✅ | ◐ 8 | ◐ 8 | ◐ 8 | ◐ 8 |
 | Mod Menu config screens in the platform's mod list | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ✅ | ⚪ | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 |
+| Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ✅ | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 |
 | Platform mods' properties as Fabric custom values, and the reverse | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | **Fabric's renderer API and models** | | | | | | | | | | | |
 | Model loading: plugins, modifiers, Fabric model formats | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -48,17 +51,17 @@ isn't supported says why, in the notes under the matrix.
 | Blocks drawn as entities (a minecart's block) | ◐ 10 | ✅ | ✅ | ✅ | ✅ | ◐ 10 | ⚪ | ✅ | ✅ | ✅ | ✅ |
 | A model that throws is drawn by the platform from then on | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Level-aware particle sprites | ⚪ | ⚪ | ◐ 11 | ◐ 11 | ◐ 11 | ⚪ | ⚪ | ✅ | ✅ | ✅ | ✅ |
-| Another registered renderer (Sodium's, Forgified Fabric API's) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ✅ | ✅ | ✅ | ✅ |
+| Another registered renderer (Sodium's, Forgified Fabric API's) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Other mods** | | | | | | | | | | | |
 | Forgified Fabric API beside Fabricated | ✅ 12 | — | ✅ 12 | ✅ 12 | — | ✅ 12 | ❌ 13 | ❌ 13 | ❌ 13 | ❌ 13 | ❌ 13 |
 | Sodium and Iris for the platform | ✅ | ✅ | ✅ | ✅ | ✅ | — 14 | — 14 | — 14 | — 14 | — 14 | — 14 |
-| The Fabric builds of Sodium and Iris, with a shader pack | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ✅ | ✅ | ✅ | ✅ |
-| Essential's Fabric build | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ✅ | ✅ | ✅ | ✅ |
-| malilib, MiniHUD, Tweakeroo, Litematica | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ✅ | ✅ | ✅ | ✅ |
-| Flashback | ✅ | ✅ | ✅ | ✅ | ✅ | — | ⚪ | ✅ | ✅ | ✅ | ✅ |
-| OneConfig and PolyPlus | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ ⏳ 4 | ⚪ | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 |
-| Continuity (connected textures through the renderer API) | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ ⏳ 4 | ⚪ | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 | ⚪ ⏳ 4 |
-| Popular Fabric mods (the corpora) | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ⚪ | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 |
+| The Fabric builds of Sodium and Iris, with a shader pack | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 19 | ✅ 19 | ✅ 19 | ✅ 19 | ✅ 19 | ✅ 19 |
+| Essential's Fabric build | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| malilib, MiniHUD, Tweakeroo, Litematica | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Flashback | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+| OneConfig and PolyPlus | ✅ | ✅ | ✅ | ✅ | ✅ | ❔ 18 | ❔ 18 | ❔ 18 | ❔ 18 | ❔ 18 | ❔ 18 |
+| Continuity (connected textures through the renderer API) | ✅ | ✅ | ✅ | ✅ | ✅ | ❔ 18 | ❔ 18 | ❔ 18 | ❔ 18 | ❔ 18 | ❔ 18 |
+| Popular Fabric mods (the corpora) | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 | ◐ 15 |
 | **Tests** | | | | | | | | | | | |
 | One test-mod suite for every loader with this Minecraft version | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 16 | ✅ 16 | ✅ 16 | ✅ 16 | ✅ 16 | ✅ 16 |
 
@@ -71,14 +74,15 @@ Notes:
    platform's code can't take are left out and named in the report (*Mixins NeoForge's code can't take* below, and
    *Unsupported on Forge*).
 3. NeoForge has no hook in the login phase, and its configuration phase can't stand in for it: the receivers of
-   `ServerLoginNetworking` and `ClientLoginNetworking` are never called. On Forge, upstream's module loads; whether its
-   login queries work is checked in task 3.
+   `ServerLoginNetworking` and `ClientLoginNetworking` are never called. On Forge, upstream's module loads, but no CI
+   run sends a login query, so whether its receivers are called there is unknown.
 4. The hooks listed under *Unsupported on Forge* (item API, content registries, lifecycle, object builder, registry
    sync, fluid rendering, sound).
 5. Blocks and fluids in items cross to Forge's handlers; Fabric API for 1.20.1 has no lookup for item storages in
    items, so there is nothing to cross.
 6. Fabricated bridges Team Reborn's energy library, when a Fabric mod brings it, to NeoForge's energy capability on
-   blocks and items, both ways; CI found no build of the library for these versions to check it with.
+   blocks and items, both ways; CI found no build of the library for these versions to check it with. On Forge it has
+   no energy bridge (`ci/checks.tsv`).
 7. NeoForge 1.21.11's test mod compiles against stand-ins without these modules, so it doesn't check them; on Forge
    1.20.1, 1.21.1 and 1.21.11 the checks cover the HUD callback, key bindings and screen input only.
 8. A Fabric mod's mixin inside vanilla's HUD method that wraps or redirects one of its calls applies but never runs:
@@ -93,13 +97,20 @@ Notes:
 13. Forgified Fabric API's builds for these versions are NeoForge's, and a jar carrying its own copy of Fabric Loader
     is refused.
 14. Sodium and Iris have no Forge builds for these versions.
-15. CI runs two corpora of popular Fabric mods on a server and a client, as informational runs: every server starts, and
-    every client reaches its world but where a mod's own behaviour holds it (`roadmap.md`, CORPUS-66). Per-mod results
-    are in *Fabric mods tested*.
+15. CI runs two corpora of popular Fabric mods, the main one and an advanced one of mods with deep hooks, on a server
+    and a client of every version, as informational runs (`ci/runs.tsv`). On NeoForge every corpus server starts, and
+    every client reaches its world but where a mod's own behaviour holds it (CORPUS-66). On Forge the stops the
+    advanced corpus found are fixed, some checked on local runs only (`roadmap.md`, *Compatibility baseline*), and one
+    mod, Wover Story, fails on Forge 66 (REG-13). Per-mod results are in *Fabric mods tested*.
 16. The shared suite runs, with Forge's half of it; each shared check Forge doesn't pass yet is listed in `ci/checks.tsv`
     with its reason, and is a cell of this matrix.
-17. Modrinth has Forge builds of WTHIT and Simple Voice Chat for these versions, which CI checks; JEI, REI and Jade have
-    none, so their plugins are converted the same way but unchecked on Forge 61 to 66 (on Forge 47 CI checks all five).
+17. Modrinth has Forge builds of WTHIT and Simple Voice Chat for 1.21.11 and 26.x, and of JEI, WTHIT and Simple Voice
+    Chat for 1.21.1, which CI checks; the other hosts have none there, so their plugins are converted the same way but
+    unchecked (on Forge 47 CI checks all five).
+18. CI doesn't run OneConfig and PolyPlus, or Continuity, on Forge (`ci/runs.tsv`), so whether they work there is
+    unknown.
+19. On Forge CI runs the Fabric builds of Sodium and Iris without a shader pack (Sodium 0.5 with Indium on 1.20.1): the
+    run with CI's shader pack is NeoForge's alone (`ci/runs.tsv`).
 
 ## How CI tests it
 
@@ -148,13 +159,12 @@ their sections below) and fixes the roadmap lists, each named in `ci/checks.tsv`
 configuration task with the integrated server, an extended menu opens with its data, a Mod Menu config screen
 factory is registered with NeoForge, and no test mod check reports a failure.
 
-CI also starts the client with the full Fabric API jar, a gate since task 7: it joins its world and passes every client
-check on every version. The checks CI then makes in its log are gates too: Fabric's renderer API, model formats and
-client modules on 26.x, model loading and the renderer API on 1.21.11, the renderer API and client modules on 1.21.1.
-On 26.x every Fabric API
-module loads on the client, the renderer API, Indigo and model loading included, and on 1.21.11 too. That run checks on
-1.21.11 that a model file of a Fabric type is read by its Fabric deserializer and that Fabric block models are drawn in
-chunk sections. On the dedicated server no Fabric API module is disabled.
+CI also starts the client with the full Fabric API jar, a gate since v0.6.0-beta: it joins its world and passes every
+client check on every version. The checks CI then makes in its log are gates too: Fabric's renderer API, model formats
+and client modules on 26.x, model loading and the renderer API on 1.21.11, the renderer API and client modules on
+1.21.1. On 26.x every Fabric API module loads on the client, the renderer API, Indigo and model loading included, and on
+1.21.11 too. That run checks on 1.21.11 that a model file of a Fabric type is read by its Fabric deserializer and that
+Fabric block models are drawn in chunk sections. On the dedicated server no Fabric API module is disabled.
 
 NeoForge's 26.3 line left beta (its `26.3.0-stable` tag), so its job is a gate like the others; until then it was
 marked experimental, and passed every check on `26.3.0.69-beta`. Its client opens its window with SDL3 over EGL, so CI installs Mesa's EGL library for it.
@@ -810,7 +820,7 @@ Upstream's module loads, without the mixins that target code NeoForge rewrote:
   Fabricated wraps each of NeoForge's vanilla layers with the Fabric element list of the same vanilla element, so
   elements attached before or after a vanilla element, replaced or removed, behave as on Fabric, but for one gap: an
   element attached to the experience level, the held item's name or the spectator tooltip is drawn even in game modes
-  where vanilla doesn't draw that element (HUD-3, task 5). Its wrappers
+  where vanilla doesn't draw that element (HUD-3). Its wrappers
   run after NeoForge mods registered their layers, so the Fabric elements surround whatever those mods did to the
   vanilla layers. On 1.21.11 the deprecated `HudRenderCallback` fires from NeoForge's `RenderGuiEvent.Post`, at the
   end of the HUD as upstream does.
@@ -934,8 +944,8 @@ every block through that renderer, so Fabric block models show in the world. Fab
   (`sodium:options`, see *Custom values* below).
 
 CI runs Sodium and Iris for NeoForge (from Modrinth) with Fabric API and a Fabric model test mod on 26.1.2, 26.2 and
-26.3, and checks each of these, as gates (the run's own smoke checks too since task 7); a second run with CI's shader
-pack is a gate since task 7 as well. A Fabric addon's mixins into Sodium are checked
+26.3, and checks each of these, as gates (the run's own smoke checks too since v0.6.0-beta); a second run with CI's
+shader pack is a gate since v0.6.0-beta as well. A Fabric addon's mixins into Sodium are checked
 against the installed Sodium for NeoForge before the game starts, like mixins into the game: one that needs Sodium's
 Fabric-only classes, or members its NeoForge build lacks, is reported and the addon disabled instead of crashing.
 
@@ -944,14 +954,14 @@ one (`fabric-renderer-api-v1:contains_renderer`, read in its 1.21.11 source), so
 renderer API had no renderer: Fabric block models stayed invisible and a Fabric mod building a mesh would fail. Once
 the client initializers ran, Fabricated registers Indigo's renderer when none registered (on every version; Indigo's
 own hooks stay off then), and Sodium draws a Fabric block model from the parts Fabricated makes from its quads.
-CI's 1.21.11 run with Sodium for NeoForge, a gate since task 7, sees the test model and the multipart part with it
+CI's 1.21.11 run with Sodium for NeoForge, a gate since v0.6.0-beta, sees the test model and the multipart part with it
 meshed in Sodium's own section level (first in run 374; run 372, without the fallback, had no parts).
 
 **Their Fabric builds** (NeoForge and Forge, every version; on Forge, *Forge* below).
 Sodium's Fabric build loads by default, and Iris's with it. CI runs them with Fabric API and the renderer test mod on
 every version Modrinth has them for, as a gate: the client reaches a world, every renderer check passes under them,
-and Sodium's renderer draws the Fabric block models. The same client with CI's minimal shader pack is a gate too since
-task 7, as is the NeoForge builds' on 26.x: every smoke check passes and Iris uses the pack.
+and Sodium's renderer draws the Fabric block models. On NeoForge the same client with CI's minimal shader pack is a
+gate too since v0.6.0-beta, as is the NeoForge builds' on 26.x: every smoke check passes and Iris uses the pack.
 On 1.21.1 Iris's particle hook, a `@Redirect` of a read of `ParticleEngine.RENDER_ORDER` in `render`, would have
 nothing to redirect: NeoForge 21.1's `render` goes over the keys of its particles' map instead, as Forge 47's does, so
 pre-flight points the hook at that loop (IRIS-1).
@@ -960,11 +970,11 @@ What Fabricated changed for them: pre-flight moves Sodium's quad hook to the con
 Sodium's hook to the overload it takes beside Indigo's overwrite (OVERLOAD-2), maps Iris's access widener entries for
 `GlStateManager`'s nested classes (TOKEN-1) and lets Iris's accessor replace Sodium's own method, as on Fabric.
 
-Their gaps, which Sodium for NeoForge's own platform code answers and its Fabric build answers the Fabric way (the
-owner's decision, 2026-11-02: no patch for one mod, the gaps listed):
+Their gaps, which Sodium for NeoForge's own platform code answers and its Fabric build answers the Fabric way (no patch
+for one mod; the gaps are listed):
 
 - Fluids are drawn through Fabric API's fluid render handlers, not NeoForge's fluid type extensions, so a NeoForge
-  mod's custom fluid rendering is not used (Fabricated has no bridge yet; planned).
+  mod's custom fluid rendering is not used (Fabricated has no bridge; a candidate in `roadmap.md`, *Not in this pass*).
 - Geometry NeoForge mods add to chunk sections (`AddSectionGeometryEvent`) isn't drawn.
 - NeoForge's model data, position-aware light emission, `hidesNeighborFace` face culling and baked colours in
   immediate mode are not applied to what Sodium's Fabric build meshes.
@@ -1007,7 +1017,7 @@ uses, and find each value where those mods look.
 Some mods' Fabric builds are refused on a loader where they can't run, or aren't verified yet; these facts are data
 (core's `compat-plan.json`). Such a build is disabled with the reason and what to do instead, and the mods that need it
 with it; `loadUnsupported` loads it anyway, for testing. A refusal is lifted on a loader once CI's run of that mod is a
-gate there (the owner's decision 3 of the beta pass): it is lifted for Sodium, Iris, Essential, malilib and Flashback,
+gate there: it is lifted for Sodium, Iris, Essential, malilib and Flashback,
 on NeoForge and Forge.
 
 A build for another Minecraft version that Fabricated can tell can't run is disabled too, with the build to install:
@@ -1118,7 +1128,7 @@ provided straight and nested, a copy of Fabric Loader's API with its language lo
 library; every check gates); with the newest Forgified Fabric API, Kotlin for Forge and Fabric Language Kotlin from
 Modrinth on a server with the test mods (the server must start; with Forgified Fabric API's resource loader it must
 take the test mod's built-in pack, and with its registry sync the test mod's initializer must make its registry); with
-Forgified Fabric API and Sodium on a 1.21.1 client (a gate since task 7: it reaches its world, and no module layer
+Forgified Fabric API and Sodium on a 1.21.1 client (a gate since v0.6.0-beta: it reaches its world, and no module layer
 refuses a package the two share); and with a stand-in for Connector and a second
 Fabricated jar, each of which must stop the launch with Fabricated's error and no module error. Every server and client
 run also makes a registry the way Forgified Fabric API's builder does, in a Fabric initializer (PROVIDER-6).
@@ -1131,7 +1141,7 @@ Kotlin's), mod containers and metadata, versions and predicates, the object shar
 (intermediary to Mojang names on 1.21.11). As on Fabric, every declared language adapter is created before any Fabric
 mod's mixin plugin loads (some mods declare one only to run code that early). `preLaunch` entrypoints run later than
 on Fabric: first of the entrypoints, right before `main`, where NeoForge has built the mods' containers (Fabric runs
-them before the game's classes load). That stays so for the beta (task 5): Sodium's driver checks there would come
+them before the game's classes load). That stays so for the beta: Sodium's driver checks there would come
 after NeoForge's early window made its GL context either way.
 
 Every mod has a root path, as on Fabric (mods take the first without checking): Minecraft's is the game's file, Java's
@@ -1340,7 +1350,7 @@ code can do without that mixin:
 A mod disabled this way can still be loaded without the mixin, by naming it in `skipMixins` in
 `config/fabricated.json` (the report's suggestion gives the exact entry).
 
-What this can't match of Fabric, seen in the owner's reference pack (2026-10-28):
+What this can't match of Fabric, seen in a reference pack (2026-10-28):
 
 - **A field NeoForge retyped.** NeoForge makes `KeyMapping.MAP` its own `KeyMappingLookup`, not vanilla's `Map`, so an
   accessor to it as a `Map` is left out, and the mod's call to it throws `NoSuchMethodError`. OneConfig's keybind
@@ -1351,7 +1361,7 @@ What this can't match of Fabric, seen in the owner's reference pack (2026-10-28)
   naming of static interface accessors, as on Fabric.
 - **Interfaces a mod adds to a library class.** adventure-platform-fabric gives authlib's `GameProfile` Adventure's
   `Identity` and Brigadier's `CommandSyntaxException` its `ComponentMessageThrowable`, which NeoForge loads without
-  mixin support. Since task 5 (LIB-2) a generated adapter stands in for each: the mod's casts of a profile to
+  mixin support. Since LIB-2 a generated adapter stands in for each: the mod's casts of a profile to
   `Identity` (a player's identity) wrap it in an adapter that answers the mixin's methods and forwards the profile's
   own, so adventure-platform-fabric loads, and with it OneConfig's chat event. What stays short of Fabric: the profile
   itself still isn't an `Identity`, so code outside adventure-platform-fabric checking one against the interface sees
@@ -1377,12 +1387,12 @@ tracked:
 |---|---|---|---|
 | Fabric's game tests (`fabric-gametest-api-v1`, `client-gametest`) | all | deliberately not loaded: they are development-time tools, not used by mods at runtime | — |
 | Data generation's tag appenders (and on 26.3 its loot sub-providers) | all | pre-flight leaves those hooks out where NeoForge's data providers differ; the module's classes load for mods' runtime code (DATAGEN-1), and nothing is generated unless `fabric-api.datagen` is set | — |
-| A Fabric mod's accessor to a field NeoForge retyped (`KeyMapping.MAP`) | all | NeoForge's field has another type, so the accessor is left out and its callers throw `NoSuchMethodError` | KEYMAP-1, task 5 |
+| A Fabric mod's accessor to a field NeoForge retyped (`KeyMapping.MAP`) | all | NeoForge's field has another type, so the accessor is left out and its callers throw `NoSuchMethodError` | KEYMAP-1 |
 | A mixin adding interfaces to a library class NeoForge loads without mixin support, beyond LIB-1's and LIB-2's | all | Mixin can't reach such a class; one with state of its own, or injectors, disables its mod, or loads without the mixin by `skipMixins`. Where an adapter serves one (LIB-2), only the mod's own casts wrap the object: another mod's check against the interface doesn't see it | LEAVE-1, LIB-2 (above) |
 | A failed mod's other entrypoints, with `"onEntrypointFailure": "disable"` | all | skipped, as the setting says: a server configuration task the failed mod registered can then leave a player waiting to join, its client side never registered | ENTRY-1 (decided) |
-| Login queries (`ServerLoginNetworking`, `ClientLoginNetworking`) | all | NeoForge has no hook in the login phase; their receivers are never called (*Networking*) | decided, task 5 |
+| Login queries (`ServerLoginNetworking`, `ClientLoginNetworking`) | all | NeoForge has no hook in the login phase; their receivers are never called (*Networking*) | decided |
 | WTHIT's Fabric build, and the mixed renderer pairs | all | as listed in *Fabric builds Fabricated refuses* | — |
-| What Sodium's Fabric build meshes the Fabric way: NeoForge's fluid renderers, section geometry from NeoForge mods, model data, position-aware light and culling | all | *Renderer mods* above; the owner chose to list the gaps rather than patch one mod | rendering-pipeline track |
+| What Sodium's Fabric build meshes the Fabric way: NeoForge's fluid renderers, section geometry from NeoForge mods, model data, position-aware light and culling | all | *Renderer mods* above; the gaps are listed rather than one mod patched | rendering-pipeline track |
 | Essential's automatic updates (its Fabric build) | all | Essential loads from the launch after its loader's download, as a regular mod | DOWNLOAD-1 |
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
 | A NeoForge model naming its loader in NeoForge's object form (`"loader": {"id": ...}`), with Moonlight's Fabric build installed | 1.21.1 | Moonlight's hook into vanilla's model deserializer, which NeoForge's runs first, reads `loader` as a string only and fails the model; not seen in the corpus | CORPUS-62 |
@@ -1420,16 +1430,17 @@ Forge 61 to 66 (Minecraft 1.21.11 to 26.3) build from the `forge` branch, and Fo
 from `forge-legacy`. All use the same engine as NeoForge; what Forge's code changes is below. Forge 52 runs the game in
 Mojang's names, with the discovery services, the ForgeGradle build and most of the in-game mod Forge 61 to 66 have
 (`mc/forge-shared`'s version groups), and Forge 47's EventBus 6 wiring; its column in the table below is its local
-server and client runs with Fabric API's jar on Forge 52.1.21 (2026-11-09), and its own gap is the support matrix's
-note 18.
+server and client runs with Fabric API's jar on Forge 52.1.21 (2026-11-09), and what it doesn't run or check is the
+support matrix's Forge 1.21.1 column.
 
-CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh` start one with the
-test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same two ways. Every
-run is a gate on every Forge version. This table is the two runs with Fabric API, the server's and the client's
-`fabric-bridge-report.txt`, from task 3's pull requests on 2026-11-02 (runs 41382942938 for Forge 61 to 66 and
-41385466464 for Forge 47): Fabric API 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1,
-on Forge 61.2.4, 64.1.5, 65.1.5, 66.1.0 and 47.4.28. Each cell is the more limited of the two: a module with client
-hooks can load on the server and lose hooks, or be turned off, on the client.
+CI runs Forge with the harness every platform shares (*How CI tests it*), through Forge's adapter
+(`ci/forge/platform.sh` on `forge`, `ci/forge-legacy/platform.sh` on `forge-legacy`); the test mods run with the
+official Fabric API jar there, which they need on Forge. Which runs gate on which Forge version, and which only report,
+is `ci/runs.tsv`. This table is the server's and the client's `fabric-bridge-report.txt` with Fabric API, from the
+parity pull requests of 2026-11-02 (runs 41382942938 for Forge 61 to 66 and 41385466464 for Forge 47): Fabric API
+0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on Forge 61.2.4, 64.1.5, 65.1.5, 66.1.0
+and 47.4.28. Each cell is the more limited of the two: a module with client hooks can load on the server and lose hooks,
+or be turned off, on the client.
 
 How to read it: as the NeoForge table, and
 
@@ -1729,39 +1740,38 @@ by the server runs (the colours, screens, key mappings and config screens by the
   vanilla's reader, which no Fabric mod hooks. The in-game mod has it use vanilla's reader, as a Fabric server does
   through Fabric API, so a Fabric mod's hook applies there: owo-lib's lets its files hold rich text, which Forge's copy
   refused (CORPUS-100, server run).
-- **Fabric's renderer API (task 4, R5):** a Fabric block model (one with its own emitter) is drawn in chunk sections,
-  alone and inside a vanilla multipart model, as a falling block and with the breaking overlay, on Forge 61 to 66 as a
-  minecart's block too and on Forge 47 as a block a piston moves, and a Fabric item model's quads in the hotbar, the
-  hand, an item frame and on the ground (all five, with Fabric API, client run). On Forge 61 to 66 upstream's hooks send
-  every block through Fabric's renderer, as on Fabric. Forge 61 moved the code three of them hook into, so pre-flight
-  leaves out those for moving blocks, the breaking overlay and blocks drawn as entities, and the in-game mod sends a
-  block whose model is a Fabric model, or a multipart or weighted model with one among its parts, to Fabric's renderer
-  there instead; every other block keeps Forge's path. A model without an emitter of its own that reads Forge's model
-  data (a Forge mod's level-aware model), drawn by Fabric's renderer as a block's model or inside a Fabric model, emits
-  the parts for its model data, which it is asked with the level as Forge's chunk section compiler asks it; upstream's
+- **Fabric's renderer API:** a Fabric block model (one with its own emitter) is drawn in chunk sections, alone and
+  inside a vanilla multipart model, as a falling block and with the breaking overlay, on Forge 61 to 66 as a minecart's
+  block too and on Forge 47 as a block a piston moves, and a Fabric item model's quads in the hotbar, the hand, an item
+  frame and on the ground (all five, with Fabric API, client run). On Forge 61 to 66 upstream's hooks send every block
+  through Fabric's renderer, as on Fabric. Forge 61 moved the code three of them hook into, so pre-flight leaves out
+  those for moving blocks, the breaking overlay and blocks drawn as entities, and the in-game mod sends a block whose
+  model is a Fabric model, or a multipart or weighted model with one among its parts, to Fabric's renderer there
+  instead; every other block keeps Forge's path. A model without an emitter of its own that reads Forge's model data (a
+  Forge mod's level-aware model), drawn by Fabric's renderer as a block's model or inside a Fabric model, emits the
+  parts for its model data, which it is asked with the level as Forge's chunk section compiler asks it; upstream's
   default emitter collects its parts without it (Forge 61 to 66, the renderer test mod's level-aware default check).
-  Forge 61 to 66 also ask a block model for its particle sprite
-  with Forge's model data where upstream's hooks ask Fabric's level-aware one, in places those hooks no longer reach:
-  the screen effect inside a block (Forge 65 draws none for any block: its patch submits it only where a listener
-  cancelled Forge's `RenderBlockScreenEffectEvent` for it), a block marker (Forge 64 to 66) and a block particle, whose
-  sprite Forge sets again from the block's position. There the in-game mod asks Fabric's for such a model, and a model whose class gives its
-  own sprite for model data keeps Forge's (PART-4; the test block's model, Forge 61 to 66). On Forge 47 upstream's hooks miss Forge's chunk section compiler
-  and block renderers, which call Forge's overloads taking model data and a render type: pre-flight leaves out the
-  chunk section redirect and keeps the hook that prepares Indigo's terrain context, and the in-game mod has Indigo draw
-  such a block, once (at its first render type), in chunk sections, as a falling block, as a block a piston moves, with
-  the breaking overlay and wherever the block renderer draws one block. Items keep Indigo's own hook there, and blocks
-  drawn as entities their vanilla quads, as upstream draws them on 1.20.1. FRAPI rule 8: where Fabric's renderer
-  (Indigo) calls a block model's emitter, a Fabric model that throws fails alone. The block is drawn from the model's
-  parts (on Forge 47 by Forge's renderer, from the quads the model gives it), the failure is logged once and listed in
-  the report, and the model's class is drawn that way from then on, but not the class of a model wrapping it (as
-  Continuity's wrap others). A transform it left pushed never reaches another block: it is popped from Indigo's
-  emitter, and on Forge 64 to 66 a model drawn into another renderer's (Sodium's Fabric build) draws into an emitter of
-  Fabricated's, dropped after a throw (FRAPI-12). The renderer test mod checks each of these with a model that throws
-  in a chunk section, as a multipart model's part, inside a model wrapping it, and on Forge 61 to 66 as a minecart's
-  block. The outline Fabric's renderer draws around a glowing falling
-  block is checked on Forge 65 and, since task 7, on Forge 66. Fabricated's guards apply only with Fabric's renderer API
-  installed (they name its types), and the two that sit in methods upstream replaces (blocks drawn as entities, and the
-  breaking overlay on Forge 64) apply after upstream's replacement.
+  Forge 61 to 66 also ask a block model for its particle sprite with Forge's model data where upstream's hooks ask
+  Fabric's level-aware one, in places those hooks no longer reach: the screen effect inside a block (Forge 65 draws none
+  for any block: its patch submits it only where a listener cancelled Forge's `RenderBlockScreenEffectEvent` for it), a
+  block marker (Forge 64 to 66) and a block particle, whose sprite Forge sets again from the block's position. There the
+  in-game mod asks Fabric's for such a model, and a model whose class gives its own sprite for model data keeps Forge's
+  (PART-4; the test block's model, Forge 61 to 66). On Forge 47 upstream's hooks miss Forge's chunk section compiler and
+  block renderers, which call Forge's overloads taking model data and a render type: pre-flight leaves out the chunk
+  section redirect and keeps the hook that prepares Indigo's terrain context, and the in-game mod has Indigo draw such a
+  block, once (at its first render type), in chunk sections, as a falling block, as a block a piston moves, with the
+  breaking overlay and wherever the block renderer draws one block. Items keep Indigo's own hook there, and blocks drawn
+  as entities their vanilla quads, as upstream draws them on 1.20.1. FRAPI rule 8: where Fabric's renderer (Indigo)
+  calls a block model's emitter, a Fabric model that throws fails alone. The block is drawn from the model's parts (on
+  Forge 47 by Forge's renderer, from the quads the model gives it), the failure is logged once and listed in the report,
+  and the model's class is drawn that way from then on, but not the class of a model wrapping it (as Continuity's wrap
+  others). A transform it left pushed never reaches another block: it is popped from Indigo's emitter, and on Forge 64
+  to 66 a model drawn into another renderer's (Sodium's Fabric build) draws into an emitter of Fabricated's, dropped
+  after a throw (FRAPI-12). The renderer test mod checks each of these with a model that throws in a chunk section, as a
+  multipart model's part, inside a model wrapping it, and on Forge 61 to 66 as a minecart's block. The outline Fabric's
+  renderer draws around a glowing falling block is checked on Forge 65 and, since v0.6.0-beta, on Forge 66. Fabricated's
+  guards apply only with Fabric's renderer API installed (they name its types), and the two that sit in methods upstream
+  replaces (blocks drawn as entities, and the breaking overlay on Forge 64) apply after upstream's replacement.
 
 What else differs on Forge, for Fabric mods in general:
 
@@ -1795,19 +1805,19 @@ What else differs on Forge, for Fabric mods in general:
   modules stand down for theirs, with the parts of the in-game mod serving those modules and its transfer bridge
   (PROVIDER-1, PROVIDER-13, PROVIDER-16). The in-game mod is then loaded even without Fabric mods, as only it nests the
   empty jar. A copy under another identifier, in a jar's own entries, or with a range the empty jar's version doesn't
-  satisfy is still refused. A provider's module is used as it is, and what it does differently from upstream is its
-  own. Read in Forgified Fabric API's source (0.92.6): a mod's own loot table reports its source as vanilla, as Forge
-  builds every mod's pack as built in (PROVIDER-14); a key binding registered once the game's options exist isn't
-  refused, and on Forge they exist before mods load; its fake player is Forge's, whose connection drops every packet, so
-  a fake player using an entity does nothing; a Fabric fuel's burn time is answered through Forge's burn time event,
-  not vanilla's fuel table; a built-in pack a Fabric mod enables by default is offered but not switched on, as it
-  switches such packs on as the options load, before Fabric mods register theirs; and its transfer bridge reports the
-  last part of a millibucket filled as 0 mB, gives Fabric mods' items no fluid handler, never hands the context the
-  item a Forge item's handler turns into, and lets a second insertion into a Forge item handler in one transaction
-  miss the first, each simulated on the handler as it stands (PROVIDER-15). A stand-in nesting a copy as Forgified
-  Fabric API does is a gate, and so is the server with Forgified Fabric API itself, its newest build, since it passed
-  two extended runs in a row (CI-1), and the client with it, in extended runs, since task 7. The test mod takes those
-  answers as the provider's there and checks the rest.
+  satisfy is still refused. A provider's module is used as it is, and what it does differently from upstream is its own.
+  Read in Forgified Fabric API's source (0.92.6): a mod's own loot table reports its source as vanilla, as Forge builds
+  every mod's pack as built in (PROVIDER-14); a key binding registered once the game's options exist isn't refused, and
+  on Forge they exist before mods load; its fake player is Forge's, whose connection drops every packet, so a fake
+  player using an entity does nothing; a Fabric fuel's burn time is answered through Forge's burn time event, not
+  vanilla's fuel table; a built-in pack a Fabric mod enables by default is offered but not switched on, as it switches
+  such packs on as the options load, before Fabric mods register theirs; and its transfer bridge reports the last part
+  of a millibucket filled as 0 mB, gives Fabric mods' items no fluid handler, never hands the context the item a Forge
+  item's handler turns into, and lets a second insertion into a Forge item handler in one transaction miss the first,
+  each simulated on the handler as it stands (PROVIDER-15). A stand-in nesting a copy as Forgified Fabric API does is a
+  gate, and so is the server with Forgified Fabric API itself, its newest build, since it passed two extended runs in a
+  row (CI-1), and the client with it, in extended runs, since v0.6.0-beta. The test mod takes those answers as the
+  provider's there and checks the rest.
 - **Default method bridges:** where an interface a Fabric mod's mixin adds to a game class brings a second default
   method beside one Forge's own interfaces give it (`IForgeLivingEntity.self()` on `LivingEntity`, `IForgeEntity`'s
   `isMultipartEntity()` on every entity class), the class declares the method, calling Forge's, as on NeoForge
@@ -1820,11 +1830,11 @@ What else differs on Forge, for Fabric mods in general:
   it loads mods), and the system property FML sets for an empty log marker is removed before any Fabric mod runs
   (CORPUS-60). A Fabric mod's jar a mod proposes for the class path as the game runs isn't added, with a loading
   warning (DOWNLOAD-1); Essential, whose loader does that, loads from its download in the next launch, as on NeoForge.
-- **The difficult mods' Fabric builds** (task 5): each loads by default and the client reaches a world with every
-  smoke check passing, a gate in extended runs: malilib with MiniHUD, Tweakeroo and Litematica; Sodium's, the renderer
-  test mod's checks passing under it (with Indium on Forge 47), and Iris's with it (IRIS-1's repairs on Forge 47); both
-  of Essential's launches; and Flashback's on Forge 61 to 66 (PLUGIN-1's repair on 64 to 66; Modrinth has no build for
-  1.20.1). The compatibility plan refuses none of them on Forge.
+- **The difficult mods' Fabric builds:** each loads by default and the client reaches a world with every smoke check
+  passing, a gate in extended runs: malilib with MiniHUD, Tweakeroo and Litematica; Sodium's, the renderer test mod's
+  checks passing under it (with Indium on Forge 47), and Iris's with it (IRIS-1's repairs on Forge 47, IRIS-2's on Forge
+  52); both of Essential's launches; and Flashback's on Forge 52 and 61 to 66 (PLUGIN-1's repair on 64 to 66; Modrinth
+  has no build for 1.20.1). The compatibility plan refuses none of them on Forge.
 - **Forge's coremods:** pre-flight reads the game's classes as Forge's own transformers leave them before Mixin
   applies any mod's mixins: Forge 47's coremods and Forge 61 to 66's `forge-transformers`. Each mob's `finalizeSpawn`
   call Forge changes is pointed at `ForgeEventFactory.onFinalizeSpawn` (on Forge 47 anywhere in the classes it lists;
@@ -1916,34 +1926,30 @@ What else differs on Forge, for Fabric mods in general:
   too, and the providers on the client. Forge 52 keeps the bucket's type and the providers so too, and has the same
   getters (ACC-5; 1.21.1's brewing mix holds holders in vanilla). An accessor or read of another such field still
   fails.
-- **Forge Config API Port** on Forge 61 to 66: its Fabric build loads, with its own copies of NeoForge's config
-  classes, which Forge lacks (REPL-1, PLAT-5). On Forge 47 its version for 1.20.1 copies Forge's own config system,
-  packages included, so its copies were left out for Forge's and its registry failed to link (Ponder's main
-  entrypoint, CORPUS-81). There the jar is left out, as on NeoForge, and the in-game mod provides the port's Fabric API
-  (`ForgeConfigRegistry`, `ForgeConfigPaths`, `ModConfigEvents`) on Forge's config system: each config is made with
-  the Fabric mod's Forge container under the port's file name, its values readable right after registering, as with
-  the port, and Forge loads, watches, syncs and unloads it as its mods' own, the port's events firing from Forge's.
-  The test mod registers a config so and checks it each server run (PLAT-6: the descriptor had NeoForge's list until
-  task 5). On Forge 52 the port's version for 1.21.1 copies NeoForge's config system and Forge's config classes: its
-  jar loads as on Fabric for its NeoForge half, and the in-game mod provides its Forge half (`ForgeConfigRegistry`,
-  `ForgeModConfigEvents` of `fabric.api.forge.v4`) on Forge's config system the same way, the jar's copy of that
-  package left out for it (CFG-4); its test mod checks it as Forge 47's does. **Mod Menu**'s Fabric build isn't loaded
-  on Forge, which lists mods itself; Fabric mods' Mod Menu entrypoints give it their config screens (above).
+- **Forge Config API Port** on Forge 61 to 66: its Fabric build loads, with its own copies of NeoForge's config classes,
+  which Forge lacks (REPL-1, PLAT-5). On Forge 47 its version for 1.20.1 copies Forge's own config system, packages
+  included, so its copies were left out for Forge's and its registry failed to link (Ponder's main entrypoint,
+  CORPUS-81). There the jar is left out, as on NeoForge, and the in-game mod provides the port's Fabric API
+  (`ForgeConfigRegistry`, `ForgeConfigPaths`, `ModConfigEvents`) on Forge's config system: each config is made with the
+  Fabric mod's Forge container under the port's file name, its values readable right after registering, as with the
+  port, and Forge loads, watches, syncs and unloads it as its mods' own, the port's events firing from Forge's. The test
+  mod registers a config so and checks it each server run (PLAT-6: the descriptor had NeoForge's list before
+  v0.6.0-beta). On Forge 52 the port's version for 1.21.1 copies NeoForge's config system and Forge's config classes:
+  its jar loads as on Fabric for its NeoForge half, and the in-game mod provides its Forge half (`ForgeConfigRegistry`,
+  `ForgeModConfigEvents` of `fabric.api.forge.v4`) on Forge's config system the same way, the jar's copy of that package
+  left out for it (CFG-4); its test mod checks it as Forge 47's does. **Mod Menu**'s Fabric build isn't loaded on Forge,
+  which lists mods itself; Fabric mods' Mod Menu entrypoints give it their config screens (above).
 - **Enum extensions:** a Fabric mod adding enum constants with Mixin's enum extensions (Farmer's Delight Refabricated)
   is disabled on Forge 61 to 66, whose Mixin 0.8.7 predates them (CORPUS-36).
-- **The corpus runs** (informational; extended runs 41385577023 and 41386136422 on task 3's code) load 87 to 106
-  Fabric mods on the Forge 61 to 66 servers and 135 on Forge 47's, 105 to 124 on the Forge 61 to 66 clients and 151 on
-  Forge 47's, then stop before a world, on what *Findings* in [roadmap.md](roadmap.md#open-findings) lists for task 5: the
-  Forge 61 to 66 clients as the game bootstraps and the Forge 64 to 66 servers as Mixin starts (CORPUS-53), the Forge
-  61 and Forge 47 servers on a corpus mod's hook into `CropBlock.getGrowthSpeed` that pre-flight let through
-  (CORPUS-54), and Forge 47's client on a method the game's class loader can't find (CORPUS-55). The test mods' runs,
-  which are the gates, have none of those mods. Lithostitched and Terralith, which pre-flight disabled until CORPUS-33,
-  load on Forge 61 to 66.
+- **The corpus runs** (informational): the main corpus and the advanced one run on every Forge version in extended
+  runs. What they met there, and how it was fixed, is in [roadmap.md](roadmap.md)'s *Compatibility baseline* and in
+  [FINDINGS.md](FINDINGS.md); what is open, in its [*Open findings*](roadmap.md#open-findings). Lithostitched and
+  Terralith, which pre-flight disabled until CORPUS-33, load on Forge 61 to 66.
 
 ### Unsupported on Forge
 
 What Fabric mods can't rely on there. The report names every hook left out; these are the ones nothing on Forge does
-instead. Unless a task is named, nothing is planned for them yet.
+instead.
 
 **Not supported on Forge** (Forge's code differs where upstream hooks in):
 
@@ -2005,8 +2011,8 @@ Modrinth in CI (never redistributed):
   26.2): gated; every test block comes through its renderer, none through Fabricated's.
 - **The NeoForge builds of JEI, REI, Jade, WTHIT and Simple Voice Chat**, pinned per version, with the test mod's
   plugins declared the Fabric way: gated. Each creates and calls its plugin on every version (WTHIT has no 26.3 build).
-- **OneConfig and PolyPlus** (Fabric only), gated where Modrinth has builds for the version (every version since task
-  7): the client reaches its world with no Fabric mod disabled. Their nested
+- **OneConfig and PolyPlus** (Fabric only), gated where Modrinth has builds for the version (every version since
+  v0.6.0-beta): the client reaches its world with no Fabric mod disabled. Their nested
   Kotlin, Compose and MixinSquared jars split packages between jars, which Fabricated now serves from one module.
 
 To report a result for another mod, see [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-a-compatibility-result).

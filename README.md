@@ -18,19 +18,20 @@ It's built to be:
 - **Safe.** Mod jars are treated as untrusted input. Fabricated never runs mod code while translating, never
   modifies your mod jars, never touches the network, and has no telemetry.
 
-> **Status: beta (v0.6.0-beta).** Nearly every Fabric API module loads, and every platform and version is held to
+> **Status: beta (v0.6.0-beta.2).** Nearly every Fabric API module loads, and every platform and version is held to
 > the same bar in CI, but Fabric mods that patch code NeoForge changed can still be disabled before they run. Read
 > [What works today](#what-works-today) before relying on it.
 
 **Platforms and branches.** This README is about NeoForge. Builds for Minecraft Forge, for dedicated servers and
 clients, are on their own branches, held to the same bar; the [support matrix](docs/COMPATIBILITY.md#support-matrix)
-says what works on each loader and Minecraft version, and what Forge doesn't support yet:
+says what works on each loader and Minecraft version, and
+[*Unsupported on Forge*](docs/COMPATIBILITY.md#unsupported-on-forge) what Forge doesn't support yet:
 
 | Branch | Platform | Minecraft | Jars |
 |---|---|---|---|
 | [`main`](https://github.com/cmdralph/Fabricated/tree/main) | NeoForge | 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-neoforge-<version>+mc<minecraft>.jar` |
 | [`forge`](https://github.com/cmdralph/Fabricated/tree/forge) | Minecraft Forge 61 to 66 | 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-forge-<version>+mc<minecraft>.jar` |
-| [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) | Forge 47 | 1.20.1 | `fabricated-forge-<version>+mc1.20.1.jar` |
+| [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) | Forge 47 and Forge 52 | 1.20.1, 1.21.1 | `fabricated-forge-<version>+mc<minecraft>.jar` |
 
 Each platform is on its own branch: `main` holds the shared engine and NeoForge, `forge` and `forge-legacy` the shared
 engine and their own platform, which they get from `main` by merge.
@@ -45,7 +46,7 @@ wideners, mixins, and the isolation of broken mods (for example a missing depend
 
 | Minecraft | NeoForge | Java | Fabric mods use | Status |
 |---|---|---|---|---|
-| 1.21.1 | 21.1.265 | 21 | Intermediary names (remapped at load) | ✅ test mods pass; Fabric renderer API models aren't drawn in chunk sections yet |
+| 1.21.1 | 21.1.265 | 21 | Intermediary names (remapped at load) | ✅ test mods pass |
 | 1.21.11 | 21.11.45 | 21 | Intermediary names (remapped at load) | ✅ test mods pass |
 | 26.1.2 | 26.1.2.116 | 25 | Mojang names (no remapping) | ✅ test mods pass |
 | 26.2 | 26.2.0.90 | 25 | Mojang names (no remapping) | ✅ test mods pass |
@@ -212,7 +213,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ```bash
 ./gradlew -Pfabricated.coreOnly=true build          # unit tests, no Minecraft needed
-./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods   # build/libs/fabricated-neoforge-0.6.0+mc26.2.jar
+./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods   # build/libs/fabricated-neoforge-0.6.0-beta.2+mc26.2.jar
 ```
 
 ## Design and research
