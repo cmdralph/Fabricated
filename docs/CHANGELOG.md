@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-10: A startup and memory benchmark in CI (task 6A)
+## 2026-11-10: A startup and memory benchmark in CI
 
 - **The benchmark:** each version's server part measures, in its run with Fabric API, what the JVM's threads allocate
   during Fabricated's discovery in the first launch (every Fabric mod translated) and in a second with everything
