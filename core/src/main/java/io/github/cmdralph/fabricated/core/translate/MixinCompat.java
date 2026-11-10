@@ -111,7 +111,7 @@ public final class MixinCompat {
 	 * Clamps a behaviour version into NeoForge's accepted range.
 	 *
 	 * @param runtimeMixinVersion the running Mixin version, e.g. {@code 0.17.4+mixin.0.8.7}
-	 * @param lowest              the lowest behaviour version this FML accepts (its default: 0.16.5 on FML 10,
+	 * @param lowestBehavior      the lowest behaviour version this FML accepts (its default: 0.16.5 on FML 10,
 	 *                            0.17.1 on FML 11 and 12)
 	 */
 	public static String clampForNeoForge(String behaviorVersion, String runtimeMixinVersion, String lowestBehavior) {

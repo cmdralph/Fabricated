@@ -1228,10 +1228,6 @@ public final class Pipeline {
 		return lines;
 	}
 
-	/**
-	 * The report section of the mixins (or their failing injectors) left out of loaded mods: NeoForge's code differs
-	 * where they hook in, and the mod loads without them (LEAVE-1).
-	 */
 	/** The report's section for the mixins pre-flight left out. */
 	static String leftOutSection(String loader) {
 		return "Mixins left out (" + loader + "'s code differs where they hook in)";

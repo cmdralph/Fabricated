@@ -489,7 +489,6 @@ final class LambdaRepairs extends PreflightPart {
 		return null;
 	}
 
-	/** Where each of {@code wanted} is in {@code captured}, taken in order, when they occur in it that way only once; else null. */
 	/**
 	 * The method an injector's one selector means when it names vanilla's full descriptor, which a mod's refmap gives, and
 	 * this game build declares the method with one or two more parameters (SIG-3): the one method of that name and return
@@ -519,6 +518,7 @@ final class LambdaRepairs extends PreflightPart {
 		return found == null ? List.of() : List.of(found);
 	}
 
+	/** Where each of {@code wanted} is in {@code captured}, taken in order, when they occur in it that way only once; else null. */
 	private static int[] inOrder(List<Type> wanted, List<Type> captured) {
 		int n = wanted.size();
 		int m = captured.size();

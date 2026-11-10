@@ -141,7 +141,7 @@ public final class NativeModMixins {
 			if (targetNodes.size() != targets.size()) continue;
 			ClassNode mixin = null;
 			for (MethodNode handler : candidates) {
-				List<String> instanceTargets = instanceTargets(outline, handler, targetNodes);
+				List<String> instanceTargets = instanceTargets(handler, targetNodes);
 				if (instanceTargets.isEmpty()) continue;
 				String where = "the static @Inject handler " + handler.name + " of " + listed.mixin().replace('/', '.') + " (" + listed.owner() + ") hooks "
 						+ String.join(", ", instanceTargets) + ", which " + installed.owner(targets.get(0)) + "'s Fabric build declares an instance method";
@@ -168,7 +168,7 @@ public final class NativeModMixins {
 	 * an instance method; none where it selects any static one, or none at all, or selects by a pattern (Mixin then
 	 * decides, as without this).
 	 */
-	private static List<String> instanceTargets(ClassNode mixin, MethodNode handler, List<ClassNode> targets) {
+	private static List<String> instanceTargets(MethodNode handler, List<ClassNode> targets) {
 		AnnotationNode inject = Annotations.find(handler, MixinNames.INJECT);
 		if (!Annotations.list(Annotations.value(inject, "target")).isEmpty()) return List.of();
 		if (!(Annotations.value(inject, "method") instanceof List<?> selectors) || selectors.isEmpty()) return List.of();
