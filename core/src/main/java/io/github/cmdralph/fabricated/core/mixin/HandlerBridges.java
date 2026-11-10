@@ -465,7 +465,7 @@ final class HandlerBridges {
 	/**
 	 * A handler for {@code injector} at {@code canonical} instead of {@code delegate}: it takes {@code canonical}'s
 	 * parameters and the callback info, and calls {@code handler} with {@code delegate}'s (the same values, see
-	 * {@link #forwardsItsParameters}) and the callback info. The injector annotation moves to it; {@code handler} stays a
+	 * {@link ConstructorRepairs#forwardsItsParameters}) and the callback info. The injector annotation moves to it; {@code handler} stays a
 	 * plain method of the mixin.
 	 */
 	static MethodNode bridge(String mixin, MethodNode handler, AnnotationNode injector, MethodNode delegate, MethodNode canonical, String name) {

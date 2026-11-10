@@ -55,14 +55,14 @@ final class MixinNames {
 
 	static final String MODIFY_RETURN_VALUE = "Lcom/llamalad7/mixinextras/injector/ModifyReturnValue;";
 
+	/** The receiver, among the values {@link CallRepairs#insertedArgument(ClassNode, String, String, String)} sees pushed. */
+	static final int THIS = Integer.MIN_VALUE;
+
 	/**
 	 * Fabric Loader's own calls, which its launcher adds to the game where it runs mods' entrypoints, to the call NeoForge's
 	 * build makes at that step, in the same method: Fabricated runs those entrypoints in NeoForge's mod loading. Mods inject
 	 * after them to run once every mod has initialized (owo-lib freezes its registries after the server's, HOOK-1).
 	 */
-	/** The receiver, among the values {@link CallRepairs#insertedArgument(ClassNode, String, String, String)} sees pushed. */
-	static final int THIS = Integer.MIN_VALUE;
-
 	static final Map<String, String> LOADER_HOOKS = Map.of(
 			"Lnet/fabricmc/loader/impl/game/minecraft/Hooks;startServer(Ljava/io/File;Ljava/lang/Object;)V",
 			"Lnet/neoforged/neoforge/server/loading/ServerModLoader;load(Z)V");

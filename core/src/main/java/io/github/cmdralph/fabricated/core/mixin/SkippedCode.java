@@ -69,7 +69,7 @@ final class SkippedCode extends PreflightPart {
 			return List.of();
 		}
 		for (AnnotationNode at : ats) Annotations.put(at, "value", "RETURN");
-		remove(injector, "slice");
+		Annotations.remove(injector, "slice");
 		return List.of("the end of " + method.name + method.desc + ", which " + loader + "'s patch returns before (it hands the method's work to "
 				+ named(bypasses.get(0).handedTo()) + " and returns, skipping vanilla's code); the injection point is pointed at the method's"
 				+ " returns, where its work ends here");
@@ -121,7 +121,7 @@ final class SkippedCode extends PreflightPart {
 		boolean after = "AFTER".equals(shifted);
 		Annotations.put(injector, "method", new ArrayList<>(List.of(called.name + called.desc)));
 		Annotations.put(at, "value", after ? "RETURN" : "HEAD");
-		for (String key : List.of("target", "shift", "ordinal")) remove(at, key);
+		for (String key : List.of("target", "shift", "ordinal")) Annotations.remove(at, key);
 		return List.of("the call " + raw + " in code of " + method.name + method.desc + " that " + loader + "'s patch skips (it hands the method's work to "
 				+ named(handedTo) + " and returns), which " + handedTo.owner.replace('/', '.') + " makes itself; the injection point is pointed at the "
 				+ (after ? "returns" : "start") + " of " + called.name + called.desc);
@@ -152,7 +152,7 @@ final class SkippedCode extends PreflightPart {
 		if (seam == null) return List.of();
 		Annotations.put(injector, "method", new ArrayList<>(List.of(seam.name + seam.desc)));
 		for (AnnotationNode at : ats) Annotations.put(at, "value", start ? "HEAD" : "RETURN");
-		remove(injector, "slice");
+		Annotations.remove(injector, "slice");
 		return List.of("the " + (start ? "start" : "end") + " of " + method.name + method.desc + ", which " + ctx.loader() + " never calls (a"
 				+ " subclass of its overrides it); the injection point is pointed at Fabricated's seam " + seam.name + ", which runs where that"
 				+ " override " + (start ? "starts" : "ends"));
@@ -331,16 +331,5 @@ final class SkippedCode extends PreflightPart {
 
 	private static String named(MethodInsnNode call) {
 		return call.owner.replace('/', '.') + "." + call.name;
-	}
-
-	private static void remove(AnnotationNode ann, String key) {
-		if (ann.values == null) return;
-		for (int i = 0; i + 1 < ann.values.size(); i += 2) {
-			if (key.equals(ann.values.get(i))) {
-				ann.values.remove(i + 1);
-				ann.values.remove(i);
-				return;
-			}
-		}
 	}
 }

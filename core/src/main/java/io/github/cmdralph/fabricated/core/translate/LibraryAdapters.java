@@ -56,9 +56,6 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 final class LibraryAdapters {
 	private static final String OBJECT = "java/lang/Object";
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
-	/** The annotations of Mixin an adapted mixin's members may have: none changes what the mixin does. */
-	private static final Set<String> ALLOWED = Set.of(SHADOW, "Lorg/spongepowered/asm/mixin/Unique;", "Lorg/spongepowered/asm/mixin/Final;",
-			"Lorg/spongepowered/asm/mixin/Mutable;", "Lorg/spongepowered/asm/mixin/Mixin;");
 	private static final String TARGET = "fabricated$target";
 	static final String CAST = "fabricated$cast";
 	static final String UNWRAP = "fabricated$unwrap";
@@ -90,7 +87,7 @@ final class LibraryAdapters {
 		ClassNode mixin = new ClassNode();
 		new ClassReader(mixinBytes).accept(mixin, ClassReader.EXPAND_FRAMES);
 		if ((mixin.access & Opcodes.ACC_INTERFACE) != 0 || !OBJECT.equals(mixin.superName) || mixin.interfaces.isEmpty() || !mixin.fields.isEmpty()
-				|| !allowed(mixin.visibleAnnotations) || !allowed(mixin.invisibleAnnotations)
+				|| !LibraryBridges.allowed(mixin.visibleAnnotations) || !LibraryBridges.allowed(mixin.invisibleAnnotations)
 				|| mixin.interfaces.stream().anyMatch(taken::contains)) return null;
 		ClassNode lib = library.apply(target);
 		if (lib == null || (lib.access & Opcodes.ACC_INTERFACE) != 0) return null;
@@ -106,9 +103,9 @@ final class LibraryAdapters {
 		Set<String> declared = new HashSet<>();
 		List<MethodNode> own = new ArrayList<>();
 		for (MethodNode m : mixin.methods) {
-			if (!allowed(Annotations.all(m))) return null;
+			if (!LibraryBridges.allowed(Annotations.all(m))) return null;
 			if (m.name.equals("<init>")) {
-				if (!trivialConstructor(m)) return null;
+				if (!LibraryBridges.trivialConstructor(m)) return null;
 				continue;
 			}
 			if (m.name.equals("<clinit>")) return null;
@@ -240,8 +237,8 @@ final class LibraryAdapters {
 					}
 				}
 			} else if (insn instanceof FrameNode frame) {
-				replace(frame.local, mixin, adapter);
-				replace(frame.stack, mixin, adapter);
+				LibraryBridges.replace(frame.local, mixin, adapter);
+				LibraryBridges.replace(frame.stack, mixin, adapter);
 			}
 		}
 		if (m.tryCatchBlocks != null) {
@@ -398,28 +395,5 @@ final class LibraryAdapters {
 		m.maxStack = 2;
 		m.maxLocals = 1;
 		return m;
-	}
-
-	/** Whether the constructor only calls {@code Object}'s. */
-	private static boolean trivialConstructor(MethodNode m) {
-		List<Integer> opcodes = new ArrayList<>();
-		for (AbstractInsnNode insn : m.instructions) {
-			if (insn.getOpcode() >= 0) opcodes.add(insn.getOpcode());
-		}
-		return opcodes.equals(List.of(Opcodes.ALOAD, Opcodes.INVOKESPECIAL, Opcodes.RETURN));
-	}
-
-	private static boolean allowed(List<AnnotationNode> annotations) {
-		if (annotations == null) return true;
-		for (AnnotationNode a : annotations) {
-			boolean mixinOwn = a.desc.startsWith("Lorg/spongepowered/asm/mixin/") || a.desc.startsWith("Lcom/llamalad7/mixinextras/");
-			if (mixinOwn && !ALLOWED.contains(a.desc)) return false;
-		}
-		return true;
-	}
-
-	private static void replace(List<Object> types, String from, String to) {
-		if (types == null) return;
-		types.replaceAll(t -> from.equals(t) ? to : t);
 	}
 }

@@ -50,6 +50,6 @@ public record AccessWidenerFile(String format, String namespace, List<Entry> ent
 	 * An enum constant the mod's enum mixin adds to {@code target}. The line only declares it for compiling against;
 	 * Mixin adds the constant itself when the mixin applies.
 	 */
-	public record EnumExtension(String target, String constant, int line) {
+	public record EnumExtension(String target, String constant) {
 	}
 }

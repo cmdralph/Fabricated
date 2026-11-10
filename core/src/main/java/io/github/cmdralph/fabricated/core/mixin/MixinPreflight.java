@@ -2289,12 +2289,6 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * MixinExtras accepts a {@code @WrapMethod} handler whose parameters, after sugar parameters are removed, are the
-	 * target's parameters followed by the {@code Operation}, in each method it wraps; anything else is an
-	 * {@code InvalidInjectionException} when the mixin applies, whatever its {@code require}. Handlers that use
-	 * {@code @Coerce}, or whose shape is unusual, are left to Mixin.
-	 */
-	/**
 	 * Whether a {@code @ModifyArgs} handler takes Mixin's {@code Args} alone or followed by all of each target method's
 	 * parameters, as Mixin requires ({@code ModifyArgsInjector.verifyTarget}); it throws as it applies the mixin
 	 * otherwise (CORPUS-58: Ledger's anvil hook, where NeoForge's lambda captures one more value).
@@ -2306,6 +2300,12 @@ public final class MixinPreflight extends PreflightPart {
 		return targets.stream().allMatch(target -> List.of(Type.getArgumentTypes(target.desc)).equals(wanted));
 	}
 
+	/**
+	 * MixinExtras accepts a {@code @WrapMethod} handler whose parameters, after sugar parameters are removed, are the
+	 * target's parameters followed by the {@code Operation}, in each method it wraps; anything else is an
+	 * {@code InvalidInjectionException} when the mixin applies, whatever its {@code require}. Handlers that use
+	 * {@code @Coerce}, or whose shape is unusual, are left to Mixin.
+	 */
 	private static boolean acceptsWrapperSignature(MethodNode handler, List<MethodNode> targets) {
 		List<Type> args = PreflightAsm.handlerArgs(handler);
 		if (args == null || args.isEmpty() || !args.get(args.size() - 1).getDescriptor().equals(MixinNames.OPERATION)) return true;
