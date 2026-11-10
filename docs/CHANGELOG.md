@@ -36,8 +36,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   row.
 - Discovery's log line and the report's *Launch timings* also say what the JVM allocated meanwhile ("2702 ms, 894 MB
   allocated"); counting it takes about 2 ms of a NeoForge launch.
-- Not recorded yet: NeoForge 26.2 and 26.3, which don't build locally, and every Forge version, which the benchmark
-  only reports until a run records them.
+- NeoForge 26.2 and 26.3, which don't build locally, are recorded from CI's run, where the local baselines of the
+  other three held within 1%. Every Forge version is only reported until a run records it.
 - Verified: the core unit tests, CI's script tests and the mixin inventory; the workflow with actionlint. Locally the
   Fabric API server ran three times each on NeoForge 1.21.1, 1.21.11 and 26.1.2 (1.21.1 four more times while choosing
   the metrics): the allocations held within 1% and the heap within 2%, and each run passed the comparison.

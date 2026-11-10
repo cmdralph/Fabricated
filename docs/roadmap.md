@@ -307,5 +307,5 @@ machine and doubled beside a build, and its CPU time by about 20% with everythin
 The baselines are in `ci/bench.tsv`, one row per platform, version and metric, with why each last changed; the job's
 summary shows each metric against its baseline. A metric more than 10% over its baseline fails the part, unless the
 change records the new value there with its reason, and a pull request that changes a baseline must change its reason
-too. NeoForge 1.21.1, 1.21.11 and 26.1.2 are recorded from local runs; NeoForge 26.2 and 26.3, which don't build
-locally, and every Forge version are only reported until a run records them.
+too. NeoForge 1.21.1, 1.21.11 and 26.1.2 are recorded from local runs, which CI's runners matched within 1%; NeoForge
+26.2 and 26.3, which don't build locally, from CI's run. Every Forge version is only reported until a run records it.
