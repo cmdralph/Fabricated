@@ -35,6 +35,7 @@
     "NamespacedWrapperPendingHoldersMixin": [],
     "ParticleEngineProvidersBridgeMixin": [],
     "ParticleEngineRenderMixin": [],
+    "PackRepositorySourcesMixin": [],
     "PlayerListViewMixin": [],
     "PoiTypesMixin": [],
     "ResourcePackLoaderKnownPackMixin": [],
