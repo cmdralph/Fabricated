@@ -15,6 +15,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   `fabricated-0.6.0+mc<minecraft>.jar`) and `fabricated-forge-0.6.0-beta.2+mc<minecraft>.jar`. README's status, branch
   table (Forge 52 on `forge-legacy`) and build example, ARCHITECTURE and CONTRIBUTING's release steps (the workflow's
   modes, its eleven jars, CurseForge) say so.
+- **`COMPATIBILITY.md` matches CI for the release:** Forge 1.21.1's column follows `ci/runs.tsv` (its plugin hosts,
+  Sodium's renderer, the difficult mods and the corpora); login queries, OneConfig with PolyPlus and Continuity on
+  Forge read as unchecked, and Forge's energy as unbridged; the support matrix shows the loader and Minecraft versions
+  each jar requires; the Forge section describes CI as it runs.
 - **This file's headings and entries** no longer name the passes' task numbers.
 - **Verified:** CI's script tests and the mixin inventory; every relative link in the notes and the READMEs resolves on
   the branch it is published from.
