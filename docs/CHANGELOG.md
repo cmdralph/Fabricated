@@ -3,6 +3,28 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: Forge's fourth-round stops: Mixin's Guava, field initialisers, pack sources (LIB-3, PRE-28, PACK-11)
+
+- **LIB-3** (P0), fixed: Fabric's Mixin carries Guava and Gson in its own package, and Wover's item API uses that Guava;
+  Forge's Mixin carries neither, so on Forge 52 and 64 to 66 BetterEnd's, BetterNether's, BCLib's and Wover's
+  entrypoints failed and the advanced servers stopped. A mod's references there now name the game's own Guava and Gson,
+  where the running Mixin lacks them.
+- **PRE-28** (P0), fixed: Forge's Mixin refuses a mixin whose field initialisers branch or store into an array, which
+  Fabric's Mixin merges; Cobblemon's item renderer hook stopped the Forge 52 client. Pre-flight computes such a field's
+  value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't repair so.
+- **PACK-11** (P0), fixed: FrozenLib's resource pack API left the client's pack sources immutable and Forge 61's own
+  pack finders couldn't be added, which stopped the client; the fix NeoForge and Forge 47 had (PACK-1) now runs on every
+  Forge version.
+- Open: Wover Story's two point-of-interest types are equal, and Forge's registry takes them for one (REG-13); no
+  generic fix. Forge 47's advanced client stopped on FrozenLib's gravity hook, fixed by PRE-26 since; the
+  `MixinExtrasBootstrap` exception the digest shows is a harmless debug-level probe.
+- Verified: the core unit tests, CI's script tests and the mixin inventory; Forge 47, 52, 61 and 66 build. Locally a
+  Forge 66 advanced server starts, where the fourth round's never did, with every Fabric entrypoint but Wover Story's
+  running; a Forge 52 advanced client repairs Cobblemon's two mixins and applies the item renderer's, and its Fabric
+  entrypoints run, before it stops on Apoli's HUD hook (open); a Forge 52 advanced server runs its entrypoints and then
+  stops creating its world in Forge's registry snapshot (open); a Forge 61 advanced client joins its world and exits
+  normally, every check passing, where the fourth round's stopped as it started.
+
 ## 2026-11-10: A startup and memory benchmark in CI
 
 - **The benchmark:** each version's server part measures, in its run with Fabric API, what the JVM's threads allocate
