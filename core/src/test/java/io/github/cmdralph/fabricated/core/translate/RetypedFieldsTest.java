@@ -238,6 +238,96 @@ class RetypedFieldsTest {
 	}
 
 	@Test
+	void anotherModsCallsOfTheAccessorReachTheFieldThroughVanillasDescriptor() throws Throwable {
+		// ACC-6: Wover's generator module calls its biome module's accessor with vanilla's descriptor, which this mod's
+		// translation doesn't see. The accessor keeps a method of that descriptor calling the adapted one on the target.
+		Map<String, byte[]> out = new HashMap<>();
+		apply(game(LAZY), mod(false), out);
+		ClassNode accessor = node(out.get(ACCESSOR + ".class"));
+		MethodNode bridge = accessor.methods.stream().filter(m -> m.name.equals("fabricated$features") && m.desc.equals("()" + SUPPLIER)).findFirst().orElseThrow();
+		assertEquals(0, bridge.access & Opcodes.ACC_ABSTRACT);
+		assertNull(bridge.visibleAnnotations);
+		MethodInsnNode call = (MethodInsnNode) List.of(bridge.instructions.toArray()).stream().filter(i -> i instanceof MethodInsnNode).findFirst().orElseThrow();
+		assertEquals(Opcodes.INVOKEVIRTUAL, call.getOpcode());
+		assertEquals(GENERATOR, call.owner);
+		assertEquals("()" + LAZY, call.desc);
+		assertTrue(accessor.methods.stream().anyMatch(m -> m.name.equals("setFeaturesPerStep") && m.desc.equals("(" + SUPPLIER + ")V")
+				&& (m.access & Opcodes.ACC_ABSTRACT) == 0));
+
+		// Loaded beside a target with the accessors Mixin generates, both of vanilla's descriptors reach the field.
+		Map<String, byte[]> classes = Map.of(ACCESSOR, out.get(ACCESSOR + ".class"), GENERATOR, target(), LAZY.substring(1, LAZY.length() - 1), lazy());
+		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				byte[] data = classes.get(name.replace('.', '/'));
+				if (data == null) throw new ClassNotFoundException(name);
+				return defineClass(name, data, 0, data.length);
+			}
+		};
+		Class<?> accessorClass = loader.loadClass(ACCESSOR.replace('/', '.'));
+		Object generator = loader.loadClass(GENERATOR.replace('/', '.')).getConstructor().newInstance();
+		java.lang.invoke.MethodHandles.Lookup lookup = java.lang.invoke.MethodHandles.publicLookup();
+		java.util.function.Supplier<Object> value = () -> "features";
+		lookup.findVirtual(accessorClass, "setFeaturesPerStep", java.lang.invoke.MethodType.methodType(void.class, java.util.function.Supplier.class))
+				.invoke(generator, value);
+		Object got = lookup.findVirtual(accessorClass, "fabricated$features", java.lang.invoke.MethodType.methodType(java.util.function.Supplier.class))
+				.invoke(generator);
+		assertEquals("features", ((java.util.function.Supplier<?>) got).get());
+	}
+
+	/** Forge's {@code ClearableLazy}, as the test needs it: a {@code Supplier} whose {@code concurrentOf} wraps another. */
+	private static byte[] lazy() {
+		String name = LAZY.substring(1, LAZY.length() - 1);
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object",
+				new String[] {"java/util/function/Supplier"});
+		MethodVisitor of = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "concurrentOf", "(" + SUPPLIER + ")" + LAZY, null, null);
+		of.visitCode();
+		of.visitVarInsn(Opcodes.ALOAD, 0);
+		Handle metafactory = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+				"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
+		of.visitInvokeDynamicInsn("get", "(" + SUPPLIER + ")" + LAZY, metafactory, Type.getType("()Ljava/lang/Object;"),
+				new Handle(Opcodes.H_INVOKEINTERFACE, "java/util/function/Supplier", "get", "()Ljava/lang/Object;", true), Type.getType("()Ljava/lang/Object;"));
+		of.visitInsn(Opcodes.ARETURN);
+		of.visitMaxs(0, 0);
+		of.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** The accessor's target as Mixin leaves it: the field in Forge's type, and the accessors generated with Forge's descriptors. */
+	private static byte[] target() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, GENERATOR, null, "java/lang/Object", new String[] {ACCESSOR});
+		cw.visitField(Opcodes.ACC_PRIVATE, "featuresPerStep", LAZY, null, null).visitEnd();
+		MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		init.visitCode();
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(0, 0);
+		init.visitEnd();
+		MethodVisitor get = cw.visitMethod(Opcodes.ACC_PUBLIC, "fabricated$features", "()" + LAZY, null, null);
+		get.visitCode();
+		get.visitVarInsn(Opcodes.ALOAD, 0);
+		get.visitFieldInsn(Opcodes.GETFIELD, GENERATOR, "featuresPerStep", LAZY);
+		get.visitInsn(Opcodes.ARETURN);
+		get.visitMaxs(0, 0);
+		get.visitEnd();
+		MethodVisitor set = cw.visitMethod(Opcodes.ACC_PUBLIC, "setFeaturesPerStep", "(" + LAZY + ")V", null, null);
+		set.visitCode();
+		set.visitVarInsn(Opcodes.ALOAD, 0);
+		set.visitVarInsn(Opcodes.ALOAD, 1);
+		set.visitFieldInsn(Opcodes.PUTFIELD, GENERATOR, "featuresPerStep", LAZY);
+		set.visitInsn(Opcodes.RETURN);
+		set.visitMaxs(0, 0);
+		set.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
 	void nothingChangesWhereThePlatformKeepsVanillasType() throws Exception {
 		Map<String, byte[]> out = new HashMap<>();
 		assertTrue(apply(game(SUPPLIER), mod(false), out).isEmpty());

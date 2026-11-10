@@ -41,9 +41,13 @@ import io.github.cmdralph.fabricated.core.mixin.Refmap;
  * an {@code @Accessor} of the field, and every call of it in the mod, take the platform's type (a setter's value made
  * into it as a write's is), its entries in the mod's refmaps name it, and a {@code @Shadow} of the field has it.
  *
+ * <p>Another mod's calls of the accessor, which this mod's translation doesn't see, keep vanilla's type: the accessor
+ * of a mixin with one target keeps a method of vanilla's name and descriptor, which Mixin merges into the target with the
+ * mixin's others, calling the adapted one there (a setter's value made into the platform's type), so they reach the field
+ * through it (ACC-6: Wover's generator module calls its biome module's accessor). Each mod is translated on its own.
+ *
  * <p>Left as they are, which pre-flight then reports as before: an accessor setter a method reference names (its
  * lambda would pass vanilla's type), and injectors whose point names the field (their handlers take vanilla's type).
- * A mod calling another mod's accessor of the field isn't adapted.
  */
 final class RetypedFields {
 	private static final String MIXIN = Annotations.MIXIN;
@@ -75,7 +79,8 @@ final class RetypedFields {
 	private record AccessorKey(String owner, String name, String desc) {
 	}
 
-	private record Accessor(Retype field, boolean setter, String selector) {
+	/** {@code target}: the mixin's one target, which the method of vanilla's descriptor calls the accessor on; null for none. */
+	private record Accessor(Retype field, boolean setter, String selector, String target) {
 		String newDesc() {
 			return setter ? "(" + field.platformDesc() + ")V" : "()" + field.platformDesc();
 		}
@@ -142,8 +147,9 @@ final class RetypedFields {
 			}
 			AnnotationNode mixin = Annotations.find(node.invisibleAnnotations, node.visibleAnnotations, MIXIN);
 			if (mixin == null) continue;
+			List<String> targets = mixinTargets(mixin);
 			for (Retype r : active) {
-				if (mixinTargets(mixin).stream().noneMatch(t -> reaches(t, r.owner(), supers))) continue;
+				if (targets.stream().noneMatch(t -> reaches(t, r.owner(), supers))) continue;
 				for (FieldNode f : node.fields) {
 					if (f.name.equals(r.name()) && f.desc.equals(r.vanillaDesc()) && Annotations.find(f, SHADOW) != null) shadows.put(node.name, r);
 				}
@@ -156,7 +162,8 @@ final class RetypedFields {
 					String explicit = Annotations.value(accessor, "value") instanceof String s && !s.isEmpty() ? s : null;
 					String key = explicit != null ? explicit : MixinPreflight.inferAccessorName(m.name);
 					if (key == null || !r.name().equals(fieldName(resolve(refmaps, node.name, key)))) continue;
-					accessors.put(new AccessorKey(node.name, m.name, m.desc), new Accessor(r, Type.getReturnType(m.desc).getSort() == Type.VOID, key));
+					accessors.put(new AccessorKey(node.name, m.name, m.desc), new Accessor(r, Type.getReturnType(m.desc).getSort() == Type.VOID, key,
+							targets.size() == 1 ? targets.get(0) : null));
 				}
 			}
 		}
@@ -301,6 +308,29 @@ final class RetypedFields {
 			public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
 				className = name;
 				super.visit(version, access, name, signature, superName, interfaces);
+			}
+
+			@Override
+			public void visitEnd() {
+				// Vanilla's descriptor of each accessor of this mixin, for other mods' calls: the adapted accessor, called on the
+				// target class rather than the mixin, as Mixin points a merged method's calls of its mixin at the target and
+				// would leave them interface calls.
+				plan.accessors().forEach((key, a) -> {
+					if (!key.owner().equals(className) || a.target() == null) return;
+					MethodVisitor mv = super.visitMethod(Opcodes.ACC_PUBLIC, key.name(), key.desc(), null, null);
+					mv.visitCode();
+					mv.visitVarInsn(Opcodes.ALOAD, 0);
+					mv.visitTypeInsn(Opcodes.CHECKCAST, a.target());
+					if (a.setter()) {
+						mv.visitVarInsn(Opcodes.ALOAD, 1);
+						mv.visitMethodInsn(Opcodes.INVOKESTATIC, a.field().wrapOwner(), a.field().wrapName(), a.field().wrapDesc(), true);
+					}
+					mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, a.target(), key.name(), a.newDesc(), false);
+					mv.visitInsn(a.setter() ? Opcodes.RETURN : Opcodes.ARETURN);
+					mv.visitMaxs(a.setter() ? 2 : 1, a.setter() ? 2 : 1);
+					mv.visitEnd();
+				});
+				super.visitEnd();
 			}
 
 			@Override
