@@ -246,6 +246,8 @@ class RetypedFieldsTest {
 		ClassNode accessor = node(out.get(ACCESSOR + ".class"));
 		MethodNode bridge = accessor.methods.stream().filter(m -> m.name.equals("fabricated$features") && m.desc.equals("()" + SUPPLIER)).findFirst().orElseThrow();
 		assertEquals(0, bridge.access & Opcodes.ACC_ABSTRACT);
+		// Synthetic, so that Mixin still takes the mixin for an accessor mixin, which may target a class.
+		assertEquals(Opcodes.ACC_PUBLIC | Opcodes.ACC_SYNTHETIC, bridge.access);
 		assertNull(bridge.visibleAnnotations);
 		MethodInsnNode call = (MethodInsnNode) List.of(bridge.instructions.toArray()).stream().filter(i -> i instanceof MethodInsnNode).findFirst().orElseThrow();
 		assertEquals(Opcodes.INVOKEVIRTUAL, call.getOpcode());

@@ -42,9 +42,11 @@ import io.github.cmdralph.fabricated.core.mixin.Refmap;
  * into it as a write's is), its entries in the mod's refmaps name it, and a {@code @Shadow} of the field has it.
  *
  * <p>Another mod's calls of the accessor, which this mod's translation doesn't see, keep vanilla's type: the accessor
- * of a mixin with one target keeps a method of vanilla's name and descriptor, which Mixin merges into the target with the
- * mixin's others, calling the adapted one there (a setter's value made into the platform's type), so they reach the field
- * through it (ACC-6: Wover's generator module calls its biome module's accessor). Each mod is translated on its own.
+ * of a mixin with one target keeps a method of vanilla's name and descriptor, calling the adapted one (a setter's value
+ * made into the platform's type), so they reach the field through it (ACC-6: Wover's generator module calls its biome
+ * module's accessor). The method is synthetic, as Mixin takes an interface mixin with a method that is neither an
+ * accessor nor synthetic for one of an interface, and refuses its class target; Mixin merges it into the target as the
+ * mixin's other synthetic methods. Each mod is translated on its own.
  *
  * <p>Left as they are, which pre-flight then reports as before: an accessor setter a method reference names (its
  * lambda would pass vanilla's type), and injectors whose point names the field (their handlers take vanilla's type).
@@ -317,7 +319,7 @@ final class RetypedFields {
 				// would leave them interface calls.
 				plan.accessors().forEach((key, a) -> {
 					if (!key.owner().equals(className) || a.target() == null) return;
-					MethodVisitor mv = super.visitMethod(Opcodes.ACC_PUBLIC, key.name(), key.desc(), null, null);
+					MethodVisitor mv = super.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_SYNTHETIC, key.name(), key.desc(), null, null);
 					mv.visitCode();
 					mv.visitVarInsn(Opcodes.ALOAD, 0);
 					mv.visitTypeInsn(Opcodes.CHECKCAST, a.target());
