@@ -361,9 +361,21 @@ jobs:
           key: downloads-${{ matrix.platform }}-${{ matrix.minecraft }}-${{ matrix.pins }}-v1
           restore-keys: downloads-${{ matrix.platform }}-${{ matrix.minecraft }}-
       # 26.3 and later open their window with SDL3 over EGL, which needs Mesa's EGL library (not on the runner image).
+      # An attempt that hangs on the package mirror is stopped and tried again (CI-13), rather than holding the job to its
+      # timeout.
       - name: Install Mesa EGL for the client
         if: contains(matrix.sides, 'client')
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
+        timeout-minutes: 14
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 120 sudo apt-get update -qq \
+                && timeout 120 sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri; then
+              exit 0
+            fi
+            echo "::warning title=Mesa EGL::attempt $attempt failed or timed out"
+            sleep 10
+          done
+          exit 1
       - name: The ${{ matrix.part }} runs
         run: ci/smoke.sh "$PLATFORM" "$MC" "$PART"
       # A metric more than 10% over its baseline fails, unless the change records the new value with its reason; on a

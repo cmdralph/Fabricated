@@ -1072,7 +1072,7 @@ them, with that folder's version groups that serve the version (`mc/forge-shared
 `overwrites.requireAnnotations`, which every NeoForge config sets: in the others, a method a mixin adds that its
 target already declares replaces the target's without an `@Overwrite` (MIX-3).
 
-## Forge 61 to 66 (`forge`): 87 mixins in 24 configs
+## Forge 61 to 66 (`forge`): 88 mixins in 24 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1092,7 +1092,7 @@ target already declares replaces the target's without an `@Overwrite` (MIX-3).
 | `mc/forge/common/src/main/resources/fabricated-forge-entity.mixins.json` | `io.github.cmdralph.fabricated.forge.entity.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 2 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 1 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge-screen.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | client 2 | 1 | — | none |
-| `mc/forge/common/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 23 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge/common/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 24 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge/common/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 5 | 1 | true | none |
 | `mc/forge/common/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | client 1 | 1 | — | none |
 | `mc/forge/common26/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 26.1.2, 26.2, 26.3 | client 10 | 1 | — | `FrapiMixinPlugin` |
@@ -1326,6 +1326,7 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 | mixins | NamespacedWrapperEntryAddedMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.registries.NamespacedWrapper (`targets`) | @WrapMethod → fabricated$entryAdded; @Shadow delegate | "register(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;" |  | — | default |
 | mixins | ForgeRegistryEntryAddedMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAdded; @Unique methods fabricated$self, fabricated$fire | "register(Lnet/minecraft/resources/Identifier;Ljava/lang/Object;)V" |  | — | default |
 | mixins | ForgeRegistryEntryAddedMixin | common (1.21.11,26.1.2,26.2,26.3) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAddedWithId | "register(ILnet/minecraft/resources/Identifier;Ljava/lang/Object;)V" |  | — | default |
+| mixins | ForgeRegistryRekeyMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | forge.registries.ForgeRegistry | @Inject → fabricated$rekeyChangedValues (an entry whose value its map no longer finds, its equality changed since it was registered, is put again before the snapshot, REG-14); @Shadow ids, names, keys, owners; @Unique methods fabricated$rekey | "makeSnapshot" | HEAD | — | default |
 | mixins | BuiltInRegistriesFreezeMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.core.registries.BuiltInRegistries | @WrapOperation → fabricated$freezeAfterMainEntrypoints | "bootStrap" | INVOKE `L…/BuiltInRegistries;freeze()V` | — | default |
 | mixins | BuiltInRegistriesInvoker | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.core.registries.BuiltInRegistries | @Invoker → fabricated$freeze | "freeze" |  | — | default |
 | mixins | GameDataFreezeMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.registries.GameData | @Inject → fabricated$freezeBuiltInRegistries | "freezeData" | HEAD | — | default |
@@ -1454,7 +1455,7 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
 | mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 
-## Forge 47 (`forge-legacy`): 82 mixins in 14 configs
+## Forge 47 (`forge-legacy`): 83 mixins in 14 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1466,7 +1467,7 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 1.20.1 | client 6 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.20.1 | mixins 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-item.mixins.json` | `io.github.cmdralph.fabricated.forge.item.mixin` | 1.20.1 | mixins 2 | 1 | — | none |
-| `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.20.1 | mixins 28, client 4 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.20.1 | mixins 29, client 4 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.20.1 | client 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.20.1 | mixins 7 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.20.1 | client 4 | 1 | — | none |
@@ -1594,6 +1595,7 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | NamespacedWrapperEntryAddedMixin | 1.20.1 (1.20.1) | forge.registries.NamespacedWrapper (`targets`) | @WrapMethod → fabricated$entryAdded; @Shadow delegate | "m_203704_(ILnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lcom/mojang/serialization/Lifecycle;)Lnet/minecraft/core/Holder$Reference;" |  | — | default |
 | mixins | ForgeRegistryEntryAddedMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAdded; @Unique methods fabricated$self, fabricated$fire | "register(Lnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)V" |  | — | default |
 | mixins | ForgeRegistryEntryAddedMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAddedWithId | "register(ILnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)V" |  | — | default |
+| mixins | ForgeRegistryRekeyMixin | mc/forge-shared (1.20.1) | forge.registries.ForgeRegistry | @Inject → fabricated$rekeyChangedValues (an entry whose value its map no longer finds, its equality changed since it was registered, is put again before the snapshot, REG-14); @Shadow ids, names, keys, owners; @Unique methods fabricated$rekey | "makeSnapshot" | HEAD | — | default |
 | mixins | BuiltInRegistriesFreezeMixin | mc/forge-shared (1.20.1) | n.m.core.registries.BuiltInRegistries | @WrapOperation → fabricated$freezeAfterMainEntrypoints | "bootStrap" | INVOKE `L…/BuiltInRegistries;freeze()V` | — | default |
 | mixins | BuiltInRegistriesInvoker | mc/forge-shared (1.20.1) | n.m.core.registries.BuiltInRegistries | @Invoker → fabricated$freeze | "freeze" |  | — | default |
 | mixins | BuiltInRegistriesValidateMixin | 1.20.1 (1.20.1) | n.m.core.registries.BuiltInRegistries | @ModifyArg → fabricated$passOverEmptyForgeRegistries | "validate" | INVOKE `L…/Registry;forEach(L…/Consumer;)V` | — | default |
@@ -1697,18 +1699,18 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.testmod.frapi.mixin` 
 |---|---|---|---|---|---|---|---|---|
 | client | McRuntimeTestHoldMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedFrapiTest$holdForMovingBlocks | "tickHook" | HEAD cancellable=true | — | default |
 
-## Forge 52 (`forge-legacy`): 64 mixins in 14 configs
+## Forge 52 (`forge-legacy`): 70 mixins in 14 configs
 
 Minecraft 1.21.1, in Mojang's names without a refmap, as on Forge 61 to 66. The mixins come from `mc/forge-shared` and its
 groups, as the source column says, but `NamespacedWrapperAliasMixin`, over 1.21.1's lookups, `LoadingRegistriesMixin`, on
 1.21.1's tagless wrapper of the registries, `LiquidBlockRendererSpritesMixin`, Forge 52's fluid sprites (FLUID-4), the
 item hooks Forge 52 names its own way (ITEM-1), the renderer seams in its section compiler and piston renderer and on
-1.21.1's weighted model (FRAPI-11), its screen input hook (LAMBDA-10), its ingredient codec, of which Forge 52 keeps no
+1.21.1's weighted model (FRAPI-11), its screen input hook (LAMBDA-10), its HUD layer stacks' vanilla lists (HUD-6), its ingredient codec, of which Forge 52 keeps no
 vanilla form (NET-13), and the bridges of the fields it replaced, named after Mojang's names of them (ACC-5).
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 24, client 4 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 25, client 6 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.1 | mixins 4 | 1 | true | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 1.21.1 | mixins 2 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
@@ -1721,7 +1723,7 @@ vanilla form (NET-13), and the bridges of the fields it replaced, named after Mo
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-content.mixins.json` | `io.github.cmdralph.fabricated.forge.content.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 1.21.1 | client 6 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-screen.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.mixin` | 1.21.1 | client 1 | 1 | — | none |
-| `mc/forge-legacy/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.1 | mixins 6, client 3 | 1 | — | none |
+| `mc/forge-legacy/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.1 | mixins 6, client 5 | 1 | — | none |
 
 ### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json`
 
@@ -1742,6 +1744,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | NamespacedWrapperEntryAddedMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.registries.NamespacedWrapper (`targets`) | @WrapMethod → fabricated$entryAdded; @Shadow delegate | "register(Lnet/minecraft/resources/ResourceKey;Ljava/lang/Object;Lnet/minecraft/core/RegistrationInfo;)Lnet/minecraft/core/Holder$Reference;" |  | — | default |
 | mixins | ForgeRegistryEntryAddedMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAdded; @Unique methods fabricated$self, fabricated$fire | "register(Lnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)V" |  | — | default |
 | mixins | ForgeRegistryEntryAddedMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | forge.registries.ForgeRegistry | @WrapMethod → fabricated$entryAddedWithId | "register(ILnet/minecraft/resources/ResourceLocation;Ljava/lang/Object;)V" |  | — | default |
+| mixins | ForgeRegistryRekeyMixin | mc/forge-shared (1.21.1) | forge.registries.ForgeRegistry | @Inject → fabricated$rekeyChangedValues (an entry whose value its map no longer finds, its equality changed since it was registered, is put again before the snapshot, REG-14); @Shadow ids, names, keys, owners; @Unique methods fabricated$rekey | "makeSnapshot" | HEAD | — | default |
 | mixins | BuiltInRegistriesFreezeMixin | mc/forge-shared (1.21.1) | n.m.core.registries.BuiltInRegistries | @WrapOperation → fabricated$freezeAfterMainEntrypoints | "bootStrap" | INVOKE `L…/BuiltInRegistries;freeze()V` | — | default |
 | mixins | BuiltInRegistriesInvoker | mc/forge-shared (1.21.1) | n.m.core.registries.BuiltInRegistries | @Invoker → fabricated$freeze | "freeze" |  | — | default |
 | mixins | GameDataFreezeMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.registries.GameData | @Inject → fabricated$freezeBuiltInRegistries | "freezeData" | HEAD | — | default |
@@ -1765,6 +1768,10 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | client | ExtendedBlockModelDeserializerMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | forge.client.model.ExtendedBlockModelDeserializer | @WrapOperation → fabricated$fabricLoader | "deserialize(Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lnet/minecraft/client/renderer/block/model/BlockModel;" | INVOKE `L…/ExtendedBlockModelDeserializer;deserializeGeometry(L…/JsonDeserializationContext;L…/JsonObject;)L…/IUnbakedGeometry;` | — | default |
 | client | ParticleEngineProvidersBridgeMixin | 1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | no injectors; adds methods fabricated$get$providers (named after Mojang's name of the field, ACC-5); @Shadow providers; @Unique fields fabricated$providersById | | | | |
 | client | ParticleEngineRenderMixin | 1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Redirect → fabricated$renderOverload (the call of the overload taking a frustum, with none, which Forge 52's vanilla method makes of itself, IRIS-2) | "render(L…/LightTexture;L…/Camera;F)V" | INVOKE `L…/ParticleEngine;render(L…/LightTexture;L…/Camera;F)V` | — | require=0 (none where Forge 52 calls the overload itself) |
+| client | ForgeLayeredDrawVanillaLayersMixin | 1.21.1 (1.21.1) | forge.client.gui.overlay.ForgeLayeredDraw | @Inject → fabricated$addLayer (a layer a stack takes by name goes into vanilla's list too, as vanilla's `add` puts it there, until the stack is resolved, HUD-6); @Shadow order; @Unique fields fabricated$named, fabricated$resolved; @Unique methods fabricated$add | "add(Lnet/minecraft/resources/ResourceLocation;Lnet/minecraft/client/gui/LayeredDraw$Layer;)Lnet/minecraftforge/client/gui/overlay/ForgeLayeredDraw;" | INVOKE `L…/List;add(L…/Object;)Z` | — | default |
+| client | ForgeLayeredDrawVanillaLayersMixin | 1.21.1 (1.21.1) | forge.client.gui.overlay.ForgeLayeredDraw | @Inject → fabricated$addStack (a nested stack, as Forge draws it) | "add(Lnet/minecraft/resources/ResourceLocation;Lnet/minecraft/client/gui/LayeredDraw;Ljava/util/function/BooleanSupplier;)Lnet/minecraftforge/client/gui/overlay/ForgeLayeredDraw;" | INVOKE `L…/List;add(L…/Object;)Z` | — | default |
+| client | ForgeLayeredDrawVanillaLayersMixin | 1.21.1 (1.21.1) | forge.client.gui.overlay.ForgeLayeredDraw | @Inject → fabricated$keepOthers (what else vanilla's list held follows the layer of Forge's it followed, in Forge's order) | "resolveNested" | TAIL | — | default |
+| client | LayeredDrawLayersAccessor | 1.21.1 (1.21.1) | n.m.client.gui.LayeredDraw | @Accessor → fabricated$layers | "layers" |  | — | default |
 
 ### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json`
 
@@ -1926,6 +1933,12 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forgetest.mixin` · r
 | mixins | MobBucketItemAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.item.MobBucketItem | @Accessor → fabricatedtest$type | "field_7991" remap=false |  | — | default |
 | client | HudHooksMixin | 1.21.1 (1.21.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheStart; @Unique fields fabricatedForgeTest$started, fabricatedForgeTest$endedCancelled, fabricatedForgeTest$endReported | "render" | HEAD cancellable=true | — | default |
 | client | HudHooksMixin | 1.21.1 (1.21.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheEnd | "render" | TAIL | — | default |
+| client | HudLayersMixin | 1.21.1 (1.21.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$afterTheHotbar (a layer put into the first stack's vanilla list at index 3, as Apoli's, HUD-6); @Unique fields fabricatedForgeTest$drawn, fabricatedForgeTest$reported | "<init>" | FIELD `L…/Gui;layers:L…/LayeredDraw;` opcode=GETFIELD | — | default |
+| client | HudLayersMixin | 1.21.1 (1.21.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$start | "render" | HEAD | — | default |
+| client | HudLayersMixin | 1.21.1 (1.21.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$hotbar | "renderHotbarAndDecorations" | HEAD | — | default |
+| client | HudLayersMixin | 1.21.1 (1.21.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$experience | "renderExperienceLevel" | HEAD | — | default |
+| client | HudLayersMixin | 1.21.1 (1.21.1) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$end | "render" | TAIL | — | default |
+| client | LayeredDrawLayersAccessor | 1.21.1 (1.21.1) | n.m.client.gui.LayeredDraw | @Accessor → fabricatedForgeTest$layers | "layers" |  | — | default |
 | client | MouseHandlerInvoker | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.MouseHandler | @Invoker → fabricatedtest$onPress | "onPress" |  | — | default |
 | client | ParticleEngineProvidersAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Accessor → fabricatedtest$providers | "field_3835" remap=false |  | — | default |
 

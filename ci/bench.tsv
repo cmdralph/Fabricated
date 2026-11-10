@@ -26,21 +26,21 @@ neoforge	26.2	heap	165	first recorded: CI's run (it doesn't build locally)
 neoforge	26.3	discovery-alloc	367	first recorded: CI's run (it doesn't build locally)
 neoforge	26.3	discovery-alloc-cached	66	first recorded: CI's run (it doesn't build locally)
 neoforge	26.3	heap	176	first recorded: CI's run (it doesn't build locally)
-forge-legacy	1.20.1	discovery-alloc	-	not recorded yet: its first CI run records it
+forge-legacy	1.20.1	discovery-alloc	1165	first recorded: CI's run of the sync pull request (#377)
 forge-legacy	1.20.1	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
-forge-legacy	1.20.1	heap	-	not recorded yet: its first CI run records it
-forge-legacy	1.21.1	discovery-alloc	-	not recorded yet: its first CI run records it
+forge-legacy	1.20.1	heap	264	first recorded: CI's run of the sync pull request (#377)
+forge-legacy	1.21.1	discovery-alloc	926	first recorded: CI's run of the sync pull request (#377)
 forge-legacy	1.21.1	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
-forge-legacy	1.21.1	heap	-	not recorded yet: its first CI run records it
-forge	1.21.11	discovery-alloc	-	not recorded yet: its first CI run records it
+forge-legacy	1.21.1	heap	263	first recorded: CI's run of the sync pull request (#377)
+forge	1.21.11	discovery-alloc	1088	first recorded: CI's run of the sync pull request (#376)
 forge	1.21.11	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
-forge	1.21.11	heap	-	not recorded yet: its first CI run records it
-forge	26.1.2	discovery-alloc	-	not recorded yet: its first CI run records it
+forge	1.21.11	heap	246	first recorded: CI's run of the sync pull request (#376)
+forge	26.1.2	discovery-alloc	682	first recorded: CI's run of the sync pull request (#376)
 forge	26.1.2	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
-forge	26.1.2	heap	-	not recorded yet: its first CI run records it
-forge	26.2	discovery-alloc	-	not recorded yet: its first CI run records it
+forge	26.1.2	heap	201	first recorded: CI's run of the sync pull request (#376)
+forge	26.2	discovery-alloc	683	first recorded: CI's run of the sync pull request (#376)
 forge	26.2	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
-forge	26.2	heap	-	not recorded yet: its first CI run records it
-forge	26.3	discovery-alloc	-	not recorded yet: its first CI run records it
+forge	26.2	heap	203	first recorded: CI's run of the sync pull request (#376)
+forge	26.3	discovery-alloc	694	first recorded: CI's run of the sync pull request (#376)
 forge	26.3	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
-forge	26.3	heap	-	not recorded yet: its first CI run records it
+forge	26.3	heap	214	first recorded: CI's run of the sync pull request (#376)
