@@ -22,7 +22,7 @@ directly. This is `main`'s tree:
 | `mc/<platform>/common*/` | Code a platform's versions share, as each version's `shared_sources` lists it: NeoForge's `common` (the in-game mod, the platform's half of the test mods) for every version, `common121` for 1.21.1 and 1.21.11, `common12111` for 1.21.11 and all 26.x versions, `common26` for all 26.x versions, `common26early` for 26.1.2 and 26.2, `common26late` for 26.2 and 26.3 | Yes |
 | `mc/shared/` | Sources every platform uses: in `src`, the in-game mod's shared code (`/fabricated`, Mod Menu's API), the broken test mods, stand-ins for other mods' APIs and the build's Fabric API remapper; in `<group>/src`, the Fabric test mods, by the Minecraft versions each group serves (`1.20.1+`, `1.20.1-1.21.1`, `1.21.1+`, `1.21.x`, `1.21.11+`, `26.x`, `26.1-26.2`, `26.2+`, one version's own), which its name says: every version builds the groups that serve it | Yes |
 | `mc/mc.gradle`, `mc/platform-<platform>.gradle` | The build shared by every version, and each platform's part of it | - |
-| `ci/` | CI's plan (`plan.py`), harness (`smoke-server.sh`, `smoke-client.sh`, `smoke.sh`), runs and checks (`runs.tsv`, `checks.tsv`, `check-log.py`) and the mod corpus lists, every platform's; `ci/<platform>/` holds the platform's adapter (`platform.sh`: its build tasks, how its loader installs and launches) and its stand-ins | - |
+| `ci/` | CI's plan (`plan.py`), harness (`smoke-server.sh`, `smoke-client.sh`, `smoke.sh`), runs and checks (`runs.tsv`, `checks.tsv`, `check-log.py`), the benchmark (`bench.py`, its baselines in `bench.tsv`) and the mod corpus lists, every platform's; `ci/<platform>/` holds the platform's adapter (`platform.sh`: its build tasks, how its loader installs and launches) and its stand-ins | - |
 | `scripts/` | Maintenance scripts (importing Fabric API modules, the native modules' index, syncing a platform branch with `main`) | - |
 | `docs/` | Research, architecture and compatibility notes | - |
 
@@ -58,7 +58,8 @@ into `main`, `forge` or `forge-legacy` runs the full matrix for the versions it 
 The full matrix builds each version, boots real dedicated servers and starts real clients headlessly into a
 singleplayer world (HeadlessMC under Xvfb), with the test mods, Fabric API and other people's mods (`ci/runs.tsv`), and
 checks each run against `ci/checks.tsv`. A check a platform or version doesn't pass is listed there as not applying,
-with the reason.
+with the reason. The server run with Fabric API is also the startup and memory benchmark (`ci/bench.py`): a pull request
+that takes a metric more than 10% over its baseline in `ci/bench.tsv` records the new value there, with the reason.
 
 ## Code rules
 

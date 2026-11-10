@@ -82,6 +82,14 @@ final class MixinRepairs extends PreflightPart {
 			if (node == null) continue;
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Map.of(), Set.of(), out, null, loader);
 			boolean changed = false;
+			// First, as it takes the constructor from the mixin parsed again.
+			List<String> outlined = restrictsInitialisers ? Initialisers.outline(node, () -> modClasses.readNode(internal, ClassReader.EXPAND_FRAMES)) : List.of();
+			if (!outlined.isEmpty()) {
+				changed = true;
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "The initialisers of its field(s) " + String.join(", ", outlined)
+						+ " branch or load or store an array element, which " + loader + "'s Mixin refuses as it merges them into the constructors of"
+						+ " its target; each value is computed by a method the mixin adds (fabricated$init$<field>), as Fabric's Mixin merges them (PRE-28)", ""));
+			}
 			for (String moved : anonymousTargetRepairs(node, ctx)) {
 				changed = true;
 				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "Target class " + moved, ""));
