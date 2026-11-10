@@ -24,6 +24,23 @@ One entry per working session, newest first: what changed, and how it was verifi
   ACC-6; the regular Forge 52 server part passes, every check of its six runs (Forgified Fabric API has no Forge
   52 build).
 
+## 2026-11-10: What stopped a corpus run, and two corpus checks that aren't Fabricated's (CI-12, CORPUS-114, CORPUS-113)
+
+- **CI-12** (CI only), fixed: the digest CI prints for a corpus run that failed or is informational now opens on what
+  stopped the game: CI's reason, a crash report, or, for a game that didn't start, the console's last exception chain,
+  and it leaves out exceptions logged at debug level. The Forge 47 advanced client's digest had ended on a harmless
+  probe of the MixinExtras version, while the real stop, Mixin's failure on FrozenLib's gravity hook, was only on the
+  console.
+- **CORPUS-114**, not Fabricated's: with Polymer, the Forge 66 advanced server failed two of the test mods' checks that
+  ingredients go over the network. Polymer's ingredient codec needs the packet context Fabric API sets only while a
+  packet is sent, and the checks write their ingredients outside a packet, where Polymer fails on Fabric too. A real
+  connection has the context.
+- **CORPUS-113**, not Fabricated's, is also the fourth round's NeoForge 1.21.1 advanced server failure: `/reload` fails
+  in WorldWeaver's biome tags, as on Fabric, so the resource loader's listener doesn't run a second time.
+- Verified: CI's script tests, with a new one for the digest; locally, a Forge 66 server with the advanced corpus and
+  one with Polymer alone fail the same two checks on Polymer's codec, and a NeoForge 1.21.1 advanced server fails only
+  the `/reload` check, in WorldWeaver's code.
+
 ## 2026-11-10: Forge's fourth-round stops: Mixin's Guava, field initialisers, pack sources (LIB-3, PRE-28, PACK-11)
 
 - **LIB-3** (P0), fixed: Fabric's Mixin carries Guava and Gson in its own package, and Wover's item API uses that Guava;
