@@ -3,6 +3,17 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: A Fabric jar's Forge biome modifiers turned off; the Forge 52 advanced server starts (MODIFIER-2)
+
+- **MODIFIER-2** (P0), fixed: YUNG's Extras' Fabric jar carries its Forge build's biome modifiers, which Forge applies
+  beside what the mod's Fabric code adds, so its desert decorations went in twice and Biomes O' Plenty's lush desert
+  stopped chunk generation. A Fabric jar's Forge biome and structure modifiers are now turned off on every Forge
+  version, as its NeoForge ones are (MODIFIER-1); a Forge mod's own stay as they are.
+- Verified: the core unit tests; Forge 52 and 66 build. Locally the Forge 52 advanced server starts, failing only the
+  resource loader's `/reload` check, in Wover's tag handler as on NeoForge 1.21.1 (CORPUS-113); the Forge 52 advanced client joins its world, its HUD
+  layer check passing with Apoli's hook applied, and then waits on Origins' origin screen, as on NeoForge 1.21.1. A
+  Forge 66 advanced server starts with ACC-6's accessors, failing only checks that failed before.
+
 ## 2026-11-10: A retyped field's accessor for other mods' calls; REG-14 on every Forge version (ACC-6)
 
 - **ACC-6** (P0), fixed: Forge retypes a chunk generator's features field, and Wover's generator module calls its
