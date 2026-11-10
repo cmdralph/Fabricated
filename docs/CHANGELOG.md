@@ -3,6 +3,18 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: Points of interest with Lithium, and mods mapping them themselves on Forge (POI-2, POI-3)
+
+- **POI-2** (P1), fixed: Lithium's Fabric build replaces the platform's map of point-of-interest block states with a copy
+  as the class loads, so on Forge every type registered later (Fabric API's helper's among them) was unknown to the
+  game. Pre-flight leaves out a mixin that replaces a field the platform fills with its own object; Lithium loses only
+  that optimization.
+- **POI-3** (P0), fixed: on Forge 52 and 61 to 66, Friends and Foes and Moonlight failed to start ("is defined in more than
+  one PoI type"): they map a type's states through vanilla's method, which Forge's registry has already mapped, as on
+  NeoForge (POI-1). The same fix now runs on Forge.
+- Verified: the core unit tests, CI's script tests and the mixin inventory; Forge 52 builds. Locally the Forge 52 server
+  corpus starts every Fabric mod and passes the object builder check; REG-6's check of Moonlight's registry fails (open).
+
 ## 2026-11-09: Forge 52's client corpus reaches its world: arrays in mixins, wildcard injectors (SUPER-2, WILD-1)
 
 - **SUPER-2** (P0), fixed: SpongePowered's Mixin, which Forge runs, looks up the class of a mixin's call's owner as it
