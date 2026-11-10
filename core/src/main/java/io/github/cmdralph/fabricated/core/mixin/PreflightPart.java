@@ -35,6 +35,7 @@ abstract class PreflightPart {
 	final boolean handsOffConstructorArguments;
 	final boolean overlapsWideArguments;
 	final boolean keepsLocalsPastScope;
+	final boolean restrictsInitialisers;
 	final String loader;
 	final ClassBytesSource vanilla;
 	final Map<ClassNode, Set<String>> independent;
@@ -59,6 +60,7 @@ abstract class PreflightPart {
 		this.handsOffConstructorArguments = classes.handsOffConstructorArguments;
 		this.overlapsWideArguments = classes.overlapsWideArguments;
 		this.keepsLocalsPastScope = classes.keepsLocalsPastScope;
+		this.restrictsInitialisers = classes.restrictsInitialisers;
 		this.loader = classes.loader;
 		this.vanilla = classes.vanilla;
 		this.independent = classes.independent;

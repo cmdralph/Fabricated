@@ -68,17 +68,20 @@ public final class MixinCompat {
 	 * mixins (SUPER-2: {@code MixinTargetContext.transformMethodRef}, read in 0.8.5 and 0.8.7; Fabric's skips arrays, read
 	 * in 0.16.4). All three walk the classes ModLauncher hands them with their frames compressed (CORPUS-79) and skip a same
 	 * frame as they work out the locals at a point, so a local stays among them once its scope has ended (PRE-26:
-	 * {@code Locals.getLocalsAt}, read in 0.8.5 and 0.8.7).
+	 * {@code Locals.getLocalsAt}, read in 0.8.5 and 0.8.7). All three refuse a jump in a mixin's initialiser, copy none of
+	 * its labels, and refuse an array element's load or store there, which Fabric's Mixin takes (PRE-28:
+	 * {@code Initialiser} in 0.8.6 and 0.8.7, {@code MixinApplicatorStandard.getInitialiser} and {@code injectInitialiser}
+	 * in 0.8.5).
 	 */
 	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects, boolean argumentNames,
 			boolean exactStaticInjects, boolean rebindsInterfaceSuperCalls, boolean seesMixinFields, boolean overlapsWideArguments,
-			boolean addedConfigsWithoutEnvironment, boolean looksUpArrayOwners, boolean keepsLocalsPastScope) {
+			boolean addedConfigsWithoutEnvironment, boolean looksUpArrayOwners, boolean keepsLocalsPastScope, boolean restrictsInitialisers) {
 	}
 
 	private static final Map<String, Upstream> UPSTREAM = Map.of(
-			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true, true, false, true, false, true, true),
-			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false, true, true, true, true),
-			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false, true, true, true, true));
+			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true, true, false, true, false, true, true, true),
+			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false, true, true, true, true, true),
+			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false, true, true, true, true, true));
 	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
 	private static final Pattern MINECRAFT = Pattern.compile("(\\d+)\\.(\\d+)(?:\\.(\\d+))?");
 
@@ -286,6 +289,16 @@ public final class MixinCompat {
 	public static boolean keepsLocalsPastScope(String runtimeMixinVersion) {
 		Upstream upstream = upstream(runtimeMixinVersion);
 		return upstream != null && upstream.keepsLocalsPastScope();
+	}
+
+	/**
+	 * Whether the running Mixin refuses a mixin whose initialiser (its field initialisers, which Mixin merges into the
+	 * target's constructors) branches or loads or stores an array element (PRE-28): SpongePowered's releases do, where
+	 * Fabric's copies the initialiser's labels and takes those instructions. False for a version not known here.
+	 */
+	public static boolean restrictsInitialisers(String runtimeMixinVersion) {
+		Upstream upstream = upstream(runtimeMixinVersion);
+		return upstream != null && upstream.restrictsInitialisers();
 	}
 
 	/**

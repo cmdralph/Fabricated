@@ -20,12 +20,12 @@ neoforge	1.21.11	heap	208	first recorded: the median of 3 local runs
 neoforge	26.1.2	discovery-alloc	347	first recorded: the median of 3 local runs
 neoforge	26.1.2	discovery-alloc-cached	64	first recorded: the median of 3 local runs
 neoforge	26.1.2	heap	160	first recorded: the median of 3 local runs
-neoforge	26.2	discovery-alloc	-	not recorded yet: it doesn't build locally (NeoForm's recompile), so its first CI run records it
-neoforge	26.2	discovery-alloc-cached	-	not recorded yet: it doesn't build locally (NeoForm's recompile), so its first CI run records it
-neoforge	26.2	heap	-	not recorded yet: it doesn't build locally (NeoForm's recompile), so its first CI run records it
-neoforge	26.3	discovery-alloc	-	not recorded yet: it doesn't build locally (NeoForm's recompile), so its first CI run records it
-neoforge	26.3	discovery-alloc-cached	-	not recorded yet: it doesn't build locally (NeoForm's recompile), so its first CI run records it
-neoforge	26.3	heap	-	not recorded yet: it doesn't build locally (NeoForm's recompile), so its first CI run records it
+neoforge	26.2	discovery-alloc	353	first recorded: CI's run (it doesn't build locally)
+neoforge	26.2	discovery-alloc-cached	65	first recorded: CI's run (it doesn't build locally)
+neoforge	26.2	heap	165	first recorded: CI's run (it doesn't build locally)
+neoforge	26.3	discovery-alloc	367	first recorded: CI's run (it doesn't build locally)
+neoforge	26.3	discovery-alloc-cached	66	first recorded: CI's run (it doesn't build locally)
+neoforge	26.3	heap	176	first recorded: CI's run (it doesn't build locally)
 forge-legacy	1.20.1	discovery-alloc	-	not recorded yet: its first CI run records it
 forge-legacy	1.20.1	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
 forge-legacy	1.20.1	heap	-	not recorded yet: its first CI run records it
