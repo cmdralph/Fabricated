@@ -3,6 +3,22 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: The v0.6.0-beta.2 release notes and version
+
+- **Fabricated 0.6.0-beta.2** adds Minecraft 1.21.1 on Forge (Forge 52), runs one test suite on every loader and
+  Minecraft version, and fixes what Fabric mods with deep hooks met on Forge. Its notes,
+  [`docs/releases/v0.6.0-beta.2.md`](https://github.com/cmdralph/Fabricated/blob/main/docs/releases/v0.6.0-beta.2.md),
+  say what changed since v0.6.0-beta on each platform, give Fabric's renderer API by platform, the support matrix with
+  what CI gates where, upgrading and the known limits.
+- **Version 0.6.0-beta.2** in `gradle.properties`, as the release workflow requires of every branch. The jars carry the
+  full version: `fabricated-neoforge-0.6.0-beta.2+mc<minecraft>.jar` (in v0.6.0-beta
+  `fabricated-0.6.0+mc<minecraft>.jar`) and `fabricated-forge-0.6.0-beta.2+mc<minecraft>.jar`. README's status, branch
+  table (Forge 52 on `forge-legacy`) and build example, ARCHITECTURE and CONTRIBUTING's release steps (the workflow's
+  modes, its eleven jars, CurseForge) say so.
+- **This file's headings and entries** no longer name the passes' task numbers.
+- **Verified:** CI's script tests and the mixin inventory; every relative link in the notes and the READMEs resolves on
+  the branch it is published from.
+
 ## 2026-11-10: Cleanup: dead code and duplicated helpers in core and the loaders
 
 - **Smaller, same behaviour:** core's main code went from 33,704 to 33,646 lines and the loaders from 5,388 to 5,340
