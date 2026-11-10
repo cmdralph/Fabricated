@@ -96,7 +96,12 @@ public final class ClassIndex {
 
 	/** Full tree (with code) of a class, not cached; {@code null} if absent or unreadable. */
 	public ClassNode readNode(String internalName) {
-		return source.readNode(internalName, ClassReader.SKIP_FRAMES);
+		return readNode(internalName, ClassReader.SKIP_FRAMES);
+	}
+
+	/** Full tree of a class, read with {@code parsingOptions} ({@link ClassReader#accept}), not cached; {@code null} if absent or unreadable. */
+	public ClassNode readNode(String internalName, int parsingOptions) {
+		return source.readNode(internalName, parsingOptions);
 	}
 
 	private ClassInfo load(String internalName) {

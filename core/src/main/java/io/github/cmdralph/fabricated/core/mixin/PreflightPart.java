@@ -34,6 +34,7 @@ abstract class PreflightPart {
 	final boolean seesMixinFields;
 	final boolean handsOffConstructorArguments;
 	final boolean overlapsWideArguments;
+	final boolean keepsLocalsPastScope;
 	final String loader;
 	final ClassBytesSource vanilla;
 	final Map<ClassNode, Set<String>> independent;
@@ -57,6 +58,7 @@ abstract class PreflightPart {
 		this.seesMixinFields = classes.seesMixinFields;
 		this.handsOffConstructorArguments = classes.handsOffConstructorArguments;
 		this.overlapsWideArguments = classes.overlapsWideArguments;
+		this.keepsLocalsPastScope = classes.keepsLocalsPastScope;
 		this.loader = classes.loader;
 		this.vanilla = classes.vanilla;
 		this.independent = classes.independent;

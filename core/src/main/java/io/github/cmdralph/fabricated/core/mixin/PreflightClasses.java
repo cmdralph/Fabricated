@@ -82,6 +82,12 @@ final class PreflightClasses {
 	 */
 	final boolean overlapsWideArguments;
 
+	/**
+	 * Whether the running Mixin keeps a local among those it finds at a point once the local's scope has ended, through the
+	 * same frames it skips (PRE-26: Forge's does).
+	 */
+	final boolean keepsLocalsPastScope;
+
 	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
 	final String loader;
 
@@ -91,6 +97,9 @@ final class PreflightClasses {
 	final Map<String, Optional<ClassNode>> vanillaCache = new HashMap<>();
 
 	final Map<String, Optional<ClassNode>> targetCache = new HashMap<>();
+
+	/** {@link #withFrames} of each class asked. */
+	final Map<String, Optional<ClassNode>> framedCache = new HashMap<>();
 
 	/** {@link #found} of each class asked. */
 	final Map<String, Boolean> foundCache = new HashMap<>();
@@ -114,9 +123,10 @@ final class PreflightClasses {
 	PreflightClasses(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins, boolean readsLocalTypes,
-			boolean seesMixinFields, boolean handsOffConstructorArguments, boolean overlapsWideArguments) {
+			boolean seesMixinFields, boolean handsOffConstructorArguments, boolean overlapsWideArguments, boolean keepsLocalsPastScope) {
 		this.handsOffConstructorArguments = handsOffConstructorArguments;
 		this.overlapsWideArguments = overlapsWideArguments;
+		this.keepsLocalsPastScope = keepsLocalsPastScope;
 		this.enumMixins = enumMixins;
 		this.readsLocalTypes = readsLocalTypes;
 		this.seesMixinFields = seesMixinFields;
@@ -251,6 +261,15 @@ final class PreflightClasses {
 	/** A Minecraft class as the game has it (parsed once per pre-flight), or null when absent or not a game class. */
 	ClassNode gameTarget(String internalName) {
 		return PreflightAsm.isGameClass(internalName) ? targetCache.computeIfAbsent(internalName, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
+	}
+
+	/**
+	 * A method of a class the game or an installed jar has, with the frames its bytes have, compressed, as ModLauncher hands
+	 * Mixin the classes it walks (the class parsed once per pre-flight; {@link #gameTarget} skips them), or null.
+	 */
+	MethodNode withFrames(String owner, MethodNode method) {
+		ClassNode node = framedCache.computeIfAbsent(owner, t -> Optional.ofNullable(game.readNode(t, 0))).orElse(null);
+		return node == null ? null : PreflightAsm.declared(node, method.name, method.desc);
 	}
 
 	/** A class of an installed jar (parsed once per pre-flight), recorded with its supertypes there; null when unreadable. */
