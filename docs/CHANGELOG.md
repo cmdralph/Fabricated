@@ -3,6 +3,23 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: A startup and memory benchmark in CI
+
+- **The benchmark:** each version's server part measures, in its run with Fabric API, what the JVM's threads allocate
+  during Fabricated's discovery in the first launch (every Fabric mod translated) and in a second with everything
+  cached, and the live heap once the server started, after a full GC. `ci/bench.py` compares them with their baselines
+  in `ci/bench.tsv` and writes the table to the job's summary. A metric more than 10% over its baseline fails, unless
+  the pull request records the new value there with its reason. Wall times are only reported.
+- **CI-1:** Forge 52's run with the Fabric builds of Sodium and Iris gates now, having held on two extended runs in a
+  row.
+- Discovery's log line and the report's *Launch timings* also say what the JVM allocated meanwhile ("2702 ms, 894 MB
+  allocated"); counting it takes about 2 ms of a NeoForge launch.
+- Not recorded yet: NeoForge 26.2 and 26.3, which don't build locally, and every Forge version, which the benchmark
+  only reports until a run records them.
+- Verified: the core unit tests, CI's script tests and the mixin inventory; the workflow with actionlint. Locally the
+  Fabric API server ran three times each on NeoForge 1.21.1, 1.21.11 and 26.1.2 (1.21.1 four more times while choosing
+  the metrics): the allocations held within 1% and the heap within 2%, and each run passed the comparison.
+
 ## 2026-11-10: FrozenLib's gravity hook on Forge 47 (PRE-26)
 
 - **PRE-26** (P0), fixed: Forge's Mixin keeps a local among those it finds at a point after the local's scope has ended,

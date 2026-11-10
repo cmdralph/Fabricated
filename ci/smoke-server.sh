@@ -6,6 +6,7 @@
 # Usage: ci/smoke-server.sh <platform> <minecraft> <loader version> <work-dir> [extra-mods-dir]
 # Settings: SMOKE_RUN, the run of ci/runs.tsv it is (server); SMOKE_TESTMODS=none leaves the test mods out;
 # SMOKE_TIMEOUT; SMOKE_WARM_LAUNCH=1 launches once more, up to the end of discovery, with everything cached;
+# SMOKE_BENCH=1 records the heap the started server keeps (heap-histogram.txt, for ci/bench.py);
 # SMOKE_REUSE=1 launches again in the work directory as the last launch left it; SMOKE_INSTALL_ONLY=1 only fills the
 # install cache; SMOKE_ON_ENTRYPOINT_FAILURE, SMOKE_LOG_LEVEL and FABRICATED_MODS, Fabricated's config (the adapter
 # has defaults); SMOKE_SUMMARY, the JSON summary the run's results join.
@@ -76,6 +77,11 @@ wait_for_exit=15
 if [ "$status" = started ]; then
 	# A few ticks for the tick-based checks, then a data pack reload, so reload listeners run a second time.
 	sleep 10
+	# The heap the started server keeps, after the full GC jcmd's class histogram makes (ci/bench.py): each class's
+	# share, the total last.
+	if [ -n "${SMOKE_BENCH:-}" ]; then
+		jcmd "$(pgrep -P "$pid" -x java || echo "$pid")" GC.class_histogram > heap-histogram.txt 2>&1 || true
+	fi
 	echo "reload" >&3
 	sleep "${server_settle:-5}"
 	echo "stop" >&3
