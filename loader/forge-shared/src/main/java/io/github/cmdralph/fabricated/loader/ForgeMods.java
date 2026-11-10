@@ -40,8 +40,6 @@ import net.minecraftforge.forgespi.locating.IModFile;
  */
 final class ForgeMods {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
-	/** The version a mods.toml gives as its jar's version (Forge reads it from the jar's manifest). */
-	private static final String JAR_VERSION = "${file.jarVersion}";
 	/** The game's own files, whose classes pre-flight reads as the game's. */
 	private static final Set<String> GAME = Set.of("minecraft", "forge");
 
@@ -78,14 +76,17 @@ final class ForgeMods {
 			for (IModInfo mod : infos) {
 				if (mod.getModId().equals("minecraft")) continue;
 				declared.add(new Pipeline.NeoForgeMod(mod.getModId(), mod.getVersion().toString(), mod.getDisplayName(),
-						withProvides(plain(mod.getModProperties()), provides.getOrDefault(mod.getModId(), List.of())), List.of(file.getFilePath())));
+						PlatformMods.withProvides(PlatformMods.plain(mod.getModProperties()), provides.getOrDefault(mod.getModId(), List.of())),
+						List.of(file.getFilePath())));
 			}
 			mods.addAll(declared);
 			if (!infos.isEmpty() && infos.stream().noneMatch(mod -> GAME.contains(mod.getModId()) || mod.getModId().equals(ModIds.FABRICATED))) {
 				SecureJar jar = file.getSecureJar();
 				jars.add(new InstalledClasses.Jar(infos.get(0).getDisplayName(), name -> contains(jar, name + ".class"), name -> read(jar, name + ".class"),
 						() -> NativeModMixins.manifestMixins(entry -> readText(jar, entry), clientSide)));
-				if (nested && !declared.isEmpty()) providers.add(new NativeModules.Provider(declared.get(0), file.getFileName(), internal(jar.getPackages())));
+				if (nested && !declared.isEmpty()) {
+					providers.add(new NativeModules.Provider(declared.get(0), file.getFileName(), PlatformMods.internal(jar.getPackages())));
+				}
 			}
 		}
 		if (!nested) return new Found(mods, InstalledClasses.NONE, List.of(), Set.of());
@@ -97,11 +98,11 @@ final class ForgeMods {
 				NestedNeoForgeJars.Contents nestedJars = NestedNeoForgeJars.readAll(path, ArchiveLimits.DEFAULTS, ModsTomlWriter.FORGE_PATH);
 				libraryPackages.addAll(nestedJars.libraryPackages());
 				for (NestedNeoForgeJars.ModsToml toml : nestedJars.mods()) {
-					List<Pipeline.NeoForgeMod> declared = declared(parser.parse(toml.text()), toml.jarVersion(), path);
+					List<Pipeline.NeoForgeMod> declared = PlatformMods.declared(parser.parse(toml.text()), toml.jarVersion(), path);
 					mods.addAll(declared);
 					if (declared.isEmpty() || toml.classes().isEmpty()) continue;
 					Set<String> classes = toml.classes();
-					providers.add(new NativeModules.Provider(declared.get(0), toml.origin(), packagesOf(classes)));
+					providers.add(new NativeModules.Provider(declared.get(0), toml.origin(), PlatformMods.packagesOf(classes)));
 					jars.add(new InstalledClasses.Jar(declared.get(0).displayName(), classes::contains,
 							name -> NestedNeoForgeJars.readClass(path, toml.chain(), name, ArchiveLimits.DEFAULTS),
 							() -> NativeModMixins.manifestMixins(entry -> NestedNeoForgeJars.readFile(path, toml.chain(), entry, ArchiveLimits.DEFAULTS),
@@ -115,21 +116,6 @@ final class ForgeMods {
 		return new Found(mods, new InstalledClasses(jars), providers, Set.copyOf(libraryPackages));
 	}
 
-	private static Set<String> internal(Set<String> dottedPackages) {
-		Set<String> packages = new HashSet<>();
-		for (String p : dottedPackages) packages.add(p.replace('.', '/'));
-		return packages;
-	}
-
-	private static Set<String> packagesOf(Set<String> classes) {
-		Set<String> packages = new HashSet<>();
-		for (String name : classes) {
-			int slash = name.lastIndexOf('/');
-			if (slash > 0) packages.add(name.substring(0, slash));
-		}
-		return packages;
-	}
-
 	/**
 	 * The ids each mod of a mod file says it provides ({@code provides} in its mods.toml entry). Forge itself ignores the
 	 * key; Forgified Fabric API lists its modules' Fabric ids there on NeoForge, which Fabric mods depend on.
@@ -141,27 +127,15 @@ final class ForgeMods {
 			if (toml == null) return provides;
 			if (!(parser.parse(new String(toml, StandardCharsets.UTF_8)).get("mods") instanceof List<?> declared)) return provides;
 			for (Object entry : declared) {
-				if (entry instanceof UnmodifiableConfig mod && mod.get("modId") instanceof String id) provides.put(id, strings(mod.get("provides")));
+				if (entry instanceof UnmodifiableConfig mod && mod.get("modId") instanceof String id) {
+					provides.put(id, PlatformMods.strings(mod.get("provides")));
+				}
 			}
 		} catch (IOException | ParsingException e) {
 			// Forge reports a broken mods.toml itself.
 			LOGGER.debug("Could not read the mods.toml of {}", file.getFileName(), e);
 		}
 		return provides;
-	}
-
-	private static List<String> strings(Object value) {
-		return value instanceof List<?> list ? list.stream().filter(String.class::isInstance).map(String.class::cast).toList() : List.of();
-	}
-
-	/** The mod's properties with the ids it provides added to those it lists as Fabric's provides, if any. */
-	private static Map<String, Object> withProvides(Map<String, Object> properties, List<String> provides) {
-		if (provides.isEmpty()) return properties;
-		Map<String, Object> merged = new LinkedHashMap<>(properties);
-		List<Object> ids = new ArrayList<>(merged.get(Pipeline.NeoForgeMod.PROVIDES) instanceof List<?> listed ? listed : List.of());
-		for (String id : provides) if (!ids.contains(id)) ids.add(id);
-		merged.put(Pipeline.NeoForgeMod.PROVIDES, ids);
-		return merged;
 	}
 
 	/**
@@ -194,49 +168,5 @@ final class ForgeMods {
 			byte[] data = in.readNBytes(NestedNeoForgeJars.MAX_TEXT_BYTES + 1);
 			return data.length > NestedNeoForgeJars.MAX_TEXT_BYTES ? null : data;
 		}
-	}
-
-	/**
-	 * The mods a mods.toml declares.
-	 *
-	 * @param container the jar it is nested in
-	 */
-	private static List<Pipeline.NeoForgeMod> declared(UnmodifiableConfig toml, String jarVersion, Path container) {
-		List<Pipeline.NeoForgeMod> mods = new ArrayList<>();
-		if (!(toml.get("mods") instanceof List<?> declared)) return mods;
-		for (Object entry : declared) {
-			if (!(entry instanceof UnmodifiableConfig mod) || !(mod.get("modId") instanceof String id)) continue;
-			String version = mod.get("version") instanceof String v ? v : "1";
-			String name = mod.get("displayName") instanceof String n ? n : id;
-			Object properties = toml.get(List.of("modproperties", id));
-			// Its jar is inside the container, which Forge extracts later: to Fabric code, the container is its root.
-			mods.add(new Pipeline.NeoForgeMod(id, version.equals(JAR_VERSION) ? jarVersion : version, name,
-					withProvides(properties instanceof UnmodifiableConfig config ? plain(config.valueMap()) : Map.of(), strings(mod.get("provides"))),
-					List.of(container)));
-		}
-		return mods;
-	}
-
-	/** Mod properties as plain values: TOML tables become maps; values TOML has and JSON hasn't (dates) become strings. */
-	private static Map<String, Object> plain(Map<String, Object> properties) {
-		Map<String, Object> plain = new LinkedHashMap<>();
-		properties.forEach((key, value) -> plain.put(key, plainValue(value)));
-		return plain;
-	}
-
-	private static Object plainValue(Object value) {
-		if (value instanceof UnmodifiableConfig config) return plain(config.valueMap());
-		if (value instanceof Map<?, ?> map) {
-			Map<String, Object> plain = new LinkedHashMap<>();
-			map.forEach((key, v) -> plain.put(String.valueOf(key), plainValue(v)));
-			return plain;
-		}
-		if (value instanceof List<?> list) {
-			List<Object> plain = new ArrayList<>(list.size());
-			for (Object v : list) plain.add(plainValue(v));
-			return plain;
-		}
-		if (value == null || value instanceof String || value instanceof Boolean || value instanceof Number) return value;
-		return String.valueOf(value);
 	}
 }
