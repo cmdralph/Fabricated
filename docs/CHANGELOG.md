@@ -3,6 +3,27 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: Forge 52's advanced corpus stops: Apoli's HUD layers, a registry value a mod changes (HUD-6, VANILLA-4, REG-14)
+
+- **HUD-6** (P0), fixed: Forge 52 keeps the HUD layers vanilla's `Gui` adds by name and fills vanilla's lists only as
+  the constructor ends, so Apoli, which adds its HUD to such a list there, stopped the client. On Forge 52 the lists
+  now hold their layers as vanilla's do, and what a Fabric mod puts in them is drawn in Forge's order.
+- **VANILLA-4** (P1), fixed: a hook a Fabric mod places at every read of a field, or every call, that vanilla makes
+  once ran again where a platform's patch repeats it on the same path, as Forge 52's `Gui` constructor reads its layers
+  twice; pre-flight pins such a hook to vanilla's place.
+- **REG-14** (P0), fixed: Moonlight changes the leatherworker's point-of-interest type after it is registered, and
+  Forge's registry, which finds its values by their equality, lost it: the Forge 52 server stopped saving its new
+  world. Forge's maps are brought up to date before Forge takes a registry's snapshot.
+- Open: Wover's generator calls an accessor of Wover's biome module for a field Forge retypes, which only that module's
+  own calls follow (ACC-6): the Forge 52 advanced server and client stop next creating their levels. On NeoForge 21.1
+  Apoli's HUD hook is left out, as NeoForge builds the HUD another way (HUD-7). Forge 61 to 66 have no such layer
+  lists.
+- Verified: the core unit tests, CI's script tests and the mixin inventory; Forge 52 builds. Locally a Forge 52
+  client with the test mods passes every check, the new HUD layer check among them; the Forge 52 advanced client gets
+  past its HUD with Apoli's hook applied once, and the advanced server saves its world's data, both then stopping on
+  ACC-6; the regular Forge 52 server part passes, every check of its six runs (Forgified Fabric API has no Forge
+  52 build).
+
 ## 2026-11-10: Forge's fourth-round stops: Mixin's Guava, field initialisers, pack sources (LIB-3, PRE-28, PACK-11)
 
 - **LIB-3** (P0), fixed: Fabric's Mixin carries Guava and Gson in its own package, and Wover's item API uses that Guava;
