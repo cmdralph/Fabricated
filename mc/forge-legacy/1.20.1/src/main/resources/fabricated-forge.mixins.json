@@ -34,7 +34,8 @@
     "PotionBrewingMixBridgeMixin",
     "MobBucketItemBridgeMixin",
     "PackRepositorySourcesMixin",
-    "PlayerListViewMixin"
+    "PlayerListViewMixin",
+    "PoiTypesByStateMixin"
   ],
   "client": [
     "ParticleEngineProvidersBridgeMixin",
