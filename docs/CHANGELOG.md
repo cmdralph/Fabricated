@@ -10,6 +10,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   advanced server and client stopped creating their levels. Such an accessor keeps a method of vanilla's type for
   other mods' calls; each mod is still translated on its own.
 - **REG-14** now runs on Forge 47 and Forge 61 to 66 too.
+- **CI-13** (CI only), fixed: the parts' install of Mesa's EGL library is stopped and tried again when it hangs on the
+  package mirror, where one had held a part for 25 minutes.
 - Open: YUNG's Extras' Fabric jar carries its Forge build's biome modifiers, which Forge applies beside what the mod's
   Fabric code adds, so desert decorations go in twice and Biomes O' Plenty's lush desert stops chunk generation
   (MODIFIER-2): the Forge 52 advanced server and client stop there next. Drawing a Fabric mod's HUD layers on NeoForge
