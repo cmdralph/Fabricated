@@ -20,7 +20,7 @@ import cpw.mods.modlauncher.api.TransformerVoteResult;
  * then the class's default bridges ({@link FabricClassTransforms#declareDefaultBridges}). ModLauncher's transformers run
  * before Mixin, so the bridges are declared here for the classes no mixin targets; Fabricated's Mixin extension takes
  * them out as Mixin starts on a class it applies mixins to and declares them again once it is done (the game mod's
- * {@code DefaultBridgeExtension}, CORPUS-63). NeoForge's ModLauncher 11 asks a transformer for its node type
+ * {@code MixinExtensions}, CORPUS-63). NeoForge's ModLauncher 11 asks a transformer for its node type
  * ({@link #getTargetType}), where Forge's reads it from the class's type argument.
  */
 final class FabricClassTransformer implements ITransformer<ClassNode> {
