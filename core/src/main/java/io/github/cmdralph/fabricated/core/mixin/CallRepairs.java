@@ -128,8 +128,12 @@ final class CallRepairs extends PreflightPart {
 	 * is still there, the point's ordinal becomes its ordinal here; where NeoForge's patch put a call of an overload taking
 	 * one more argument in its place (its camera passes a roll along that way; where the patch repeats instructions on
 	 * both sides of it, found among those whose places the alignments don't agree on), the point is pointed at that call, with
-	 * its handler bridged as {@link #insertedArgumentRepairs} does. A point inside a slice, or a target method vanilla
-	 * doesn't declare, is left as it is. Returns a description of each change.
+	 * its handler bridged as {@link #insertedArgumentRepairs} does. An {@code @Inject}'s point without an ordinal, which
+	 * takes every match, is pinned to vanilla's where vanilla's code has one and the patch adds others on the same path
+	 * ({@link #onOnePath}): the hook would run at each, more than once where vanilla runs it once (VANILLA-4: Forge 52's
+	 * {@code Gui} constructor reads {@code layers} again to resolve Forge's layers, and Apoli's hook at that read added its
+	 * HUD twice). A point inside a slice, or a target method vanilla doesn't declare, is left as it is. Returns a
+	 * description of each change.
 	 */
 	List<String> vanillaPointRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
@@ -145,21 +149,32 @@ final class CallRepairs extends PreflightPart {
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : ats) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
-			if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "ordinal") instanceof Integer ordinal) || ordinal < 0
-					|| !(Annotations.value(at, "target") instanceof String raw)) continue;
+			if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)) continue;
+			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 			if (ref.fuzzy()) continue;
 			int opcode = Annotations.value(at, "opcode") instanceof Integer o ? o : -1;
 			List<Integer> inVanilla = PreflightAsm.matching(before, point, ref, opcode);
-			if (ordinal >= inVanilla.size()) continue;
+			List<Integer> here = PreflightAsm.matching(patched, point, ref, opcode);
+			boolean every = ordinal < 0;
+			if (every ? !injector.desc.equals(MixinNames.INJECT) || inVanilla.size() != 1 || here.size() < 2 : ordinal >= inVanilla.size()) continue;
 			if (alignment == null) alignment = PatchAlignment.of(before, patched);
 			if (alignment == null) return moved;
-			String what = (point.equals("INVOKE") ? "the call " : point.equals("FIELD") ? "the access " : "the construction ") + raw
-					+ " with ordinal " + ordinal + " in vanilla's code, which ";
+			String what = (point.equals("INVOKE") ? "the call " : point.equals("FIELD") ? "the access " : "the construction ") + raw;
+			if (every) {
+				int place = alignment.placeOf(inVanilla.get(0));
+				int now = here.indexOf(place);
+				if (now < 0 || !here.stream().allMatch(i -> onOnePath(patched, Math.min(i, place), Math.max(i, place)))) continue;
+				Annotations.put(at, "ordinal", now);
+				moved.add(what + ", which vanilla's code makes once and this game build " + here.size() + " times on one path, as " + loader
+						+ "'s patch adds the others: the hook would run at each; the injection point is pinned to vanilla's (ordinal " + now + " here)");
+				continue;
+			}
+			what += " with ordinal " + ordinal + " in vanilla's code, which ";
 			int place = alignment.placeOf(inVanilla.get(ordinal));
 			if (place == PatchAlignment.UNCERTAIN) continue;
 			if (place >= 0) {
-				int now = PreflightAsm.matching(patched, point, ref, opcode).indexOf(place);
+				int now = here.indexOf(place);
 				if (now < 0 || now == ordinal) continue;
 				Annotations.put(at, "ordinal", now);
 				moved.add(what + "has ordinal " + now + " in this game build, as " + loader + "'s patches add or replace others; the injection point is pointed there");
@@ -202,6 +217,32 @@ final class CallRepairs extends PreflightPart {
 					&& call.desc.equals(ref.desc())) return null;
 		}
 		return replacingOverload(patched, new int[] {region[2], region[3]}, ref, owner);
+	}
+
+	/**
+	 * Whether a pass through {@code method} that runs one of its instructions {@code from} and {@code to} runs the other:
+	 * nothing between them jumps, switches, returns or throws, and no jump, switch or exception handler leads into them.
+	 */
+	private static boolean onOnePath(MethodNode method, int from, int to) {
+		Set<AbstractInsnNode> entered = new HashSet<>();
+		for (TryCatchBlockNode block : method.tryCatchBlocks) entered.add(block.handler);
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof JumpInsnNode jump) entered.add(jump.label);
+			if (insn instanceof TableSwitchInsnNode table) {
+				entered.add(table.dflt);
+				entered.addAll(table.labels);
+			}
+			if (insn instanceof LookupSwitchInsnNode lookup) {
+				entered.add(lookup.dflt);
+				entered.addAll(lookup.labels);
+			}
+		}
+		for (int i = from + 1; i < to; i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			int op = insn.getOpcode();
+			if (Initialisers.branches(insn) || op >= Opcodes.IRETURN && op <= Opcodes.RETURN || op == Opcodes.ATHROW || entered.contains(insn)) return false;
+		}
+		return true;
 	}
 
 	/**
