@@ -5,7 +5,7 @@
   "plugin": "io.github.cmdralph.fabricated.forge.FabricatedMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": ["FluidTypeMixin", "LivingEntityFluidTravelMixin", "MappedRegistryPendingHoldersMixin", "NamespacedWrapperPendingHoldersMixin", "NamespacedWrapperEarlyWriteMixin", "NamespacedWrapperAliasMixin", "NamespacedWrapperEntryAddedMixin", "ForgeRegistryEntryAddedMixin", "BuiltInRegistriesFreezeMixin", "BuiltInRegistriesInvoker", "GameDataFreezeMixin", "TagFileRemoveMixin", "IngredientNetworkCodecMixin", "ForgePayloadEncodeMixin", "ResourcePackLoaderKnownPackMixin", "BucketItemEarlyFluidMixin", "PlayerListViewMixin", "PoiTypesMixin", "PackRepositorySourcesMixin", "LivingEntityDropCaptureMixin", "MobBucketItemBridgeMixin", "BiomeWeatherWriteMixin", "BiomeClimateAccessor", "ModifiableBiomeInfoAccessor"],
-  "client": ["LiquidBlockRendererSpritesMixin", "ExtendedBlockModelDeserializerMixin", "ParticleEngineProvidersBridgeMixin", "ParticleEngineRenderMixin"],
+  "client": ["LiquidBlockRendererSpritesMixin", "ExtendedBlockModelDeserializerMixin", "ParticleEngineProvidersBridgeMixin", "ParticleEngineRenderMixin", "ForgeLayeredDrawVanillaLayersMixin", "LayeredDrawLayersAccessor"],
   "injectors": {
     "defaultRequire": 1
   }

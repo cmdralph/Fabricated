@@ -4,7 +4,7 @@
   "package": "io.github.cmdralph.fabricated.forgetest.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": ["CommandsMixin", "LanguageReaderMixin", "LivingEntityCapturedDropsMixin", "MinecraftServerArgsMixin", "MinecraftServerWrapMixin", "MobBucketItemAccessor"],
-  "client": ["HudHooksMixin", "MouseHandlerInvoker", "ParticleEngineProvidersAccessor"],
+  "client": ["HudHooksMixin", "HudLayersMixin", "LayeredDrawLayersAccessor", "MouseHandlerInvoker", "ParticleEngineProvidersAccessor"],
   "injectors": {
     "defaultRequire": 1
   },
