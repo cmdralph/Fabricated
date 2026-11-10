@@ -27,6 +27,7 @@
     "DefaultAttributeCopyMixin": ["fabric-object-builder-api-v1"],
     "FluidTypeMixin": [],
     "ForgeRegistryEntryAddedMixin": ["fabric-registry-sync-v0"],
+    "ForgeRegistryRekeyMixin": [],
     "ForgePayloadEncodeMixin": ["fabric-networking-api-v1"],
     "GameDataFreezeMixin": [],
     "IngredientNetworkCodecMixin": [],
