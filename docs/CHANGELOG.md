@@ -3,6 +3,15 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: CurseForge's changelog is the release's notes
+
+- **CurseForge's changelog** is now the GitHub release's text after its title: the notes in `docs/releases/<tag>.md`,
+  whose `# ` title must name the version, with the commits the jars were built from and their checksums. It was this
+  file's entry naming the version, a record of the work rather than notes for players. CONTRIBUTING's release steps
+  say so.
+- Verified: CI's script tests (`test_curseforge.py`, the title rule among them) and the script's dry run of the
+  v0.6.0-beta.2 notes as the release workflow writes them.
+
 ## 2026-11-10: A dropped connection read as a race of Polymer's and Fabric API's (NET-14)
 
 - **NET-14**, not Fabricated's: the Forge 47 advanced client lost its connection as it joined, when a custom payload
