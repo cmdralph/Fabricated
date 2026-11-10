@@ -33,10 +33,6 @@ public final class IntermediaryRemapper extends Remapper {
 	/** By owner, its supertypes, transitively, nearest first, for the methods it inherits (CORPUS-86). */
 	private final Map<String, List<String>> ancestors = new ConcurrentHashMap<>();
 
-	public IntermediaryRemapper(MappingTable table) {
-		this(table, Supertypes.NONE);
-	}
-
 	/**
 	 * @param supertypes the classes this remapper's owners may inherit from: a method Intermediary leaves under its official
 	 *                   name, and the runtime renames, is renamed in an owner that inherits it from one of them (CORPUS-86)

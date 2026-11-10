@@ -28,7 +28,6 @@ import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
-import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 /**
@@ -128,7 +127,7 @@ final class EarlyRisers {
 	private record SupplierValue(Supplied supplied) {
 	}
 
-	private record ArrayValue(Type element, Object[] slots) {
+	private record ArrayValue(Object[] slots) {
 	}
 
 	private static final class Builder {
@@ -221,8 +220,8 @@ final class EarlyRisers {
 				pop(stack);
 			} else if (op == Opcodes.DUP) {
 				stack.push(peek(stack));
-			} else if (insn instanceof TypeInsnNode array && op == Opcodes.ANEWARRAY) {
-				stack.push(new ArrayValue(Type.getObjectType(array.desc), new Object[index(pop(stack))]));
+			} else if (op == Opcodes.ANEWARRAY) {
+				stack.push(new ArrayValue(new Object[index(pop(stack))]));
 			} else if (op == Opcodes.AASTORE) {
 				Object value = pop(stack);
 				int index = index(pop(stack));
