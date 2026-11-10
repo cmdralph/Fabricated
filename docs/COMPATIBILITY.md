@@ -970,8 +970,8 @@ What Fabricated changed for them: pre-flight moves Sodium's quad hook to the con
 Sodium's hook to the overload it takes beside Indigo's overwrite (OVERLOAD-2), maps Iris's access widener entries for
 `GlStateManager`'s nested classes (TOKEN-1) and lets Iris's accessor replace Sodium's own method, as on Fabric.
 
-Their gaps, which Sodium for NeoForge's own platform code answers and its Fabric build answers the Fabric way (the
-owner's decision, 2026-11-02: no patch for one mod, the gaps listed):
+Their gaps, which Sodium for NeoForge's own platform code answers and its Fabric build answers the Fabric way (no patch
+for one mod; the gaps are listed):
 
 - Fluids are drawn through Fabric API's fluid render handlers, not NeoForge's fluid type extensions, so a NeoForge
   mod's custom fluid rendering is not used (Fabricated has no bridge; a candidate in `roadmap.md`, *Not in this pass*).
@@ -1017,7 +1017,7 @@ uses, and find each value where those mods look.
 Some mods' Fabric builds are refused on a loader where they can't run, or aren't verified yet; these facts are data
 (core's `compat-plan.json`). Such a build is disabled with the reason and what to do instead, and the mods that need it
 with it; `loadUnsupported` loads it anyway, for testing. A refusal is lifted on a loader once CI's run of that mod is a
-gate there (the owner's decision 3 of the beta pass): it is lifted for Sodium, Iris, Essential, malilib and Flashback,
+gate there: it is lifted for Sodium, Iris, Essential, malilib and Flashback,
 on NeoForge and Forge.
 
 A build for another Minecraft version that Fabricated can tell can't run is disabled too, with the build to install:
@@ -1350,7 +1350,7 @@ code can do without that mixin:
 A mod disabled this way can still be loaded without the mixin, by naming it in `skipMixins` in
 `config/fabricated.json` (the report's suggestion gives the exact entry).
 
-What this can't match of Fabric, seen in the owner's reference pack (2026-10-28):
+What this can't match of Fabric, seen in a reference pack (2026-10-28):
 
 - **A field NeoForge retyped.** NeoForge makes `KeyMapping.MAP` its own `KeyMappingLookup`, not vanilla's `Map`, so an
   accessor to it as a `Map` is left out, and the mod's call to it throws `NoSuchMethodError`. OneConfig's keybind
@@ -1392,7 +1392,7 @@ tracked:
 | A failed mod's other entrypoints, with `"onEntrypointFailure": "disable"` | all | skipped, as the setting says: a server configuration task the failed mod registered can then leave a player waiting to join, its client side never registered | ENTRY-1 (decided) |
 | Login queries (`ServerLoginNetworking`, `ClientLoginNetworking`) | all | NeoForge has no hook in the login phase; their receivers are never called (*Networking*) | decided |
 | WTHIT's Fabric build, and the mixed renderer pairs | all | as listed in *Fabric builds Fabricated refuses* | — |
-| What Sodium's Fabric build meshes the Fabric way: NeoForge's fluid renderers, section geometry from NeoForge mods, model data, position-aware light and culling | all | *Renderer mods* above; the owner chose to list the gaps rather than patch one mod | rendering-pipeline track |
+| What Sodium's Fabric build meshes the Fabric way: NeoForge's fluid renderers, section geometry from NeoForge mods, model data, position-aware light and culling | all | *Renderer mods* above; the gaps are listed rather than one mod patched | rendering-pipeline track |
 | Essential's automatic updates (its Fabric build) | all | Essential loads from the launch after its loader's download, as a regular mod | DOWNLOAD-1 |
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
 | A NeoForge model naming its loader in NeoForge's object form (`"loader": {"id": ...}`), with Moonlight's Fabric build installed | 1.21.1 | Moonlight's hook into vanilla's model deserializer, which NeoForge's runs first, reads `loader` as a string only and fails the model; not seen in the corpus | CORPUS-62 |
