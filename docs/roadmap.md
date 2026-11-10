@@ -285,27 +285,17 @@ needs. The next pull requests show the times with the base branches' caches writ
 
 ## Performance baselines
 
-Translation time per mod on a cold cache, from `fabric-bridge-report.txt` (GitHub-hosted `ubuntu-latest`). Mods
-translate in parallel, so the sum is CPU work, not wall time.
+The startup and memory benchmark (`ci/bench.py`) runs in each version's server part, on pull requests into `main`,
+`forge` and `forge-legacy`, by hand and for the release, from the server run with the test mods and Fabric API
+(`server-fapi`). It gates three numbers: what the JVM's threads allocate during Fabricated's discovery in the run's first
+launch, which translates every Fabric mod, and in its second, with everything cached (discovery's log line and the
+report's *Launch timings* give both), and the live heap once the server started, after a full GC (`jcmd`'s class
+histogram, kept with the run's logs). Over seven local runs of NeoForge 1.21.1, four of 1.21.11 and three of 26.1.2,
+the allocations held within 1% and the heap within 2%, where discovery's wall time varied by up to 18% on a quiet
+machine and doubled beside a build, and its CPU time by about 20% with everything cached: the times are only reported.
 
-| Version | Run | Mods translated | Sum | Median | Slowest |
-|---|---|---|---|---|---|
-| 26.3 | server, test mods + Fabric API | 23 | 572 ms | 19 ms | 120 ms |
-| 26.3 | server, mod corpus | 79 | 3,425 ms | 12 ms | 385 ms |
-| 1.21.11 (remapped) | client, test mods + Fabric API | 25 | 1,375 ms | 41 ms | 204 ms |
-| 1.21.11 (remapped) | server, mod corpus | 87 | 15,844 ms | 59 ms | 3,433 ms |
-
-Discovery of a launch (the report's *Launch timings*: Fabricated's work before NeoForge loads the mods) on CI's
-dedicated servers, v0.6.0-beta. The Fabric API server runs the test mods with Fabric API, the stand-ins server the
-test mods alone. Runners differ by up to a third between runs.
-
-| Version | Fabric API server, cold | Fabric API server, cached | Stand-ins server, cold | Stand-ins server, cached |
-|---|---|---|---|---|
-| 1.21.1 | 2,618 ms | 492 ms | 1,919 ms | 391 ms |
-| 1.21.11 | 2,465 ms | 406 ms | 1,843 ms | 312 ms |
-| 26.1.2 | 1,327 ms | 524 ms | 864 ms | 406 ms |
-| 26.2 | 1,445 ms | 533 ms | 890 ms | 415 ms |
-| 26.3 | 1,412 ms | 510 ms | 854 ms | 415 ms |
-
-Per block, the chunk meshing seam does a `ClassValue` lookup and a `ThreadLocal` read and hooks the call with
-`@WrapWithCondition`, so nothing is boxed or allocated; Fabric models go through Indigo's own path.
+The baselines are in `ci/bench.tsv`, one row per platform, version and metric, with why each last changed; the job's
+summary shows each metric against its baseline. A metric more than 10% over its baseline fails the part, unless the
+change records the new value there with its reason, and a pull request that changes a baseline must change its reason
+too. NeoForge 1.21.1, 1.21.11 and 26.1.2 are recorded from local runs; NeoForge 26.2 and 26.3, which don't build
+locally, and every Forge version are only reported until a run records them.
