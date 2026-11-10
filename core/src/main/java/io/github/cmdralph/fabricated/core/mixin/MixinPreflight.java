@@ -214,9 +214,26 @@ public final class MixinPreflight extends PreflightPart {
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins,
 			boolean readsLocalTypes, boolean seesMixinFields, boolean handsOffConstructorArguments, boolean overlapsWideArguments) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, interfaceInjectors,
+				constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields,
+				handsOffConstructorArguments, overlapsWideArguments, false);
+	}
+
+	/**
+	 * @param keepsLocalsPastScope whether the running Mixin keeps a local among those it finds at a point once the local's
+	 *                             scope has ended, through the same frames it skips (PRE-26): a MixinExtras {@code @Local}
+	 *                             taking a local by its type is then judged among the locals it keeps
+	 *                             ({@link #keptLocalTypes}), and named by its ordinal among them where it can be
+	 *                             ({@link LocalRepairs#keptLocalRepairs})
+	 */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
+			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins,
+			boolean readsLocalTypes, boolean seesMixinFields, boolean handsOffConstructorArguments, boolean overlapsWideArguments,
+			boolean keepsLocalsPastScope) {
 		super(new PreflightClasses(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader,
 				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields,
-				handsOffConstructorArguments, overlapsWideArguments));
+				handsOffConstructorArguments, overlapsWideArguments, keepsLocalsPastScope));
 		this.repairer = new MixinRepairs(classes, this);
 	}
 
@@ -1429,9 +1446,16 @@ public final class MixinPreflight extends PreflightPart {
 					ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
-		String ambiguous = slices.isEmpty() ? ambiguousLocal(handler, ann, matched, ctx) : null;
+		Ambiguity ambiguous = slices.isEmpty() ? ambiguousLocal(handler, ann, matched, target.name, ctx) : null;
+		if (ambiguous != null && ambiguous.kept()) {
+			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable of type " + ambiguous.type()
+							+ " by its type, of which " + loader + "'s Mixin finds more than one in " + matched.get(0).name + " in "
+							+ target.name.replace('/', '.') + " there, keeping those whose scope ended before",
+					"The feature this hook serves doesn't work on this " + loader + ".");
+			return;
+		}
 		if (ambiguous != null) {
-			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + ambiguous
+			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable of type " + ambiguous.type()
 							+ " by its type, which " + matched.get(0).name + " in " + target.name.replace('/', '.') + " has more than one of there",
 					ctx.changer(true) + " added a local of that type; the mod needs an update or this mixin must be skipped.");
 			return;
@@ -1938,6 +1962,60 @@ public final class MixinPreflight extends PreflightPart {
 		return found;
 	}
 
+	/** {@link #keptLocalTypes}' type of a slot whose local can't be told. */
+	static final String UNTOLD = "?";
+
+	/**
+	 * The type of the local SpongePowered's Mixin keeps in each slot of a method at the instruction at {@code point}, as it
+	 * walks the method with the frames ModLauncher hands it, the frames its bytes have, compressed ({@code Locals.getLocalsAt},
+	 * read in 0.8.5 and 0.8.7; PRE-26): {@code this} and the arguments, then, at each store (from the instruction after it)
+	 * and load, the entry of the local variable table covering it for the slot, the slot after a long or double emptied. A
+	 * same frame changes nothing, so a local stays once its scope has ended, until the slot is stored or loaded again (Forge
+	 * 47's {@code AbstractMinecart.tick} keeps the three doubles of its client branch at the first {@code Vec3.add} call
+	 * after it). Any other frame may look a slot up again, and Mixin looks a slot no entry covers up in a table of its own,
+	 * so such a slot is {@link #UNTOLD} until it is stored or loaded again. Null for a slot holding none.
+	 */
+	static String[] keptLocalTypes(MethodNode method, String owner, int point) {
+		String[] kept = new String[method.maxLocals];
+		int slot = 0;
+		if ((method.access & Opcodes.ACC_STATIC) == 0) kept[slot++] = Type.getObjectType(owner).getDescriptor();
+		for (Type arg : Type.getArgumentTypes(method.desc)) {
+			if (slot < kept.length) kept[slot] = arg.getDescriptor();
+			slot += arg.getSize();
+		}
+		VarInsnNode store = null;
+		for (int i = 0; i <= point && i < method.instructions.size(); i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			if (store != null) {
+				String stored = coveringType(method, i, store.var);
+				kept[store.var] = stored;
+				if (store.var + 1 < kept.length && (stored.equals(UNTOLD) || Type.getType(stored).getSize() == 2)) {
+					kept[store.var + 1] = stored.equals(UNTOLD) ? UNTOLD : null;
+				}
+				store = null;
+			}
+			if (insn instanceof FrameNode frame && frame.type != Opcodes.F_SAME && frame.type != Opcodes.F_SAME1) {
+				Arrays.fill(kept, UNTOLD);
+			} else if (insn instanceof VarInsnNode var) {
+				if (var.getOpcode() >= Opcodes.ILOAD && var.getOpcode() <= Opcodes.ALOAD) {
+					kept[var.var] = coveringType(method, i, var.var);
+				} else {
+					store = var;
+				}
+			}
+		}
+		return kept;
+	}
+
+	/** The type of the last entry of the method's local variable table for a slot covering the instruction at {@code index}; {@link #UNTOLD} for none. */
+	private static String coveringType(MethodNode method, int index, int slot) {
+		String found = UNTOLD;
+		for (LocalVariableNode lv : method.localVariables) {
+			if (lv.index == slot && method.instructions.indexOf(lv.start) <= index && index < method.instructions.indexOf(lv.end)) found = lv.desc;
+		}
+		return found;
+	}
+
 	/**
 	 * Whether no local of the reference type {@code type} can be among the locals Mixin builds at the instruction at
 	 * {@code point} ({@code Locals.getLocalsAt}, whatever its version). Mixin walks the method's instructions in order up
@@ -2236,12 +2314,13 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * The type of a local an {@code @Local} captures by its type alone (no name, index or ordinal) when, at every
-	 * instruction the injector's {@code @At} selects in every target, more than one local of that type is in scope:
-	 * MixinExtras then can't tell which one is meant. Null when that can't be shown (no local variable table, an
-	 * injection point other than a call, field access or object creation, ...).
+	 * A local an {@code @Local} captures by its type alone (no name, index or ordinal) when, at every instruction the
+	 * injector's {@code @At} selects in every target, more than one local of that type is in scope: MixinExtras then can't
+	 * tell which one is meant. Where the running Mixin keeps locals once their scope has ended (PRE-26), those it keeps
+	 * there ({@link #keptLocalTypes}) count too. Null when that can't be shown (no local variable table, an injection point
+	 * other than a call, field access or object creation, ...).
 	 */
-	private static String ambiguousLocal(MethodNode handler, AnnotationNode injector, List<MethodNode> targets, Context ctx) {
+	private Ambiguity ambiguousLocal(MethodNode handler, AnnotationNode injector, List<MethodNode> targets, String owner, Context ctx) {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.size() != 1) return null;
 		AnnotationNode at = ats.get(0);
@@ -2261,8 +2340,11 @@ public final class MixinPreflight extends PreflightPart {
 				String type = params[p].getDescriptor();
 				boolean judged = false;
 				boolean single = false;
-				for (MethodNode m : targets) {
-					if (m.localVariables == null || m.localVariables.isEmpty()) return null;
+				boolean singleInScope = false;
+				for (MethodNode target : targets) {
+					if (target.localVariables == null || target.localVariables.isEmpty()) return null;
+					MethodNode framed = keepsLocalsPastScope ? classes.withFrames(owner, target) : null;
+					MethodNode m = framed != null ? framed : target;
 					int seen = 0;
 					for (int i = 0; i < m.instructions.size(); i++) {
 						AbstractInsnNode insn = m.instructions.get(i);
@@ -2270,16 +2352,36 @@ public final class MixinPreflight extends PreflightPart {
 						if (ordinal >= 0 && seen++ != ordinal) continue;
 						judged = true;
 						int inScope = 0;
+						Set<Integer> found = new HashSet<>();
 						for (LocalVariableNode lv : m.localVariables) {
-							if (lv.desc.equals(type) && m.instructions.indexOf(lv.start) <= i && i < m.instructions.indexOf(lv.end)) inScope++;
+							if (!lv.desc.equals(type) || m.instructions.indexOf(lv.start) > i || i >= m.instructions.indexOf(lv.end)) continue;
+							inScope++;
+							found.add(lv.index);
 						}
-						single |= inScope <= 1;
+						singleInScope |= inScope <= 1;
+						if (framed == null) {
+							single |= inScope <= 1;
+							continue;
+						}
+						String[] kept = keptLocalTypes(framed, owner, i);
+						for (int slot = (framed.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1; slot < kept.length; slot++) {
+							if (type.equals(kept[slot])) found.add(slot);
+						}
+						single |= found.size() <= 1;
 					}
 				}
-				if (judged && !single) return "of type " + params[p].getClassName();
+				if (judged && !single) return new Ambiguity(params[p].getClassName(), singleInScope);
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * A local {@link #ambiguousLocal} finds more than one of.
+	 *
+	 * @param kept whether only counting the locals the running Mixin keeps once their scope has ended makes it so (PRE-26)
+	 */
+	private record Ambiguity(String type, boolean kept) {
 	}
 
 	/** Whether the targets' local variable tables (where they have one) show no local {@code wanted} accepts. */

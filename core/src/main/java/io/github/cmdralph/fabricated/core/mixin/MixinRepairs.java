@@ -403,6 +403,8 @@ final class MixinRepairs extends PreflightPart {
 			RepairStep.stopIfMoved(),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> locals.vanillaLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, local) -> s.named() + " captures " + local),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> locals.keptLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, local) -> s.named() + " captures " + local),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> locals.vanillaVariableOrdinalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, local) -> s.named() + " modifies " + local),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> LocalRepairs.namedLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
