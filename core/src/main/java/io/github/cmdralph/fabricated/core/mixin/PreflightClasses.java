@@ -88,6 +88,12 @@ final class PreflightClasses {
 	 */
 	final boolean keepsLocalsPastScope;
 
+	/**
+	 * Whether the running Mixin refuses a mixin whose initialiser branches or loads or stores an array element
+	 * ({@link Initialisers}, PRE-28: Forge's does).
+	 */
+	final boolean restrictsInitialisers;
+
 	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
 	final String loader;
 
@@ -123,8 +129,10 @@ final class PreflightClasses {
 	PreflightClasses(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins, boolean readsLocalTypes,
-			boolean seesMixinFields, boolean handsOffConstructorArguments, boolean overlapsWideArguments, boolean keepsLocalsPastScope) {
+			boolean seesMixinFields, boolean handsOffConstructorArguments, boolean overlapsWideArguments, boolean keepsLocalsPastScope,
+			boolean restrictsInitialisers) {
 		this.handsOffConstructorArguments = handsOffConstructorArguments;
+		this.restrictsInitialisers = restrictsInitialisers;
 		this.overlapsWideArguments = overlapsWideArguments;
 		this.keepsLocalsPastScope = keepsLocalsPastScope;
 		this.enumMixins = enumMixins;

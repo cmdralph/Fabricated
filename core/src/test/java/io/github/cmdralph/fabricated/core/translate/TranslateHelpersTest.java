@@ -301,6 +301,11 @@ class TranslateHelpersTest {
 		assertTrue(MixinCompat.keepsLocalsPastScope("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
 		assertFalse(MixinCompat.keepsLocalsPastScope("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
 		assertFalse(MixinCompat.keepsLocalsPastScope(null));
+		// PRE-28: whether a mixin's initialiser may not branch or load or store an array element.
+		assertTrue(MixinCompat.restrictsInitialisers("0.8.5+Jenkins-b310.git-1"), "Forge 47");
+		assertTrue(MixinCompat.restrictsInitialisers("0.8.7+Jenkins-b321.git-4"), "Forge 52 and 61 to 66");
+		assertFalse(MixinCompat.restrictsInitialisers("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
+		assertFalse(MixinCompat.restrictsInitialisers(null));
 		// SUPER-2: whether an array's class is looked up as a detached mixin's calls are bound.
 		assertTrue(MixinCompat.looksUpArrayOwners("0.8.5+Jenkins-b310.git-1"), "Forge 47");
 		assertTrue(MixinCompat.looksUpArrayOwners("0.8.7+Jenkins-b321.git-4"), "Forge 52 and 61 to 66");

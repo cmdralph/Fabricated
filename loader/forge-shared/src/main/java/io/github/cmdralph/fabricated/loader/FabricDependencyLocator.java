@@ -88,7 +88,7 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		LaunchPhases phases = new LaunchPhases();
 		try {
 			run(loadedMods, handed, phases);
-			LOGGER.info("Fabricated discovery finished in {} ms ({})", phases.totalMillis(), phases);
+			LOGGER.info("Fabricated discovery finished in {} ({})", phases.totals(), phases);
 		} catch (Throwable t) {
 			if (t instanceof VirtualMachineError vme && !(t instanceof StackOverflowError)) throw vme;
 			// The state is published just before the first Fabric mod is handed to Forge.
@@ -376,7 +376,7 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		cache.finish(config.maxUnusedLaunches());
 		for (String note : cache.notes().subList(reported, cache.notes().size())) result.report().line("Cache", note);
 		phases.end("hand-over");
-		result.report().line(LaunchPhases.SECTION, "Discovery: " + phases + " (" + phases.totalMillis() + " ms)");
+		result.report().line(LaunchPhases.SECTION, "Discovery: " + phases + " (" + phases.totals() + ")");
 		state.writeReport();
 	}
 
