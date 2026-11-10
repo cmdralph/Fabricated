@@ -231,9 +231,24 @@ public final class MixinPreflight extends PreflightPart {
 			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins,
 			boolean readsLocalTypes, boolean seesMixinFields, boolean handsOffConstructorArguments, boolean overlapsWideArguments,
 			boolean keepsLocalsPastScope) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, interfaceInjectors,
+				constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields,
+				handsOffConstructorArguments, overlapsWideArguments, keepsLocalsPastScope, false);
+	}
+
+	/**
+	 * @param restrictsInitialisers whether the running Mixin refuses a mixin whose initialiser branches or loads or stores an
+	 *                              array element, as SpongePowered's releases do (PRE-28): such a mixin then fails
+	 *                              ({@link #checkInitialiser})
+	 */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
+			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins,
+			boolean readsLocalTypes, boolean seesMixinFields, boolean handsOffConstructorArguments, boolean overlapsWideArguments,
+			boolean keepsLocalsPastScope, boolean restrictsInitialisers) {
 		super(new PreflightClasses(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader,
 				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields,
-				handsOffConstructorArguments, overlapsWideArguments, keepsLocalsPastScope));
+				handsOffConstructorArguments, overlapsWideArguments, keepsLocalsPastScope, restrictsInitialisers));
 		this.repairer = new MixinRepairs(classes, this);
 	}
 
@@ -260,6 +275,7 @@ public final class MixinPreflight extends PreflightPart {
 				continue;
 			}
 			int from = out.size();
+			if (restrictsInitialisers) checkInitialiser(code != null ? code : modClasses.readNode(internal, ClassReader.SKIP_FRAMES), ctx);
 			checkMixin(node, ctx);
 			ctx.leaveOutStateGroups(from);
 			leaveOutSharers(out, from, configName, ctx.mixinDotted(), shares(node));
@@ -833,6 +849,18 @@ public final class MixinPreflight extends PreflightPart {
 			}
 			checkMembers(mixin, targetNode, targetCtx);
 		}
+	}
+
+	/**
+	 * A mixin whose initialiser, which Mixin merges into its target's constructors, branches or loads or stores an array
+	 * element, which the running Mixin refuses as it applies the mixin ({@link Initialisers}, PRE-28).
+	 */
+	private void checkInitialiser(ClassNode mixin, Context ctx) {
+		AbstractInsnNode refused = mixin == null ? null : Initialisers.refused(mixin);
+		if (refused == null) return;
+		ctx.classLevel("Its field initialisers, which Mixin merges into the constructors of its target, " + (Initialisers.branches(refused)
+						? "branch" : "load or store an array element") + ", which " + loader + "'s Mixin refuses there (Fabric's Mixin takes it)",
+				"The feature this mixin serves doesn't work on this " + loader + ".");
 	}
 
 	private String noEnumMixins() {

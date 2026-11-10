@@ -10,7 +10,8 @@ name: CI
 #   filled, which only these pushes write; everything else reads them.
 # The full matrix builds each version once and runs its parts (ci/runs.tsv: server, client, mods, with "extended"
 # corpus) in jobs of their own; the harness checks every run against ci/checks.tsv. With "extended" more runs join, each
-# a gate once it held on two extended runs in a row (CI-1). Documentation alone runs no pull request.
+# a gate once it held on two extended runs in a row (CI-1). The server part's Fabric API run is also the startup and
+# memory benchmark (ci/bench.py), against its baselines in ci/bench.tsv. Documentation alone runs no pull request.
 on:
   push:
     branches: ['**']
@@ -331,6 +332,8 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
+          # A pull request's merge commit and its base, whose baselines the benchmark reads.
+          fetch-depth: 2
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -363,6 +366,18 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
       - name: The ${{ matrix.part }} runs
         run: ci/smoke.sh "$PLATFORM" "$MC" "$PART"
+      # A metric more than 10% over its baseline fails, unless the change records the new value with its reason; on a
+      # pull request, a baseline it changes must change its reason too (its base's file).
+      - name: Startup and memory benchmark
+        if: ${{ !cancelled() && matrix.part == 'server' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          base=()
+          if [ -n "$BASE_REF" ] && git show HEAD^1:ci/bench.tsv > "$RUNNER_TEMP/bench-base.tsv" 2>/dev/null; then
+            base=(--base "$RUNNER_TEMP/bench-base.tsv")
+          fi
+          python3 -I ci/bench.py "$PLATFORM" "$MC" "$RUNNER_TEMP/smoke/server-fapi" "${base[@]}"
       - name: Upload the checks
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
