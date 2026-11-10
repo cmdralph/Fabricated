@@ -5,15 +5,16 @@ the client and server environments.
 
 A jar's name gives its loader, version and Minecraft version (fabricated-<loader>-<version>+mc<minecraft>.jar), and
 the version gives the release type: a pre-release suffix naming alpha is an alpha, one naming beta, rc or pre a beta,
-none a release. The changelog is the section of the changelog file whose "## " heading names the version. The project
-is CURSEFORGE_PROJECT_ID and the token CURSEFORGE_TOKEN, both from the environment, and neither is ever printed.
-Every jar's game versions are resolved before the first upload, so a game version CurseForge lacks uploads nothing.
+none a release. The changelog is the release's notes, the GitHub release's text, after their "# " title, which names
+the version. The project is CURSEFORGE_PROJECT_ID and the token CURSEFORGE_TOKEN, both from the environment, and
+neither is ever printed. Every jar's game versions are resolved before the first upload, so a game version CurseForge
+lacks uploads nothing.
 
 --dry-run uploads nothing and prints what would be uploaded: with a token, the game versions' CurseForge ids, looked
-up read-only; without, their names. A changelog section or a game version that is missing is a warning there and an
+up read-only; without, their names. Missing notes, or a game version CurseForge lacks, are a warning there and an
 error otherwise.
 
-Usage: ci/curseforge.py [--dry-run] <changelog.md> <jar>...
+Usage: ci/curseforge.py [--dry-run] <notes.md> <jar>...
 """
 import argparse
 import http.client
@@ -72,15 +73,11 @@ def java_version(minecraft):
 
 
 def changelog(text, version):
-    """The section of a changelog whose "## " heading names the version as a whole word (v-prefixed or not), without
-    its heading, or None. 0.6.0 doesn't name 0.6.0-beta, nor does 0.6.0-beta name 0.6.0-beta.2."""
+    """The release's notes after their title, the first line, a "# " heading naming the version as a whole word
+    (v-prefixed or not), or None. 0.6.0 doesn't name 0.6.0-beta, nor does 0.6.0-beta name 0.6.0-beta.2."""
     named = re.compile(rf"(?<![\w.+-])v?{re.escape(version)}(?![\w+-]|\.\w)")
-    lines = text.splitlines()
-    for start, line in enumerate(lines):
-        if line.startswith("## ") and named.search(line):
-            end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
-            return "\n".join(lines[start + 1:end]).strip() or None
-    return None
+    title, _, rest = text.lstrip().partition("\n")
+    return (rest.strip() or None) if title.startswith("# ") and named.search(title) else None
 
 
 def wanted(loader, minecraft):
@@ -176,7 +173,7 @@ def error_body(error):
     return body or error.reason
 
 
-def run(changelog_path, jars, dry_run, env):
+def run(notes_path, jars, dry_run, env):
     parsed = [(jar, *parse_jar(jar.name)) for jar in jars]
     versions = sorted({version for _, _, version, _ in parsed})
     if len(versions) != 1:
@@ -192,15 +189,15 @@ def run(changelog_path, jars, dry_run, env):
     client = CurseForge(token) if token else None
 
     problems = []
-    notes = changelog(changelog_path.read_text(encoding="utf-8"), version)
+    notes = changelog(notes_path.read_text(encoding="utf-8"), version)
     print(f"{'Dry run: would upload' if dry_run else 'Uploading'} {len(parsed)} jars of Fabricated {version}, "
           f"release type {kind}, to the CurseForge project (CURSEFORGE_PROJECT_ID {'set' if project else 'unset'})")
     if notes is None:
-        problems.append(f"{changelog_path} has no '## ' section whose heading names {version}")
+        problems.append(f"{notes_path} doesn't open with a '# ' title naming {version} and the notes under it")
         notes = ""
     else:
         lines = notes.splitlines()
-        print(f"Changelog: {len(lines)} lines from {changelog_path}, starting")
+        print(f"Changelog: {len(lines)} lines from {notes_path}, starting")
         for line in lines[:CHANGELOG_LINES]:
             print(f"  | {line}")
     if client:
@@ -249,11 +246,11 @@ def run(changelog_path, jars, dry_run, env):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Uploads a release's jars to Fabricated's CurseForge project.")
     parser.add_argument("--dry-run", action="store_true", help="upload nothing, print what would be uploaded")
-    parser.add_argument("changelog", type=Path, help="the changelog, whose section for the version is the files'")
+    parser.add_argument("notes", type=Path, help="the release's notes, the files' changelog after their title")
     parser.add_argument("jars", type=Path, nargs="+", help="the release's jars")
     args = parser.parse_args(argv)
     try:
-        run(args.changelog, args.jars, args.dry_run, os.environ)
+        run(args.notes, args.jars, args.dry_run, os.environ)
     except (Failure, OSError) as e:
         # After what was printed before it: stdout to a pipe is buffered, stderr not.
         sys.stdout.flush()
