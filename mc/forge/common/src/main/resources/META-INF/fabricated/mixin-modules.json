@@ -38,6 +38,7 @@
     "NamespacedWrapperEntryAddedMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperPendingHoldersMixin": [],
     "PlayerListViewMixin": [],
+    "PoiTypesMixin": [],
     "ResourcePackLoaderKnownPackMixin": [],
     "TagFileRemoveMixin": ["fabric-tag-api-v1"]
   }
