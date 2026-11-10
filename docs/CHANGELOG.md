@@ -3,6 +3,25 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: CurseForge's changelog is the release's notes
+
+- **CurseForge's changelog** is now the GitHub release's text after its title: the notes in `docs/releases/<tag>.md`,
+  whose `# ` title must name the version, with the commits the jars were built from and their checksums. It was this
+  file's entry naming the version, a record of the work rather than notes for players. CONTRIBUTING's release steps
+  say so.
+- Verified: CI's script tests (`test_curseforge.py`, the title rule among them) and the script's dry run of the
+  v0.6.0-beta.2 notes as the release workflow writes them.
+
+## 2026-11-10: A dropped connection read as a race of Polymer's and Fabric API's (NET-14)
+
+- **NET-14**, not Fabricated's: the Forge 47 advanced client lost its connection as it joined, when a custom payload
+  reached the play handler before Fabric API's networking addon was set. Polymer lets the client play before the
+  server's play handler exists, the handler takes payloads from early in its constructor, and Fabric API makes its addon
+  at the constructor's end. Fabric 1.20.1 runs the same code (read in the jars, not run there). No change.
+- Verified: a local Forge 47 advanced client with a scratch diagnostic of each payload's handler held its connection,
+  joined its world and waited on Origins' screen, as on Forge 52; the run before it, without the diagnostic, lost its
+  connection.
+
 ## 2026-11-10: Point-of-interest holders a Fabric mod stores kept as the platform's types (POI-4)
 
 - **POI-4** (P0), fixed: BCLib puts vanilla's holders into the map of point-of-interest types by block state, which
