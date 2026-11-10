@@ -51,20 +51,11 @@ public final class ConstructorHandoffs {
 			AnnotationNode marker = field.invisibleAnnotations == null ? null : Annotations.find(field.invisibleAnnotations, MARKER);
 			if (marker != null && constructor.equals(Annotations.value(marker, "value"))) return field;
 		}
-		String base = "fabricated$" + mixin.name.replace('/', '_') + "$arguments";
-		String name = base;
-		for (int i = 2; taken(mixin, name); i++) name = base + i;
-		FieldNode field = new FieldNode(Opcodes.ACC_PRIVATE, name, ARGUMENTS, null, null);
-		field.visibleAnnotations = new ArrayList<>(List.of(new AnnotationNode(MixinNames.UNIQUE)));
+		FieldNode field = PreflightAsm.uniqueField(mixin, "fabricated$" + mixin.name.replace('/', '_') + "$arguments", ARGUMENTS);
 		AnnotationNode marker = new AnnotationNode(MARKER);
 		Annotations.put(marker, "value", constructor);
 		field.invisibleAnnotations = new ArrayList<>(List.of(marker));
-		mixin.fields.add(field);
 		return field;
-	}
-
-	private static boolean taken(ClassNode mixin, String name) {
-		return mixin.fields.stream().anyMatch(f -> f.name.equals(name));
 	}
 
 	/**
