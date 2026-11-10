@@ -3,6 +3,21 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: What the natively shipped Fabric API modules' wideners open, opened (BIOME-6)
+
+- **BIOME-6** (P0), fixed: BCLib sets a final field of `BiomeGenerationSettings` without `@Mutable`, which works on
+  Fabric because Fabric API's biome module's access widener makes it mutable. Forge 47 ships that module natively,
+  without the widener, so BetterEnd's biome features stopped the Forge 47 advanced corpus. Forge 47's in-game mod now
+  has an access transformer with what the native modules' upstream wideners open (the biome module's and the particles
+  module's; the other five have none), but `Biome`'s climate field, which Forge 47's coremod needs private. Forge 47's
+  test mod sets the field as BCLib does (`forge-legacy-widened-access`).
+- **POI-4** (open): BCLib puts vanilla's holders into the map of point-of-interest types by block state, which Forge 47
+  keeps by type, so a barrel placed in world generation stops the game. **LOOT-3** (open): BCLib's loot pools, made with
+  vanilla's constructor, which Forge 47 changed, aren't built.
+- Verified: CI's script tests and the mixin inventory; Forge 47 builds. Locally on Forge 47, with MODIFIER-3, JAVA-1
+  and REMAP-5, the advanced server starts with every check passing, and the advanced client's integrated server creates
+  its world, then stops on POI-4; the server and client parts pass.
+
 ## 2026-11-10: Turned-off Forge modifiers kept apart, mods built for a newer Java disabled, record component names on SRG (MODIFIER-3, JAVA-1, REMAP-5)
 
 - **MODIFIER-3** (P0), fixed: MODIFIER-2 made each of a Fabric jar's Forge biome modifiers Forge's `forge:none`, one
