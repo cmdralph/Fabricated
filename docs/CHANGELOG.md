@@ -3,6 +3,18 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-10: Cleanup: dead code and duplicated helpers in core and the loaders
+
+- **Smaller, same behaviour:** core's main code went from 33,704 to 33,646 lines and the loaders from 5,388 to 5,340
+  (`loader/neoforge` 1,818 to 1,747, `loader/forge-shared` 2,610 to 2,540, `loader/common` 960 to 1,053 as it now holds
+  what both took from it). Gone: members, a parameter and record components nothing used on any branch, an unused
+  install overload and import in the loaders; merged: the helpers `LibraryAdapters` copied from `LibraryBridges`, the
+  annotation attribute removal two repairs each had (`Annotations.remove`), the unique field two repairs built alike,
+  and the mods.toml reading `NeoForgeMods` and `ForgeMods` repeated (`PlatformMods`, in `loader/common`); comments that
+  named moved or renamed code, or sat above the wrong member, fixed. Fabricated's public API (`docs/API.md`) is unchanged.
+- Verified: the core unit tests (556, as before, none removed), CI's script tests and the mixin inventory; NeoForge
+  1.21.1 and 26.1.2 build, and with this branch synced into `forge-legacy` and `forge`, Forge 47, 52 and 66 build.
+
 ## 2026-11-10: A Fabric jar's Forge biome modifiers turned off; the Forge 52 advanced server starts (MODIFIER-2)
 
 - **MODIFIER-2** (P0), fixed: YUNG's Extras' Fabric jar carries its Forge build's biome modifiers, which Forge applies
