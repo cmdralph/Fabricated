@@ -17,7 +17,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **NET-14**, not Fabricated's: the Forge 47 advanced client lost its connection as it joined, when a custom payload
   reached the play handler before Fabric API's networking addon was set. Polymer lets the client play before the
   server's play handler exists, the handler takes payloads from early in its constructor, and Fabric API makes its addon
-  at the constructor's end. It's the same code on Fabric. No change.
+  at the constructor's end. Fabric 1.20.1 runs the same code (read in the jars, not run there). No change.
 - Verified: a local Forge 47 advanced client with a scratch diagnostic of each payload's handler held its connection,
   joined its world and waited on Origins' screen, as on Forge 52; the run before it, without the diagnostic, lost its
   connection.
