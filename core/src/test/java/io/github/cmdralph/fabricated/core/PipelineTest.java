@@ -2075,10 +2075,17 @@ class PipelineTest {
 		// MODIFIER-1: YUNG's Extras' Fabric jar carries its NeoForge build's biome modifiers, adding what its Fabric code adds.
 		String biomeModifier = "data/tectonic/neoforge/biome_modifier/desert_decorations.json";
 		String structureModifier = "data/tectonic/neoforge/structure_modifier/swamp_structures.json";
+		// MODIFIER-2: and its Forge build's, which Forge 47 to 66 apply from any jar, gated by Forge's conditions or in a
+		// pack overlay's folder alike.
+		String forgeBiomeModifier = "data/tectonic/forge/biome_modifier/desert_decorations.json";
+		String forgeStructureModifier = "increased_height/data/tectonic/forge/structure_modifier/swamp_structures.json";
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path tectonic = TestJars.create().fabricModJson(TestJars.modJson("tectonic", "1.0", ""))
 				.text(biomeModifier, "{\"type\": \"neoforge:add_features\", \"biomes\": \"#c:is_desert\", \"features\": \"tectonic:bush\", \"step\": \"vegetal_decoration\"}")
 				.text(structureModifier, "{\"type\": \"neoforge:add_spawns\"}")
+				.text(forgeBiomeModifier, "{\"forge:conditions\": [{\"type\": \"forge:mod_loaded\", \"modid\": \"tectonic\"}], \"type\": \"forge:add_features\","
+						+ " \"biomes\": \"#forge:is_desert\", \"features\": \"tectonic:bush\", \"step\": \"vegetal_decoration\"}")
+				.text(forgeStructureModifier, "{\"type\": \"forge:add_spawns\"}")
 				.text(modifier, "{\"neoforge:conditions\": [{\"type\": \"tectonic:config\"}], \"type\": \"lithostitched:add_features\"}")
 				.text(plain, "{\"amplitudes\": [1.0]}")
 				.text(builtinMetadata, "{\"pack\": {\"pack_format\": 48}, \"neoforge:overlays\": {\"entries\": [{\"directory\": \"increased_height\","
@@ -2095,6 +2102,9 @@ class PipelineTest {
 			assertEquals(Map.of("type", "neoforge:add_features", "biomes", List.of(), "features", List.of(), "step", "vegetal_decoration"),
 					Json.parseObject(overlay.readText(biomeModifier)), "the NeoForge build's biome modifier is turned off");
 			assertEquals(Map.of("type", "neoforge:clear_spawns", "structures", List.of()), Json.parseObject(overlay.readText(structureModifier)));
+			// Forge's none, which every Forge version has for both, so the mod's Fabric code alone adds its features.
+			assertEquals(Map.of("type", "forge:none"), Json.parseObject(overlay.readText(forgeBiomeModifier)), "the Forge build's biome modifier is turned off");
+			assertEquals(Map.of("type", "forge:none"), Json.parseObject(overlay.readText(forgeStructureModifier)));
 		}
 		// PROVIDER-3: its container shows its files as NeoForge reads them, to mods reading them through it (Forgified
 		// Fabric API's resource loader), from a copy of its jar: the jar itself is left as it is.
