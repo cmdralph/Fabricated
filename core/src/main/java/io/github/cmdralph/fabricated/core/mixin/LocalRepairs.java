@@ -278,6 +278,77 @@ final class LocalRepairs extends PreflightPart {
 	}
 
 	/**
+	 * Names by its ordinal each {@code @Local} capturing a local by its type alone where the running Mixin keeps locals of
+	 * that type among those it finds at the injection point once their scope has ended (PRE-26,
+	 * {@link MixinPreflight#keptLocalTypes}): FrozenLib's gravity hook takes {@code @Local double} at the first
+	 * {@code Vec3.add} call in {@code AbstractMinecart.tick}, the one double in scope there, where Forge 47's Mixin also
+	 * keeps the three of the branch before it, and a Forge 47 server stopped ("Found 4 candidate variables"). The local
+	 * meant is the one of the type in scope there, the one MixinExtras takes by the type alone where Mixin finds no other;
+	 * its ordinal among those Mixin keeps (by slot, as Mixin counts them) must be the same at every instruction the point
+	 * picks, with every slot below it told. Only for an injector with one {@code @At} naming a call, field access or
+	 * construction, outside a slice, as {@link MixinPreflight#ambiguousLocal} judges them. Returns a description of each.
+	 */
+	List<String> keptLocalRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!keepsLocalsPastScope || Annotations.value(injector, "slice") != null) return List.of();
+		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
+		if (methods.isEmpty()) return List.of();
+		List<String> named = new ArrayList<>();
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		for (int p = 0; p < params.length; p++) {
+			String desc = params[p].getDescriptor();
+			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+				if (!local.desc.equals(MixinNames.LOCAL) || Annotations.value(local, "name") != null || Annotations.value(local, "index") != null
+						|| Annotations.value(local, "ordinal") != null || Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))
+						|| desc.startsWith(SUGAR_REFS)) continue;
+				int found = -1;
+				int most = 0;
+				methods:
+				for (MethodNode m : methods) {
+					MethodNode framed = classes.withFrames(target.name, m);
+					List<Integer> positions = framed == null || framed.localVariables == null || framed.localVariables.isEmpty() ? null
+							: pointPositions(injector, framed, ctx);
+					if (positions == null || positions.isEmpty()) {
+						found = -1;
+						break;
+					}
+					for (int i : positions) {
+						List<LocalVariableNode> inScope = inScope(framed, i, desc);
+						String[] kept = MixinPreflight.keptLocalTypes(framed, target.name, i);
+						int slot = inScope.size() == 1 ? inScope.get(0).index : -1;
+						if (slot < 0 || !desc.equals(kept[slot])) {
+							found = -1;
+							break methods;
+						}
+						int ordinal = 0;
+						int candidates = 0;
+						for (int s = 0; s < kept.length; s++) {
+							if (s < slot && MixinPreflight.UNTOLD.equals(kept[s])) {
+								found = -1;
+								break methods;
+							}
+							if (!desc.equals(kept[s])) continue;
+							if (s < slot) ordinal++;
+							if (s >= ((framed.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1)) candidates++;
+						}
+						if (found >= 0 && found != ordinal) {
+							found = -1;
+							break methods;
+						}
+						found = ordinal;
+						most = Math.max(most, candidates);
+					}
+				}
+				if (found < 0 || most < 2) continue;
+				Annotations.put(local, "ordinal", found);
+				named.add("the local of type " + params[p].getClassName() + " by its type, of which " + loader + "'s Mixin finds more than one in "
+						+ methods.get(0).name + " in " + target.name.replace('/', '.') + " there, keeping those whose scope ended before; the one in scope"
+						+ " there has ordinal " + found + " among them, and the @Local names it");
+			}
+		}
+		return named;
+	}
+
+	/**
 	 * Gives a {@code @ModifyVariable} picking its local by an ordinal among those of its type ({@code ordinal}, no name or
 	 * slot) the ordinal vanilla's local has in this game build's code, where the platform's patch declares one of the type
 	 * before or after it (PRE-25: Apoli's {@code modifyEffectiveTool} modifies vanilla's second boolean in scope at the

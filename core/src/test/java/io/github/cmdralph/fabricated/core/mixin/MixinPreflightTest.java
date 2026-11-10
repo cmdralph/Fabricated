@@ -2306,6 +2306,121 @@ class MixinPreflightTest {
 		assertTrue(after.stream().noneMatch(f -> f.severity() != Severity.INFO), after.toString());
 	}
 
+	/**
+	 * {@link #TARGET} with {@code tick()V} as Forge 47's {@code AbstractMinecart.tick} has it: a client branch storing two
+	 * doubles (slots 1 and 3), then the server's, which stores one (slot 5) and passes it to {@code push(DD)V}, the one
+	 * double in scope there. The server's branch starts at a frame of {@code frameType}: a same frame, as javac writes it,
+	 * or a full one.
+	 */
+	private static byte[] cartLike(int frameType) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+		mv.visitCode();
+		Label start = new Label();
+		Label x = new Label();
+		Label y = new Label();
+		Label server = new Label();
+		Label gravity = new Label();
+		Label end = new Label();
+		mv.visitLabel(start);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "client", "()Z", false);
+		mv.visitJumpInsn(Opcodes.IFEQ, server);
+		mv.visitInsn(Opcodes.DCONST_1);
+		mv.visitVarInsn(Opcodes.DSTORE, 1);
+		mv.visitLabel(x);
+		mv.visitInsn(Opcodes.DCONST_1);
+		mv.visitVarInsn(Opcodes.DSTORE, 3);
+		mv.visitLabel(y);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.DLOAD, 1);
+		mv.visitVarInsn(Opcodes.DLOAD, 3);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "move", "(DD)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitLabel(server);
+		mv.visitFrame(frameType, frameType == Opcodes.F_SAME ? 0 : 1, frameType == Opcodes.F_SAME ? null : new Object[] {TARGET}, 0, null);
+		mv.visitInsn(Opcodes.DCONST_0);
+		mv.visitVarInsn(Opcodes.DSTORE, 5);
+		mv.visitLabel(gravity);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitInsn(Opcodes.DCONST_0);
+		mv.visitVarInsn(Opcodes.DLOAD, 5);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "push", "(DD)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitLabel(end);
+		mv.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		mv.visitLocalVariable("x", "D", null, x, server, 1);
+		mv.visitLocalVariable("y", "D", null, y, server, 3);
+		mv.visitLocalVariable("gravity", "D", null, gravity, end, 5);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** FrozenLib's gravity hook: a {@code @ModifyArgs} at the {@code push(DD)V} call taking the double there by its type, required. */
+	private static byte[] gravityArgs() {
+		return mixin("com/example/mixin/Gravity", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "useGravity", "(" + ARGS + "D)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/ModifyArgs;", true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "tick");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";push(DD)V");
+			at.visitEnd();
+			ann.visit("require", 1);
+			ann.visitEnd();
+			mv.visitParameterAnnotation(1, LOCAL, false).visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 4);
+			mv.visitEnd();
+		});
+	}
+
+	@Test
+	void aLocalTakenByTypeIsNamedByItsOrdinalAmongTheLocalsForgesMixinKeepsPastTheirScope() throws Exception {
+		// PRE-26: FrozenLib's gravity hook takes @Local double at the first Vec3.add call in AbstractMinecart.tick, the one
+		// double in scope there. Forge 47's Mixin walks the method's frames as their bytes have them and skips a same frame, so
+		// it keeps the client branch's doubles too, and the Forge 47 server stopped ("Found 4 candidate variables").
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Gravity"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Gravity", gravityArgs()));
+		BiFunction<byte[], Boolean, MixinPreflight> preflight = (target, keeps) -> new MixinPreflight(new ClassIndex(Map.of(TARGET, target)::get),
+				InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge", false,
+				MixinPreflight.ConstructorInjects.RETURNS_ONLY, false, true, false, true, false, false, true, keeps);
+		byte[] cart = cartLike(Opcodes.F_SAME);
+
+		// Fabric's Mixin, as pre-flight judges it, finds the one double in scope.
+		assertTrue(preflight.apply(cart, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().noneMatch(f -> f.severity() != Severity.INFO));
+		List<PreflightFinding> found = preflight.apply(cart, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.message().contains("@ModifyArgs handler useGravity captures the local"
+				+ " variable of type double by its type, of which Forge's Mixin finds more than one in tick in net.minecraft.world.Thing there, keeping those"
+				+ " whose scope ended before")), found.toString());
+
+		// The double in scope comes after the two kept: the @Local takes it by its ordinal among the three.
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight.apply(cart, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertTrue(notes.stream().anyMatch(n -> n.message().contains("@ModifyArgs useGravity captures the local of type double by its type, of which Forge's"
+				+ " Mixin finds more than one in tick in net.minecraft.world.Thing there, keeping those whose scope ended before; the one in scope there has"
+				+ " ordinal 2 among them")), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Gravity.class")).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("useGravity")).findFirst().orElseThrow();
+		assertEquals(2, Annotations.value(Annotations.ofParameter(handler, 1).getFirst(), "ordinal"));
+		mod.put("com/example/mixin/Gravity", repaired.get("com/example/mixin/Gravity.class"));
+		List<PreflightFinding> after = preflight.apply(cart, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.stream().noneMatch(f -> f.severity() != Severity.INFO), after.toString());
+
+		// Past a frame of another kind, which Mixin may look the slots up again at, what it keeps can't be told: nothing changes.
+		mod.put("com/example/mixin/Gravity", gravityArgs());
+		byte[] full = cartLike(Opcodes.F_FULL);
+		assertTrue(preflight.apply(full, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().noneMatch(f -> f.severity() != Severity.INFO));
+		assertTrue(preflight.apply(full, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
 	@Test
 	void anInjectionAtTheReturnOfAMethodNeoForgeNoLongerCallsWrapsTheCallItMakesInstead() throws Exception {
 		// DEPRECATED-2: NeoForge 21.1 builds Ingredient's codecs with CraftingHelper.makeIngredientCodec, where vanilla's
