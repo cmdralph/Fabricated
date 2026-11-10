@@ -412,6 +412,20 @@ class RemapTest {
 		assertEquals("sleepingPlayers", fields.mapMember("com/mod/mixin/Shadowing", "field_7", "I"));
 	}
 
+	@Test
+	void aSelectorsDescriptorTellsApartMembersIntermediaryNamesAlikeAndTheRuntimeDoesnt() {
+		// REMAP-5: Bobby's refmap names OptionInstance.IntRange's maxInclusive field "comp_594:I"; Intermediary names the
+		// IntRangeBase method maxInclusive() comp_594 too, and SRG names the two f_231640_ and m_214118_.
+		MappingTable t = MappingTable.fromMembers(Map.of("net/minecraft/class_1", "net/minecraft/client/IntRange"), Map.of("comp_594", Map.of(
+				"net/minecraft/class_1.comp_594I", "f_231640_",
+				"net/minecraft/class_2.comp_594()I", "m_214118_")));
+		TokenRemapper r = new TokenRemapper(t);
+		assertEquals("f_231640_:I", r.remap("comp_594:I"));
+		assertEquals("Lnet/minecraft/client/IntRange;f_231640_:I", r.remap("Lnet/minecraft/class_1;comp_594:I"));
+		assertEquals("m_214118_()I", r.remap("comp_594()I"));
+		assertEquals("comp_594", r.remap("comp_594"), "without a descriptor nothing tells them apart");
+	}
+
 	/** Two overloads Intermediary names apart and Mojang's names alike, and a method of their class named once. */
 	private static MappingTable overloadedTable() throws Exception {
 		String tiny = String.join("\n", "v1\tofficial\tintermediary",

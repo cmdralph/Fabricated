@@ -12,7 +12,10 @@ import java.util.regex.Pattern;
  * {@code method_N}/{@code field_N}/{@code comp_N} bounded by non-identifier characters), so ordinary text is left
  * alone. So is a method reference with its owner and descriptor whose name Intermediary leaves under its official name
  * and the runtime renames (PLAIN-1: Fabric API's transfer refmap names
- * {@code Lnet/minecraft/class_2357;dispense(...)}, SRG's {@code m_6115_}).
+ * {@code Lnet/minecraft/class_2357;dispense(...)}, SRG's {@code m_6115_}). Where one intermediary name stands for members
+ * the runtime names apart, the descriptor a selector gives right after it ({@code name:desc}, {@code name(desc)ret})
+ * picks the member when that alone tells them apart (REMAP-5: a record component's field and its accessor method, which
+ * SRG names {@code f_} and {@code m_}).
  */
 public final class TokenRemapper {
 	private static final Pattern CLASS_TOKEN = Pattern.compile("net([/.])minecraft\\1class_\\d+(?:\\$class_\\d+)*");
@@ -24,6 +27,8 @@ public final class TokenRemapper {
 	 */
 	private static final Pattern NESTED_CLASS_TOKEN = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*(?:([/.])[A-Za-z_][A-Za-z0-9_]*)(?:\\1[A-Za-z_][A-Za-z0-9_]*)*(?:\\$class_\\d+)+");
 	private static final Pattern MEMBER_TOKEN = Pattern.compile("(?<![A-Za-z0-9_$])(?:method|field|comp)_\\d+(?![A-Za-z0-9_])");
+	/** A member's descriptor in a selector, right after its name: a field's after a colon, or a method's. */
+	private static final Pattern FOLLOWING_DESCRIPTOR = Pattern.compile(":(\\[*(?:[ZBCSIJFD]|L[^;()]+;))|(\\((?:\\[*(?:[ZBCSIJFD]|L[^;()]+;))*\\)\\[*(?:[ZBCSIJFDV]|L[^;()]+;))");
 	/** {@code Lowner;name(desc)} with a Minecraft owner, as refmaps and {@code @At} targets name a method. */
 	private static final Pattern METHOD_REFERENCE = Pattern.compile("L(net/minecraft/class_\\d+(?:\\$class_\\d+)*);"
 			+ "([A-Za-z_$][A-Za-z0-9_$]*)(\\((?:\\[*(?:[ZBCSIJFD]|L[^;()]+;))*\\)\\[*(?:[ZBCSIJFDV]|L[^;()]+;))");
@@ -39,6 +44,21 @@ public final class TokenRemapper {
 		String result = s;
 		// Before the class tokens: the methods are keyed by their intermediary owner and descriptor.
 		if (table.hasPlainMembers() && result.indexOf('(') >= 0) result = remapPlainMethods(result);
+		// Before the class tokens too: a member's descriptor is read in intermediary names.
+		if (result.contains("method_") || result.contains("field_") || result.contains("comp_")) {
+			Matcher m = MEMBER_TOKEN.matcher(result);
+			Matcher desc = FOLLOWING_DESCRIPTOR.matcher(result);
+			StringBuilder sb = new StringBuilder(result.length());
+			while (m.find()) {
+				String mapped = table.mapMemberFlat(m.group());
+				if (mapped == null && desc.region(m.end(), result.length()).lookingAt()) {
+					mapped = table.mapMember(null, m.group(), desc.group(1) != null ? desc.group(1) : desc.group(2));
+				}
+				m.appendReplacement(sb, Matcher.quoteReplacement(mapped != null ? mapped : m.group()));
+			}
+			m.appendTail(sb);
+			result = sb.toString();
+		}
 		if (result.contains("class_")) {
 			Matcher m = CLASS_TOKEN.matcher(result);
 			StringBuilder sb = new StringBuilder(result.length());
@@ -53,16 +73,6 @@ public final class TokenRemapper {
 			result = sb.toString();
 		}
 		if (result.contains("$class_")) result = remapNestedClasses(result);
-		if (result.contains("method_") || result.contains("field_") || result.contains("comp_")) {
-			Matcher m = MEMBER_TOKEN.matcher(result);
-			StringBuilder sb = new StringBuilder(result.length());
-			while (m.find()) {
-				String mapped = table.mapMemberFlat(m.group());
-				m.appendReplacement(sb, Matcher.quoteReplacement(mapped != null ? mapped : m.group()));
-			}
-			m.appendTail(sb);
-			result = sb.toString();
-		}
 		return result;
 	}
 

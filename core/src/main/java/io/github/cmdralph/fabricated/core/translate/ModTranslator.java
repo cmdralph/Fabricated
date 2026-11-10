@@ -113,11 +113,13 @@ public final class ModTranslator {
 	private static final String NEOFORGE_CONDITIONS = "neoforge:conditions";
 	private static final String REDIRECT = "Lorg/spongepowered/asm/mixin/injection/Redirect;";
 	/**
-	 * A NeoForge or Forge biome or structure modifier, which that loader applies from any jar and Fabric never reads
-	 * (MODIFIER-1, MODIFIER-2): NeoForge's folders, and Forge's, which Forge 47 to 66 read alike (a registry outside
-	 * {@code minecraft}'s namespace in a folder named for it). Each loader reads only its own.
+	 * A NeoForge biome or structure modifier, or a Forge biome modifier, which that loader applies from any jar and Fabric
+	 * never reads (MODIFIER-1, MODIFIER-2): NeoForge's folders, and Forge's, which Forge 47 to 66 read alike (a registry
+	 * outside {@code minecraft}'s namespace in a folder named for it). Each loader reads only its own. Forge's structure
+	 * modifiers stay: Forge's one structure modifier that changes nothing, {@code forge:none}, decodes to one shared
+	 * instance, which a registry refuses under a second name (MODIFIER-3).
 	 */
-	private static final Pattern PLATFORM_MODIFIER = Pattern.compile("(^|.*/)data/[^/]+/(neoforge|forge)/(biome_modifier|structure_modifier)/.+\\.json");
+	private static final Pattern PLATFORM_MODIFIER = Pattern.compile("(^|.*/)data/[^/]+/(neoforge/biome_modifier|neoforge/structure_modifier|forge/biome_modifier)/.+\\.json");
 	/**
 	 * Modifiers of NeoForge's that change nothing, to turn one off with: features added to no biome, spawns cleared from
 	 * no structure. NeoForge's own {@code neoforge:none} is gone from 26.x's biome modifiers and 26.3's structure modifiers.
@@ -125,8 +127,12 @@ public final class ModTranslator {
 	private static final byte[] NO_BIOME_MODIFIER = "{\"type\": \"neoforge:add_features\", \"biomes\": [], \"features\": [], \"step\": \"vegetal_decoration\"}\n"
 			.getBytes(StandardCharsets.UTF_8);
 	private static final byte[] NO_STRUCTURE_MODIFIER = "{\"type\": \"neoforge:clear_spawns\", \"structures\": []}\n".getBytes(StandardCharsets.UTF_8);
-	/** Forge's modifier that changes nothing, which Forge 47 to 66 register as a biome and as a structure modifier. */
-	private static final byte[] NO_FORGE_MODIFIER = "{\"type\": \"forge:none\"}\n".getBytes(StandardCharsets.UTF_8);
+	/**
+	 * Forge's, the same: features added to no biome, a new modifier each file, which Forge 47 to 66 decode alike. Not
+	 * {@code forge:none}, whose one instance a registry refuses under a second name (MODIFIER-3).
+	 */
+	private static final byte[] NO_FORGE_BIOME_MODIFIER = "{\"type\": \"forge:add_features\", \"biomes\": [], \"features\": [], \"step\": \"vegetal_decoration\"}\n"
+			.getBytes(StandardCharsets.UTF_8);
 	/** NeoForge's global loot modifiers: on 1.21.11 those its list (below) names, on 26.x every file. */
 	private static final Pattern LOOT_MODIFIER = Pattern.compile("(^|.*/)data/[^/]+/loot_modifiers/.+\\.json");
 	private static final String LOOT_MODIFIER_LIST = "data/neoforge/loot_modifiers/global_loot_modifiers.json";
@@ -194,6 +200,8 @@ public final class ModTranslator {
 		List<String> after = loadAfter.stream().sorted().distinct().toList();
 		String key = Hashing.sha256(String.join("|", candidate.sha256(), env.minecraftVersion(), env.neoForgeVersion(),
 				env.side(), env.fabricatedBuild(), Integer.toString(TranslationEnvironment.TRANSLATION_SCHEMA),
+				// A mod built for a newer Java is refused on an older one (JAVA-1).
+				"java " + Runtime.version().feature(),
 				env.mappingsHash(), env.runtimeMixinVersion(), String.valueOf(env.mixinExtrasVersion()), override.fingerprint(), String.join(",", after),
 				// Not only the jar's: a config a containing mod declares may come with it.
 				candidate.metadata().mixins().toString(), env.unsupportedPackages().toString(),
@@ -264,6 +272,8 @@ public final class ModTranslator {
 				// Fabric ASM's enum additions, as enum mixins of a config of their own (CORPUS-80).
 				List<MixinEntry> generatedConfigs = earlyRisers(candidate, files, classEntries, overlay, classes, findings,
 						table != null ? table::mapClass : UnaryOperator.identity());
+				String newerEntrypoint = newerJavaEntrypoint(candidate.metadata(), files);
+				if (newerEntrypoint != null) throw newerJava("its entrypoint " + newerEntrypoint);
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files, classEntries, overlay, findings,
 						installedClasses, enumEntries, enumTargets, classes, bridges, notes, widened, generatedConfigs);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
@@ -294,8 +304,11 @@ public final class ModTranslator {
 					// cycle). A jar Forge loads as its own mod, a multi-loader jar among them, isn't translated.
 					Matcher modifier = PLATFORM_MODIFIER.matcher(name);
 					if (modifier.matches()) {
-						overlay.put(name, modifier.group(2).equals("forge") ? NO_FORGE_MODIFIER
-								: modifier.group(3).equals("biome_modifier") ? NO_BIOME_MODIFIER : NO_STRUCTURE_MODIFIER);
+						overlay.put(name, switch (modifier.group(2)) {
+							case "forge/biome_modifier" -> NO_FORGE_BIOME_MODIFIER;
+							case "neoforge/biome_modifier" -> NO_BIOME_MODIFIER;
+							default -> NO_STRUCTURE_MODIFIER;
+						});
 						rewritten.add(name);
 						modifiers++;
 						continue;
@@ -688,6 +701,8 @@ public final class ModTranslator {
 			}
 			configs.put(entry.config(), config);
 			refmaps.put(entry.config(), refmap);
+			String newer = newerJavaMixin(config, translated);
+			if (newer != null) throw newerJava("its mixin " + newer + ", and Mixin makes the game class it changes a class of that Java too");
 			if (env.namespace() == Namespace.OFFICIAL) {
 				String intermediary = intermediaryTarget(config, classes);
 				if (intermediary != null) {
@@ -1872,6 +1887,53 @@ public final class ModTranslator {
 		}
 		return new PreflightFinding(severity, String.valueOf(m.get("config")), m.get("mixin") instanceof String s ? s : null,
 				String.valueOf(m.get("message")), String.valueOf(m.get("suggestion")));
+	}
+
+	/**
+	 * A config's first mixin of this side whose class file is of a newer Java than the game runs, named with that Java;
+	 * null for none (JAVA-1). Mixin raises the class version of a class it changes to its mixin's, and the JVM then can't
+	 * load that class: Ledger 1.3.18 for 1.20.1, built for Java 21 without saying so in its {@code depends}, stopped a
+	 * Forge 47 server on Java 17 as {@code LivingEntity} loaded. A config with a plugin is passed over, as the plugin may
+	 * leave such mixins out: lattice 1.3, which Axiom nests, is a Java 17 mod whose plugin applies its Java 21 mixins on
+	 * Minecraft 1.20.5 and later only.
+	 */
+	private String newerJavaMixin(MixinConfigFile config, FileView mod) throws ArchiveException {
+		if (config.plugin() != null) return null;
+		for (String mixin : config.mixinsFor(env.clientSide())) {
+			String newer = newerJavaClass(config.internalName(mixin), mod);
+			if (newer != null) return newer;
+		}
+		return null;
+	}
+
+	/** The mod's first entrypoint class of a newer Java than the game runs, named with that Java; null for none (JAVA-1). */
+	private static String newerJavaEntrypoint(FabricModMetadata md, FileView mod) throws ArchiveException {
+		for (List<EntrypointSpec> specs : md.entrypoints().values()) {
+			for (EntrypointSpec spec : specs) {
+				int member = spec.value().indexOf("::");
+				String newer = newerJavaClass((member < 0 ? spec.value() : spec.value().substring(0, member)).replace('.', '/'), mod);
+				if (newer != null) return newer;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * A class of the mod whose class file is of a newer Java than the game runs, as "name is a class of Java N"; null
+	 * otherwise. Read from the class file's header, which every Java's class files have, ASM's or not.
+	 */
+	private static String newerJavaClass(String internalName, FileView mod) throws ArchiveException {
+		byte[] data = mod.read(internalName + ".class");
+		if (data == null || data.length < 8) return null;
+		int java = ((data[6] & 0xFF) << 8 | data[7] & 0xFF) - 44;
+		return java > Runtime.version().feature() ? internalName.replace('/', '.') + " is a class of Java " + java : null;
+	}
+
+	/** Why a mod built for a newer Java than the game runs is disabled (JAVA-1). */
+	private static TranslationException newerJava(String what) {
+		int running = Runtime.version().feature();
+		return new TranslationException("Built for a newer Java: " + what + ", which this game's Java " + running + " can't load",
+				"Install the mod's build for Java " + running + ", or run the game on the Java the mod needs.");
 	}
 
 	/** Reads classes as the mod will load: the game's and installed jars' first, then the mod's; memoised, null when absent. */
