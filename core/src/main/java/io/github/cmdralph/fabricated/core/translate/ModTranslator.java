@@ -630,6 +630,8 @@ public final class ModTranslator {
 
 		List<MixinEntry> allConfigs = new ArrayList<>(md.compatHints().mixinsOr(md.mixins()));
 		allConfigs.addAll(generatedConfigs);
+		List<MixinEntry> added = addedConfigs(allConfigs, entries, files, findings, notes);
+		allConfigs.addAll(added);
 		for (MixinEntry entry : allConfigs) {
 			if (!entry.environment().matches(side)) continue;
 			byte[] data = generatedConfigs.contains(entry) ? overlay.get(entry.config()) : files.read(entry.config());
@@ -721,12 +723,13 @@ public final class ModTranslator {
 				if (node == null) continue;
 				List<String> targets = mixinTargets(node);
 				renameHidingMethods(node, targets, classes, entries, translated, overlay, notes);
+				if (MixinCompat.looksUpArrayOwners(env.runtimeMixinVersion())) objectOwnedArrayCalls(node, translated, overlay, notes);
 				if (MixinCompat.rebindsInterfaceSuperCalls(env.runtimeMixinVersion())) alignDetachedSuper(node, targets, classes, translated, overlay, notes);
 				// The interfaces the kept mixins add to their targets.
 				if (node.interfaces.isEmpty()) continue;
 				for (String target : targets) addBridges(DefaultBridge.of(target, node.interfaces, classes), node.interfaces, bridges, notes);
 			}
-			specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
+			if (!added.contains(entry)) specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
 		pluginMixins(entries, configs, refmaps, preflight, relocated, !override.ignorePreflight(), translated, overlay, findings);
 		if (!ducks.isEmpty()) {
@@ -787,6 +790,46 @@ public final class ModTranslator {
 	}
 
 	/**
+	 * The mixin configs the mod's code adds to Mixin itself by constant names ({@link AddedMixinConfigs}), which its jar
+	 * holds and {@code listed} doesn't list (ReplayMod adds eight of its ten from its mixin plugin): pre-flight checks them
+	 * as listed ones, and the mod's call reads them, as rewritten in the overlay, by name (MIXCFG-1). They stay unlisted
+	 * in the descriptor: the mod's code decides whether and when it adds them, and the platform would add a listed one in
+	 * any case. A config the jar doesn't hold, and those added by names the mod's code computes, are reported: their
+	 * mixins reach Mixin unchecked.
+	 */
+	private static List<MixinEntry> addedConfigs(List<MixinEntry> listed, Collection<String> entries, FileView files, List<PreflightFinding> findings,
+			List<String> notes) throws ArchiveException {
+		Map<String, String> adders = new TreeMap<>();
+		for (String name : entries) {
+			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
+			byte[] data = files.read(name);
+			AddedMixinConfigs.Added added = data == null ? null : AddedMixinConfigs.added(data);
+			if (added == null) continue;
+			String dotted = name.substring(0, name.length() - ".class".length()).replace('/', '.');
+			for (String config : added.names()) adders.putIfAbsent(config, dotted);
+			if (added.computed()) {
+				findings.add(new PreflightFinding(Severity.WARN, "Mixins.addConfiguration", dotted, "Adds mixin configs to Mixin by names its code"
+						+ " computes, which pre-flight can't read: their mixins aren't checked", ""));
+			}
+		}
+		for (MixinEntry entry : listed) adders.remove(entry.config());
+		List<MixinEntry> checked = new ArrayList<>();
+		for (Map.Entry<String, String> e : adders.entrySet()) {
+			if (files.read(e.getKey()) == null) {
+				findings.add(new PreflightFinding(Severity.WARN, e.getKey(), null, "Added to Mixin by " + e.getValue() + ", but not in the mod's jar:"
+						+ " its mixins aren't checked", ""));
+			} else {
+				checked.add(new MixinEntry(e.getKey(), net.fabricmc.loader.api.metadata.ModEnvironment.UNIVERSAL));
+			}
+		}
+		if (!checked.isEmpty()) {
+			notes.add("Its code adds mixin configs to Mixin itself, which its metadata doesn't list; checked as listed ones: "
+					+ checked.stream().map(MixinEntry::config).collect(Collectors.joining(", ")) + " (MIXCFG-1)");
+		}
+		return checked;
+	}
+
+	/**
 	 * Renames a kept mixin's private methods that would hide a default method its targets inherit (HIDE-1, see
 	 * {@link HiddenDefaults}), in the mixin and the classes nested in it.
 	 */
@@ -805,6 +848,21 @@ public final class ModTranslator {
 		}
 		renames.forEach((key, renamed) -> notes.add("Mixin " + mixin.name.replace('/', '.') + "'s private method " + key
 				+ " renamed " + renamed + ": under its own name it would hide the default method of that name its target inherits (HIDE-1)"));
+	}
+
+	/**
+	 * Has a kept mixin's calls of an array's methods name {@code Object}, where Mixin would stop on them (SUPER-2, see
+	 * {@link DetachedSupers#callsArrayMethods}).
+	 */
+	private static void objectOwnedArrayCalls(ClassNode mixin, FileView files, Map<String, byte[]> overlay, List<String> notes)
+			throws ArchiveException {
+		if (!DetachedSupers.callsArrayMethods(mixin)) return;
+		String name = mixin.name + ".class";
+		byte[] data = files.read(name);
+		if (data == null) return;
+		overlay.put(name, DetachedSupers.objectOwnedArrayCalls(data));
+		notes.add("Mixin " + mixin.name.replace('/', '.') + "'s calls of an array's methods name Object, which declares them: the"
+				+ " running Mixin looks up an array's class as it binds a mixin's calls, and would fail the target (SUPER-2)");
 	}
 
 	/**

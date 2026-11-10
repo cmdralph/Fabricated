@@ -121,6 +121,52 @@ class SafeArchiveTest {
 		assertTrue(e.getMessage().contains("Duplicate") || e.getMessage().contains("zip"), e.getMessage());
 	}
 
+	/** The jar {@code builder} writes, with every name {@code from} renamed {@code to} (of the same length) in both headers. */
+	private Path renamed(TestJars builder, String from, String to, String file) throws Exception {
+		String s = new String(builder.toBytes(), StandardCharsets.ISO_8859_1).replace(from, to);
+		return Files.write(tmp.resolve(file), s.getBytes(StandardCharsets.ISO_8859_1));
+	}
+
+	/**
+	 * SEC-11: ReplayMod 1.20.1's jar has the directory entry {@code assets/} twice, both empty, and nothing else twice; it
+	 * was refused. A directory's entry holds nothing two readers could see differently, nothing is extracted under an
+	 * entry's name, and a directory is never read, so a repeated empty one is accepted, once. Its copies still count
+	 * against the entry limit.
+	 */
+	@Test
+	void acceptsADirectorysEmptyEntryRepeated() throws Exception {
+		Path jar = renamed(TestJars.create().bytes("assets/", new byte[0]).text("assets/x/a.txt", "1").bytes("assetz/", new byte[0]),
+				"assetz/", "assets/", "dir-twice.jar");
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			assertEquals(java.util.List.of("assets/", "assets/x/a.txt"), archive.entryNames());
+			assertTrue(archive.isDirectory("assets/"));
+			assertNull(archive.read("assets/"));
+			assertEquals("1", archive.readText("assets/x/a.txt"));
+		}
+		ArchiveLimits twoEntries = new ArchiveLimits(1 << 20, 1 << 20, 1 << 20, 2, 100, 1);
+		ArchiveException e = assertThrows(ArchiveException.class, () -> SafeArchive.open(jar, twoEntries));
+		assertTrue(e.getMessage().contains("more than 2 entries"), e.getMessage());
+	}
+
+	/**
+	 * SEC-11's limit: a repeated file stays refused, whether or not it is empty, as two readers may take different copies;
+	 * so does a repeated directory's entry when one copy declares content, which no directory has.
+	 */
+	@Test
+	void stillRejectsARepeatedFileOrADirectoryEntryWithContent() throws Exception {
+		Path emptyFiles = renamed(TestJars.create().bytes("a.txt", new byte[0]).bytes("b.txt", new byte[0]), "b.txt", "a.txt", "empty-twice.jar");
+		ArchiveException e = assertThrows(ArchiveException.class, () -> SafeArchive.open(emptyFiles, ArchiveLimits.DEFAULTS));
+		assertTrue(e.getMessage().contains("Duplicate entry 'a.txt'"), e.getMessage());
+
+		Path withContent = renamed(TestJars.create().bytes("assets/", new byte[0]).text("assetz/", "hidden"), "assetz/", "assets/", "dir-content.jar");
+		e = assertThrows(ArchiveException.class, () -> SafeArchive.open(withContent, ArchiveLimits.DEFAULTS));
+		assertTrue(e.getMessage().contains("Duplicate entry 'assets/'"), e.getMessage());
+
+		Path contentFirst = renamed(TestJars.create().text("assets/", "hidden").bytes("assetz/", new byte[0]), "assetz/", "assets/", "content-dir.jar");
+		e = assertThrows(ArchiveException.class, () -> SafeArchive.open(contentFirst, ArchiveLimits.DEFAULTS));
+		assertTrue(e.getMessage().contains("Duplicate entry 'assets/'"), e.getMessage());
+	}
+
 	@Test
 	void rejectsCompressionBombs() throws Exception {
 		Path jar = TestJars.create().bytes("bomb.bin", new byte[8 << 20]).write(tmp.resolve("bomb.jar"));

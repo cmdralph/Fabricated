@@ -375,7 +375,7 @@ final class MixinRepairs extends PreflightPart {
 					(s, named) -> "@ModifyVariable " + s.handler().name + " takes " + named),
 			RepairStep.warn(RepairScope.ANY, s -> locals.localArgumentNameRepairs(s.handler(), s.injector(), s.targets(), s.ctx()),
 					(s, named) -> s.named() + " captures " + named),
-			RepairStep.warn(RepairScope.ANY, s -> constructors.constructorPointRepairs(s.injector(), s.targets(), s.ctx()),
+			RepairStep.warn(RepairScope.ANY, s -> constructors.constructorPointRepairs(s.handler(), s.injector(), s.targets(), s.ctx()),
 					(s, marked) -> "@Inject " + s.handler().name + " injects into " + marked),
 			new RepairStep(RepairScope.ANY, Severity.INFO, s -> LocalRepairs.softenLocalCapture(s.injector(),
 					PreflightAsm.grouped(s.handler()) ? 0 : s.ctx().config().defaultRequire()) ? List.of("") : List.of(),
@@ -403,12 +403,16 @@ final class MixinRepairs extends PreflightPart {
 			RepairStep.stopIfMoved(),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> locals.vanillaLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, local) -> s.named() + " captures " + local),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> locals.vanillaVariableOrdinalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, local) -> s.named() + " modifies " + local),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> LocalRepairs.namedLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, local) -> s.named() + " captures " + local),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> locals.indexedLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, local) -> s.named() + " captures " + local),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.overloadRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
 					(s, moved) -> s.named() + " targets " + moved),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.inheritedOverloadRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(),
+					s.bridges()), (s, moved) -> s.named() + " targets " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> constructors.handoffRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
 					(s, moved) -> s.named() + " targets " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> KeyedLoops.repairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
@@ -625,6 +629,13 @@ final class MixinRepairs extends PreflightPart {
 			for (String item : step.repair().repair(site)) {
 				changed = true;
 				out.add(new PreflightFinding(step.severity(), site.ctx().configName(), site.ctx().mixinDotted(), step.message().apply(site, item), ""));
+			}
+		}
+		// A repair may have pointed the injector at another constructor, whose points the running Mixin then takes only as
+		// the constructor point repair marks them (CTOR-7).
+		if (changed) {
+			for (String marked : constructors.constructorPointRepairs(site.handler(), site.injector(), site.targets(), site.ctx())) {
+				out.add(new PreflightFinding(Severity.WARN, site.ctx().configName(), site.ctx().mixinDotted(), site.named() + " injects into " + marked, ""));
 			}
 		}
 		return changed;

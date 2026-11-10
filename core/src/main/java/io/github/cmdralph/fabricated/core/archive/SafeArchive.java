@@ -18,8 +18,8 @@ import java.util.zip.ZipFile;
  * Read-only view of an untrusted jar that validates every entry before anything is read.
  *
  * <p>Checks performed when opening: archive size, entry count, entry names (no absolute paths,
- * {@code ..} or {@code .} segments, backslashes, drive letters, control characters or duplicates),
- * declared entry sizes and compression ratios. Reads additionally count the actual decompressed
+ * {@code ..} or {@code .} segments, backslashes, drive letters, control characters or duplicates, but for a
+ * directory's empty entry repeated), declared entry sizes and compression ratios. Reads additionally count the actual decompressed
  * bytes, so archives that lie about sizes in their headers are still bounded.
  *
  * <p>The underlying file is opened read-only and never modified.
@@ -67,15 +67,21 @@ public final class SafeArchive implements Closeable {
 		try {
 			Map<String, ZipEntry> entries = new LinkedHashMap<>();
 			long declaredTotal = 0;
+			// Every entry counts, a repeated directory's too.
+			int count = 0;
 			Enumeration<? extends ZipEntry> en = zip.entries();
 			while (en.hasMoreElements()) {
 				ZipEntry entry = en.nextElement();
-				if (entries.size() >= limits.maxEntries()) {
+				if (count++ >= limits.maxEntries()) {
 					throw new ArchiveException("Archive has more than " + limits.maxEntries() + " entries");
 				}
 				String name = entry.getName();
 				validateName(name);
-				if (entries.putIfAbsent(name, entry) != null) {
+				ZipEntry first = entries.putIfAbsent(name, entry);
+				if (first != null) {
+					// A directory's empty entry repeated (ReplayMod 1.20.1's assets/) holds nothing two readers could see
+					// differently: no entry is extracted by name, and a directory is never read (SEC-11).
+					if (isEmptyDirectory(first) && isEmptyDirectory(entry)) continue;
 					throw new ArchiveException("Duplicate entry '" + name + "'");
 				}
 				long declared = entry.getSize();
@@ -104,6 +110,11 @@ public final class SafeArchive implements Closeable {
 			closeQuietly(zip, ex);
 			throw ex;
 		}
+	}
+
+	/** A directory's entry (its name ends in {@code /}) declaring no content. */
+	private static boolean isEmptyDirectory(ZipEntry entry) {
+		return entry.isDirectory() && entry.getSize() == 0;
 	}
 
 	private static void closeQuietly(ZipFile zip, Exception primary) {

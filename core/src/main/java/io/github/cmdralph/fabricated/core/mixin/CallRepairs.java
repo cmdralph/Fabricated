@@ -465,7 +465,9 @@ final class CallRepairs extends PreflightPart {
 		boolean condition = MixinNames.WRAP_WITH_CONDITION.contains(injector.desc);
 		if (!pointOnly && !condition && !injector.desc.equals(MixinNames.REDIRECT) && !injector.desc.equals(MixinNames.WRAP_OPERATION) || Annotations.value(injector, "slice") != null
 				|| (mixin.access & Opcodes.ACC_INTERFACE) != 0) return List.of();
-		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
+		// A bare wildcard's handler sees no call either: Mixin scans every method for its points (WILD-1).
+		List<MethodNode> wildcard = pointOnly ? PreflightAsm.wildcardMethods(injector, handler, target, ctx) : null;
+		List<MethodNode> methods = wildcard != null ? wildcard : PreflightAsm.selectedMethods(injector, target, ctx);
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (methods.isEmpty() || !pointOnly && ats.size() != 1) return List.of();
 		List<String> moved = new ArrayList<>();
