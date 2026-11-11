@@ -46,10 +46,21 @@ One entry per working session, newest first: what changed, and how it was verifi
   Carpet's other mixins of the resolver had it rewritten; now only where a mixin member names or shadows a seam. The
   rewrite at load is all or nothing: where it throws, the class loads as the platform has it and one error names it.
   SEAM-2 no longer judges `@At("NEW")` points, which Mixin's versions inject at and count differently.
-- Open: where a Fabric mod's mixin hooks the stickiness methods, the resolver's own `isStickyBlock` and `canStickTo`
-  calls move into vanilla's methods put back, and Moonlight's NeoForge build (3.8.3 for 1.21.1) wraps those calls in
-  a required config, so it and a Fabric mod hooking them (Carpet, FrozenLib for 26.x) would stop the game together
-  (read in its jar, UNVERIFIED in game; COMPATIBILITY.md).
+- Native mods' mixins (SEAM-1, found in review): putting the methods back moves the resolver's own `isStickyBlock` and
+  `canStickTo` calls into them, and Moonlight's NeoForge build (3.8.3 for 1.21.1) wraps those calls in a required
+  config, so it and a Fabric mod hooking the stickiness methods (Carpet, FrozenLib for 26.x) would have stopped the
+  game together. Now a class isn't rewritten where an installed native mod's mixin hooks the platform's code that would
+  move, or a place the move shifts, or where what it hooks can't be told: the class stays as the platform has it, the
+  Fabric mods' hooks of its seams find nothing, as before SEAM-1, each with a line naming the native mixin, and the
+  report's environment names it too. The decision is read from the native mods' mixins at translation and is part of
+  the translation cache key, so a translation is redone when the native mods change it.
+- Verified (native mods' mixins): core's tests (619), CI's script tests and the inventory; NeoForge 1.21.1 and 26.1.2
+  build. A local NeoForge 1.21.1 advanced corpus server with Moonlight's NeoForge build in place of its Fabric build,
+  beside Carpet's, starts; the resolver isn't rewritten, the report names Moonlight's mixin in its environment and on
+  each of Carpet's and the test mod's seven hooks, and only the test mod's `vanilla-piston` check (its hooks finding
+  nothing, as they should) and its json loader conditions check (Moonlight's NeoForge build has a mixin of NeoForge's
+  conditions) fail beyond CORPUS-113's. NeoForge's installed jars now list their mods' mixins too, from their mods.toml
+  and manifest, as Forge's did.
 - Verified (review fixes): core's tests (613), CI's script tests and the inventory; NeoForge 1.21.1 and Forge 47
   build. On local advanced corpus servers, against runs before SEAM-2, the only line newly left out is Carpet's line
   redirect on NeoForge 1.21.1 and Forge 47 (the other changes are STRUCT-1's), every check passes but CORPUS-113's on

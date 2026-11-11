@@ -1423,13 +1423,16 @@ other locals in NeoForge 21.1 to 26.1.2, whose `addBlockLine` declares its old s
 Mixin skips it, and Carpet's check of the line, which reads only what it keeps, is left out (SEAM-2): its chains and
 chests don't pull the blocks behind them along the push, and stick across it as its rules say.
 
-Where a Fabric mod's mixin hooks those methods, the resolver no longer calls `isStickyBlock` and `canStickTo` in
-`resolve`, `addBlockLine` and `addBranchingBlocks` (they are in vanilla's methods put back), so a NeoForge mod's mixin
-of those calls finds none there, and Mixin stops the game where it requires them. Moonlight's NeoForge build does
-(3.8.3 for 1.21.1, read in its jar): its `PistonStructureResolverMixin` wraps the `isStickyBlock` calls of `resolve` and
-`addBlockLine` and the `canStickTo` calls of `addBlockLine` and `addBranchingBlocks`, in a required config with
-`defaultRequire` 1. So Moonlight's NeoForge build (Supplementaries needs it) and a Fabric mod hooking the stickiness
-methods (Carpet, FrozenLib for 26.x) don't load together (UNVERIFIED in game).
+Putting the methods back moves the resolver's `isStickyBlock` and `canStickTo` calls into them, so where a NeoForge
+mod's mixin hooks those calls, or a place the move shifts in the methods holding them, they aren't put back: the
+resolver stays as NeoForge has it, so the NeoForge mod's mixin applies, and the Fabric mods' hooks of the stickiness
+methods find nothing, as without Fabricated's restoring them. Moonlight's NeoForge build (Supplementaries needs it) is one:
+its `PistonStructureResolverMixin` wraps those calls. The report's environment then names the class and the NeoForge
+mod's mixin ("Vanilla's methods not put back in PistonStructureResolver: NeoForge mod Moonlight Lib's mixin
+PistonStructureResolverMixin hooks the platform's code that putting vanilla's method back would move"), and each Fabric
+mod's hook of them has a line saying so. Carpet's and FrozenLib's sticky blocks then don't stick, as before. Where what a
+NeoForge mod's mixin of the resolver hooks can't be told (a wildcard, a method name the class doesn't have), the
+methods aren't put back either.
 
 What this can't match of Fabric, seen in a reference pack (2026-10-28):
 
@@ -1978,9 +1981,11 @@ What else differs on Forge, for Fabric mods in general:
   rules deciding each block's stickiness, as it does for other mods' blocks on Fabric. On Forge 47, whose
   `addBlockLine` declares its old state before vanilla's position, Mixin skips Carpet's hook keeping the line's
   positions and its check of the line is left out (SEAM-2), as on NeoForge 21.1 to 26.1.2; Forge 52 and 61 to 66 keep
-  vanilla's order. Where a Fabric mod's mixin hooks those methods, a Forge mod's mixin of the resolver's
-  `isStickyBlock` or `canStickTo` calls finds none there, and Mixin stops the game where it requires them, as with
-  Moonlight's NeoForge build on NeoForge (its Forge builds not read).
+  vanilla's order. Where a Forge mod's mixin hooks the resolver's `isStickyBlock` or `canStickTo` calls, or a place
+  putting the methods back would shift, they aren't put back, and the Fabric mods' hooks of them find nothing, as on
+  NeoForge with Moonlight's NeoForge build (its Forge builds not read). On Forge 47 a Forge mod's mixin names the
+  resolver's methods by the development names its refmap maps, which pre-flight doesn't read, so any Forge mod's mixin of
+  the resolver naming one of its methods keeps them from being put back.
 - **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
   into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't
