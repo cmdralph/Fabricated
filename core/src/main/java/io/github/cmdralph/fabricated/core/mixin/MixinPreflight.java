@@ -31,6 +31,7 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.commons.AnalyzerAdapter;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
@@ -282,7 +283,7 @@ public final class MixinPreflight extends PreflightPart {
 			checkMixin(node, ctx);
 			ctx.leaveOutStateGroups(from);
 			leaveOutSharers(out, from, configName, ctx.mixinDotted(), shares(node));
-			ctx.leaveOutThreadLocalSharers(from, () -> threadLocalShares(code != null ? code : modClasses.readNode(internal, ClassReader.SKIP_FRAMES),
+			ctx.leaveOutThreadLocalSharers(from, node, () -> threadLocalShares(code != null ? code : modClasses.readNode(internal, ClassReader.SKIP_FRAMES),
 					modClassCache));
 		}
 		if (hasPlugin && out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
@@ -618,14 +619,7 @@ public final class MixinPreflight extends PreflightPart {
 		for (AbstractInsnNode insn : method.instructions) {
 			if (insn instanceof FieldInsnNode field && (field.getOpcode() == Opcodes.GETSTATIC || field.getOpcode() == Opcodes.PUTSTATIC)
 					&& !field.owner.equals(mixin) && threadLocal(Type.getType(field.desc), modClassCache) && modClass(field.owner, modClassCache) != null) {
-				// Stored where the field is replaced, or where the first call of a ThreadLocal's method after reading it sets
-				// or removes its value.
-				boolean stores = field.getOpcode() == Opcodes.PUTSTATIC;
-				for (AbstractInsnNode next = insn.getNext(); !stores && next != null; next = next.getNext()) {
-					if (!(next instanceof MethodInsnNode call) || !threadLocal(Type.getObjectType(call.owner), modClassCache)) continue;
-					stores = call.name.equals("set") || call.name.equals("remove");
-					break;
-				}
+				boolean stores = field.getOpcode() == Opcodes.PUTSTATIC || setsValue(method, field);
 				found.merge(field.owner.replace('/', '.') + "." + field.name, stores, Boolean::logicalOr);
 			} else if (insn instanceof MethodInsnNode call && call.owner.equals(mixin)) {
 				MethodNode callee = own.get(call.name + call.desc);
@@ -641,6 +635,34 @@ public final class MixinPreflight extends PreflightPart {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Whether the {@code ThreadLocal} a field read pushes has its value set or removed in the code that runs on from the
+	 * read: the read's value, followed on the stack and through the locals (as a value no other is), is the receiver of a
+	 * {@code set} or {@code remove} call before the code jumps away, returns or drops it. What the code before the read
+	 * left in the locals and on the stack is unknown, and stays apart from it.
+	 */
+	private static boolean setsValue(MethodNode method, FieldInsnNode read) {
+		Object value = new Object();
+		AnalyzerAdapter flow = new AnalyzerAdapter("", Opcodes.ACC_STATIC, method.name, "()V", null);
+		for (int i = 0; i < method.maxLocals; i++) flow.locals.add(Opcodes.TOP);
+		for (int i = 0; i < method.maxStack; i++) flow.stack.add(Opcodes.TOP);
+		flow.stack.add(value);
+		try {
+			for (AbstractInsnNode insn = read.getNext(); insn != null; insn = insn.getNext()) {
+				if (insn instanceof FrameNode) continue;
+				if (insn instanceof MethodInsnNode call && call.getOpcode() != Opcodes.INVOKESTATIC && (call.name.equals("set") || call.name.equals("remove"))) {
+					int receiver = flow.stack.size() - (Type.getArgumentsAndReturnSizes(call.desc) >> 2);
+					if (receiver >= 0 && flow.stack.get(receiver) == value) return true;
+				}
+				insn.accept(flow);
+				if (flow.stack == null || !flow.stack.contains(value) && !flow.locals.contains(value)) return false;
+			}
+		} catch (RuntimeException e) {
+			// Code the walk doesn't follow (a subroutine).
+		}
+		return false;
 	}
 
 	/** Whether a type is {@code ThreadLocal}, {@code InheritableThreadLocal} or a class of the mod extending one. */
@@ -868,11 +890,14 @@ public final class MixinPreflight extends PreflightPart {
 		/**
 		 * The injectors sharing a {@code ThreadLocal} of the mod's ({@link #threadLocalShares}) with those of this mixin left
 		 * out by the findings from {@code from} on, left out with them (ITEM-2), unless the whole mixin is: one left alone
-		 * would read a value the other never stored, or store one nothing reads. Each goes as it would failing itself
-		 * ({@link #injector}): alone, or with the whole mixin where STATE-1 can't leave it out alone. The mixin's code is
-		 * only read where one of its injectors was left out alone.
+		 * would read a value the other never stored, or store one nothing reads. Each goes as its own failure would leave
+		 * it out ({@link #injector}, under its own {@code require}): alone, or with the whole mixin where STATE-1 can't leave
+		 * it out alone. One whose failure would disable the mod stays, as it did before, the report saying so. The mixin's
+		 * code is only read where one of its injectors was left out alone.
+		 *
+		 * @param mixin the mixin, its handlers' annotations
 		 */
-		void leaveOutThreadLocalSharers(int from, Supplier<Map<String, Set<String>>> shares) {
+		void leaveOutThreadLocalSharers(int from, ClassNode mixin, Supplier<Map<String, Set<String>>> shares) {
 			Set<String> leftOut = new LinkedHashSet<>();
 			for (PreflightFinding f : out.subList(from, out.size())) {
 				if (f.severity() != Severity.LEFT_OUT || !mixinDotted.equals(f.mixin())) continue;
@@ -881,23 +906,38 @@ public final class MixinPreflight extends PreflightPart {
 			}
 			if (leftOut.isEmpty()) return;
 			Map<String, Set<String>> shared = shares.get();
+			Set<String> kept = new HashSet<>();
 			ArrayDeque<String> next = new ArrayDeque<>(leftOut);
 			while (!next.isEmpty()) {
 				String with = next.pop();
 				Set<String> fields = shared.get(with);
 				if (fields == null) continue;
 				for (Map.Entry<String, Set<String>> other : shared.entrySet()) {
-					if (leftOut.contains(other.getKey()) || Collections.disjoint(fields, other.getValue())) continue;
+					String key = other.getKey();
+					if (leftOut.contains(key) || kept.contains(key) || Collections.disjoint(fields, other.getValue())) continue;
 					String field = other.getValue().stream().filter(fields::contains).findFirst().orElseThrow();
-					Severity severity = stateless.contains(other.getKey()) ? Severity.LEFT_OUT : fatal();
-					boolean wholeMixin = severity == Severity.LEFT_OUT && !hasPlugin && addsFields && !stateGroups.containsKey(other.getKey());
-					out.add(new PreflightFinding(severity, configName, mixinDotted, "The injector of " + other.getKey() + " goes with that of " + with
-							+ ": it shares the ThreadLocal " + field + " with " + with + ", which can't apply (ITEM-2)", "", wholeMixin ? null : other.getKey()));
+					MethodNode handler = mixin.methods.stream().filter(m -> key.equals(m.name + m.desc)).findFirst().orElseThrow();
+					AnnotationNode injector = Annotations.all(handler).stream().filter(a -> PreflightAsm.isInjector(a.desc)).findFirst().orElseThrow();
+					Severity alone = require(handler, injector) <= 0 ? Severity.WARN : stateless.contains(key) ? Severity.LEFT_OUT : fatal();
+					if (alone == Severity.FAIL) {
+						kept.add(key);
+						info("The injector of " + key + " shares the ThreadLocal " + field + " with " + with + ", which can't apply, but stays: leaving it"
+								+ " out would disable the mod (ITEM-2)");
+						continue;
+					}
+					boolean wholeMixin = alone == Severity.LEFT_OUT && !hasPlugin && addsFields && !stateGroups.containsKey(key);
+					out.add(new PreflightFinding(Severity.LEFT_OUT, configName, mixinDotted, "The injector of " + key + " goes with that of " + with
+							+ ": it shares the ThreadLocal " + field + " with " + with + ", which can't apply (ITEM-2)", "", wholeMixin ? null : key));
 					if (wholeMixin) return;
-					leftOut.add(other.getKey());
-					next.add(other.getKey());
+					leftOut.add(key);
+					next.add(key);
 				}
 			}
+		}
+
+		/** The injections an injector requires: its own {@code require}, else none in a group (whose minimum is the check, as Mixin's), else its config's default. */
+		int require(MethodNode handler, AnnotationNode injector) {
+			return Annotations.value(injector, "require") instanceof Integer r && r >= 0 ? r : PreflightAsm.grouped(handler) ? 0 : config.defaultRequire();
 		}
 
 		/**
@@ -1415,8 +1455,7 @@ public final class MixinPreflight extends PreflightPart {
 
 	private void checkInjector(ClassNode mixin, MethodNode handler, AnnotationNode ann, ClassNode target, Context ctx) {
 		if (!(Annotations.value(ann, "method") instanceof List<?> selectors) || selectors.isEmpty()) return;
-		// As Mixin: a grouped injector requires nothing by default, its group's minimum being the check.
-		int require = Annotations.value(ann, "require") instanceof Integer r && r >= 0 ? r : PreflightAsm.grouped(handler) ? 0 : ctx.config().defaultRequire();
+		int require = ctx.require(handler, ann);
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(ann, "slice"));
 		String injectorName = "@" + PreflightAsm.simpleName(ann.desc);
 		List<MethodNode> scanned = (mixin.access & Opcodes.ACC_INTERFACE) == 0 ? PreflightAsm.wildcardMethods(ann, handler, target, ctx) : null;

@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -11130,13 +11131,105 @@ class MixinPreflightTest {
 		}
 	}
 
+	/**
+	 * ITEM-2 never disables a mod pre-flight would only have left a hook out of: in a mixin adding an interface, without a
+	 * plugin, a failing handler using nothing of the mixin's own is left out alone (LEAVE-3), and of its partners through
+	 * a {@code ThreadLocal} the one using nothing of the mixin's own goes with it, where the one going through the mixin's
+	 * own method stays, as it did before, the report saying so: its own failure would disable the mod.
+	 */
+	@Test
+	void aThreadLocalPartnerWhoseOwnFailureWouldDisableTheModStays() throws Exception {
+		List<PreflightFinding> findings = duckRemainders(1);
+		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.FAIL), findings.toString());
+		assertEquals(Set.of("lost()V", "capture()V"), findings.stream().filter(f -> f.severity() == Severity.LEFT_OUT).map(PreflightFinding::handler)
+				.collect(Collectors.toSet()), findings.toString());
+		assertEquals(List.of("The injector of store()V shares the ThreadLocal com.example.State.HOLDER with lost()V, which can't apply, but stays:"
+				+ " leaving it out would disable the mod (ITEM-2)"), findings.stream().filter(f -> f.severity() == Severity.INFO).map(PreflightFinding::message)
+				.toList());
+	}
+
+	/** ITEM-2: a partner requiring no injection, whose own failure would only be warned of, goes with the failing handler. */
+	@Test
+	void aThreadLocalPartnerRequiringNothingGoesWithTheFailingInjector() throws Exception {
+		List<PreflightFinding> findings = duckRemainders(0);
+		assertTrue(findings.stream().allMatch(f -> f.severity() == Severity.LEFT_OUT), findings.toString());
+		assertEquals(Set.of("lost()V", "capture()V", "store()V"), findings.stream().map(PreflightFinding::handler).collect(Collectors.toSet()));
+	}
+
+	/**
+	 * A required config's mixin adding an interface, without a plugin: {@code lost} fails, reading {@code HOLDER};
+	 * {@code capture} sets it through the mod's static method; {@code store}, requiring {@code storeRequires}, reads it
+	 * through the mixin's own method.
+	 */
+	private static List<PreflightFinding> duckRemainders(int storeRequires) throws Exception {
+		String name = "com/example/mixin/DuckRemainders";
+		byte[] mixin = mixin(name, false, List.of("com/example/api/Duck"), cw -> {
+			injectWith(cw, "lost", "INVOKE", "Lnet/minecraft/world/Thing;removed()V", 1, mv -> readState(mv, "HOLDER", "Ljava/lang/ThreadLocal;")); // fails
+			injectWith(cw, "capture", "HEAD", null, 1, mv -> mv.visitMethodInsn(Opcodes.INVOKESTATIC, STATE_CLASS, "remember", "()V", false));
+			injectWith(cw, "store", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", storeRequires, mv -> {
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitMethodInsn(Opcodes.INVOKESPECIAL, name, "read", "()V", false);
+			});
+			MethodVisitor read = cw.visitMethod(Opcodes.ACC_PRIVATE, "read", "()V", null, null);
+			read.visitCode();
+			readState(read, "HOLDER", "Ljava/lang/ThreadLocal;");
+			read.visitInsn(Opcodes.RETURN);
+			read.visitMaxs(1, 1);
+			read.visitEnd();
+		});
+		return run(config(true, "DuckRemainders"), null, Map.of(name, mixin, STATE_CLASS, stateClass()), false);
+	}
+
+	/**
+	 * ITEM-2: a {@code ThreadLocal} is stored into where its own value, on the stack or through a local, is the receiver
+	 * of a {@code set}: {@code HOLDER} read into a local before another's is set isn't, nor is {@code OTHER} read for
+	 * {@code HOLDER.set(OTHER.get())}.
+	 */
+	@Test
+	void aThreadLocalIsStoredIntoWhereItsOwnValueIsSet() throws Exception {
+		Map<Consumer<MethodVisitor>, List<String>> cases = new LinkedHashMap<>();
+		cases.put(mv -> { // HOLDER read into a local, OTHER set: HOLDER only read
+			mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, "HOLDER", "Ljava/lang/ThreadLocal;");
+			mv.visitVarInsn(Opcodes.ASTORE, 1);
+			mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, "OTHER", "Ljava/lang/ThreadLocal;");
+			mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V", false);
+		}, List.of("lost()V"));
+		cases.put(mv -> { // HOLDER set through a local
+			mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, "HOLDER", "Ljava/lang/ThreadLocal;");
+			mv.visitVarInsn(Opcodes.ASTORE, 1);
+			mv.visitVarInsn(Opcodes.ALOAD, 1);
+			mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V", false);
+		}, List.of("lost()V", "kept()V"));
+		cases.put(mv -> { // HOLDER.set(OTHER.get())
+			mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, "HOLDER", "Ljava/lang/ThreadLocal;");
+			mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, "OTHER", "Ljava/lang/ThreadLocal;");
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/ThreadLocal", "get", "()Ljava/lang/Object;", false);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V", false);
+		}, List.of("lost()V", "kept()V"));
+		for (Map.Entry<Consumer<MethodVisitor>, List<String>> c : cases.entrySet()) {
+			String name = "com/example/mixin/Stores";
+			byte[] mixin = mixin(name, false, cw -> {
+				injectWith(cw, "lost", "INVOKE", "Lnet/minecraft/world/Thing;removed()V", 1, mv -> readState(mv, "HOLDER", "Ljava/lang/ThreadLocal;")); // fails
+				injectWith(cw, "kept", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", 1, c.getKey());
+			});
+			List<PreflightFinding> findings = run(config(true, "Stores"), null, Map.of(name, mixin, STATE_CLASS, stateClass()), false);
+			assertEquals(c.getValue(), findings.stream().map(PreflightFinding::handler).toList(), findings.toString());
+		}
+	}
+
 	private static final String STATE_CLASS = "com/example/State";
 
-	/** A class of the mod: a static {@code ThreadLocal} HOLDER, a config's static {@code enabled}, and remember(), which sets HOLDER. */
+	/**
+	 * A class of the mod: static {@code ThreadLocal}s HOLDER and OTHER, a config's static {@code enabled}, and remember(),
+	 * which sets HOLDER.
+	 */
 	private static byte[] stateClass() {
 		ClassWriter cw = new ClassWriter(0);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, STATE_CLASS, null, "java/lang/Object", null);
 		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "HOLDER", "Ljava/lang/ThreadLocal;", null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "OTHER", "Ljava/lang/ThreadLocal;", null, null).visitEnd();
 		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "enabled", "Z", null, null).visitEnd();
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "remember", "()V", null, null);
 		mv.visitCode();
@@ -11158,6 +11251,11 @@ class MixinPreflightTest {
 
 	/** A required {@code @Inject} into {@code tick} whose handler's code is {@code body}, then a return. */
 	private static void injectWith(ClassWriter cw, String handler, String atValue, String atTarget, Consumer<MethodVisitor> body) {
+		injectWith(cw, handler, atValue, atTarget, 1, body);
+	}
+
+	/** An {@code @Inject} into {@code tick} requiring {@code require} whose handler's code is {@code body}, then a return. */
+	private static void injectWith(ClassWriter cw, String handler, String atValue, String atTarget, int require, Consumer<MethodVisitor> body) {
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, handler, "()V", null, null);
 		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
 		AnnotationVisitor methods = ann.visitArray("method");
@@ -11169,12 +11267,12 @@ class MixinPreflightTest {
 		if (atTarget != null) at.visit("target", atTarget);
 		at.visitEnd();
 		ats.visitEnd();
-		ann.visit("require", 1);
+		ann.visit("require", require);
 		ann.visitEnd();
 		mv.visitCode();
 		body.accept(mv);
 		mv.visitInsn(Opcodes.RETURN);
-		mv.visitMaxs(2, 1);
+		mv.visitMaxs(2, 2);
 		mv.visitEnd();
 	}
 
