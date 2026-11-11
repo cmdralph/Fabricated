@@ -3079,6 +3079,96 @@ class PipelineTest {
 	}
 
 	/**
+	 * In a config whose plugin is in its mixin package (or one inside the other), a mixin pre-flight leaves out whole
+	 * stays listed, for Mixin to ask the plugin about it as on Fabric, and the plugin, as translated, turns it down
+	 * whatever it answers; the mixins the plugin turned down are then listed apart from those pre-flight left out, and no
+	 * longer counted in the mod's row (LEAVE-4). A plugin in a package apart from the mixin package's (a library's) is
+	 * left as it is, and its config's listing loses what pre-flight left out, as before.
+	 */
+	@Test
+	void theMixinsAConfigsPluginTurnsDownAreListedApartFromThoseLeftOut(@TempDir Path game) throws Exception {
+		ClassNode broken = new ClassNode();
+		new ClassReader(mixinClass("com/plugged/mixin/Broken", "tick")).accept(broken, 0);
+		org.objectweb.asm.tree.FieldNode shadow = new org.objectweb.asm.tree.FieldNode(Opcodes.ACC_PRIVATE, "missing", "I", null, null);
+		shadow.invisibleAnnotations = new ArrayList<>(List.of(new AnnotationNode("Lorg/spongepowered/asm/mixin/Shadow;")));
+		broken.fields.add(shadow);
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("plugged-mod", "1.0", "\"mixins\":[\"plugged.mixins.json\",\"elsewhere.mixins.json\"]"))
+				.text("plugged.mixins.json", "{\"required\":true,\"package\":\"com.plugged.mixin\",\"plugin\":\"com.plugged.mixin.Plugin\","
+						+ "\"mixins\":[\"Works\",\"Broken\",\"Stateless\"]}")
+				.text("elsewhere.mixins.json", "{\"required\":true,\"package\":\"com.plugged.other\",\"plugin\":\"com.library.Plugin\","
+						+ "\"mixins\":[\"Broken\"]}")
+				.bytes("com/plugged/mixin/Works.class", mixinClass("com/plugged/mixin/Works", "tick"))
+				.bytes("com/plugged/mixin/Broken.class", write(broken))
+				.bytes("com/plugged/mixin/Stateless.class", mixinClass("com/plugged/mixin/Stateless", "removedByNeoForge"))
+				.bytes("com/plugged/other/Broken.class", write(renamed(broken, "com/plugged/other/Broken")))
+				.bytes("com/plugged/mixin/Plugin.class", plugin("com/plugged/mixin/Plugin"))
+				.bytes("com/library/Plugin.class", plugin("com/library/Plugin"))
+				.write(game.resolve("mods/plugged.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		Report report = result.report();
+		assertTrue(result.runtime().isModLoaded("plugged-mod"), report.render());
+		String broke = "plugged-mod: LEFT_OUT [plugged.mixins.json com.plugged.mixin.Broken]";
+		String stateless = "plugged-mod: LEFT_OUT [plugged.mixins.json com.plugged.mixin.Stateless]";
+		assertTrue(report.render().contains(broke) && report.render().contains(stateless), report.render());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertFalse(overlay.contains("plugged.mixins.json"), "the config keeps its listing, Broken with it");
+			assertFalse(new String(overlay.read("elsewhere.mixins.json"), StandardCharsets.UTF_8).contains("Broken"), "left out of the other");
+			assertFalse(overlay.contains("com/library/Plugin.class"), "a plugin outside the mixin package's isn't observed");
+			ClassNode observed = new ClassNode();
+			new ClassReader(overlay.read("com/plugged/mixin/Plugin.class")).accept(observed, 0);
+			MethodNode answer = observed.methods.stream().filter(m -> m.name.equals("shouldApplyMixin")).findFirst().orElseThrow();
+			assertTrue(Arrays.stream(answer.instructions.toArray()).anyMatch(i -> i instanceof org.objectweb.asm.tree.LdcInsnNode ldc
+					&& "com.plugged.mixin.Broken".equals(ldc.cst)), "it turns down Broken");
+		}
+
+		// The plugin turned down Broken (left out whole) and Stateless (an injector left out): listed apart.
+		Pipeline.leftOutByPlugins(report, result.mods(), Set.of("com.plugged.mixin.Broken"));
+		String rendered = report.render();
+		assertFalse(rendered.contains(broke), rendered);
+		assertTrue(rendered.contains(stateless), rendered);
+		assertTrue(rendered.contains("plugged-mod: plugged.mixins.json's plugin leaves out 1 mixin(s): com.plugged.mixin.Broken"), rendered);
+		Report.ModRow row = report.mods().stream().filter(r -> r.id().equals("plugged-mod")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("2 mixin(s) left out in whole or in part"), row.detail());
+		Pipeline.leftOutByPlugins(report, result.mods(), Set.of("com.plugged.mixin.Broken", "com.plugged.mixin.Stateless", "com.plugged.other.Broken"));
+		rendered = report.render();
+		assertFalse(rendered.contains(stateless), rendered);
+		assertFalse(rendered.contains(Pipeline.leftOutSection("NeoForge")), "the section goes with its last line");
+		assertEquals(1, rendered.lines().filter(l -> l.contains("plugged.mixins.json's plugin leaves out")).filter(l -> l.contains(".Broken")).count(), rendered);
+		assertTrue(rendered.contains("plugged-mod: plugged.mixins.json's plugin leaves out 1 mixin(s): com.plugged.mixin.Stateless"), rendered);
+		row = report.mods().stream().filter(r -> r.id().equals("plugged-mod")).findFirst().orElseThrow();
+		assertFalse(row.detail().contains("left out in whole or in part"), row.detail());
+	}
+
+	/** {@code node} as the class {@code name}. */
+	private static ClassNode renamed(ClassNode node, String name) {
+		ClassNode copy = new ClassNode();
+		node.accept(copy);
+		copy.name = name;
+		return copy;
+	}
+
+	/** A mixin config plugin {@code name} whose {@code shouldApplyMixin} applies every mixin. */
+	private static byte[] plugin(String name) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null);
+		MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		init.visitCode();
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(1, 1);
+		init.visitEnd();
+		MethodVisitor should = cw.visitMethod(Opcodes.ACC_PUBLIC, "shouldApplyMixin", "(Ljava/lang/String;Ljava/lang/String;)Z", null, null);
+		should.visitCode();
+		should.visitInsn(Opcodes.ICONST_1);
+		should.visitInsn(Opcodes.IRETURN);
+		should.visitMaxs(1, 3);
+		should.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
 	 * A mixin that failed as Mixin applied it in the last launch, which pre-flight passed, is left out of its config
 	 * the next (APPLY-1); the report says so, in the mod's row too. Once the mod's jar changes it is tried again.
 	 */

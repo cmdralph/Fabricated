@@ -19,7 +19,10 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
@@ -1233,6 +1236,49 @@ public final class Pipeline {
 		return "Mixins left out (" + loader + "'s code differs where they hook in)";
 	}
 
+	/** The report's section for the mixins pre-flight left out that their configs' plugins turned down too (LEAVE-4). */
+	static final String LEFT_OUT_BY_PLUGINS = "Mixins their configs' plugins leave out (as on Fabric)";
+
+	/** A pre-flight finding's line in the report. */
+	private static String findingLine(String id, PreflightFinding f) {
+		return id + ": " + f + (f.suggestion().isEmpty() ? "" : " - " + f.suggestion());
+	}
+
+	/** What a mod's row says of the mixins pre-flight left out of it, which {@code section} lists. */
+	private static String leftOutCount(long count, String section) {
+		return ", " + count + " mixin(s) left out in whole or in part, so the features they hook in for don't work (see " + section + ")";
+	}
+
+	/**
+	 * Takes the mixins of {@code rejected} (by class name) out of what the report says pre-flight left out of
+	 * {@code mods}, and out of their rows' counts: their configs' plugins turned each down as Mixin asked them, as on
+	 * Fabric, where those mixins never apply either (LEAVE-4). They are listed apart, by config. What an earlier call took
+	 * out stays out.
+	 */
+	public static void leftOutByPlugins(Report report, List<LoadedMod> mods, Set<String> rejected) {
+		if (rejected.isEmpty()) return;
+		Predicate<PreflightFinding> turnedDown = f -> f.mixin() != null && rejected.contains(f.mixin());
+		for (LoadedMod mod : mods) {
+			String id = mod.translated().candidate().id();
+			List<PreflightFinding> leftOut = mod.translated().findings().stream().filter(f -> f.severity() == Severity.LEFT_OUT).toList();
+			Map<String, Set<String>> byConfig = new TreeMap<>();
+			String section = null;
+			for (PreflightFinding f : leftOut) {
+				String from = turnedDown.test(f) ? report.withdraw(findingLine(id, f)) : null;
+				if (from == null) continue;
+				section = from;
+				byConfig.computeIfAbsent(f.config(), k -> new TreeSet<>()).add(f.mixin());
+			}
+			if (section == null) continue;
+			byConfig.forEach((config, mixins) -> report.line(LEFT_OUT_BY_PLUGINS, id + ": " + config + "'s plugin leaves out " + mixins.size()
+					+ " mixin(s): " + String.join(", ", mixins)));
+			long left = leftOut.stream().filter(turnedDown.negate()).map(f -> f.config() + " " + f.mixin()).distinct().count();
+			String counted = Pattern.quote(", ") + "\\d+" + Pattern.quote(leftOutCount(0, section).substring(3));
+			String now = left == 0 ? "" : leftOutCount(left, section);
+			report.detail(id, detail -> detail.replaceFirst(counted, Matcher.quoteReplacement(now)));
+		}
+	}
+
 	/** @param leftOutMixins the mixins the linkage analysis left out of the mod, each with why */
 	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues, Map<String, String> leftOutMixins) {
 		Candidate c = t.candidate();
@@ -1242,16 +1288,14 @@ public final class Pipeline {
 		String detail = (millis == null ? "cached" : "translated in " + millis + " ms")
 				+ (t.accessTransformers() > 0 ? ", " + t.accessTransformers() + " access transformer(s)" : "")
 				+ (t.injectedInterfaces().isEmpty() ? "" : ", " + t.injectedInterfaces().size() + " injected interface(s)")
-				+ (leftOut == 0 ? "" : ", " + leftOut + " mixin(s) left out in whole or in part, so the features they hook in for don't work (see "
-						+ leftOutSection(loader) + ")")
+				+ (leftOut == 0 ? "" : leftOutCount(leftOut, leftOutSection(loader)))
 				+ (leftOutMixins.isEmpty() ? "" : ", " + leftOutMixins.size() + " mixin(s) left out that need a Fabric mod that isn't loading (see "
 						+ NEEDING_UNLOADED + ")")
 				+ (failed.isEmpty() ? "" : ", " + failed.size() + " mixin(s) left out that failed as Mixin applied them in the last launch (see "
 						+ FAILED_LAST_LAUNCH + ")");
 		report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.LOADED, detail, ""));
 		for (PreflightFinding f : t.findings()) {
-			String line = c.id() + ": " + f + (f.suggestion().isEmpty() ? "" : " - " + f.suggestion());
-			report.line(f.severity() == Severity.LEFT_OUT ? leftOutSection(loader) : "Mixin pre-flight warnings", line);
+			report.line(f.severity() == Severity.LEFT_OUT ? leftOutSection(loader) : "Mixin pre-flight warnings", findingLine(c.id(), f));
 		}
 		leftOutMixins.values().forEach(issue -> report.line(NEEDING_UNLOADED, c.id() + ": " + issue.substring(issue.indexOf("] ") + 2)));
 		failed.forEach((mixin, why) -> report.line(FAILED_LAST_LAUNCH, c.id() + ": " + mixin + " failed as Mixin applied it in the last launch ("
