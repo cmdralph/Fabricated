@@ -1470,7 +1470,8 @@ public final class MixinPreflight extends PreflightPart {
 	private String replacedHint(ClassNode target, String name, String desc) {
 		ReplacedMethods.Replaced replaced = name == null ? null : replacedMethods.replaced(target, name, desc);
 		return replaced == null ? null : loader + " replaced that private method with " + replaced.named() + ", which " + replaced.caller().name
-				+ " calls in its place; only an @Inject at its call, or at its start or end, moves there (STRUCT-1).";
+				+ " calls in its place; only an @Inject at its call or its start, or at its end where that method returns as vanilla's does, moves there"
+				+ " (STRUCT-1).";
 	}
 
 	/** A selector's name and descriptor, as reports print it. */

@@ -30,7 +30,8 @@ import org.objectweb.asm.tree.VarInsnNode;
  * pos, settings)}, and Forge 61 to 66 with a {@code placeEntities} taking the settings in the pivot's place: they run
  * the structure processors on each entity and read the rest from the settings. YUNG's API and Friends and Foes port
  * that to Fabric with hooks there: an {@code @Inject} at the call moves to the platform's call, and one at the method's
- * start or end to the start or end of the platform's method, which runs once where vanilla's did. Its handler takes
+ * start to the start of the platform's method, which runs once where vanilla's did; one at its end too, where the
+ * platform's returns where vanilla's does. Its handler takes
  * vanilla's parameters from a bridge working each out from the platform's method's as vanilla's call did: the value
  * the platform's call passes too, or a field getter called on one ({@link #derive}). The other injectors there (Porting
  * Lib's, which port the platform's own processing) have nothing of vanilla's to apply to and stay out.
@@ -183,21 +184,52 @@ final class ReplacedMethods extends PreflightPart {
 
 	/**
 	 * The replaced method an {@code @Inject} at its start or end (no ordinal or shift) targets, or null; its handler takes
-	 * the callback info alone or vanilla's parameters before it.
+	 * the callback info alone or vanilla's parameters before it. One at its end only where the platform's method returns
+	 * as vanilla's does ({@link #returnsAlike}).
 	 */
 	private Replaced replacedTarget(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
 		if (!movable(mixin, handler, injector) || !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
 				|| !(selectors.get(0) instanceof String raw)) return null;
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		boolean atEnd = false;
 		for (AnnotationNode at : ats) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 			if (!List.of("HEAD", "RETURN", "TAIL").contains(point) || Annotations.value(at, "ordinal") != null || Annotations.value(at, "shift") != null) return null;
+			atEnd |= !point.equals("HEAD");
 		}
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 		if (ats.isEmpty() || ref.fuzzy() || ref.name() == null) return null;
 		Replaced replaced = replaced(target, ref.name(), ref.desc());
 		boolean takesParameters = Type.getArgumentTypes(handler.desc).length > 1;
-		return replaced == null || takesParameters && !ConstructorRepairs.takesExactly(handler, replaced.vanilla()) ? null : replaced;
+		return replaced == null || takesParameters && !ConstructorRepairs.takesExactly(handler, replaced.vanilla())
+				|| atEnd && !returnsAlike(replaced.vanilla(), replaced.method()) ? null : replaced;
+	}
+
+	/**
+	 * Whether the platform's method returns where vanilla's does: as many returns, each in the place of one of vanilla's
+	 * ({@link PatchAlignment}), so that a hook at its returns, or at its last, runs where it ran. Forge 47's
+	 * {@code HopperBlockEntity.ejectItems} taking the hopper returns first where Forge's insert hook took the items, which
+	 * vanilla's doesn't; Forge's {@code addEntitiesToWorld} returns once at its end, as vanilla's {@code placeEntities}.
+	 */
+	private static boolean returnsAlike(MethodNode vanilla, MethodNode platform) {
+		List<Integer> was = returns(vanilla);
+		List<Integer> now = returns(platform);
+		PatchAlignment alignment = was.size() == now.size() ? PatchAlignment.of(vanilla, platform) : null;
+		if (alignment == null) return false;
+		for (int k = 0; k < was.size(); k++) {
+			if (alignment.placeOf(was.get(k)) != now.get(k)) return false;
+		}
+		return true;
+	}
+
+	/** The indices of a method's return instructions. */
+	private static List<Integer> returns(MethodNode method) {
+		List<Integer> returns = new ArrayList<>();
+		for (int i = 0; i < method.instructions.size(); i++) {
+			int op = method.instructions.get(i).getOpcode();
+			if (op >= Opcodes.IRETURN && op <= Opcodes.RETURN) returns.add(i);
+		}
+		return returns;
 	}
 
 	/** How the handler gets vanilla's parameters: none where it takes the callback info alone; null where they can't be worked out. */

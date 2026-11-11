@@ -2242,6 +2242,15 @@ class MixinPreflightTest {
 	 * {@code addEntities(level, settings)} there instead, and once more from {@code again()} where {@code calledTwice}.
 	 */
 	private static byte[] entityPlacer(boolean vanilla, String mirrorGetter, boolean calledTwice) {
+		return entityPlacer(vanilla, mirrorGetter, calledTwice, false);
+	}
+
+	/**
+	 * {@link #entityPlacer(boolean, String, boolean)}, the platform's {@code addEntities} returning first where the settings'
+	 * flag is set, where {@code earlyReturn}: as Forge 47's {@code HopperBlockEntity.ejectItems} returns where its insert
+	 * hook took the items, which vanilla's doesn't.
+	 */
+	private static byte[] entityPlacer(boolean vanilla, String mirrorGetter, boolean calledTwice, boolean earlyReturn) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
 		MethodVisitor place = cw.visitMethod(Opcodes.ACC_PUBLIC, "place", PLACE_IN.substring(5), null, null);
@@ -2271,6 +2280,14 @@ class MixinPreflightTest {
 		MethodVisitor entities = cw.visitMethod(Opcodes.ACC_PRIVATE, vanilla ? "placeEntities" : "addEntities",
 				vanilla ? PLACE_ENTITIES.substring(13) : ADD_ENTITIES.substring(11), null, null);
 		entities.visitCode();
+		if (earlyReturn && !vanilla) {
+			Label on = new Label();
+			entities.visitVarInsn(Opcodes.ALOAD, 2);
+			entities.visitMethodInsn(Opcodes.INVOKEVIRTUAL, SETTINGS, "finish", "()Z", false);
+			entities.visitJumpInsn(Opcodes.IFEQ, on);
+			entities.visitInsn(Opcodes.RETURN);
+			entities.visitLabel(on);
+		}
 		entities.visitInsn(Opcodes.RETURN);
 		entities.visitMaxs(0, 0);
 		entities.visitEnd();
@@ -2408,7 +2425,56 @@ class MixinPreflightTest {
 			assertTrue(findings.stream().anyMatch(f -> f.message().contains("targets method " + PLACE_ENTITIES + ", which does not exist")), findings.toString());
 			boolean replaced = (Boolean) game.get(3);
 			assertEquals(replaced, findings.stream().anyMatch(f -> f.suggestion().contains("Forge replaced that private method with " + ADD_ENTITIES
-					+ ", which place calls in its place; only an @Inject at its call, or at its start or end, moves there (STRUCT-1)")), findings.toString());
+					+ ", which place calls in its place; only an @Inject at its call or its start, or at its end where that method returns as vanilla's does,"
+					+ " moves there (STRUCT-1)")), findings.toString());
+		}
+	}
+
+	@Test
+	void anEndHookMovesToTheMethodThePlatformReplacedOnlyWhereItReturnsAsVanillasDoes() throws Exception {
+		// STRUCT-1: the hooks at the start, the returns and the end of vanilla's placeEntities move to Forge's addEntities
+		// where it returns as vanilla's does, once at its end. Where it returns first as well (Forge 47's hopper, whose
+		// ejectItems returns where its insert hook took the items), a hook at its returns would run where vanilla's never
+		// did, and its last return may not be vanilla's: only the one at the start moves.
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Ends"));
+		Map<String, byte[]> vanilla = Map.of(TARGET, entityPlacer(true, "mirror", false), SETTINGS, placeSettings());
+		for (boolean earlyReturn : new boolean[] {false, true}) {
+			Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Ends", mixin("com/example/mixin/Ends", false, cw -> {
+				for (String[] hook : new String[][] {{"start", "HEAD"}, {"end", "RETURN"}, {"last", "TAIL"}}) {
+					MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, hook[0], "(" + CALLBACK_INFO + ")V", null, null);
+					AnnotationVisitor ann = mv.visitAnnotation(INJECT, true);
+					AnnotationVisitor methods = ann.visitArray("method");
+					methods.visit(null, PLACE_ENTITIES);
+					methods.visitEnd();
+					AnnotationVisitor ats = ann.visitArray("at");
+					AnnotationVisitor at = ats.visitAnnotation(null, AT);
+					at.visit("value", hook[1]);
+					at.visitEnd();
+					ats.visitEnd();
+					ann.visitEnd();
+					mv.visitCode();
+					mv.visitInsn(Opcodes.RETURN);
+					mv.visitMaxs(0, 2);
+					mv.visitEnd();
+				}
+			})));
+			ClassIndex forge = new ClassIndex(Map.of(TARGET, entityPlacer(false, "mirror", false, earlyReturn), SETTINGS, placeSettings())::get);
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get, "Forge")
+					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired.get("com/example/mixin/Ends.class")).accept(node, 0);
+			for (String handler : List.of("start", "end", "last")) {
+				MethodNode method = node.methods.stream().filter(m -> m.name.equals(handler)).findFirst().orElseThrow();
+				boolean moves = handler.equals("start") || !earlyReturn;
+				assertEquals(List.of(moves ? ADD_ENTITIES : PLACE_ENTITIES), Annotations.value(Annotations.find(method, INJECT), "method"), handler + ": " + notes);
+			}
+			mod.put("com/example/mixin/Ends", repaired.get("com/example/mixin/Ends.class"));
+			List<PreflightFinding> findings = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get, "Forge")
+					.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			List<String> leftOut = findings.stream().filter(f -> f.suggestion().contains("where that method returns as vanilla's does, moves there (STRUCT-1)"))
+					.map(f -> f.handler().substring(0, f.handler().indexOf('('))).sorted().toList();
+			assertEquals(earlyReturn ? List.of("end", "last") : List.of(), leftOut, findings.toString());
 		}
 	}
 
