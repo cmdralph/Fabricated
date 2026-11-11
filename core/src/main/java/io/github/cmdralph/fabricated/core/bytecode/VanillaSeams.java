@@ -37,11 +37,15 @@ import org.objectweb.asm.tree.VarInsnNode;
  * {@code canStickToEachOther(state1, state2)}; NeoForge 21.1, 21.11 and 26.1.2 and Forge 47 to 66 ask
  * {@code state.isStickyBlock()} and {@code state1.canStickTo(state2) && state2.canStickTo(state1)} there instead (read in
  * their classes). NeoForge 26.1.2's {@code addBlockLine} asks {@code state1.canStickTo(state1)} for its second check, which
- * its other check and NeoForge 26.2 ask the other way: that form is restored as vanilla's call too, so a class with Fabric
- * mods' hooks of the seam asks both ways there, as NeoForge 26.2 does.
+ * its other check and NeoForge 26.2 ask the other way: that form is restored as vanilla's call too, so a class rewritten
+ * (one a Fabric mod's mixin hooks a seam of) asks both ways there, as NeoForge 26.2 does; elsewhere it asks as NeoForge
+ * 26.1.2 does.
  *
  * <p>The same rewrite gives pre-flight its view of the game ({@link #over}) and the game its classes at load (before
- * Mixin, for the classes Fabric mods' mixins target), so a hook pre-flight passes finds what it hooks. Each change keeps
+ * Mixin, {@link #restoreWhole}), so a hook pre-flight passes finds what it hooks; at load, only the classes in which a
+ * Fabric mod's mixin member names or shadows a seam are rewritten (Lithium's and Carpet's other mixins of the resolver,
+ * which hook none, leave it as the platform has it). A rewritten class no longer makes the platform's calls where vanilla
+ * called the seam, so a native mod's mixin hooking them there finds none. Each change keeps
  * the stack as it was at every instruction: a call takes the operands of the platform's first call and leaves its
  * result, and the platform's later calls, which only loaded locals, go.
  */
@@ -126,6 +130,35 @@ public final class VanillaSeams {
 			restored.add(name + seam.desc());
 		}
 		return restored;
+	}
+
+	/**
+	 * What {@link #restoreWhole} did: the seams put back, or the failure that left the class as it was.
+	 *
+	 * @param restored as {@link #restore} returns them; empty on a failure
+	 * @param failure  what {@link #restore} threw, or null
+	 */
+	public record Restoring(List<String> restored, Throwable failure) {
+	}
+
+	/**
+	 * {@link #restore}, all or nothing, as a class loads: on a copy of the class, whose methods then replace the class's.
+	 * Where it throws, the class stays exactly as it was, and the failure is returned for the caller to log, never thrown:
+	 * the class loads as the platform has it, its Fabric mods' hooks of the seams finding nothing, as before SEAM-1.
+	 */
+	public static Restoring restoreWhole(ClassNode node) {
+		try {
+			ClassNode copy = new ClassNode();
+			node.accept(copy);
+			List<String> restored = restore(copy);
+			if (!restored.isEmpty()) {
+				node.methods.clear();
+				node.methods.addAll(copy.methods);
+			}
+			return new Restoring(restored, null);
+		} catch (RuntimeException | LinkageError | StackOverflowError e) {
+			return new Restoring(List.of(), e);
+		}
 	}
 
 	/** The game's classes with their seams put back ({@link #restore}): pre-flight's view, as they will load. */

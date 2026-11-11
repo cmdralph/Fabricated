@@ -15,6 +15,8 @@ import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.bytecode.EnvironmentStripper;
@@ -43,6 +45,8 @@ import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
  * detail.
  */
 public final class FabricClassTransforms {
+	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
+
 	private FabricClassTransforms() {
 	}
 
@@ -106,9 +110,13 @@ public final class FabricClassTransforms {
 			changed = true;
 		}
 		if (state.restoredSeams().contains(node.name)) {
-			List<String> restored = VanillaSeams.restore(node);
-			if (!restored.isEmpty()) {
-				audit.accept("fabricated:vanilla_seam", String.join(", ", restored));
+			// All or nothing, never failing the class's loading: the class keeps its own code where the rewrite fails.
+			VanillaSeams.Restoring seams = VanillaSeams.restoreWhole(node);
+			if (seams.failure() != null) {
+				LOGGER.error("Fabricated couldn't put vanilla's methods back in {} (SEAM-1): the class loads as the platform has it, so Fabric"
+						+ " mods' hooks of them find nothing there", node.name.replace('/', '.'), seams.failure());
+			} else if (!seams.restored().isEmpty()) {
+				audit.accept("fabricated:vanilla_seam", String.join(", ", seams.restored()));
 				changed = true;
 			}
 		}

@@ -288,6 +288,9 @@ public final class MixinPreflight extends PreflightPart {
 			leaveOutSharers(out, from, configName, ctx.mixinDotted(), shares(node));
 			ctx.leaveOutThreadLocalSharers(from, node, () -> threadLocalShares(code != null ? code : modClasses.readNode(internal, ClassReader.SKIP_FRAMES),
 					modClassCache));
+			// Last, so no grouping takes these readers' groups with them (SEAM-2).
+			ctx.leaveOutReadersOfSkippedCaptures(from, code, shares(node), () -> threadLocalShares(code != null ? code
+					: modClasses.readNode(internal, ClassReader.SKIP_FRAMES), modClassCache));
 		}
 		if (hasPlugin && out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
 			out.add(new PreflightFinding(Severity.INFO, configName, null, "This config uses a mixin plugin (" + config.plugin()
@@ -871,26 +874,76 @@ public final class MixinPreflight extends PreflightPart {
 		}
 
 		/**
-		 * An {@code @Inject} capturing locals that Mixin skips at each of its points ({@link SkippedCaptures}, SEAM-2). Mixin
-		 * skips it whatever pre-flight does, so leaving it out changes nothing of its own; it lets the injectors keeping
-		 * state with it in the mixin's fields (STATE-1), sharing a local with it (SHARE-1) or a {@code ThreadLocal} of the
-		 * mod (ITEM-2) go with it, which would otherwise read what it never stored. It is left out as its own failure would
-		 * leave it out ({@link #injector}), whatever its {@code require} (Mixin's skipping it isn't a failure Mixin counts):
-		 * alone, with the injectors keeping state with it, or with the whole mixin where pre-flight can't tell which they
-		 * are. Where its failure would disable the mod (a mixin the mod's code reaches, its handler using the mixin's own
-		 * state), it stays as it was, Mixin skipping it, and the report says so: grouping never makes an outcome worse.
+		 * An {@code @Inject} capturing locals that Mixin skips at each of its points ({@link SkippedCaptures}, SEAM-2): noted,
+		 * keyed by its handler, as Mixin skips it whatever pre-flight does. It isn't left out, so no grouping takes the
+		 * injectors sharing state with it ({@link #leaveOutStateGroups} and the others leave out an injector's whole group, an
+		 * alternative capture that applies among them); {@link #leaveOutReadersOfSkippedCaptures} takes only what reads what
+		 * it alone stores.
 		 */
 		void skippedCapture(MethodNode handler, String message, String suggestion) {
-			String key = handler.name + handler.desc;
-			if (!hasPlugin && !selfContained && !stateless.contains(key)) {
-				info(message + ": Mixin skips it there; it stays, and the injectors keeping state with it too, as leaving them out would disable"
-						+ " the mod (this mixin adds an interface or accessors the mod's code uses; SEAM-2)");
-				return;
+			out.add(new PreflightFinding(Severity.INFO, configName, mixinDotted, message + SkippedCaptures.SKIPPED, suggestion, handler.name + handler.desc));
+		}
+
+		/**
+		 * The injectors of this mixin left reading what only the captures Mixin skips (noted by the findings from
+		 * {@code from} on, {@link #skippedCapture}) and the injectors left out store in the mixin's own fields
+		 * ({@link SkippedCaptures#unsupplied}), left out alone (SEAM-2): Carpet's redirect of {@code addBlockLine}'s
+		 * stickiness check, which reads the positions its capture there keeps, and nothing else of the mixin. They go only
+		 * where STATE-1 could leave them out alone (their state no code but the mixin's injectors reaches,
+		 * {@link #stateGroups}) and none shares a local ({@code @Share}) or a mod's {@code ThreadLocal} with an injector that
+		 * stays; otherwise all stay, as before, and the report says so. Nothing goes with them in turn, and never the whole
+		 * mixin: this makes no outcome worse than Mixin's skipping the capture did, but for the reads of state never stored.
+		 *
+		 * @param code         the mixin with its code, or null where it has none of its own state
+		 * @param shares       {@link #shares}
+		 * @param threadLocals {@link #threadLocalShares}, read only where a reader would go
+		 */
+		void leaveOutReadersOfSkippedCaptures(int from, ClassNode code, Map<String, Set<String>> shares, Supplier<Map<String, Set<String>>> threadLocals) {
+			Set<String> skipped = new LinkedHashSet<>();
+			Set<String> gone = new LinkedHashSet<>();
+			for (PreflightFinding f : out.subList(from, out.size())) {
+				if (!mixinDotted.equals(f.mixin())) continue;
+				if (f.severity() == Severity.LEFT_OUT) {
+					if (f.handler() == null) return;
+					gone.add(f.handler());
+				} else if (f.severity() == Severity.INFO && f.handler() != null && f.message().endsWith(SkippedCaptures.SKIPPED)) {
+					skipped.add(f.handler());
+				}
 			}
-			boolean wholeMixin = !hasPlugin && addsFields && !stateGroups.containsKey(key);
-			out.add(new PreflightFinding(Severity.LEFT_OUT, configName, mixinDotted, message + ": Mixin skips it there, so it is left out"
-					+ (wholeMixin ? ", with the whole mixin, whose state it shares with code pre-flight can't follow" : "") + " (SEAM-2)", suggestion,
-					wholeMixin ? null : key));
+			if (skipped.isEmpty() || code == null) return;
+			gone.addAll(skipped);
+			Map<String, SkippedCaptures.Unsupplied> left = SkippedCaptures.unsupplied(code, skipped, gone);
+			if (left == null || left.isEmpty()) return;
+			Set<String> going = new HashSet<>(gone);
+			going.addAll(left.keySet());
+			String stays = null;
+			if (!left.keySet().stream().allMatch(stateGroups::containsKey)) {
+				stays = "the state reaches code that isn't one of this mixin's injectors, or this mixin adds an interface or accessors the mod's code uses";
+			} else if (left.keySet().stream().anyMatch(k -> sharesWith(shares, k, going))) {
+				stays = "it shares a local (@Share) with an injector that stays";
+			} else {
+				Map<String, Set<String>> local = threadLocals.get();
+				if (left.keySet().stream().anyMatch(k -> sharesWith(local, k, going))) stays = "it shares a ThreadLocal of the mod with an injector that stays";
+			}
+			for (Map.Entry<String, SkippedCaptures.Unsupplied> reader : left.entrySet()) {
+				SkippedCaptures.Unsupplied why = reader.getValue();
+				String what = "reads what only " + String.join(", ", why.writers()) + " stores, in this mixin's " + (why.fields().size() == 1 ? "field " : "fields ")
+						+ String.join(", ", why.fields());
+				if (stays == null) {
+					out.add(new PreflightFinding(Severity.LEFT_OUT, configName, mixinDotted, "The injector of " + reader.getKey() + " goes with that of "
+							+ String.join(", ", why.writers()) + ", which Mixin skips at each of its points or which can't apply: it " + what + " (SEAM-2)", "",
+							reader.getKey()));
+				} else {
+					info("The injector of " + reader.getKey() + " " + what + ", which Mixin skips at each of its points or which can't apply; it stays, as it did"
+							+ " before, as it can't be left out alone: " + stays + " (SEAM-2)");
+				}
+			}
+		}
+
+		/** Whether the handler shares one of its keys in {@code shares} with a handler not among {@code going}. */
+		private static boolean sharesWith(Map<String, Set<String>> shares, String handler, Set<String> going) {
+			Set<String> mine = shares.get(handler);
+			return mine != null && shares.entrySet().stream().anyMatch(e -> !going.contains(e.getKey()) && !Collections.disjoint(mine, e.getValue()));
 		}
 
 		/**
@@ -1010,7 +1063,7 @@ public final class MixinPreflight extends PreflightPart {
 		for (String target : targetsOf(mixin, ctx)) {
 			boolean isGame = PreflightAsm.isGameClass(target);
 			String owner = isGame ? null : installed.owner(target);
-			ClassNode targetNode = isGame ? mixinTarget(target) : owner != null ? installedTarget(target) : null;
+			ClassNode targetNode = isGame ? gameTarget(target) : owner != null ? installedTarget(target) : null;
 			if (targetNode == null) {
 				// Absent now, it may be installed later: the result holds only while no installed jar has it.
 				if (!isGame && owner == null) installedRead.putIfAbsent(target, "");
@@ -1057,9 +1110,10 @@ public final class MixinPreflight extends PreflightPart {
 
 	/**
 	 * Notes each of the mixin's members that hooks a vanilla method the platform took out of the target and Fabricated
-	 * puts back ({@link VanillaSeams}, SEAM-1): an injector or invoker naming it, through the refmap, or a shadow of it.
+	 * puts back ({@link VanillaSeams}, SEAM-1): an injector or invoker naming it, through the refmap, or a shadow of it;
+	 * the target is then recorded among the classes rewritten as they load ({@link #restoredSeams}), and only then.
 	 */
-	private static void noteRestoredSeams(ClassNode mixin, ClassNode target, Context ctx) {
+	private void noteRestoredSeams(ClassNode mixin, ClassNode target, Context ctx) {
 		List<VanillaSeams.Restored> seams = VanillaSeams.restoredIn(target);
 		if (seams.isEmpty()) return;
 		String simple = target.name.substring(target.name.lastIndexOf('/') + 1);
@@ -1069,6 +1123,7 @@ public final class MixinPreflight extends PreflightPart {
 				for (VanillaSeams.Restored seam : seams) {
 					if (shadow ? !method.desc.equals(seam.desc()) || !method.name.equals(seam.name()) && !method.name.equals("shadow$" + seam.name())
 							: !namesSeam(ann, seam, target.name, ctx)) continue;
+					restoredSeams.add(target.name);
 					ctx.info("@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + seam.name() + seam.desc() + ", vanilla's method "
 							+ ctx.loader() + "'s " + simple + " no longer has; Fabricated puts it back there, answering " + seam.answer() + " as "
 							+ ctx.loader() + "'s code did (SEAM-1)");

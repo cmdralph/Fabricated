@@ -26,7 +26,7 @@ import io.github.cmdralph.fabricated.core.resolve.Candidate;
  * @param overridableMethods game methods the mod's classes override that the platform declares final and vanilla doesn't
  *                           (the class's internal name, a space, the method's name and descriptor), made overridable at
  *                           class load (FINAL-2)
- * @param restoredSeams      game classes (internal names) the mod's mixins target that have vanilla methods the
+ * @param restoredSeams      game classes (internal names) in which the mod's mixins hook vanilla methods the
  *                           platform took out put back at class load ({@link io.github.cmdralph.fabricated.core.bytecode.VanillaSeams}, SEAM-1)
  * @param cacheHit           whether the outputs came from the cache
  * @param millis             translation time (0 on cache hit)

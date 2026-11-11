@@ -127,7 +127,11 @@ final class PreflightClasses {
 	/** Access transformer lines {@link MixinPreflight#repairs} needs, by the method they make public. */
 	final Set<String> widened = new TreeSet<>();
 
-	/** The game classes the mixins target that have vanilla methods put back ({@link VanillaSeams}, SEAM-1). */
+	/**
+	 * The game classes whose vanilla methods put back ({@link VanillaSeams}, SEAM-1) a mixin member hooks: only those are
+	 * rewritten as they load, so a native mod's mixin of the platform's calls there still finds them where no Fabric mod's
+	 * hooks a seam (Lithium's and Carpet's other mixins of the resolver hook none).
+	 */
 	final Set<String> restoredSeams = new TreeSet<>();
 
 	/** The libraries' classes (the JDK, DataFixerUpper, ...), for the supertypes of the classes a game method calls. */
@@ -276,13 +280,6 @@ final class PreflightClasses {
 	/** A Minecraft class as the game has it (parsed once per pre-flight), or null when absent or not a game class. */
 	ClassNode gameTarget(String internalName) {
 		return PreflightAsm.isGameClass(internalName) ? targetCache.computeIfAbsent(internalName, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
-	}
-
-	/** {@link #gameTarget} of a mixin's target, recorded among {@link #restoredSeams} where it has vanilla methods put back. */
-	ClassNode mixinTarget(String internalName) {
-		ClassNode target = gameTarget(internalName);
-		if (target != null && VanillaSeams.names(internalName) && !VanillaSeams.restoredIn(target).isEmpty()) restoredSeams.add(internalName);
-		return target;
 	}
 
 	/**

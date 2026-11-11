@@ -110,11 +110,6 @@ abstract class PreflightPart {
 		return classes.gameTarget(internalName);
 	}
 
-	/** {@link PreflightClasses#mixinTarget} */
-	ClassNode mixinTarget(String internalName) {
-		return classes.mixinTarget(internalName);
-	}
-
 	/** {@link PreflightClasses#installedTarget} */
 	ClassNode installedTarget(String internalName) {
 		return classes.installedTarget(internalName);

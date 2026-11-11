@@ -147,7 +147,7 @@ public final class FabricatedState {
 	}
 
 	/**
-	 * The game classes Fabric mods' mixins target that get vanilla methods the platform took out put back as they load
+	 * The game classes in which Fabric mods' mixins hook vanilla methods the platform took out, which get them put back as they load
 	 * (SEAM-1, {@link io.github.cmdralph.fabricated.core.bytecode.VanillaSeams}).
 	 */
 	public Set<String> restoredSeams() {

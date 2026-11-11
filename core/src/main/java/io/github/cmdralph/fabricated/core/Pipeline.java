@@ -231,7 +231,7 @@ public final class Pipeline {
 	 *                           copies of these stand down
 	 * @param instanceHandlers   the static handlers of other mods' mixins into {@code mods}' classes to apply as instance
 	 *                           handlers, by mixin class ({@link NativeModMixins}, immutable)
-	 * @param restoredSeams      the game classes {@code mods}' mixins target that have vanilla methods put back as they load
+	 * @param restoredSeams      the game classes in which {@code mods}' mixins hook vanilla methods put back as they load
 	 *                           ({@link VanillaSeams}, SEAM-1; immutable)
 	 */
 	public record Result(

@@ -180,6 +180,33 @@ class VanillaSeamsTest {
 		return resolver;
 	}
 
+	/**
+	 * As a class loads, the rewrite is all or nothing: it puts the seams back as {@link VanillaSeams#restore} does, and
+	 * where it throws, the class keeps its own methods, untouched, and the failure is returned, not thrown.
+	 */
+	@Test
+	void theRewriteAtLoadLeavesTheClassAsItWasWhereItFails(@TempDir Path dir) throws Exception {
+		Map<String, byte[]> platform = TestSources.compile(dir, Map.of(STATE.replace('.', '/') + ".java", BLOCK_STATE, RESOLVER + ".java", resolver("")));
+		ClassNode whole = node(platform.get(RESOLVER));
+		VanillaSeams.Restoring done = VanillaSeams.restoreWhole(whole);
+		assertEquals(null, done.failure());
+		assertEquals(VanillaSeams.restore(node(platform.get(RESOLVER))), done.restored());
+		assertEquals(List.of("isAir", "canStickToEachOther", "blocked"), calls(whole, "line"));
+
+		// A method the rewrite can't read (no descriptor): it throws, and the class's methods are those it had, as they were.
+		ClassNode broken = node(platform.get(RESOLVER));
+		broken.methods.add(new MethodNode(Opcodes.ACC_STATIC, "unreadable", null, null, null));
+		List<MethodNode> methods = List.copyOf(broken.methods);
+		List<List<String>> before = methods.stream().map(m -> calls(broken, m.name)).toList();
+		VanillaSeams.Restoring failed = VanillaSeams.restoreWhole(broken);
+		assertTrue(failed.failure() instanceof NullPointerException, String.valueOf(failed.failure()));
+		assertEquals(List.of(), failed.restored());
+		assertEquals(methods.size(), broken.methods.size());
+		for (int i = 0; i < methods.size(); i++) assertTrue(methods.get(i) == broken.methods.get(i), methods.get(i).name);
+		assertEquals(before, methods.stream().map(m -> calls(broken, m.name)).toList());
+		assertEquals(List.of("isAir", "canStickTo", "canStickTo", "blocked"), calls(broken, "line"));
+	}
+
 	private static List<String> calls(ClassNode node, String method) {
 		List<String> calls = new ArrayList<>();
 		for (MethodNode m : node.methods) {
