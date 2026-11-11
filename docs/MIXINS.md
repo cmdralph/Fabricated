@@ -1351,6 +1351,8 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 |---|---|---|---|---|---|---|---|---|
 | mixins | ServerPlayerGameModeBreakMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeBreak; @Shadow level, player | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayer;preventsBlockDrops()Z` cancellable=true | — | default |
 | mixins | ServerPlayerGameModeBreakMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.level.ServerPlayerGameMode | @WrapOperation → fabricated$afterBreak | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;removeBlock(L…/BlockPos;Z)Z` | — | default |
+| mixins | ServerPlayerGameModeBreakMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeVanillaRemoval (reads the state and block entity before vanilla's removal where Fabricated puts it back, SEAM-3); @Unique fields fabricated$removedState, fabricated$removedBlockEntity | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerLevel;removeBlock(L…/BlockPos;Z)Z` | — | require=0 |
+| mixins | ServerPlayerGameModeBreakMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$afterVanillaRemoval (fires `AFTER` at vanilla's `Block.destroy` put back, SEAM-3) | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/Block;destroy(L…/LevelAccessor;L…/BlockPos;L…/BlockState;)V` | — | require=0 |
 | mixins | ForgeHooksUseOnMixin | common (1.21.11, 26.1.2, 26.2, 26.3) | n.mf.common.ForgeHooks | @WrapOperation → fabricated$useOnEvent | "onPlaceItemIntoWorld" | INVOKE `L…/Item;useOn(L…/UseOnContext;)L…/InteractionResult;` | — | default |
 
 ### `mc/forge/common/src/main/resources/fabricated-forge-screen.mixins.json`
@@ -1622,6 +1624,8 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forge.interaction.mix
 |---|---|---|---|---|---|---|---|---|
 | mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeBreak; @Shadow level, player | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;isCreative()Z` cancellable=true | — | default |
 | mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.server.level.ServerPlayerGameMode | @WrapOperation → fabricated$afterBreak | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;removeBlock(L…/BlockPos;Z)Z` | — | default |
+| mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeVanillaRemoval (reads the state and block entity before vanilla's removal where Fabricated puts it back, SEAM-3); @Unique fields fabricated$removedState, fabricated$removedBlockEntity | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerLevel;removeBlock(L…/BlockPos;Z)Z` | — | require=0 |
+| mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$afterVanillaRemoval (fires `AFTER` at vanilla's `Block.destroy` put back, SEAM-3) | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/Block;destroy(L…/LevelAccessor;L…/BlockPos;L…/BlockState;)V` | — | require=0 |
 
 ### `mc/forge-legacy/1.20.1/src/main/resources/fabricated-forge-item.mixins.json`
 
@@ -1898,6 +1902,8 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.interaction.mix
 |---|---|---|---|---|---|---|---|---|
 | mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeBreak; @Shadow level, player | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;isCreative()Z` cancellable=true | — | default |
 | mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.server.level.ServerPlayerGameMode | @WrapOperation → fabricated$afterBreak | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerPlayerGameMode;removeBlock(L…/BlockPos;Z)Z` | — | default |
+| mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeVanillaRemoval (reads the state and block entity before vanilla's removal where Fabricated puts it back, SEAM-3); @Unique fields fabricated$removedState, fabricated$removedBlockEntity | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerLevel;removeBlock(L…/BlockPos;Z)Z` | — | require=0 |
+| mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$afterVanillaRemoval (fires `AFTER` at vanilla's `Block.destroy` put back, SEAM-3) | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/Block;destroy(L…/LevelAccessor;L…/BlockPos;L…/BlockState;)V` | — | require=0 |
 
 ### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-entity.mixins.json`
 
