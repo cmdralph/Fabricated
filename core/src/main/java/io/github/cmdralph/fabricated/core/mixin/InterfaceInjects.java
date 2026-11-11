@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.mixin;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -156,7 +157,8 @@ public final class InterfaceInjects {
 	 * made private again and called where its injector would have Mixin call it. All the injection points are found
 	 * before any is injected, as Mixin finds every injector's before injecting any (so a handler's cancellation, which
 	 * returns, is no {@code RETURN} of another's), and a point a {@code @Redirect} or {@code @WrapOperation} replaced is
-	 * where the handler's call is, as Mixin follows it. The locals each handler is given are those Mixin works out
+	 * where the handler's call is, as Mixin follows it. The {@code @WrapOperation}s apply after the others, as MixinExtras
+	 * applies them late, so they wrap the others' redirects. The locals each handler is given are those Mixin works out
 	 * without the ones Fabricated's handlers' calls store.
 	 *
 	 * @param target the class, its mixins applied
@@ -189,6 +191,7 @@ public final class InterfaceInjects {
 				throw failed(handler, target, e.getMessage());
 			}
 		}
+		planned.sort(Comparator.comparing(p -> p.injector().desc().equals(MixinNames.WRAP_OPERATION)));
 		// The locals of each method, as Mixin leaves it: Fabricated's handlers' calls store into those past them.
 		Map<MethodNode, Integer> ownLocals = new HashMap<>();
 		planned.forEach(p -> p.sites().keySet().forEach(m -> ownLocals.putIfAbsent(m, m.maxLocals)));

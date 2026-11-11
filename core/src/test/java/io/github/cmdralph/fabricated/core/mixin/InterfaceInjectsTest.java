@@ -157,10 +157,10 @@ class InterfaceInjectsTest {
 					import test.Box;
 					@Mixin(Box.class)
 					public interface ChainMixin {
-						@Redirect(method = "label", at = @At(value = "INVOKE", target = "Ljava/lang/String;trim()Ljava/lang/String;"))
-						private static String upper(String s) { return s.trim().toUpperCase(); }
 						@WrapOperation(method = "label", at = @At(value = "INVOKE", target = "Ljava/lang/String;trim()Ljava/lang/String;"))
 						private static String bracket(String s, Operation<String> trim) { return "[" + trim.call(s) + "]"; }
+						@Redirect(method = "label", at = @At(value = "INVOKE", target = "Ljava/lang/String;trim()Ljava/lang/String;"))
+						private static String upper(String s) { return s.trim().toUpperCase(); }
 						@WrapOperation(method = "label", at = @At(value = "INVOKE", target = "Ljava/lang/String;trim()Ljava/lang/String;"))
 						private static String star(String s, Operation<String> trim) { return "*" + trim.call(s) + "*"; }
 						@Redirect(method = "label", at = @At(value = "INVOKE", target = "Ljava/lang/String;trim()Ljava/lang/String;"))
@@ -456,8 +456,9 @@ class InterfaceInjectsTest {
 	/**
 	 * Over another handler's call replacing a call, a {@code @WrapOperation} wraps that call, as MixinExtras chains them
 	 * (its {@code Operation} passing on what that handler takes after the call's receiver and arguments, static or not),
-	 * and a second {@code @Redirect} is left out there with a warning, not failing the class; a second
-	 * {@code @ModifyConstant} of a constant modifies it before the first, as Mixin wraps the constant again.
+	 * once the redirects have applied, whichever the mixin declares first; a second {@code @Redirect} is left out there
+	 * with a warning, not failing the class; a second {@code @ModifyConstant} of a constant modifies it before the first,
+	 * as Mixin wraps the constant again.
 	 */
 	@Test
 	void handlersOverAnotherHandlersCallChainAsMixinExtrasChainsThem(@TempDir Path dir) throws Exception {
