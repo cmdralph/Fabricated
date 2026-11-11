@@ -362,14 +362,17 @@ jobs:
           restore-keys: downloads-${{ matrix.platform }}-${{ matrix.minecraft }}-
       # 26.3 and later open their window with SDL3 over EGL, which needs Mesa's EGL library (not on the runner image).
       # An attempt that hangs on the package mirror is stopped and tried again (CI-13), rather than holding the job to its
-      # timeout.
+      # timeout. Each attempt installs from the image's package lists first: apt-get update reads every source the image
+      # lists, and one of them down stops it where the packages' own mirror answers (CI-14).
       - name: Install Mesa EGL for the client
         if: contains(matrix.sides, 'client')
         timeout-minutes: 14
         run: |
+          mesa="libegl1 libegl-mesa0 libgl1-mesa-dri"
           for attempt in 1 2 3; do
-            if timeout 120 sudo apt-get update -qq \
-                && timeout 120 sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri; then
+            # shellcheck disable=SC2086 # one package per word
+            if timeout 120 sudo apt-get install -y -qq --no-install-recommends $mesa \
+                || { timeout 120 sudo apt-get update -qq && timeout 120 sudo apt-get install -y -qq --no-install-recommends $mesa; }; then
               exit 0
             fi
             echo "::warning title=Mesa EGL::attempt $attempt failed or timed out"

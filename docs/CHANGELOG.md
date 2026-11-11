@@ -3,6 +3,10 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-11: The client parts' Mesa install past a package mirror that's down (CI-14)
+
+- **CI-14** (P3, CI only), fixed: every client and mods part failed before any test ran when one of the runner's package sources was down (`archive.ubuntu.com` answering 503), as `apt-get update` reads every source. Each attempt now installs Mesa's EGL packages from the image's package lists first, and refreshes them only where that fails.
+
 ## 2026-11-11: More of Fabric mods' interface mixins applied on Forge 47 (INTERFACE-2), hooks sharing a ThreadLocal left out together (ITEM-2)
 
 - **INTERFACE-2** (P1), fixed: Forge 47's Mixin (0.8.5) applies no injector in an interface mixin, and Fabricated
