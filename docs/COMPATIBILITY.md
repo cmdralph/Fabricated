@@ -102,7 +102,7 @@ Notes:
     and a client of every version, as informational runs (`ci/runs.tsv`). On NeoForge every corpus server starts, and
     every client reaches its world but where a mod's own behaviour holds it (CORPUS-66). On Forge the stops the
     advanced corpus found are fixed, some checked on local runs only (`roadmap.md`, *Compatibility baseline*), and one
-    mod, Wover Story, fails on Forge 66 (REG-13). Per-mod results are in *Fabric mods tested*.
+    mod, Wover Story, fails on Forge 66 (REG-13, a known limit). Per-mod results are in *Fabric mods tested*.
 16. The shared suite runs, with Forge's half of it; each shared check Forge doesn't pass yet is listed in `ci/checks.tsv`
     with its reason, and is a cell of this matrix.
 17. Modrinth has Forge builds of WTHIT and Simple Voice Chat for 1.21.11 and 26.x, and of JEI, WTHIT and Simple Voice
@@ -1370,7 +1370,9 @@ code can do without that mixin:
   `removeAllEffects`, at a `Map.clear()` call NeoForge's code doesn't make there), or the whole mixin when it does, as its injectors may share those
   fields. The features the left-out part hooks in for don't work. The report lists each one under "Mixins left out
   (NeoForge's code differs where they hook in)", with what NeoForge's code lacks; the mod's row (and
-  `/fabricated why <mod>`) gives the count, and the log names the mods at startup.
+  `/fabricated why <mod>`) gives the count, and the log names the mods at startup. A hook that is a known limit, which
+  no update of the mod or of Fabricated changes, says so on its line, with what to do and its finding (SPAWN-1,
+  SCREEN-2); an entrypoint failure that is one says so too, in the loading warnings as well (REG-13).
 - **Any other mixin**: the mod's own code casts its target to the interface the mixin adds, or calls its accessors,
   so leaving the mixin out would only move the crash into the mod. The mod is disabled with the reason, as are the
   enum mixins NeoForge's extensible enums don't allow.
@@ -1449,6 +1451,7 @@ tracked:
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
 | A NeoForge model naming its loader in NeoForge's object form (`"loader": {"id": ...}`), with Moonlight's Fabric build installed | 1.21.1 | Moonlight's hook into vanilla's model deserializer, which NeoForge's runs first, reads `loader` as a string only and fails the model; not seen in the corpus | CORPUS-62 |
 | What Forgified Fabric API's modules do differently from upstream, where it provides them | read on 1.21.1, 26.1.2 and 26.2 | a provider's module is used as it is; on 1.21.1 its trapdoor tag, attack block result, sculk frequencies and default-enabled packs don't take effect (on 26.1.2 and 26.2 the first three too, and a biome modification doesn't reach clients, PROVIDER-10; there its packet context holds nothing for codecs, and its HUD elements attached to vanilla ones ignore vanilla's layer checks, PROVIDER-17), and it makes fewer bridges to NeoForge (enchanting, creator mod, transfer), as listed in *Mods that bring Fabric API or Fabric Loader* above; the test mods skip those checks with it | PROVIDER-8, PROVIDER-10, PROVIDER-17 |
+| Fabric mods' hooks of vanilla's spawn checks (Architectury's spawn check event for spawners and world generation, Friends and Foes' world generation spawn hook) | all | NeoForge makes `Mob.checkSpawnRules` and `checkSpawnObstruction` inside its own spawn position event's hook, so the hooks are left out, and spawners and world generation skip them; the report says so. Use the mod's NeoForge build | SPAWN-1 |
 | Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 
 ### Planned work, in order of impact
@@ -2054,6 +2057,21 @@ instead.
 - **Data generation only.** Removing entries through a Fabric tag appender, Fabric's key sort orders in generated files,
   and, by version, the advancement builder's Fabric interface and vanilla's block loot provider limited to vanilla's
   blocks; a Fabric model provider also writes item definitions for other mods' block items.
+
+**Known limits** (the report says so where each shows, with its finding):
+
+- **Spawn checks** (every Forge version). As on NeoForge, Forge makes `Mob.checkSpawnRules` and
+  `checkSpawnObstruction` inside its own spawn position event's hook, so Fabric mods' hooks of them are left out:
+  Architectury's spawn check event skips spawners and world generation, and Friends and Foes' world generation spawn
+  hook doesn't run. Use the mod's Forge build (SPAWN-1).
+- **Screen render wrappers** (Forge 65 and 66). Forge draws the screen in its own layer code, which reads the screen
+  itself, so a Fabric mod's wrapper of the screen's render call is left out: Architectury's screen render events,
+  FancyMenu's and SpruceUI's hooks around drawing a screen. An `@Inject` at the call applies, and on Forge 61 and 64
+  Architectury's and FancyMenu's wrappers apply at Forge's hook. Use NeoForge, or the mod's Forge build (SCREEN-2).
+- **Two equal registry entries.** Forge's registries tell entries apart by equality, so a mod registering two equal
+  objects under two names fails at the second: Wover Story's main entrypoint on Forge 66 (two equal point-of-interest
+  types), and the mod is marked as failed. On Fabric and NeoForge they are two entries. Use NeoForge, or the mod's
+  Forge build (REG-13).
 
 ## Fabric mods tested
 
