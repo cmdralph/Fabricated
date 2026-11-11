@@ -24,6 +24,29 @@ One entry per working session, newest first: what changed, and how it was verifi
   servers of NeoForge 1.21.1 and Forge 47, against runs before the change, only the hooks above change, now applying,
   and the checks are as before. The first check, by `Class.getMethod`, failed on Forge 66, whose extensions name client
   classes: it now reads only the classes' own methods.
+- Review fixes: the block check's helpers, copied from one tree shared between threads with ASM's `MethodNode.accept`,
+  which changes its labels, came out swapped, throwing or unverifiable where classes were put back in parallel (on
+  NeoForge 1.21.1's class, 8 threads, 3,200 copies: 107 differing, 30 throwing); each class now reads them afresh, a
+  copy still naming `KeepsDefault` fails, and pre-flight's view reads a class whose rewrite throws as the platform has
+  it (3,200 copies the same). Each break of a block keeping the default asked every class of its hierarchy, each miss
+  an exception (about 21 µs a break); the class keeps the answers by class (48 ns), a class that can't be read taken to
+  override, once. On Forge's server, vanilla's removal put back runs `Level.removeBlock`, which Forge's default doesn't
+  call: a native mixin of it keeps the class, as does one of a constant in `destroyBlock`, where vanilla's calls bring
+  their `false` and `11`. A hook picking vanilla's one removal by ordinal 0, put back in the creative and the survival
+  branch, now picks both. Pre-flight recorded a class for rewriting, and noted its hook applying, before the config's
+  groupings could leave the hook out; it records only the hooks they leave in. SHARE-2 follows only an injector that may
+  set a local, to those that may read it in the same target method, from skipped mixins and across the mod's configs.
+  The known limit of Forge's `playerWillDestroy` hooks matched the client's `destroyBlock` too: pre-flight's hint names
+  the server's class, which it now matches. Fabricated's own `AFTER` on vanilla's path stays two `@Inject`s, which a
+  `@Redirect` of the calls doesn't take away; a wrapper of the removal, as proposed, lost the event where an outer
+  wrapper doesn't make the call.
+- Verified (review fixes): core's tests (637), CI's script tests and the inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2
+  and Forge 47, 52 and 66 build; local servers pass every check (NeoForge 1.21.1 server and server-fapi: 174; 26.1.2:
+  85; Forge 47: 234; 52: 231; 66: 212), the `vanilla-break` check now also asking `AFTER` once for each break on both
+  paths. A wrapper in place of the `@Inject`s failed it on NeoForge 1.21.1 (no `AFTER` for the calcite the test mod's
+  wrapper keeps as tuff); the `@Inject`s pass it with a `@Redirect` of the removal added to the test mod. On the
+  advanced corpus servers (NeoForge 1.21.1: 83 passing; Forge 47: 111, as before), Apoli's removal hook applies, its
+  break action still left out, and Carpet's piston hook left out by SEAM-2 is no longer also noted as applying.
 
 ## 2026-11-11: SEAM-1's decision kept in the cache; Fabric's load conditions decided before other mods' hooks on NeoForge 1.21.1 (COND-1)
 

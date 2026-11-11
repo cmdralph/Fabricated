@@ -1433,9 +1433,12 @@ Vanilla's block-breaking calls, which NeoForge's `destroyBlock` makes through th
 fluid's block), are put back there where a Fabric mod's mixin hooks one of them, for the blocks whose classes keep
 NeoForge's default (SEAM-3: Wilder Wild's snowlogged and echo glass blocks, FrozenLib's waterlike blocks, Carpet's
 scarpet event, Apoli's removal hook). A block overriding `onDestroyedByPlayer` breaks as NeoForge has it, without those
-hooks. A NeoForge mod's mixin of NeoForge's `removeBlock`, of the `onDestroyedByPlayer` call or default, or of what
-the rewrite adds to `destroyBlock` keeps the class as NeoForge has it, as for the stickiness methods below. Apoli's
-block-break action stays left out with its harvest hook (SHARE-2), which NeoForge's own harvest check replaces.
+hooks. A NeoForge mod's mixin of NeoForge's `removeBlock`, of the `onDestroyedByPlayer` call or default, of what the
+rewrite adds to `destroyBlock` (vanilla's calls, `this.level`) or of a constant there (vanilla's calls bring their
+`false` and `11`) keeps the class as NeoForge has it, as for the stickiness methods below. A Fabric mod's hook picking
+vanilla's one removal by ordinal 0 picks it in both the creative and the survival branch, where it goes back. Apoli's
+block-break action stays left out with its harvest hook (SHARE-2), which NeoForge's own harvest check replaces; its
+removal hook applies.
 
 Putting the methods back moves the resolver's `isStickyBlock` and `canStickTo` calls into them, so where a NeoForge
 mod's mixin hooks those calls, or a place the move shifts in the methods holding them, they aren't put back: the
@@ -2007,7 +2010,10 @@ What else differs on Forge, for Fabric mods in general:
   Wild's snowlogged and echo glass blocks, FrozenLib's waterlike blocks), under their SRG names on Forge 47; a block
   overriding it breaks as Forge has it. On the server Forge calls `playerWillDestroy` after the tool is damaged, where
   vanilla calls it before the creative check: it stays out of hooks' sight, so an `@Inject` at it keeps its place
-  (CORPUS-72), and a wrapper of it is left out, a known limit. Fabric API's block break events fire on both paths.
+  (CORPUS-72), and a wrapper of it is left out, a known limit. There, vanilla's removal put back reads the fluid left
+  after `playerWillDestroy`, as vanilla does, where Forge's default reads it before, and runs `Level.removeBlock`,
+  which Forge's default doesn't call: a Forge mod's mixin of `Level.removeBlock`, as of Forge's code there or of a
+  constant in `destroyBlock`, keeps the class as Forge has it. Fabric API's block break events fire on both paths.
 - **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
   into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't
