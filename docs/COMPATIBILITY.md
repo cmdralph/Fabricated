@@ -40,6 +40,7 @@ missing) · — doesn't exist there
 | Team Reborn Energy and the platform's energy | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ❌ 6 | ❌ 6 | ❌ 6 | ❌ 6 | ❌ 6 | ❌ 6 |
 | Client modules: key mappings, HUD, screens, client commands | ✅ | ◐ 7 | ✅ | ✅ | ✅ | ◐ 7 | ◐ 7 | ◐ 7 | ✅ | ✅ | ✅ |
 | Fabric mods' hooks inside the HUD method | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 8 | ✅ | ◐ 8 | ◐ 8 | ◐ 8 | ◐ 8 |
+| Fabric mods' layers added to vanilla's HUD layer stacks in `Gui`'s constructor | ✅ 20 | — | — | — | — | — | ✅ | — | — | — | — |
 | Mod Menu config screens in the platform's mod list | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ✅ | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 |
 | Platform mods' properties as Fabric custom values, and the reverse | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
@@ -111,6 +112,12 @@ Notes:
     unknown.
 19. On Forge CI runs the Fabric builds of Sodium and Iris without a shader pack (Sodium 0.5 with Indium on 1.20.1): the
     run with CI's shader pack is NeoForge's alone (`ci/runs.tsv`).
+20. NeoForge builds the HUD from layers of its own: a layer a Fabric mod adds to one of vanilla's stacks there (as Apoli
+    adds its resource bars) is a layer of NeoForge's, drawn where vanilla draws it among vanilla's layers and under its
+    stack's condition (the GUI shown), and NeoForge mods' layers order against NeoForge's as before. A vanilla layer a
+    mod takes out of a stack there, moves or replaces is still drawn as NeoForge draws it. Vanilla has had no such stacks
+    since 1.21.6, which the other versions are past (their mods add HUD elements through Fabric API, above), and 1.20.1
+    has none yet.
 
 ## How CI tests it
 
@@ -250,6 +257,12 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
   modification changed to clients.
 - **Client entrypoints**: NeoForge 21.1 loads mods inside `Minecraft`'s constructor, so Fabric's main and client
   entrypoints run right after it has (REG-7), where later versions run them at the game thread.
+- **HUD layers added in `Gui`'s constructor**: vanilla builds its two HUD layer stacks there and Fabric mods add their
+  layers to one at the constructor's read of its root stack (Apoli's resource bars); NeoForge 21.1 builds each stack as
+  a layer manager of its own and never makes that read. Pre-flight points such a hook at Fabricated's seam for the
+  read, which holds vanilla's stacks as the constructor does there, and each layer the hook adds becomes one of
+  NeoForge's, drawn where vanilla draws it under its stack's condition (HUD-7, note 20 above). A hook elsewhere in the
+  constructor that captures the stacks stays left out, with the report's reason.
 - **Particles** (native): NeoForge 21.1 keys the particle engine's providers by id, as Forge 47 does, so Fabricated
   ships the module (PART-3): factories and their sprite sets are registered through the engine's own methods, and
   the block dust tint event is asked where NeoForge decides the tint.

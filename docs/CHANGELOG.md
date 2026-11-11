@@ -3,6 +3,24 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-11: Fabric HUD layers added in `Gui`'s constructor drawn on NeoForge 1.21.1 (HUD-7)
+
+- **HUD-7** (P2), fixed: vanilla's `Gui` constructor builds its two HUD layer stacks, then reads its root stack, where
+  Fabric mods add their layers to a stack they capture (Apoli's resource bars, Origins 1.13). NeoForge 21.1 builds each
+  stack as a layer manager of its own and never makes that read, so pre-flight left such hooks out. NeoForge 1.21.1's
+  in-game mod adds a seam for the read, holding vanilla's stacks as the constructor holds them there, and calls it where
+  NeoForge's constructor has built its stacks; pre-flight points the hooks at it. Each layer a hook adds becomes a layer
+  of NeoForge's stack, before NeoForge's first layer of the vanilla layer after it, under the stack's condition, and
+  NeoForge's layers and its mods' keep NeoForge's order. Mixin injects at a field access in a method another mixin merged
+  only from a mixin of higher priority, so the seam's mixin has the lowest and pre-flight checks it. NeoForge 1.21.11 and
+  26.x have no such stacks: vanilla dropped them in 1.21.6. NeoForge 1.21.1's test mod adds a layer as Apoli does
+  (`neoforge-client-hud-vanilla-layer`).
+- Verified: the core tests, CI's script tests and the mixin inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2 build (26.2
+  and 26.3 don't build locally, as before). Locally on NeoForge 1.21.1 the client passes every check, the new one among
+  them, with and without Fabric API; the advanced corpus client applies Apoli's hook at the seam, builds its HUD and
+  passes the check, then waits on Origins' screen, as before (CORPUS-66); the server passes. A NeoForge 26.1.2 client
+  passes, the check skipped there.
+
 ## 2026-11-11: Hooks at a method the platform replaced moved to its own (STRUCT-1), Fabric Loader's server hook on every platform (HOOK-4)
 
 - **STRUCT-1** (P1), fixed: YUNG's API's and Friends and Foes' entity processing hooks vanilla's private
