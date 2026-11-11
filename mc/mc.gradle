@@ -186,7 +186,8 @@ ext.expandProps = [
         aw_header              : project.aw_header,
         // The resource loader module the test mod uses: v1, or v0 where Fabric API has no v1 yet (1.21.1).
         resource_loader_module : project.findProperty('testmod_resource_loader') ?: 'fabric-resource-loader-v1',
-        // The formats in the test mod's built-in pack.mcmeta: a range from 1.21.9, a single pack_format before.
+        // The formats in the test mod's built-in pack.mcmeta, and its packs of conditional overlays: a range from 1.21.9, a
+        // single pack_format before.
         pack_formats           : project.findProperty('testmod_pack_formats') ?: '"min_format": 82, "max_format": 2048',
         // The same for its built-in resource pack: resource packs take their own formats (a range from 65, 1.21.9's).
         resource_pack_formats  : project.findProperty('testmod_resource_pack_formats') ?: '"min_format": 65, "max_format": 2048',
@@ -243,7 +244,7 @@ tasks.named('processResources', ProcessResources) {
 
 tasks.named('processTestmodResources', ProcessResources) {
     inputs.properties(expandProps)
-    filesMatching(['fabric.mod.json', '*.accesswidener', 'resourcepacks/*/pack.mcmeta']) { expand(expandProps) }
+    filesMatching(['fabric.mod.json', '*.accesswidener', 'resourcepacks/*/pack.mcmeta', 'fabricated_overlay_packs/*.json']) { expand(expandProps) }
 }
 addPlatformHalf('testmod')
 
@@ -478,6 +479,25 @@ if ((testSources.collect { rootProject.file(it) } + [projectDir]).any { new File
     tasks.named('testmods') { dependsOn frapiTestmodJar }
 }
 
+// --- The test mod's calls of vanilla's members the platform's game replaces (vanilla's LootPool constructor, LOOT-3) -----
+// Compiled as a Fabric mod's are, against vanilla: stand-ins of those members (the source set's net/minecraft classes)
+// shadow the game's as they compile, and are left out of the test mod's jar. Each folder's
+// src/testmodvanilla/fabricated-testmod.accesswidener ends the test mod's widener with what its calls reach.
+sourceSets {
+    testmodvanilla {
+        java.srcDir testJava('testmodvanilla')
+    }
+}
+gameDependencies(sourceSets.testmodvanilla)
+dependencies {
+    testmodvanillaCompileOnly project(':fabric-loader-api')
+}
+testmodJar.configure { from(sourceSets.testmodvanilla.output) { exclude 'net/minecraft/**' } }
+testSources.each {
+    def widened = rootProject.file("$it/src/testmodvanilla/fabricated-testmod.accesswidener")
+    if (widened.isFile()) testmodAccessWidener.addAll(widened.readLines().findAll { it.trim() })
+}
+
 // --- Fabric API, at compile time only ----------------------------------------------------------------------------
 // The module jars of the Fabric API release in this version's plan; Fabricated never ships them. The in-game mod compiles
 // against the plan's pass-through modules, which the player's Fabric API provides at runtime (its own sources are the
@@ -546,4 +566,5 @@ dependencies {
     integrationstubsCompileOnly fabricApi(['fabric-transfer-api-v1'])
     testmodCompileOnly fabricApi()
     testmodfrapiCompileOnly fabricApi()
+    testmodvanillaCompileOnly fabricApi()
 }

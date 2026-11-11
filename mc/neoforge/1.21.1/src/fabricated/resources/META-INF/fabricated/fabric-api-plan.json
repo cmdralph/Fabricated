@@ -174,9 +174,10 @@
     "fabric-resource-conditions-api-v1": {
       "plan": "passthrough",
       "skipMixins": [
-        "fabric-resource-conditions-api-v1.mixins.json:RegistryLoaderMixin"
+        "fabric-resource-conditions-api-v1.mixins.json:RegistryLoaderMixin",
+        "fabric-resource-conditions-api-v1.mixins.json:ResourcePackProfileMixin"
       ],
-      "reason": "NeoForge decides whether registry entries load with its own conditions: Fabricated evaluates fabric:load_conditions there, with upstream's conditions, instead of upstream's mixin on the registry loading NeoForge rewrote. NeoForge 21.1 leaves vanilla's JSON data loaders as they are, so upstream's hook there stays and drops a file whose conditions fail from every one of them, as on Fabric (CORPUS-49)."
+      "reason": "NeoForge decides whether registry entries load with its own conditions: Fabricated evaluates fabric:load_conditions there, with upstream's conditions, instead of upstream's mixin on the registry loading NeoForge rewrote. NeoForge 21.1 leaves vanilla's JSON data loaders as they are, so upstream's hook there stays and drops a file whose conditions fail from every one of them, as on Fabric (CORPUS-49). NeoForge's patch to the reading of a pack's metadata adds its neoforge:overlays to the list upstream's hook there had replaced with an immutable one, so every pack declaring them, native mods' built-in packs among them, failed to read (PACK-12): Fabricated applies fabric:overlays there itself, with upstream's conditions, leaving out a section it can't read with one warning, and none for a pack declaring NeoForge's own."
     },
     "fabric-resource-loader-v0": {
       "plan": "native",

@@ -53,6 +53,7 @@
     "SimpleMenuProviderMixin",
     "TagFileRemoveMixin",
     "ConditionalOpsMixin",
+    "PackOverlaysMixin",
     "EnchantmentBuilderMixin",
     "RegistryDataLoaderEnchantmentMixin",
     "LevelChunkBlockEntityMixin",

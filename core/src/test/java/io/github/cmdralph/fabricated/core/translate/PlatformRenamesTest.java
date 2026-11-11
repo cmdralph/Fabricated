@@ -4,8 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
@@ -48,7 +53,7 @@ class PlatformRenamesTest {
 	void renamesTheConfigTypesFml12Renamed() {
 		PlatformRenames renames = PlatformRenames.of(Map.of(TYPE, enumWith("LOCAL", "CLIENT", "SYNCED", "STARTUP"))::get, NO_GAME, true);
 		ClassNode node = new ClassNode();
-		new ClassReader(renames.apply(user())).accept(node, 0);
+		new ClassReader(renames.apply(user(), new HashSet<>())).accept(node, 0);
 		FieldInsnNode read = (FieldInsnNode) node.methods.getFirst().instructions.getFirst();
 		assertEquals("SYNCED", read.name);
 	}
@@ -56,7 +61,7 @@ class PlatformRenamesTest {
 	@Test
 	void leavesModsAloneWhereTheOldNamesExist() {
 		PlatformRenames renames = PlatformRenames.of(Map.of(TYPE, enumWith("COMMON", "CLIENT", "SERVER", "STARTUP"))::get, NO_GAME, true);
-		assertNull(renames.apply(user()));
+		assertNull(renames.apply(user(), new HashSet<>()));
 	}
 
 	private static final String SCREEN = "net/minecraft/client/gui/screens/Screen";
@@ -197,12 +202,12 @@ class PlatformRenamesTest {
 	/** On Forge the port's own jar loads, with its own screen taking the id, and Fabricated's factories aren't there (REPL-1). */
 	@Test
 	void forgeConfigApiPortScreensAreLeftAloneWhereThePlatformDoesNotProvideThePort() {
-		assertNull(PlatformRenames.of(Map.<String, byte[]>of()::get, NO_GAME, false).apply(screenUser()));
+		assertNull(PlatformRenames.of(Map.<String, byte[]>of()::get, NO_GAME, false).apply(screenUser(), new HashSet<>()));
 	}
 
 	@Test
 	void forgeConfigApiPortScreensGetTheModsContainer() throws Exception {
-		byte[] adapted = PlatformRenames.of(Map.<String, byte[]>of()::get, NO_GAME, true).apply(screenUser());
+		byte[] adapted = PlatformRenames.of(Map.<String, byte[]>of()::get, NO_GAME, true).apply(screenUser(), new HashSet<>());
 		Map<String, byte[]> classes = new java.util.HashMap<>(platform());
 		classes.put("com/example/Screens", adapted);
 		ClassLoader loader = new ClassLoader(null) {
@@ -313,7 +318,7 @@ class PlatformRenamesTest {
 	@Test
 	void aCreativeTabSubclassCallingVanillasConstructorGetsNeoForgesWithABuilder() throws Exception {
 		Map<String, byte[]> classes = game(false);
-		byte[] adapted = PlatformRenames.of(ClassBytesSource.EMPTY, new ClassIndex(classes::get), true).apply(tabSubclass());
+		byte[] adapted = PlatformRenames.of(ClassBytesSource.EMPTY, new ClassIndex(classes::get), true).apply(tabSubclass(), new HashSet<>());
 		assertNotNull(adapted);
 		classes.put("com/example/Tab", adapted);
 		ClassLoader loader = new ClassLoader(null) {
@@ -341,6 +346,97 @@ class PlatformRenamesTest {
 
 	@Test
 	void leavesCreativeTabsAloneWhereVanillasConstructorExists() {
-		assertNull(PlatformRenames.of(ClassBytesSource.EMPTY, new ClassIndex(game(true)::get), true).apply(tabSubclass()));
+		assertNull(PlatformRenames.of(ClassBytesSource.EMPTY, new ClassIndex(game(true)::get), true).apply(tabSubclass(), new HashSet<>()));
+	}
+
+	private static final String POOL = "net/minecraft/world/level/storage/loot/LootPool";
+	/** Vanilla's parameters, shortened: entries (an array on 1.20.1, a list later) and rolls. */
+	private static final String VANILLA_POOL = "(Ljava/util/List;Ljava/lang/Object;)";
+
+	/**
+	 * A stand-in of the platform's loot pool: vanilla's constructor where {@code vanilla}, and with {@code name} (a type,
+	 * or null for none) one taking a name after vanilla's arguments, keeping the entries and the name.
+	 */
+	private static byte[] pool(boolean vanilla, String name) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, POOL, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PUBLIC, "entries", "Ljava/util/List;", null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PUBLIC, "name", "Ljava/lang/Object;", null, null).visitEnd();
+		if (vanilla) constructor(cw, "java/lang/Object", VANILLA_POOL + "V");
+		if (name != null) {
+			MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", VANILLA_POOL.replace(")", name + ")") + "V", null, null);
+			init.visitCode();
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitVarInsn(Opcodes.ALOAD, 1);
+			init.visitFieldInsn(Opcodes.PUTFIELD, POOL, "entries", "Ljava/util/List;");
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitVarInsn(Opcodes.ALOAD, 3);
+			init.visitFieldInsn(Opcodes.PUTFIELD, POOL, "name", "Ljava/lang/Object;");
+			init.visitInsn(Opcodes.RETURN);
+			init.visitMaxs(0, 0);
+			init.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** A mod's class making a pool with vanilla's constructor, as BCLib's loot pool mixin does: {@code make(entries, rolls)}. */
+	private static byte[] poolMaker() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/example/Pools", null, "java/lang/Object", null);
+		MethodVisitor make = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "make", "(Ljava/util/List;Ljava/lang/Object;)Ljava/lang/Object;", null, null);
+		make.visitCode();
+		make.visitTypeInsn(Opcodes.NEW, POOL);
+		make.visitInsn(Opcodes.DUP);
+		make.visitVarInsn(Opcodes.ALOAD, 0);
+		make.visitVarInsn(Opcodes.ALOAD, 1);
+		make.visitMethodInsn(Opcodes.INVOKESPECIAL, POOL, "<init>", VANILLA_POOL + "V", false);
+		make.visitInsn(Opcodes.ARETURN);
+		make.visitMaxs(0, 0);
+		make.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * Forge 47's loot pool takes vanilla's arguments and a {@code String} name, NeoForge's an {@code Optional<String>}, and
+	 * neither keeps vanilla's constructor: a mod's call of it (BCLib's) calls the platform's with no name, null on Forge 47
+	 * and an empty {@code Optional} on NeoForge, as their builders pass (LOOT-3).
+	 */
+	@Test
+	void aCallOfVanillasLootPoolConstructorPassesNoNameWhereThePlatformTakesOne() throws Exception {
+		for (String name : List.of("Ljava/lang/String;", "Ljava/util/Optional;")) {
+			Map<String, byte[]> classes = new java.util.HashMap<>(Map.of(POOL, pool(false, name)));
+			Set<String> constructors = new HashSet<>();
+			byte[] adapted = PlatformRenames.of(ClassBytesSource.EMPTY, new ClassIndex(classes::get), false).apply(poolMaker(), constructors);
+			assertNotNull(adapted, name);
+			assertEquals(Set.of("net.minecraft.world.level.storage.loot.LootPool"), constructors);
+			classes.put("com/example/Pools", adapted);
+			ClassLoader loader = new ClassLoader(null) {
+				@Override
+				protected Class<?> findClass(String className) throws ClassNotFoundException {
+					byte[] data = classes.get(className.replace('.', '/'));
+					if (data == null) throw new ClassNotFoundException(className);
+					return defineClass(className, data, 0, data.length);
+				}
+			};
+			List<Object> entries = List.of("entry");
+			Object made = loader.loadClass("com.example.Pools").getMethod("make", List.class, Object.class).invoke(null, entries, "rolls");
+			assertSame(entries, made.getClass().getField("entries").get(made));
+			assertEquals(name.contains("Optional") ? Optional.empty() : null, made.getClass().getField("name").get(made));
+		}
+	}
+
+	/** Forge 52 and 61 to 66 keep vanilla's constructor beside their own: the mod's call is left as it is. */
+	@Test
+	void leavesLootPoolsAloneWhereVanillasConstructorExists() {
+		Set<String> constructors = new HashSet<>();
+		assertNull(PlatformRenames.of(ClassBytesSource.EMPTY, new ClassIndex(Map.of(POOL, pool(true, "Ljava/util/Optional;"))::get), false)
+				.apply(poolMaker(), constructors));
+		assertTrue(constructors.isEmpty());
+		assertNull(PlatformRenames.of(ClassBytesSource.EMPTY, new ClassIndex(Map.of(POOL, pool(false, null))::get), false)
+				.apply(poolMaker(), constructors), "nor where the platform has no constructor taking a name: the linkage check reports the call");
 	}
 }
