@@ -37,8 +37,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   groupings could leave the hook out; it records only the hooks they leave in. SHARE-2 follows only an injector that may
   set a local, to those that may read it in the same target method, from skipped mixins and across the mod's configs.
   The known limit of Forge's `playerWillDestroy` hooks matched the client's `destroyBlock` too: pre-flight's hint names
-  the server's class, which it now matches. Fabricated's own `AFTER` on vanilla's path stays two `@Inject`s, which a
-  `@Redirect` of the calls doesn't take away; a wrapper of the removal, as proposed, lost the event where an outer
+  the server's class, which it now matches. Fabricated's own `AFTER` on vanilla's path stays two `@Inject`s, as upstream fires it, which a
+  `@Redirect` of the calls doesn't take away; a wrapper of the removal in their place loses the event where an outer
   wrapper doesn't make the call.
 - Verified (review fixes): core's tests (637), CI's script tests and the inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2
   and Forge 47, 52 and 66 build; local servers pass every check (NeoForge 1.21.1 server and server-fapi: 174; 26.1.2:
