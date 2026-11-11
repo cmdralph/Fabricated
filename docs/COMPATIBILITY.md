@@ -1358,6 +1358,10 @@ code can do without that mixin:
 - In a config with a plugin, which may disable mixins itself, only the failing injector is left out. A mixin the
   plugin turns down itself, as Mixin asks it which to apply, as on Fabric, is listed apart under "Mixins their configs'
   plugins leave out (as on Fabric)" and not counted in the mod's row (LEAVE-4: Pehkui's version-specific mixins).
+- Injectors of one mixin that hand state to each other through a `ThreadLocal` of the mod's, one storing into it and
+  another using it, are left out together, as one left alone would act on a value the other never stored (ITEM-2:
+  Fabric API's recipe remainder hooks on Forge 47 and 52). Injectors only reading one, or sharing a plain static field
+  (a config's), stay apart.
 
 A mod disabled this way can still be loaded without the mixin, by naming it in `skipMixins` in
 `config/fabricated.json` (the report's suggestion gives the exact entry).
@@ -2006,9 +2010,9 @@ instead.
   Origins', owo-lib's, Carpet's, ServerCore's and Wilder Wild's hooks of this kind apply, and the test mod's interface
   mixin checks each kind (server run). Other injectors in an interface mixin (`@ModifyVariable`, `@ModifyArg`,
   `@ModifyReturnValue`, `@ModifyExpressionValue`...), slices, `@Coerce`, `@Share`, a `@Local` taken by name and a second
-  redirect or wrap of a call one already replaces are left out there. Fabric API's recipe remainder hook applies as on
-  Forge 52, two of its four handlers, Forge having replaced the calls of the other two; Forge's own hook answers from
-  Fabric's remainder (*Items* above).
+  redirect or wrap of a call one already replaces are left out there. Fabric API's recipe remainder hook is left out,
+  as on Forge 52: Forge replaced the calls two of its handlers hook, and the other two hand state to them (ITEM-2);
+  Forge's own hook answers from Fabric's remainder (*Items* above).
 - **Sound (Forge 47).** A Fabric sound instance's own audio stream (`FabricSoundInstance.getAudioStream`).
 - **Other hooks inside the HUD method.** A Fabric mod's mixin inside vanilla's HUD method (`Gui.render`; on Forge 64
   `Gui.extractRenderState`, on 65 and 66 `Hud.extractRenderState`) that wraps or redirects one of vanilla's calls,

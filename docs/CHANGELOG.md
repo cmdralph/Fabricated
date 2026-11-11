@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-11: More of Fabric mods' interface mixins applied on Forge 47 (INTERFACE-2)
+## 2026-11-11: More of Fabric mods' interface mixins applied on Forge 47 (INTERFACE-2), hooks sharing a ThreadLocal left out together (ITEM-2)
 
 - **INTERFACE-2** (P1), fixed: Forge 47's Mixin (0.8.5) applies no injector in an interface mixin, and Fabricated applied
   only an `@Inject` at `HEAD`, `RETURN` or `TAIL` there (INTERFACE-1). It now also applies an `@Inject` at a call or a
@@ -15,14 +15,21 @@ One entry per working session, newest first: what changed, and how it was verifi
   redstone and reach-entity-attributes' reach hooks stay left out, Forge 47 having replaced the calls and the constant
   they hook. Other injectors, slices, `@Coerce` and `@Share` in an interface mixin stay left out there, the report
   saying why.
-- **ITEM-2** (open): Fabric API's recipe remainder mixin now applies two of its four handlers on Forge 47, as on Forge
-  52, which can give a Forge item's own crafting remainder Fabric's default; the owner's decision (roadmap).
+- **ITEM-2** (P2), fixed: Fabric API's recipe remainder mixin applied two of its four handlers on Forge 52, and since
+  INTERFACE-2 on Forge 47, Forge having replaced the calls of the other two: the two applying hand a stack's remainder
+  over through a `ThreadLocal`, which put Fabric's default remainder over a Forge item's own in crafting. A failing
+  injector now takes with it the injectors of its mixin that share a `ThreadLocal` of the mod's that one of them stores
+  into, each going as it would failing itself. A config's plain static field, or a `ThreadLocal` the injectors only read
+  (Fabric API's fluid render hooks), groups nothing.
 - Forge 47's test mod has an interface mixin into `Container` with each of these, checked by
   `forge-legacy-interface-inject`, `-redirect`, `-wrap-operation` and `-constant`.
 - Verified: core's tests (`InterfaceInjectsTest`, a test per kind), CI's script tests and the mixin inventory; Forge 47
   builds. Locally on Forge 47 the server and client parts pass, the four checks among them; the advanced corpus server
   leaves out 4 interface hooks where the release's left out 12, and the corpus server 6 where it left out 9, every other
-  hook left out, mod disabled and entrypoint failing as in the release's runs.
+  hook left out, mod disabled and entrypoint failing as in the release's runs. With ITEM-2 (`MixinPreflightTest`, a
+  case for each), Fabric API's `captureStack` and `getStackRemainder` alone join what is left out: on Forge 47's
+  advanced corpus server (169 to 171) and corpus server (99 to 101), and on Forge 52's corpus server (52 to 54, from the
+  release's run); Forge 52's server part passes.
 
 ## 2026-11-11: Pre-flight's bridges for a supertype and a static handler, instanceof constants, a plugin's own choices
 
