@@ -3,6 +3,26 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-11: Vanilla's piston stickiness methods put back where Fabric mods hook them (SEAM-1)
+
+- **SEAM-1** (P1), fixed: NeoForge 21.1, 21.11 and 26.1.2 and every Forge version replace `PistonStructureResolver`'s
+  `isSticky` and `canStickToEachOther` with the block state's `isStickyBlock` and `canStickTo`, so Carpet's, FrozenLib's
+  and Moonlight's hooks of them were left out and their sticky blocks didn't stick. Where a Fabric mod's mixin targets
+  the resolver, both methods are now put back as the class loads, answering as the platform's code does, and the
+  resolver calls them where vanilla does: the mods' `@Inject`s, `@Redirect`s, `@WrapOperation`s and `@Shadow`s apply as
+  on Fabric, and the report notes each. Platform mods' sticky blocks, and slime and honey, stick as before; NeoForge
+  26.2 and 26.3 keep the methods. A table in core (`VanillaSeams`) holds the method and the platform's code for it, so
+  the other seams the platforms replaced can follow as rows. The test mod hooks both methods and checks two pushes
+  (`vanilla-piston`, every platform and version).
+- Open: on NeoForge 21.1 to 26.1.2 and Forge 47, Carpet's hook keeping the line's positions still finds other locals,
+  so its chain code would get no position with its `chainStone` rule on (SEAM-2).
+- Verified: core's tests, CI's script tests and the mixin inventory; NeoForge 1.21.1 and 26.1.2 and Forge 47, 52 and 66
+  build (NeoForge 26.2 and 26.3 don't build locally, on main as it is either), and the rewrite finds vanilla's five
+  calls in every platform's own class. Local servers with the test mods pass every check on NeoForge 1.21.1 and
+  26.1.2 and Forge 47, 52 and 66. On the local advanced corpus servers of those five the mods' hooks of the resolver
+  are noted as applying, none left out, and the new check passes; NeoForge 26.1.2 and Forge 47 pass every check,
+  NeoForge 1.21.1 and Forge 52 fail only CORPUS-113's, Forge 66 only CORPUS-114's and REG-13's, as before.
+
 ## 2026-11-11: Known limits explained in the report (SPAWN-1, SCREEN-2, REG-13)
 
 - Three failures no generic change can fix now say so where they show, with what to do and their finding, instead of

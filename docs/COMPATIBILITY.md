@@ -1411,6 +1411,13 @@ A mod's own call of a game constructor NeoForge replaced with one taking a name 
 constructor opens NeoForge's (LOOT-3). Any other call of a game constructor NeoForge lacks, a mixin's included, is
 listed among the report's linkage warnings.
 
+Vanilla's piston stickiness methods, `PistonStructureResolver.isSticky` and `canStickToEachOther`, which NeoForge 21.1,
+21.11 and 26.1.2 replace with the block state's `isStickyBlock` and `canStickTo`, are put back where a Fabric mod's
+mixin targets the resolver, answering as NeoForge's code does, so the mod's hooks of them apply as on Fabric (SEAM-1:
+Carpet's, FrozenLib's and Moonlight's sticky blocks). NeoForge's own sticky blocks and slime and honey stick as before.
+NeoForge 26.2 and 26.3 keep both methods. The report notes each hook of one; on 26.1.2, where NeoForge's line check
+asks the first block twice, a resolver with such hooks asks both ways there, as NeoForge 26.2 does.
+
 What this can't match of Fabric, seen in a reference pack (2026-10-28):
 
 - **A field NeoForge retyped.** NeoForge makes `KeyMapping.MAP` its own `KeyMappingLookup`, not vanilla's `Map`, so an
@@ -1949,6 +1956,12 @@ What else differs on Forge, for Fabric mods in general:
   no constructor without it, as NeoForge's (an `Optional` there): a Fabric mod's call of vanilla's constructor calls
   Forge's with no name, and its widener's line for vanilla's opens Forge's (LOOT-3: BCLib's merged loot pools,
   BetterNether's piglin bartering table among them; checked on a Forge 47 server). Forge 52 and 61 to 66 keep vanilla's.
+- **Piston stickiness:** Forge 47 to 66 replace vanilla's `PistonStructureResolver.isSticky` and `canStickToEachOther`
+  with the block state's `isStickyBlock` and `canStickTo`; both are put back where a Fabric mod's mixin targets the
+  resolver, answering as Forge's code does (under their SRG names on Forge 47), so the mod's hooks of them apply (SEAM-1:
+  Carpet's, FrozenLib's and Moonlight's sticky blocks). Forge's own sticky blocks and slime and honey stick as before.
+  A Fabric mod's hook answering for every block answers for Forge mods' blocks too: Carpet 1.20.1's does, its own
+  rules deciding each block's stickiness, as it does for other mods' blocks on Fabric.
 - **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
   into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't
