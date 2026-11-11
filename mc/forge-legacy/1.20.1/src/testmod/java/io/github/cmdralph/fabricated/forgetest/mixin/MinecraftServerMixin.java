@@ -17,6 +17,7 @@ import io.github.cmdralph.fabricated.forgetest.ForgeDropCaptureTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFluidTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFuelTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeIngredientTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeInterfaceInjectorTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeInteractionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeLanguageTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeMobBucketTest;
@@ -43,7 +44,8 @@ import net.minecraft.world.level.Level;
  * Port's registry, Fabric's block break, use and attack, and sleep events, storages reaching Forge's capabilities,
  * accessors of fields Forge 47 replaced, Forge's recipe conditions and custom ingredients, vanilla's language reader,
  * the fuel and brewing recipe Fabric's content registries made, a final field Fabric API's biome module widens set by
- * an accessor, and a point-of-interest type's holder stored as vanilla's; then Forge's client hooks on a client. The
+ * an accessor, a point-of-interest type's holder stored as vanilla's, and the injectors of an interface mixin, which
+ * Fabricated applies where Forge 47's Mixin applies none; then Forge's client hooks on a client. The
  * interaction check finishes at a later tick.
  */
 @Mixin(MinecraftServer.class)
@@ -92,6 +94,7 @@ public abstract class MinecraftServerMixin {
 		ForgeTestMod.run("brewing recipe check", ForgeBrewingTest::check);
 		ForgeTestMod.run("widened access check", () -> ForgeWidenedAccessTest.check(level));
 		ForgeTestMod.run("poi holder check", ForgePoiHolderTest::check);
+		ForgeTestMod.run("interface injectors check", ForgeInterfaceInjectorTest::check);
 		ForgeTestMod.checkClient();
 	}
 }

@@ -64,7 +64,10 @@ def mixinMappings = [testmod: 'fabricated-testmod.refmap.json', testmodbroken: '
             ["-AreobfTsrgFile=${namedToIntermediary.get().asFile}", "-AoutTsrgFile=${dir.get().file('shadows.tsrg').asFile}",
              "-AoutRefMapFile=${dir.get().file(refmap).asFile}", '-AmappingTypes=tsrg', '-AdefaultObfuscationEnv=searge',
              // Accessors of vanilla fields Forge's game no longer has name them as the mod's jar does (forgetest.mixin).
-             '-AMSG_ACCESSOR_TARGET_NOT_FOUND=warning']
+             '-AMSG_ACCESSOR_TARGET_NOT_FOUND=warning',
+             // Injectors in an interface mixin, which Fabric's processor takes and Forge 47's warns of, mapped all the same
+             // (forgetest.mixin.ContainerInterfaceMixin).
+             '-AMSG_INJECTOR_IN_INTERFACE=warning']
         } as CommandLineArgumentProvider)
     }
     [(name): [refmap: refmap, file: dir.map { it.file(refmap) }, shadows: dir.map { it.file('shadows.tsrg') }]]
