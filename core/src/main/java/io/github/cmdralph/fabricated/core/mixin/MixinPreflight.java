@@ -1385,7 +1385,7 @@ public final class MixinPreflight extends PreflightPart {
 			return;
 		}
 
-		if (MixinNames.VALUE_MODIFIERS.contains(ann.desc) && !anyFuzzy && !acceptsModifierSignature(handler, matched)) {
+		if (MixinNames.VALUE_MODIFIERS.contains(ann.desc) && !anyFuzzy && !acceptsModifierSignature(handler, ann, matched)) {
 			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), PreflightAsm.handlerArgs(handler).toArray(Type[]::new))
 							+ " does not match the parameters of " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.'),
 					(ctx.owner() == null ? loader + "'s build of Minecraft declares this method with different parameters"
@@ -1755,12 +1755,21 @@ public final class MixinPreflight extends PreflightPart {
 	 * {@code require}, and the whole class fails with it: Farmer's Delight's hook into {@code CropBlock.getGrowthSpeed},
 	 * whose first parameter NeoForge's build made a block state, and LambDynamicLights' {@code @ModifyReturnValue} on the
 	 * overload of {@code LevelRenderer.getLightColor} Mixin picks, which took {@code LevelRenderer} from every mod
-	 * (CORPUS-45). Handlers that use {@code @Coerce} are left to Mixin.
+	 * (CORPUS-45). A {@code @ModifyConstant} of a class constant ({@code classValue}) that Mixin finds as an
+	 * {@code instanceof} takes the object and the class instead of the value, and returns whether it is one or the class
+	 * to check against ({@code RedirectInjector.injectAtInstanceOf}), exactly those two (Lithium's collision context hooks,
+	 * PRE-29). Handlers that use {@code @Coerce} are left to Mixin.
 	 */
-	private static boolean acceptsModifierSignature(MethodNode handler, List<MethodNode> targets) {
+	private static boolean acceptsModifierSignature(MethodNode handler, AnnotationNode injector, List<MethodNode> targets) {
 		List<Type> args = PreflightAsm.handlerArgs(handler);
 		if (args == null || args.size() <= 1) return true;
-		List<Type> captured = args.subList(1, args.size());
+		Type object = Type.getType(Object.class);
+		Type type = Type.getType(Class.class);
+		boolean instanceOf = injector.desc.equals(MixinNames.MODIFY_CONSTANT) && args.get(0).equals(object) && args.get(1).equals(type)
+				&& Annotations.list(Annotations.value(injector, "constant")).stream().anyMatch(c -> Annotations.value(c, "classValue") != null);
+		Type result = Type.getReturnType(handler.desc);
+		if (instanceOf && !result.equals(Type.BOOLEAN_TYPE) && !result.equals(type)) return false;
+		List<Type> captured = args.subList(instanceOf ? 2 : 1, args.size());
 		return targets.stream().allMatch(target -> {
 			List<Type> params = List.of(Type.getArgumentTypes(target.desc));
 			return captured.size() <= params.size() && params.subList(0, captured.size()).equals(captured);

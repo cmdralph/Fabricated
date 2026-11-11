@@ -129,9 +129,13 @@ final class InjectionPoints {
 		return value.matches("[+-]?(\\d+\\.?\\d*|\\.\\d+)([eE][+-]?\\d+)?[fFdD]?");
 	}
 
-	/** The constant an instruction pushes (boxed as {@code @Constant} stores it), or null. */
+	/**
+	 * The constant an instruction pushes (boxed as {@code @Constant} stores it), or null. A cast or an {@code instanceof}
+	 * is its class's constant, as Mixin's {@code Bytecode.getConstant} reads it (PRE-29).
+	 */
 	static Object constantOf(AbstractInsnNode insn) {
 		int op = insn.getOpcode();
+		if (insn instanceof TypeInsnNode type && (op == Opcodes.CHECKCAST || op == Opcodes.INSTANCEOF)) return Type.getObjectType(type.desc);
 		if (op >= Opcodes.ICONST_M1 && op <= Opcodes.ICONST_5) return op - Opcodes.ICONST_0;
 		if (op == Opcodes.LCONST_0 || op == Opcodes.LCONST_1) return (long) (op - Opcodes.LCONST_0);
 		if (op >= Opcodes.FCONST_0 && op <= Opcodes.FCONST_2) return (float) (op - Opcodes.FCONST_0);

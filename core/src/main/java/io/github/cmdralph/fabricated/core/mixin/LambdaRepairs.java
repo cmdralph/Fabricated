@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.regex.Matcher;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
@@ -289,12 +290,16 @@ final class LambdaRepairs extends PreflightPart {
 	 * FrozenLib's into {@code RegistryDataLoader}'s; LAMBDA-3). The bridge passes each of the handler's parameters the
 	 * lambda's of its type: in order, when the handler's types occur in the lambda's that way only once; otherwise by
 	 * type, where a type the lambda has more than once is only passed to a parameter the handler never uses; otherwise by
-	 * how vanilla's lambda and this build's use them ({@link #byUse}). A method NeoForge gave more parameters gets the
+	 * how vanilla's lambda and this build's use them ({@link #byUse}); failing those, in order, a parameter of this build's
+	 * passed for one of the handler's that is a supertype of it (the screen Forge's and NeoForge 21.1's
+	 * {@code KeyboardHandler.charTyped} lambdas pass where vanilla's pass a {@code GuiEventListener}: JEI's and owo-lib's
+	 * char typed hooks; LAMBDA-11). A method NeoForge gave more parameters gets the
 	 * same bridge, in order only (Ledger's hooks into {@code FireBlock.checkBurnOut}, which takes a face too; SIG-1), as
 	 * does one a selector names by vanilla's full descriptor ({@link #widenedMethods}, SIG-3). Where
 	 * the running Mixin refuses a static handler on a method that takes {@code this}, and this build's lambda takes it
 	 * where vanilla's doesn't, the bridge takes {@code this} (Forge 47's {@code MouseHandler}, whose patch reads the
-	 * client in its screen lambdas; LAMBDA-7). Where it takes a static handler there, a lambda whose values the build also
+	 * client in its screen lambdas; LAMBDA-7); one whose values need no placing gets {@link #staticHandlerRepairs}' bridge
+	 * instead. Where it takes a static handler there, a lambda whose values the build also
 	 * reorders gets the same bridge, which then passes the handler the values only (Forge 66's
 	 * {@code SimpleJsonResourceReloadListener.prepare} lambda, which reads the listener's codec, for Fabric API's resource
 	 * conditions; LAMBDA-8). A {@code @ModifyArgs} handler, which takes Mixin's {@code Args} and then all of its target's
@@ -315,23 +320,25 @@ final class LambdaRepairs extends PreflightPart {
 		boolean isLambda = MixinNames.LAMBDA.matcher(lambda.name).matches();
 		boolean handlerStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
 		boolean lambdaStatic = (lambda.access & Opcodes.ACC_STATIC) != 0;
-		boolean takesThis = !modifyArgs && handlerStatic && !lambdaStatic && exactStaticInjects;
 		Type[] own = Type.getArgumentTypes(handler.desc);
 		// The values the handler takes: after the Args of a @ModifyArgs, before the callback info of an @Inject.
 		int first = modifyArgs ? 1 : 0;
 		int end = modifyArgs ? own.length : own.length - 1;
 		if (own.length < 2 || (modifyArgs ? !own[0].getDescriptor().equals(MixinNames.ARGS) || handlerStatic != lambdaStatic
 				: !PreflightAsm.isCallbackInfo(own[own.length - 1]))) return List.of();
-		// No handler that takes this takes a static method. A static one on a method that takes this is bridged where Mixin
-		// refuses it (takesThis) and where the values need placing (LAMBDA-8): the bridge takes this either way.
+		// No handler that takes this takes a static method. A static one on a method that takes this, where the values need
+		// placing, gets a bridge that takes this, whether the running Mixin refuses it (LAMBDA-7) or not (LAMBDA-8).
 		if (!handlerStatic && lambdaStatic) return List.of();
 		List<Type> wanted = List.of(own).subList(first, end);
 		List<Type> captured = List.of(Type.getArgumentTypes(lambda.desc));
 		// A patch captures a value or two more; a lambda taking many more is more likely another one under that name.
-		if (wanted.equals(captured) && !takesThis || captured.size() > wanted.size() + 2) return List.of();
-		int[] from = inOrder(wanted, captured);
+		if (wanted.equals(captured) || captured.size() > wanted.size() + 2) return List.of();
+		int[] from = inOrder(wanted, captured, Type::equals);
 		if (from == null && isLambda) from = byType(handler, first, wanted, captured);
 		if (from == null && isLambda) from = byUse(vanillaLambdaTaking(target.name, wanted, lambda), lambda, wanted, captured);
+		boolean upcast = from == null;
+		if (upcast) from = inOrder(wanted, captured, (type, value) -> type.equals(value)
+				|| type.getSort() == Type.OBJECT && value.getSort() == Type.OBJECT && isSubtype(value.getInternalName(), type.getInternalName()));
 		if (from == null) return List.of();
 
 		// The bridge takes what the method takes, with the handler's Args before it or its callback info after it.
@@ -364,13 +371,47 @@ final class LambdaRepairs extends PreflightPart {
 		values.set(0, lambda.name + lambda.desc);
 		HandlerBridges.moveInjector(handler, injector, bridge);
 		bridges.add(bridge);
-		if (wanted.equals(captured)) {
-			return List.of(lambda.name + lambda.desc + ", which this game build declares taking this, where " + loader
-					+ "'s Mixin refuses a static handler; a bridge taking this calls the handler");
+		if (upcast && wanted.size() == captured.size()) {
+			List<String> narrowed = new ArrayList<>();
+			for (int i = 0; i < from.length; i++) {
+				if (!wanted.get(i).equals(captured.get(from[i]))) narrowed.add(captured.get(from[i]).getClassName() + " for " + wanted.get(i).getClassName());
+			}
+			return List.of(lambda.name + lambda.desc + ", which this game build declares taking a subtype of what the handler takes ("
+					+ String.join(", ", narrowed) + "); a bridge passes the handler the values it takes");
 		}
 		return List.of(lambda.name + lambda.desc + (isLambda ? ", whose captured values this game build passes in another order or with more"
 				: ", which this game build declares with more parameters") + (handlerStatic && !lambdaStatic ? ", taking this" : "")
 				+ "; a bridge passes the handler the ones it takes");
+	}
+
+	/**
+	 * Gives a static {@code @Inject} handler a bridge taking {@code this} ({@link HandlerBridges#instanceBridge}), where the
+	 * running Mixin refuses a static handler on a method that takes {@code this}, as SpongePowered's 0.8.5 (Forge 47's)
+	 * does, and every method the injector selects takes it. Fabric's Mixin, and SpongePowered's from 0.8.6, take such a
+	 * handler and call it without {@code this}; a static handler can't use it, and none declares it (Mixin passes it to
+	 * none). Forge 47's {@code MouseHandler} patch made the screen click and release lambdas take {@code this}, where
+	 * vanilla's are static (LAMBDA-7), and Architectury's hooks name them twice, by javac's name and vanilla's
+	 * (LAMBDA-12). Returns the methods described, or nothing.
+	 */
+	List<String> staticHandlerRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx,
+			List<MethodNode> bridges) {
+		if (!exactStaticInjects || !injector.desc.equals(MixinNames.INJECT) || (handler.access & Opcodes.ACC_STATIC) == 0
+				|| (mixin.access & Opcodes.ACC_INTERFACE) != 0 || !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
+		for (Object selector : selectors) {
+			// A method the mixin adds may be static: not judged.
+			if (!(selector instanceof String raw) || PreflightAsm.addsMethod(mixin, MemberRef.parse(ctx.resolve(raw)))) return List.of();
+		}
+		List<String> methods = new ArrayList<>();
+		for (ClassNode target : targets) {
+			for (MethodNode m : PreflightAsm.selectedMethods(injector, target, ctx)) {
+				if ((m.access & Opcodes.ACC_STATIC) != 0) return List.of();
+				methods.add(m.name + m.desc);
+			}
+		}
+		if (methods.isEmpty()) return List.of();
+		bridges.add(HandlerBridges.instanceBridge(mixin.name, handler, injector, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
+		return List.of(String.join(", ", methods) + ", which this game build declares taking this, where " + loader
+				+ "'s Mixin refuses a static handler; a bridge taking this calls the handler");
 	}
 
 	/**
@@ -511,15 +552,18 @@ final class LambdaRepairs extends PreflightPart {
 			if (method.desc.equals(ref.desc())) return List.of();
 			List<Type> params = List.of(Type.getArgumentTypes(method.desc));
 			if (!Type.getReturnType(method.desc).equals(returned) || params.size() <= named.size() || params.size() > named.size() + 2
-					|| inOrder(named, params) == null) continue;
+					|| inOrder(named, params, Type::equals) == null) continue;
 			if (found != null) return List.of();
 			found = method;
 		}
 		return found == null ? List.of() : List.of(found);
 	}
 
-	/** Where each of {@code wanted} is in {@code captured}, taken in order, when they occur in it that way only once; else null. */
-	private static int[] inOrder(List<Type> wanted, List<Type> captured) {
+	/**
+	 * Where each of {@code wanted} is in {@code captured}, taken in order, when they occur in it that way only once; else
+	 * null. A value of {@code captured} takes the place of one of {@code wanted} where {@code fits} holds of the two.
+	 */
+	private static int[] inOrder(List<Type> wanted, List<Type> captured, BiPredicate<Type, Type> fits) {
 		int n = wanted.size();
 		int m = captured.size();
 		// ways[i][j]: in how many ways (up to 2) wanted from i on occurs in order in captured from j on.
@@ -527,13 +571,13 @@ final class LambdaRepairs extends PreflightPart {
 		for (int j = 0; j <= m; j++) ways[n][j] = 1;
 		for (int i = n - 1; i >= 0; i--) {
 			for (int j = m - 1; j >= 0; j--) {
-				ways[i][j] = Math.min(2, ways[i][j + 1] + (wanted.get(i).equals(captured.get(j)) ? ways[i + 1][j + 1] : 0));
+				ways[i][j] = Math.min(2, ways[i][j + 1] + (fits.test(wanted.get(i), captured.get(j)) ? ways[i + 1][j + 1] : 0));
 			}
 		}
 		if (ways[0][0] != 1) return null;
 		int[] from = new int[n];
 		for (int i = 0, j = 0; i < n; j++) {
-			if (wanted.get(i).equals(captured.get(j)) && ways[i + 1][j + 1] == 1) from[i++] = j;
+			if (fits.test(wanted.get(i), captured.get(j)) && ways[i + 1][j + 1] == 1) from[i++] = j;
 		}
 		return from;
 	}

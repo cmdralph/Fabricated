@@ -448,7 +448,11 @@ final class MixinRepairs extends PreflightPart {
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> {
 				List<String> captured = lambdas.capturedValueRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges());
 				return captured.isEmpty() ? LambdaRepairs.addedParameterRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()) : captured;
-			}, (s, lambda) -> s.named() + " targets " + lambda));
+			}, (s, lambda) -> s.named() + " targets " + lambda),
+			RepairStep.stopIfMoved(),
+			// A static handler the running Mixin refuses on what takes this, once nothing else needs bridging (LAMBDA-12).
+			RepairStep.warn(RepairScope.UNGROUPED, s -> lambdas.staticHandlerRepairs(s.mixin(), s.handler(), s.injector(), s.targets(), s.ctx(), s.bridges()),
+					(s, methods) -> s.named() + " targets " + methods));
 
 	/** The registry class the platform freezes before Fabric mods' main entrypoints (REG-8). */
 	static final String MAPPED_REGISTRY = "net/minecraft/core/MappedRegistry";
