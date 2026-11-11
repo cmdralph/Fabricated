@@ -123,6 +123,21 @@ final class MixinNames {
 	 */
 	static final String SEAM_START = "fabricated$start$";
 	static final String SEAM_END = "fabricated$end$";
+	/**
+	 * The prefix of a seam Fabricated's in-game mod adds to a game class for a read of one of its fields that vanilla's
+	 * constructor makes and the platform's doesn't, followed by the field's name, with the constructor's descriptor: it
+	 * holds vanilla's locals there, as vanilla's types, and reads the field; Fabricated's code calls it where the
+	 * platform's constructor has built what vanilla's had at the read, and Fabric mods' hooks at the read are pointed at
+	 * it ({@code SkippedCode.readSeamRepairs}, HUD-7). Pre-flight reads its code, as Mixin merges it.
+	 */
+	static final String SEAM_READ = "fabricated$read$";
+	/**
+	 * Mixin's mark on a method a mixin merged, with that mixin's name and priority: Mixin lets an injector of another mixin
+	 * inject there at a call or a field access only where that mixin's priority is higher ({@code Injector.findTargetNodes}).
+	 */
+	static final String MIXIN_MERGED = "Lorg/spongepowered/asm/mixin/transformer/meta/MixinMerged;";
+	/** The priority of a mixin that sets none, nor its config ({@code IMixinConfig.DEFAULT_PRIORITY}). */
+	static final int DEFAULT_PRIORITY = 1000;
 
 	/** javac's name for a lambda body: the enclosing method's name and the lambda's index in the class. */
 	static final Pattern LAMBDA = Pattern.compile("lambda\\$(.+)\\$\\d+");

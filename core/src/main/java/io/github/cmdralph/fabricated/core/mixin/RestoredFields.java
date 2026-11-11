@@ -17,6 +17,8 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.commons.MethodRemapper;
+import org.objectweb.asm.commons.SimpleRemapper;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
@@ -35,7 +37,9 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * which a Fabric mod's accessor of the field invokes (CORPUS-37, CORPUS-94), and its own reads of the field call
  * (CORPUS-107), and the seams they add for a method the platform never calls ({@link MixinNames#SEAM_START},
  * {@link MixinNames#SEAM_END}), which Fabric mods' hooks into that method are pointed at (HUD-4); pre-flight reads their
- * declarations, not their code.
+ * declarations, not their code. A seam for a read the platform's constructor never makes ({@link MixinNames#SEAM_READ},
+ * HUD-7) keeps its code, its mixin's name made the game class's, and Mixin's mark of its mixin's priority, as Mixin
+ * merges it: pre-flight finds the read and the locals there that Fabric mods' hooks at it capture.
  */
 public final class RestoredFields {
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
@@ -95,7 +99,9 @@ public final class RestoredFields {
 				}
 			}
 			for (MethodNode method : more.methods()) {
-				if (node.methods.stream().noneMatch(m -> m.name.equals(method.name) && m.desc.equals(method.desc))) node.methods.add(declaration(method));
+				if (node.methods.stream().noneMatch(m -> m.name.equals(method.name) && m.desc.equals(method.desc))) {
+					node.methods.add(method.name.startsWith(MixinNames.SEAM_READ) ? method : declaration(method));
+				}
 			}
 			ClassWriter writer = new ClassWriter(0);
 			node.accept(writer);
@@ -105,6 +111,21 @@ public final class RestoredFields {
 
 	/** What Fabricated's mixins add to one game class. */
 	private record Added(List<FieldNode> fields, List<MethodNode> methods) {
+	}
+
+	/**
+	 * A method of {@code mixin}, of that priority, as Mixin merges it into {@code target}: the mixin's name in its code made
+	 * the target's, and Mixin's mark of a merged method on it.
+	 */
+	private static MethodNode merged(MethodNode method, String mixin, int priority, String target) {
+		MethodNode copy = new MethodNode(method.access, method.name, method.desc, method.signature,
+				method.exceptions == null ? null : method.exceptions.toArray(String[]::new));
+		method.accept(new MethodRemapper(copy, new SimpleRemapper(mixin, target)));
+		AnnotationNode merged = new AnnotationNode(MixinNames.MIXIN_MERGED);
+		merged.values = new ArrayList<>(List.of("mixin", mixin.replace('/', '.'), "priority", priority));
+		if (copy.visibleAnnotations == null) copy.visibleAnnotations = new ArrayList<>();
+		copy.visibleAnnotations.add(merged);
+		return copy;
 	}
 
 	/** A bridge as pre-flight reads it: its declaration, with a body returning its type's default value. */
@@ -177,6 +198,10 @@ public final class RestoredFields {
 			if (data == null) continue;
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, ClassReader.SKIP_CODE);
+			if (node.methods.stream().anyMatch(m -> m.name.startsWith(MixinNames.SEAM_READ))) {
+				node = new ClassNode();
+				new ClassReader(data).accept(node, 0);
+			}
 			List<FieldNode> fields = new ArrayList<>();
 			for (FieldNode field : node.fields) {
 				if ((field.access & Opcodes.ACC_SYNTHETIC) == 0 && Annotations.find(field, SHADOW) == null && Annotations.find(field, UNIQUE) == null) {
@@ -186,7 +211,8 @@ public final class RestoredFields {
 			List<MethodNode> methods = new ArrayList<>();
 			for (MethodNode method : node.methods) {
 				boolean bridge = method.name.startsWith(MixinNames.BRIDGE_GETTER) || method.name.startsWith(MixinNames.BRIDGE_SETTER)
-						|| method.name.startsWith(MixinNames.SEAM_START) || method.name.startsWith(MixinNames.SEAM_END);
+						|| method.name.startsWith(MixinNames.SEAM_START) || method.name.startsWith(MixinNames.SEAM_END)
+						|| method.name.startsWith(MixinNames.SEAM_READ);
 				if (bridge && (method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC)) == 0 && (method.access & Opcodes.ACC_PUBLIC) != 0
 						&& Annotations.find(method, SHADOW) == null) {
 					methods.add(method);
@@ -199,7 +225,10 @@ public final class RestoredFields {
 				if (!(target instanceof Type type)) continue;
 				Added into = added.computeIfAbsent(type.getInternalName(), k -> new Added(new ArrayList<>(), new ArrayList<>()));
 				into.fields().addAll(fields);
-				into.methods().addAll(methods);
+				for (MethodNode method : methods) {
+					into.methods().add(method.name.startsWith(MixinNames.SEAM_READ)
+							? merged(method, node.name, PreflightAsm.priority(node, config), type.getInternalName()) : method);
+				}
 			}
 		}
 	}

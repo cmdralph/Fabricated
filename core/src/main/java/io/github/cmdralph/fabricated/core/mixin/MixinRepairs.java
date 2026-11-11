@@ -412,6 +412,8 @@ final class MixinRepairs extends PreflightPart {
 					(s, moved) -> s.named() + " expects " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> SkippedCode.seamRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, seam) -> s.named() + " injects at " + seam),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> SkippedCode.readSeamRepairs(s.mixin(), s.injector(), s.target(), s.ctx()),
+					(s, seam) -> s.named() + " injects at " + seam),
 			RepairStep.stopIfMoved(),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> locals.vanillaLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, local) -> s.named() + " captures " + local),

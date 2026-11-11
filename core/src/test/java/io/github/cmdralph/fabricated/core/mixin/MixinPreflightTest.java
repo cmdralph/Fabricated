@@ -12200,6 +12200,200 @@ class MixinPreflightTest {
 		assertTrue(hookRepairs(vanilla, head, new ArrayList<>()).isEmpty());
 	}
 
+	private static final String MINECRAFT = "net/minecraft/client/Minecraft";
+	private static final String LAYERED_DRAW = "Lnet/minecraft/client/gui/LayeredDraw;";
+	private static final String LAYER_MANAGER = "Lnet/neoforged/neoforge/client/gui/GuiLayerManager;";
+	/** Vanilla's read of its root layer stack in {@code Gui}'s constructor, where Apoli adds its HUD layers. */
+	private static final String LAYERS_READ = "L" + GUI + ";layers:" + LAYERED_DRAW;
+
+	/**
+	 * {@code Gui} as NeoForge 21.1 builds it: its constructor keeps vanilla's root stack ({@code layers}) unread and builds
+	 * the HUD from layer managers it holds as locals; {@code reads} makes it read {@code layers} as vanilla's does, and a
+	 * {@code seam} priority adds Fabricated's seam for that read as a mixin of that priority merges it, with vanilla's two
+	 * stacks as locals (HUD-7).
+	 */
+	private static Map<String, byte[]> layerManagerGui(boolean reads, Integer seam) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, GUI, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "layers", LAYERED_DRAW, null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "layerManager", LAYER_MANAGER, null, null).visitEnd();
+		String desc = "(L" + MINECRAFT + ";)V";
+		MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", desc, null, null);
+		init.visitCode();
+		Label start = new Label();
+		init.visitLabel(start);
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		Label[] stored = new Label[2];
+		for (int i = 0; i < 2; i++) {
+			init.visitInsn(Opcodes.ACONST_NULL);
+			init.visitVarInsn(Opcodes.ASTORE, 2 + i);
+			init.visitLabel(stored[i] = new Label());
+		}
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitFieldInsn(Opcodes.GETFIELD, GUI, reads ? "layers" : "layerManager", reads ? LAYERED_DRAW : LAYER_MANAGER);
+		init.visitInsn(Opcodes.POP);
+		init.visitInsn(Opcodes.RETURN);
+		Label end = new Label();
+		init.visitLabel(end);
+		init.visitLocalVariable("this", "L" + GUI + ";", null, start, end, 0);
+		init.visitLocalVariable("minecraft", "L" + MINECRAFT + ";", null, start, end, 1);
+		for (int i = 0; i < 2; i++) init.visitLocalVariable("stack" + i, reads ? LAYERED_DRAW : LAYER_MANAGER, null, stored[i], end, 2 + i);
+		init.visitMaxs(0, 0);
+		init.visitEnd();
+		if (seam != null) {
+			MethodVisitor read = cw.visitMethod(Opcodes.ACC_PUBLIC, "fabricated$read$layers", desc, null, null);
+			AnnotationVisitor merged = read.visitAnnotation("Lorg/spongepowered/asm/mixin/transformer/meta/MixinMerged;", true);
+			merged.visit("mixin", "fabricated.mixin.GuiVanillaStacksMixin");
+			merged.visit("priority", seam);
+			merged.visitEnd();
+			read.visitCode();
+			Label from = new Label();
+			read.visitLabel(from);
+			Label[] made = new Label[2];
+			for (int i = 0; i < 2; i++) {
+				read.visitInsn(Opcodes.ACONST_NULL);
+				read.visitVarInsn(Opcodes.ASTORE, 2 + i);
+				read.visitLabel(made[i] = new Label());
+			}
+			read.visitVarInsn(Opcodes.ALOAD, 0);
+			read.visitFieldInsn(Opcodes.GETFIELD, GUI, "layers", LAYERED_DRAW);
+			read.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Objects", "requireNonNull", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
+			read.visitInsn(Opcodes.POP);
+			read.visitInsn(Opcodes.RETURN);
+			Label to = new Label();
+			read.visitLabel(to);
+			read.visitLocalVariable("this", "L" + GUI + ";", null, from, to, 0);
+			read.visitLocalVariable("minecraft", "L" + MINECRAFT + ";", null, from, to, 1);
+			read.visitLocalVariable("first", LAYERED_DRAW, null, made[0], to, 2);
+			read.visitLocalVariable("second", LAYERED_DRAW, null, made[1], to, 3);
+			read.visitMaxs(0, 0);
+			read.visitEnd();
+		}
+		cw.visitEnd();
+		ClassWriter minecraft = new ClassWriter(0);
+		minecraft.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, MINECRAFT, null, "java/lang/Object", null);
+		minecraft.visitEnd();
+		return Map.of(GUI, cw.toByteArray(), MINECRAFT, minecraft.toByteArray());
+	}
+
+	/**
+	 * A mixin of {@link #GUI} whose {@code @Inject} handler {@code hook} goes into its constructor at {@code at}, taking the
+	 * constructor's {@code Minecraft}, its callback info and a {@code LayeredDraw}, an {@code @Local} of ordinal 0 unless
+	 * {@code captured} (the method's locals, then its handler takes both stacks), as Apoli's {@code InGameHudMixin} does;
+	 * the mixin has Mixin's default priority unless {@code priority} says otherwise.
+	 */
+	private static byte[] layersHook(Consumer<AnnotationVisitor> at, boolean captured, Integer priority) {
+		String desc = "(L" + MINECRAFT + ";" + CALLBACK + LAYERED_DRAW + (captured ? LAYERED_DRAW : "") + ")V";
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Hook", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(GUI));
+		values.visitEnd();
+		if (priority != null) m.visit("priority", priority);
+		m.visitEnd();
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "hook", desc, null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, true);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "<init>");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor point = ats.visitAnnotation(null, AT);
+		at.accept(point);
+		point.visitEnd();
+		ats.visitEnd();
+		if (captured) ann.visitEnum("locals", "Lorg/spongepowered/asm/mixin/injection/callback/LocalCapture;", "CAPTURE_FAILHARD");
+		ann.visitEnd();
+		if (!captured) {
+			mv.visitAnnotableParameterCount(3, false);
+			AnnotationVisitor local = mv.visitParameterAnnotation(2, LOCAL, false);
+			local.visit("ordinal", 0);
+			local.visitEnd();
+		}
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, Type.getArgumentsAndReturnSizes(desc) >> 2);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	private static Consumer<AnnotationVisitor> atLayersRead(Integer opcode) {
+		return at -> {
+			at.visit("value", "FIELD");
+			at.visit("target", LAYERS_READ);
+			if (opcode != null) at.visit("opcode", opcode);
+		};
+	}
+
+	@Test
+	void anInjectionAtAReadThePlatformsConstructorNeverMakesIsPointedAtFabricatedsSeam() throws Exception {
+		// HUD-7: NeoForge 21.1's Gui constructor builds the HUD from layer managers and never reads vanilla's root stack,
+		// where Apoli's hook adds its resource bars to the first stack it captures; Fabricated's mixin adds a seam for that
+		// read, holding vanilla's two stacks as locals, which it calls where NeoForge's constructor has built its own.
+		byte[] apoli = layersHook(atLayersRead(Opcodes.GETFIELD), false, null);
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Hook", apoli);
+		Map<String, byte[]> without = layerManagerGui(false, null);
+		List<PreflightFinding> leftOut = preflight(new ClassIndex(without::get), mod::get, ClassBytesSource.EMPTY, true)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Hook")), Refmap.EMPTY, Set.of());
+		assertEquals(1, leftOut.size(), leftOut.toString());
+		assertTrue(leftOut.get(0).message().contains("captures the local variable of type net.minecraft.client.gui.LayeredDraw, which <init> in"
+				+ " net.minecraft.client.gui.Gui does not declare"), leftOut.toString());
+		assertTrue(hookRepairs(without, apoli, new ArrayList<>()).isEmpty(), "no seam: nothing to point it at");
+
+		Map<String, byte[]> neoForge = layerManagerGui(false, Integer.MIN_VALUE);
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = hookRepairs(neoForge, apoli, notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.get(0).message().contains("@Inject hook injects at the read of layers in <init>(Lnet/minecraft/client/Minecraft;)V, which NeoForge's"
+				+ " constructor never makes; the injection point is pointed at Fabricated's seam fabricated$read$layers"), notes.toString());
+		AnnotationNode injector = hookInjector(repaired.get("com/example/mixin/Hook.class"));
+		assertEquals(List.of("fabricated$read$layers(Lnet/minecraft/client/Minecraft;)V"), Annotations.value(injector, "method"));
+		AnnotationNode at = Annotations.list(Annotations.value(injector, "at")).get(0);
+		assertEquals(LAYERS_READ, Annotations.value(at, "target"), "the seam makes vanilla's read");
+		Map<String, byte[]> repairedMod = Map.of("com/example/mixin/Hook", repaired.get("com/example/mixin/Hook.class"));
+		List<PreflightFinding> applied = preflight(new ClassIndex(neoForge::get), repairedMod::get, ClassBytesSource.EMPTY, true)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Hook")), Refmap.EMPTY, Set.of());
+		assertTrue(applied.isEmpty(), "it captures the first of the seam's stacks: " + applied);
+
+		// The method's locals captured whole: the seam's are vanilla's there.
+		byte[] captured = layersHook(atLayersRead(Opcodes.GETFIELD), true, null);
+		Map<String, byte[]> capturedRepaired = hookRepairs(neoForge, captured, new ArrayList<>());
+		assertEquals(List.of("fabricated$read$layers(Lnet/minecraft/client/Minecraft;)V"),
+				Annotations.value(hookInjector(capturedRepaired.get("com/example/mixin/Hook.class")), "method"));
+	}
+
+	@Test
+	void anInjectionElsewhereInTheConstructorOrAtAReadThePlatformMakesStaysWhereItIs() throws Exception {
+		// HUD-7: the seam stands for the read alone. A hook at the constructor's end, which NeoForge reaches once its
+		// stacks are its root's, or at any access of the field (its write too), is left as it is, and so is the hook
+		// where the constructor reads the field as vanilla's does (Forge 52). So is a hook whose mixin's priority isn't
+		// above the seam's: Mixin lets a mixin inject at a field access in a method another merged only then.
+		Map<String, byte[]> neoForge = layerManagerGui(false, Integer.MIN_VALUE);
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] atTail = layersHook(at("TAIL"), false, null);
+		assertTrue(hookRepairs(neoForge, atTail, notes).isEmpty(), notes.toString());
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Hook", atTail);
+		List<PreflightFinding> leftOut = preflight(new ClassIndex(neoForge::get), mod::get, ClassBytesSource.EMPTY, true)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Hook")), Refmap.EMPTY, Set.of());
+		assertEquals(1, leftOut.size(), leftOut.toString());
+		assertTrue(leftOut.get(0).message().contains("captures the local variable of type net.minecraft.client.gui.LayeredDraw, which <init>"),
+				leftOut.toString());
+		assertTrue(hookRepairs(neoForge, layersHook(atLayersRead(null), false, null), notes).isEmpty(), notes.toString());
+		byte[] apoli = layersHook(atLayersRead(Opcodes.GETFIELD), false, null);
+		assertTrue(hookRepairs(layerManagerGui(true, Integer.MIN_VALUE), apoli, notes).isEmpty(), notes.toString());
+		assertTrue(hookRepairs(layerManagerGui(false, 1000), apoli, notes).isEmpty(), notes.toString());
+		assertTrue(hookRepairs(neoForge, layersHook(atLayersRead(Opcodes.GETFIELD), false, Integer.MIN_VALUE), notes).isEmpty(), notes.toString());
+		assertEquals(1, hookRepairs(layerManagerGui(false, 1000), layersHook(atLayersRead(Opcodes.GETFIELD), false, 1001), notes).size());
+		// Nor does a selector matching any number of methods take the seam: Mixin leaves merged methods out of those.
+		byte[] anywhere = guiMixin("com/example/mixin/Hook", "(" + CALLBACK + ")V", "*", atLayersRead(Opcodes.GETFIELD), ann -> ann.visit("require", 1));
+		Map<String, byte[]> anywhereMod = Map.of("com/example/mixin/Hook", anywhere);
+		List<PreflightFinding> unmatched = preflight(new ClassIndex(neoForge::get), anywhereMod::get, ClassBytesSource.EMPTY, true)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Hook")), Refmap.EMPTY, Set.of());
+		assertEquals(1, unmatched.size(), unmatched.toString());
+	}
+
 	/** Pre-flight with no installed jars, and missing targets fatal unless said otherwise. */
 	private static MixinPreflight preflight(ClassIndex game, ClassBytesSource mod, ClassBytesSource untransformable, boolean clientSide) {
 		return preflight(game, mod, untransformable, clientSide, true);
