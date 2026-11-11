@@ -3,6 +3,95 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-11: The client parts' Mesa install past a package mirror that's down (CI-14); GitHub's actions on Node 24
+
+- **CI-14** (P3, CI only), fixed: every client and mods part failed before any test ran when one of the runner's package
+  sources was down (`archive.ubuntu.com` answering 503), as `apt-get update` reads every source. Each attempt now
+  installs Mesa's EGL packages from the image's package lists first, and refreshes them only where that fails.
+- The workflows use the first major of each GitHub action that runs on Node 24, where Node 20 is deprecated and was
+  forced onto Node 24 with a warning: `actions/checkout` and `actions/setup-java` v5, `actions/cache/restore` and
+  `actions/cache/save` v5, `actions/upload-artifact` v6 and `actions/download-artifact` v7. Their release notes list no
+  other change that applies here: the artifacts are downloaded by name or pattern, not by ID, whose extraction path
+  `download-artifact` v5 changed.
+
+## 2026-11-11: More of Fabric mods' interface mixins applied on Forge 47 (INTERFACE-2), hooks sharing a ThreadLocal left out together (ITEM-2)
+
+- **INTERFACE-2** (P1), fixed: Forge 47's Mixin (0.8.5) applies no injector in an interface mixin, and Fabricated
+  applied only an `@Inject` at `HEAD`, `RETURN` or `TAIL` there (INTERFACE-1). It now also applies an `@Inject` at a
+  call or a field access, shifted before or after it or not, capturing the locals Mixin works out there; a `@Redirect`
+  and MixinExtras' `@WrapOperation` of a call; and a `@ModifyConstant`; each with the target's parameters and
+  MixinExtras' `@Local` where Mixin takes them, as Mixin applies them on Forge 52 and 61 to 66, whose Mixin (0.8.7)
+  applies these itself. Pre-flight checks such a handler as it checks a class mixin's injector. Origins' armour
+  restriction, owo-lib's recipe remainders, Carpet's, ServerCore's and Wilder Wild's hooks apply on Forge 47; Porting
+  Lib's custom light and redstone and reach-entity-attributes' reach hooks stay left out, Forge 47 having replaced the
+  calls and the constant they hook. Other injectors, slices, `@Coerce` and `@Share` in an interface mixin stay left out
+  there, the report saying why. A `@WrapOperation` applies after the other handlers and wraps a call another one
+  replaced, as MixinExtras chains them, and a second `@ModifyConstant` of a constant modifies it first, as Mixin does; a
+  second `@Redirect` of a call, or a `@Local` the locals there don't tell, leaves the handler out there with a warning
+  instead of failing the class, and the locals handlers are given leave out Fabricated's own temporaries. A `@Constant`
+  class a cast or an instanceof check names is left out, where it made a class that didn't verify.
+- **ITEM-2** (P2), fixed: Fabric API's recipe remainder mixin applied two of its four handlers on Forge 52, and since
+  INTERFACE-2 on Forge 47, Forge having replaced the calls of the other two: the two applying hand a stack's remainder
+  over through a `ThreadLocal`, which put Fabric's default remainder over a Forge item's own in crafting. A failing
+  injector now takes with it the injectors of its mixin that share a `ThreadLocal` of the mod's that one of them stores
+  into, each only where its own failure, under its own `require`, would leave it out: one whose failure would disable
+  the mod stays, the report saying so. A `ThreadLocal` is stored into where its value, followed on the stack and through
+  the locals, is set or removed. A config's plain static field, or a `ThreadLocal` the injectors only read (Fabric API's
+  fluid render hooks), groups nothing.
+- Forge 47's test mod has an interface mixin into `Container` with each of these, checked by
+  `forge-legacy-interface-inject`, `-redirect`, `-wrap-operation` and `-constant`.
+- Verified: core's tests (`InterfaceInjectsTest`, a test per kind), CI's script tests and the mixin inventory; Forge 47
+  builds. Locally on Forge 47 the server and client parts pass, the four checks among them; the advanced corpus server
+  leaves out 4 interface hooks where the release's left out 12, and the corpus server 6 where it left out 9, every other
+  hook left out, mod disabled and entrypoint failing as in the release's runs. With ITEM-2 (`MixinPreflightTest`, a case
+  for each), Fabric API's `captureStack` and `getStackRemainder` alone join what is left out: on Forge 47's advanced
+  corpus server (169 to 171) and corpus server (99 to 101), and on Forge 52's corpus server (52 to 54, from the
+  release's run); Forge 52's server part passes. Core's tests also cover the chained handlers, the `@Local`s left out,
+  the class constants, a partner kept, one requiring nothing and the value followed; with those, Forge 47's server part
+  passes again, and its advanced corpus server leaves out the same hooks, disables the same mods and fails the same
+  entrypoints.
+
+## 2026-11-11: Pre-flight's bridges for a supertype and a static handler, instanceof constants, a plugin's own choices
+
+- **LAMBDA-11** (P1), fixed: JEI's and owo-lib's char typed hooks take the `GuiEventListener` vanilla's
+  `KeyboardHandler.charTyped` lambdas take, which NeoForge 21.1's, Forge 47's and Forge 52's pass as a `Screen`; they
+  were left out. Pre-flight's bridge passes a parameter of the platform's method to a handler taking a supertype of it,
+  where the handler takes exactly what vanilla's method takes (by its selector's descriptor, inline or the refmap's, or
+  vanilla's method of that name), as Fabric's Mixin requires.
+- **LAMBDA-12** (P1), fixed: Forge 47's Mixin refuses a static `@Inject` handler on a method that takes `this`, which
+  Fabric's Mixin calls without it; Architectury's screen click and release hooks, which name their lambda twice, were
+  left out. Such a handler gets a bridge taking `this`.
+- **PRE-29** (P2), fixed: pre-flight refused a `@ModifyConstant` of an `instanceof`, whose handler takes the object and
+  the class, and left Lithium's collision context mixin out on every platform. It takes the two shapes Mixin takes where
+  Mixin finds an `instanceof` for the constant, and leaves out a mixin whose class constant Mixin finds as a cast, which
+  it refuses, or as an instruction the handler doesn't fit; it counts a cast and an `instanceof` among a class's
+  constants, as Mixin does.
+- **LEAVE-4** (P3), fixed: the mixins a config's own plugin turns down, as Mixin asks it which to apply, are listed
+  apart from those pre-flight left out and not counted in the mod's row: Pehkui's version-specific mixins, most of its
+  164 to 220 lines a run on 1.20.1 and 1.21.1. Nothing asks a plugin anything: translation makes it hand Fabricated the
+  answers it gives Mixin, and turn down, whatever it answers, a mixin pre-flight left out whole, which stays listed for
+  Mixin to ask about. That mixin is an empty interface in the translated jar, so it applies nothing where Mixin applies
+  it all the same: every mixin of a config whose plugin fails to load, or one whose plugin another jar's copy serves.
+- Forge's in-game mod writes the report once the Fabric entrypoints have run, failures or not, as NeoForge's does as
+  loading completes: a client whose mods all started kept discovery's report, from before the plugins answered.
+- The shared test mod checks each on every platform's server runs: a handler taking the `Property` vanilla's chiseled
+  bookshelf lambda takes (bridged where NeoForge's recompiled game, 21.11 and later, takes a `BooleanProperty`), a
+  static handler, an `instanceof` constant, and two mixins pre-flight leaves out in its plugin's config, one the plugin
+  turns down; a broken test mod's plugin fails to load, and the mixin pre-flight left out of its config applies nothing.
+- Verified: core's tests, CI's script tests and the mixin inventory; NeoForge 1.21.1, NeoForge 26.1.2, Forge 47 and
+  Forge 66 build. Locally the new checks pass on the NeoForge 1.21.1, Forge 47 and Forge 66 servers. Against the release
+  run (42805036593), the left-out sections change only as these findings say: the NeoForge 1.21.1 corpus client lists
+  74 lines instead of 82 (JEI's and owo's char typed hooks, Lithium's, and ImmediatelyFast's `MixinGL11`, which its
+  plugin turns down, gone; the test mod's one added), the Forge 47 corpus client 173 instead of 184 (Architectury's four
+  mouse hooks gone too), and Pehkui's lines on the advanced server fall from 188 to 3 on NeoForge 1.21.1 and from 132 to
+  9 on Forge 47, each left one its plugin applies there.
+- Verified with those mixins inert, the constants' instructions checked and vanilla's types required: core's tests, CI's
+  script tests and the mixin inventory; NeoForge 1.21.1 and Forge 47 build, and their server parts pass, but for Forge
+  47's four interface mixin checks (INTERFACE-2), whose test mixins the forge-legacy branch doesn't have yet. On both
+  servers Mixin logs the broken test mod's plugin failing, mixes the inert mixin into `MinecraftServer`, and the server
+  starts. Forge 47's advanced corpus server keeps Pehkui's 9 left-out lines and the 79 mixins its plugin leaves out;
+  its corpus server applies Lithium's two `instanceof` hooks.
+
 ## 2026-11-11: Fabric's conditional overlays on the packs of mods built for both loaders (PACK-12)
 
 - **PACK-12** (P0), fixed: with Fabric API, a NeoForge mod's built-in pack declaring both loaders' conditional overlays

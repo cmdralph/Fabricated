@@ -19,8 +19,8 @@ import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 
-/** Game calls the shared test mod parts make, as Minecraft 1.20.1 names them. */
-final class TestCompat {
+/** Game calls the shared test mod parts make, as Minecraft 1.20.1 names them. Public for the test mod's mixins, in another package. */
+public final class TestCompat {
 	/**
 	 * Why another mod's fabric-resource-loader-v0 leaves a built-in resource pack its mod enables by default unselected, as
 	 * its source reads (PROVIDER-8); null where it doesn't.
@@ -33,6 +33,13 @@ final class TestCompat {
 	 * ladder does ({@code fabric:can_climb_trapdoor_above}): Fabric API 0.92, 1.20.1's, has none.
 	 */
 	static final boolean TRAPDOOR_CLIMBING_TAG = false;
+
+	/**
+	 * Vanilla's lambda in {@code ChiseledBookShelfBlock.createBlockStateDefinition} that adds each slot's property, by its
+	 * name and descriptor in Minecraft 1.20.1, taking a {@code Property} (LAMBDA-11).
+	 */
+	public static final String PROPERTY_LAMBDA = "lambda$createBlockStateDefinition$0(Lnet/minecraft/world/level/block/state/StateDefinition$Builder;"
+			+ "Lnet/minecraft/world/level/block/state/properties/Property;)V";
 
 	private TestCompat() {
 	}

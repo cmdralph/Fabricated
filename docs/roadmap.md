@@ -232,6 +232,7 @@ Forge 52): on 26.2 and 26.3 Xaero's World Map's world unload handler deadlocks w
 | Forge 47, advanced client | Bobby's client entrypoint throws `NoSuchMethodError` for its accessor of `OptionInstance$IntRange`'s `maxInclusive`, which pre-flight left out under its intermediary name (fifth round) | Fixed (REMAP-5), on a local Forge 47 advanced client |
 | Forge 47, advanced corpus | Past MODIFIER-3 and JAVA-1, the server and the client's integrated server stop creating their worlds: BCLib sets a final field of `BiomeGenerationSettings` | Fixed (BIOME-6): a local Forge 47 advanced server starts, every check passing; the advanced client's integrated server then stopped as a structure's barrel was placed: fixed (POI-4), the client joins its world and waits on Origins' screen, as on Forge 52 (CORPUS-66), or, in one of two local runs, loses its connection in a race of Polymer's and Fabric API's (NET-14, not Fabricated's). BCLib's loot pools, made with vanilla's constructor, are made with Forge's there, and BetterNether's bartering table is built (LOOT-3) |
 | Forge 47, 52 and 61 to 66 | The advanced corpus didn't run on Forge | Runs on every Forge version in the extended runs (informational), with the main corpus's drops; its results set what task 4 takes on next |
+| Forge 47, corpus and advanced corpus | Hooks in Fabric mods' interface mixins other than an `@Inject` at `HEAD`, `RETURN` or `TAIL` left out: Origins' armour restriction, owo-lib's recipe remainders, Carpet's, ServerCore's, Wilder Wild's, Porting Lib's custom light and redstone, reach-entity-attributes' (the v0.6.0-beta.2 release's corpus runs) | Fixed (INTERFACE-2): Fabricated applies `@Inject`s at calls and fields, capturing locals or not, `@Redirect`s, `@WrapOperation`s and `@ModifyConstant`s there; on local Forge 47 servers Apoli's, owo-lib's, Carpet's, ServerCore's and Wilder Wild's apply. Porting Lib's two and reach-entity-attributes' two stay out: Forge 47 replaced the calls and the constant they hook. Fabric API's recipe remainder hook is left out whole, as on Forge 52, its handlers sharing a ThreadLocal (ITEM-2) |
 
 ## Not in this pass
 
@@ -289,6 +290,9 @@ Candidates, each waiting for a mod or a report that needs it:
   Forge 52 and 61 to 66 (checked on a local Forge 47 server), LOADER-6 on Forge 52 and 61 (checked on a local Forge
   66 client), SEC-11 and MIXCFG-1 in the Forge 47 advanced corpus (checked on a local Forge 47 client with ReplayMod),
   CTOR-7 on Forge 61 and 64 to 65, and ImmediatelyFast's client hook (checked on a local Forge 66 server).
+- INTERFACE-2 and ITEM-2 on the Forge 47 and 52 client corpora (the server corpora checked locally), and a second
+  redirect or wrap of one call by Fabricated's handlers, which it skips with a warning where MixinExtras chains
+  wrappers (no corpus mod has one).
 - HUD-6 with Apoli's own bars in a drawing of the HUD (no origin is chosen in the Forge 52 advanced client's world; the
   test mod's layer of the same shape is checked there); MODIFIER-3 on Forge 61, 65 and 66 (no corpus jar carries Forge
   modifiers there), and ACC-6's call from another mod on Forge 61 to 66 (a local Forge 66 advanced server starts with

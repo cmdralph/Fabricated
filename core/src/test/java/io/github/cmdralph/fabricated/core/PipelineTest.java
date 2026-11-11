@@ -1919,14 +1919,17 @@ class PipelineTest {
 		Map<String, String> injectors = Map.of(
 				"org/spongepowered/asm/mixin/injection/Inject.java",
 				"package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); }",
-				"org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); }",
+				"org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); String target() default \"\"; }",
+				"org/spongepowered/asm/mixin/injection/Redirect.java",
+				"package org.spongepowered.asm.mixin.injection; public @interface Redirect { String[] method(); At at(); }",
 				"org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable.java",
 				"package org.spongepowered.asm.mixin.injection.callback; public class CallbackInfoReturnable<R> { }");
 		String hook = """
 				@Inject(method = "create", at = @At("INVOKE"))
 				private static void onCreate(Object data, CallbackInfoReturnable<net.minecraft.client.Tooltip> info) { }""";
 		Map<String, byte[]> classes = TestSources.compile(game.resolve("build"), TestSources.MIXIN_ANNOTATIONS, injectors, Map.of(
-				"net/minecraft/client/Tooltip.java", "package net.minecraft.client; public interface Tooltip { static Tooltip create(Object data) { return null; } }",
+				"net/minecraft/client/Tooltip.java", "package net.minecraft.client; public interface Tooltip { static Tooltip create(Object data) { return of(data); }"
+						+ " static Tooltip of(Object data) { return null; } }",
 				"com/apple/Bridge.java", "package com.apple; public interface Bridge<T> { }",
 				"com/apple/mixin/TooltipMixin.java", """
 						package com.apple.mixin;
@@ -1981,20 +1984,24 @@ class PipelineTest {
 	@Test
 	void anInterfaceMixinsInjectAtHeadIsKeptForFabricatedToApplyWhereMixinDoesnt(@TempDir Path game) throws Exception {
 		// INTERFACE-1, CORPUS-91: Forge 47's Mixin 0.8.5 applies no injector in an interface mixin and drops one with a
-		// non-public method. An @Inject Fabricated applies itself (at HEAD, RETURN or TAIL) becomes a public synthetic method
-		// Mixin merges into the target, named for its mixin and marked with where it injects; Fabricated's Mixin extension calls
-		// it from there (InterfaceInjectsTest). CORPUS-96: Mixin takes an interface mixin whose methods are all synthetic for an
-		// accessor mixin and makes its target implement it, so the mixin, AppleSkin's shape, no longer extends its target, which
-		// would make that its own supertype (CORPUS-76's ClassCircularityError). A mixin with another injector Fabricated
-		// doesn't apply, left out, keeps the one it does: it isn't left out whole as adding nothing.
+		// non-public method. An injector Fabricated applies itself (an @Inject, a @Redirect...) becomes a public synthetic method
+		// Mixin merges into the target, named for its mixin, its injector one Mixin doesn't read (invisible, its selectors
+		// resolved), and marked; Fabricated's Mixin extension calls it from there (InterfaceInjectsTest). CORPUS-96: Mixin takes
+		// an interface mixin whose methods are all synthetic for an accessor mixin and makes its target implement it, so the
+		// mixin, AppleSkin's shape, no longer extends its target, which would make that its own supertype (CORPUS-76's
+		// ClassCircularityError). A mixin with another injector Fabricated doesn't apply, left out, keeps those it does: it isn't
+		// left out whole as adding nothing.
 		Map<String, String> injectors = Map.of(
 				"org/spongepowered/asm/mixin/injection/Inject.java",
 				"package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); boolean cancellable() default false; }",
-				"org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); }",
+				"org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); String target() default \"\"; }",
+				"org/spongepowered/asm/mixin/injection/Redirect.java",
+				"package org.spongepowered.asm.mixin.injection; public @interface Redirect { String[] method(); At at(); }",
 				"org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable.java",
 				"package org.spongepowered.asm.mixin.injection.callback; public class CallbackInfoReturnable<R> { }");
 		Map<String, byte[]> classes = TestSources.compile(game.resolve("build"), TestSources.MIXIN_ANNOTATIONS, injectors, Map.of(
-				"net/minecraft/client/Tooltip.java", "package net.minecraft.client; public interface Tooltip { static Tooltip create(Object data) { return null; } }",
+				"net/minecraft/client/Tooltip.java", "package net.minecraft.client; public interface Tooltip { static Tooltip create(Object data) { return of(data); }"
+						+ " static Tooltip of(Object data) { return null; } }",
 				"com/apple/mixin/TooltipMixin.java", """
 						package com.apple.mixin;
 						import org.spongepowered.asm.mixin.Mixin;
@@ -2016,6 +2023,8 @@ class PipelineTest {
 							private static void atHead(Object data, CallbackInfoReturnable<net.minecraft.client.Tooltip> info) { }
 							@Inject(method = "create", at = @At("INVOKE"))
 							private static void atCall(Object data, CallbackInfoReturnable<net.minecraft.client.Tooltip> info) { }
+							@Redirect(method = "create", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Tooltip;of(Ljava/lang/Object;)Lnet/minecraft/client/Tooltip;"))
+							private static net.minecraft.client.Tooltip of(Object data) { return null; }
 						}"""));
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path apple = TestJars.create().fabricModJson(TestJars.modJson("apple", "1.0", "\"mixins\":[\"apple.mixins.json\"]"))
@@ -2032,6 +2041,11 @@ class PipelineTest {
 		assertTrue(report.contains("@Inject handler onCreate(Ljava/lang/Object;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V is an"
 				+ " injector in an interface mixin, which Forge's Mixin doesn't apply (Mixin does from 0.8.6); Fabricated applies it as the mixin applies,"
 				+ " as Mixin would (INTERFACE-1)"), report);
+		assertTrue(report.contains("@Redirect handler of(Ljava/lang/Object;)Lnet/minecraft/client/Tooltip; is an injector in an interface mixin, which"
+				+ " Forge's Mixin doesn't apply (Mixin does from 0.8.6); Fabricated applies it as the mixin applies, as Mixin would (INTERFACE-1)"), report);
+		assertTrue(report.contains("@Inject handler atCall(Ljava/lang/Object;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V is an"
+				+ " injector in an interface mixin, which Forge's Mixin doesn't apply (Mixin does from 0.8.6); Fabricated applies @Inject, @Redirect,"
+				+ " @ModifyConstant and @WrapOperation injectors itself, but not this one: its @At(INVOKE) names no method plainly (INTERFACE-1)"), report);
 		assertTrue(report.contains("With its injectors made handlers Fabricated applies (INTERFACE-1), Mixin takes it for an accessor mixin and makes"
 				+ " net.minecraft.client.Tooltip implement it; it no longer extends net.minecraft.client.Tooltip, which would make that its own supertype"
 				+ " (CORPUS-76, CORPUS-96)"), report);
@@ -2042,7 +2056,8 @@ class PipelineTest {
 			assertTrue(listed.contains("\"TooltipMixin\"") && listed.contains("\"TooltipBoth\""), "the mixins stay listed: " + listed);
 			ClassNode both = new ClassNode();
 			new ClassReader(overlay.read("com/apple/mixin/TooltipBoth.class")).accept(both, 0);
-			assertEquals(List.of("fabricated$TooltipBoth$atHead"), both.methods.stream().map(m -> m.name).toList(), "the injector at a call is left out");
+			assertEquals(List.of("fabricated$TooltipBoth$atHead", "fabricated$TooltipBoth$of"), both.methods.stream().map(m -> m.name).toList(),
+					"the injector at a call naming none is left out");
 			ClassNode mixin = new ClassNode();
 			new ClassReader(overlay.read("com/apple/mixin/TooltipMixin.class")).accept(mixin, 0);
 			assertEquals(List.of(), mixin.interfaces, "it no longer extends its target");
@@ -2050,11 +2065,10 @@ class PipelineTest {
 			MethodNode handler = mixin.methods.stream().filter(m -> m.name.equals("fabricated$TooltipMixin$onCreate")).findFirst().orElseThrow();
 			assertEquals(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, handler.access);
 			assertNull(handler.visibleAnnotations == null ? null : Annotations.find(handler.visibleAnnotations, "Lorg/spongepowered/asm/mixin/injection/Inject;"));
-			assertNull(handler.invisibleAnnotations == null ? null : Annotations.find(handler.invisibleAnnotations, "Lorg/spongepowered/asm/mixin/injection/Inject;"));
-			AnnotationNode marker = Annotations.find(handler.invisibleAnnotations, "Lio/github/cmdralph/fabricated/InterfaceInject;");
-			assertEquals(List.of("net/minecraft/client/Tooltip create (Ljava/lang/Object;)Lnet/minecraft/client/Tooltip;"), Annotations.value(marker, "targets"));
-			assertEquals(List.of("HEAD"), Annotations.value(marker, "points"));
-			assertEquals(Boolean.TRUE, Annotations.value(marker, "cancellable"));
+			AnnotationNode inject = Annotations.find(handler.invisibleAnnotations, "Lorg/spongepowered/asm/mixin/injection/Inject;");
+			assertEquals(List.of("create"), Annotations.value(inject, "method"));
+			assertEquals(Boolean.TRUE, Annotations.value(inject, "cancellable"));
+			assertNotNull(Annotations.find(handler.invisibleAnnotations, "Lio/github/cmdralph/fabricated/InterfaceInject;"));
 		}
 
 		// Where Mixin applies injectors in interface mixins (from 0.8.6), they stay as the mod has them.
@@ -3076,6 +3090,194 @@ class PipelineTest {
 			new ClassReader(overlay.read("com/partial/mixin/Stateless.class")).accept(stateless, 0);
 			assertTrue(stateless.methods.stream().noneMatch(m -> m.name.equals("handler")), "its failing injector is left out");
 		}
+	}
+
+	/**
+	 * In a config whose plugin is in its mixin package (or one inside the other), a mixin pre-flight leaves out whole
+	 * stays listed, for Mixin to ask the plugin about it as on Fabric, and the plugin, as translated, turns it down
+	 * whatever it answers; the mixins the plugin turned down are then listed apart from those pre-flight left out, and no
+	 * longer counted in the mod's row (LEAVE-4). A plugin in a package apart from the mixin package's (a library's) is
+	 * left as it is, and its config's listing loses what pre-flight left out, as before.
+	 */
+	@Test
+	void theMixinsAConfigsPluginTurnsDownAreListedApartFromThoseLeftOut(@TempDir Path game) throws Exception {
+		ClassNode broken = new ClassNode();
+		new ClassReader(mixinClass("com/plugged/mixin/Broken", "tick")).accept(broken, 0);
+		org.objectweb.asm.tree.FieldNode shadow = new org.objectweb.asm.tree.FieldNode(Opcodes.ACC_PRIVATE, "missing", "I", null, null);
+		shadow.invisibleAnnotations = new ArrayList<>(List.of(new AnnotationNode("Lorg/spongepowered/asm/mixin/Shadow;")));
+		broken.fields.add(shadow);
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("plugged-mod", "1.0", "\"mixins\":[\"plugged.mixins.json\",\"elsewhere.mixins.json\"]"))
+				.text("plugged.mixins.json", "{\"required\":true,\"package\":\"com.plugged.mixin\",\"plugin\":\"com.plugged.mixin.Plugin\","
+						+ "\"mixins\":[\"Works\",\"Broken\",\"Stateless\"]}")
+				.text("elsewhere.mixins.json", "{\"required\":true,\"package\":\"com.plugged.other\",\"plugin\":\"com.library.Plugin\","
+						+ "\"mixins\":[\"Broken\"]}")
+				.bytes("com/plugged/mixin/Works.class", mixinClass("com/plugged/mixin/Works", "tick"))
+				.bytes("com/plugged/mixin/Broken.class", write(broken))
+				.bytes("com/plugged/mixin/Stateless.class", mixinClass("com/plugged/mixin/Stateless", "removedByNeoForge"))
+				.bytes("com/plugged/other/Broken.class", write(renamed(broken, "com/plugged/other/Broken")))
+				.bytes("com/plugged/mixin/Plugin.class", plugin("com/plugged/mixin/Plugin"))
+				.bytes("com/library/Plugin.class", plugin("com/library/Plugin"))
+				.write(game.resolve("mods/plugged.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		Report report = result.report();
+		assertTrue(result.runtime().isModLoaded("plugged-mod"), report.render());
+		String broke = "plugged-mod: LEFT_OUT [plugged.mixins.json com.plugged.mixin.Broken]";
+		String stateless = "plugged-mod: LEFT_OUT [plugged.mixins.json com.plugged.mixin.Stateless]";
+		assertTrue(report.render().contains(broke) && report.render().contains(stateless), report.render());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertFalse(overlay.contains("plugged.mixins.json"), "the config keeps its listing, Broken with it");
+			assertFalse(new String(overlay.read("elsewhere.mixins.json"), StandardCharsets.UTF_8).contains("Broken"), "left out of the other");
+			assertFalse(overlay.contains("com/library/Plugin.class"), "a plugin outside the mixin package's isn't observed");
+			ClassNode observed = new ClassNode();
+			new ClassReader(overlay.read("com/plugged/mixin/Plugin.class")).accept(observed, 0);
+			MethodNode answer = observed.methods.stream().filter(m -> m.name.equals("shouldApplyMixin")).findFirst().orElseThrow();
+			assertTrue(Arrays.stream(answer.instructions.toArray()).anyMatch(i -> i instanceof org.objectweb.asm.tree.LdcInsnNode ldc
+					&& "com.plugged.mixin.Broken".equals(ldc.cst)), "it turns down Broken");
+			assertInert(overlay.read("com/plugged/mixin/Broken.class"));
+			assertFalse(overlay.contains("com/plugged/other/Broken.class"), "left out of its config's listing, as it was");
+		}
+
+		// The plugin turned down Broken (left out whole) and Stateless (an injector left out): listed apart.
+		Pipeline.leftOutByPlugins(report, result.mods(), Set.of("com.plugged.mixin.Broken"));
+		String rendered = report.render();
+		assertFalse(rendered.contains(broke), rendered);
+		assertTrue(rendered.contains(stateless), rendered);
+		assertTrue(rendered.contains("plugged-mod: plugged.mixins.json's plugin leaves out 1 mixin(s): com.plugged.mixin.Broken"), rendered);
+		Report.ModRow row = report.mods().stream().filter(r -> r.id().equals("plugged-mod")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("2 mixin(s) left out in whole or in part"), row.detail());
+		Pipeline.leftOutByPlugins(report, result.mods(), Set.of("com.plugged.mixin.Broken", "com.plugged.mixin.Stateless", "com.plugged.other.Broken"));
+		rendered = report.render();
+		assertFalse(rendered.contains(stateless), rendered);
+		assertFalse(rendered.contains(Pipeline.leftOutSection("NeoForge")), "the section goes with its last line");
+		assertEquals(1, rendered.lines().filter(l -> l.contains("plugged.mixins.json's plugin leaves out")).filter(l -> l.contains(".Broken")).count(), rendered);
+		assertTrue(rendered.contains("plugged-mod: plugged.mixins.json's plugin leaves out 1 mixin(s): com.plugged.mixin.Stateless"), rendered);
+		row = report.mods().stream().filter(r -> r.id().equals("plugged-mod")).findFirst().orElseThrow();
+		assertFalse(row.detail().contains("left out in whole or in part"), row.detail());
+	}
+
+	/**
+	 * Mixin applies every mixin of a config whose plugin it couldn't load: its {@code PluginHandle} logs the error and then
+	 * answers yes for each. A mixin pre-flight left out whole that the config keeps listed for the plugin's answers is
+	 * inert in the translated jar, so applying it does nothing (LEAVE-4).
+	 */
+	@Test
+	void aMixinLeftOutWholeAppliesNothingWhereItsConfigsPluginFailsToLoad(@TempDir Path game) throws Exception {
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("plugged-mod", "1.0", "\"mixins\":[\"plugged.mixins.json\"]"))
+				.text("plugged.mixins.json", "{\"required\":true,\"package\":\"com.plugged.mixin\",\"plugin\":\"com.plugged.mixin.Plugin\","
+						+ "\"mixins\":[\"Works\",\"Broken\"]}")
+				.bytes("com/plugged/mixin/Works.class", mixinClass("com/plugged/mixin/Works", "tick"))
+				.bytes("com/plugged/mixin/Broken.class", brokenMixin("com/plugged/mixin/Broken"))
+				.bytes("com/plugged/mixin/Plugin.class", plugin("com/plugged/mixin/Plugin", true))
+				.write(game.resolve("mods/plugged.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertTrue(result.runtime().isModLoaded("plugged-mod"), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertFalse(overlay.contains("plugged.mixins.json"), "Broken stays listed");
+			assertFalse(overlay.contains("com/plugged/mixin/Works.class"), "what pre-flight kept is as it was");
+			assertInert(overlay.read("com/plugged/mixin/Broken.class"));
+			// The plugin, as translated, fails as Mixin constructs it: Mixin would then apply Works and Broken, and Broken has
+			// nothing to apply.
+			byte[] observed = overlay.read("com/plugged/mixin/Plugin.class");
+			ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+				@Override
+				protected Class<?> findClass(String name) throws ClassNotFoundException {
+					if (!name.equals("com.plugged.mixin.Plugin")) throw new ClassNotFoundException(name);
+					return defineClass(name, observed, 0, observed.length);
+				}
+			};
+			java.lang.reflect.InvocationTargetException failed = assertThrows(java.lang.reflect.InvocationTargetException.class,
+					() -> loader.loadClass("com.plugged.mixin.Plugin").getDeclaredConstructor().newInstance());
+			assertTrue(failed.getCause() instanceof IllegalStateException, failed.toString());
+		}
+	}
+
+	/**
+	 * A config's plugin in a package around its mixin package's (as the shared test mod's is) is observed, but the package
+	 * guard may serve another jar's copy of its class, which answers what it answers: the mixins pre-flight left out whole
+	 * that the config keeps listed are inert all the same (LEAVE-4).
+	 */
+	@Test
+	void aMixinLeftOutWholeAppliesNothingWhereAnotherJarsCopyOfItsConfigsPluginIsServed(@TempDir Path game) throws Exception {
+		Path library = TestJars.create().fabricModJson(TestJars.modJson("shared-library", "1.0", ""))
+				.bytes("com/shared/Plugin.class", plugin("com/shared/Plugin"))
+				.write(game.resolve("mods/library.jar"));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("plugged-mod", "1.0", "\"mixins\":[\"plugged.mixins.json\"],"
+						+ "\"depends\":{\"shared-library\":\"*\"}"))
+				.text("plugged.mixins.json", "{\"required\":true,\"package\":\"com.shared.mixin\",\"plugin\":\"com.shared.Plugin\","
+						+ "\"mixins\":[\"Works\",\"Broken\"]}")
+				.bytes("com/shared/mixin/Works.class", mixinClass("com/shared/mixin/Works", "tick"))
+				.bytes("com/shared/mixin/Broken.class", brokenMixin("com/shared/mixin/Broken"))
+				.bytes("com/shared/Plugin.class", plugin("com/shared/Plugin", true))
+				.write(game.resolve("mods/plugged.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(library, jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		Pipeline.LoadedMod plugged = result.mods().stream().filter(m -> m.translated().candidate().id().equals("plugged-mod")).findFirst().orElseThrow();
+		assertTrue(plugged.packages().excludedPackages().contains("com/shared"), "the library's copy of the plugin is served: " + plugged.packages());
+		try (SafeArchive overlay = SafeArchive.open(plugged.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertTrue(overlay.contains("com/shared/Plugin.class"), "observed, though another copy is served");
+			assertFalse(overlay.contains("plugged.mixins.json"), "Broken stays listed");
+			assertInert(overlay.read("com/shared/mixin/Broken.class"));
+		}
+	}
+
+	/** A mixin of {@link #TARGET} with a {@code @Shadow} of a field it doesn't have, which pre-flight leaves out whole. */
+	private static byte[] brokenMixin(String name) {
+		ClassNode broken = new ClassNode();
+		new ClassReader(mixinClass(name, "tick")).accept(broken, 0);
+		org.objectweb.asm.tree.FieldNode shadow = new org.objectweb.asm.tree.FieldNode(Opcodes.ACC_PRIVATE, "missing", "I", null, null);
+		shadow.invisibleAnnotations = new ArrayList<>(List.of(new AnnotationNode("Lorg/spongepowered/asm/mixin/Shadow;")));
+		broken.fields.add(shadow);
+		return write(broken);
+	}
+
+	/** Asserts that a mixin is an empty interface of {@link #TARGET}, as Mixin applies nothing of. */
+	private static void assertInert(byte[] mixin) {
+		ClassNode node = new ClassNode();
+		new ClassReader(mixin).accept(node, 0);
+		assertTrue((node.access & Opcodes.ACC_INTERFACE) != 0 && node.fields.isEmpty() && node.methods.isEmpty() && node.interfaces.isEmpty(), node.name);
+		assertEquals(List.of("Lorg/spongepowered/asm/mixin/Mixin;", "Lorg/spongepowered/asm/mixin/Pseudo;"),
+				node.invisibleAnnotations.stream().map(a -> a.desc).toList(), node.name);
+		assertEquals(List.of("value", List.of(Type.getObjectType(TARGET))), node.invisibleAnnotations.get(0).values, node.name);
+	}
+
+	/** {@code node} as the class {@code name}. */
+	private static ClassNode renamed(ClassNode node, String name) {
+		ClassNode copy = new ClassNode();
+		node.accept(copy);
+		copy.name = name;
+		return copy;
+	}
+
+	/** A mixin config plugin {@code name} whose {@code shouldApplyMixin} applies every mixin. */
+	private static byte[] plugin(String name) {
+		return plugin(name, false);
+	}
+
+	/** As {@link #plugin(String)}, its constructor throwing where {@code throwing} is (as one touching what isn't there). */
+	private static byte[] plugin(String name, boolean throwing) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null);
+		MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		init.visitCode();
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		if (throwing) {
+			init.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalStateException");
+			init.visitInsn(Opcodes.DUP);
+			init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/IllegalStateException", "<init>", "()V", false);
+			init.visitInsn(Opcodes.ATHROW);
+		} else {
+			init.visitInsn(Opcodes.RETURN);
+		}
+		init.visitMaxs(2, 1);
+		init.visitEnd();
+		MethodVisitor should = cw.visitMethod(Opcodes.ACC_PUBLIC, "shouldApplyMixin", "(Ljava/lang/String;Ljava/lang/String;)Z", null, null);
+		should.visitCode();
+		should.visitInsn(Opcodes.ICONST_1);
+		should.visitInsn(Opcodes.IRETURN);
+		should.visitMaxs(1, 3);
+		should.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
 	}
 
 	/**

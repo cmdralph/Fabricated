@@ -19,8 +19,9 @@ import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 
 /**
- * The test mod's mixin config plugin: checks that Fabric's start-up order held (its language adapter ran first), and
- * adds an entrypoint to Fabric Loader's storage as FrozenLib's plugin does ({@link AddedEntrypoint}). It loads no game
+ * The test mod's mixin config plugin: checks that Fabric's start-up order held (its language adapter ran first), adds
+ * an entrypoint to Fabric Loader's storage as FrozenLib's plugin does ({@link AddedEntrypoint}), and turns down
+ * {@code PluginRejectedMixin}, as Pehkui's plugin turns down the mixins of other versions (LEAVE-4). It loads no game
  * class (not even through {@code TestMod}): Mixin is still starting.
  */
 public final class TestMixinPlugin implements IMixinConfigPlugin {
@@ -40,7 +41,7 @@ public final class TestMixinPlugin implements IMixinConfigPlugin {
 
 	@Override
 	public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-		return true;
+		return !mixinClassName.endsWith(".PluginRejectedMixin");
 	}
 
 	@Override

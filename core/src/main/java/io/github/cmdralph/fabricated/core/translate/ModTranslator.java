@@ -669,6 +669,8 @@ public final class ModTranslator {
 		Map<String, Integer> implementors = new HashMap<>();
 		// The accessor mixins into library classes that generated classes serve, kept in their configs (LIB-1b).
 		Set<String> servedAccessors = new HashSet<>();
+		// The configs' plugins that tell what they answer Mixin, by class file, with the mixins they turn down (LEAVE-4).
+		Map<String, Set<String>> observedPlugins = new TreeMap<>();
 
 		List<MixinEntry> allConfigs = new ArrayList<>(md.compatHints().mixinsOr(md.mixins()));
 		allConfigs.addAll(generatedConfigs);
@@ -741,7 +743,10 @@ public final class ModTranslator {
 					enumTargets);
 			skip = withLibraryBridges(entry.config(), config, skip, translated, entries, overlay, findings, ducks, adapted, implementors, servedAccessors);
 			overlay.putAll(repairs(preflight, relocated, entry.config(), config, refmap, skip, translated, findings));
+			// The mixins pre-flight leaves out whole that stay listed, for Mixin to ask the config's plugin about (LEAVE-4).
+			Set<String> askPlugin = new TreeSet<>();
 			if (!override.ignorePreflight()) {
+				Set<String> chosen = skip;
 				List<PreflightFinding> checked = new ArrayList<>(relocated.relocated(preflight.check(entry.config(), config, refmap, skip)));
 				// Their targets are library classes, which Mixin never applies them to: the generated classes stand in.
 				checked.removeIf(f -> servedAccessors.contains(f.mixin()));
@@ -758,9 +763,31 @@ public final class ModTranslator {
 				}
 				for (String whole : leaveOutHandlers(entry.config(), handlers, true, translated, overlay, findings)) leftOut.add(relativeMixin(config, whole));
 				if (leftOut.size() > skip.size()) skip = withDependents(entry.config(), config, leftOut, translated, findings, served(ducks, adapted));
+				String plugin = observedPlugin(config, translated);
+				if (plugin != null && checked.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
+					Set<String> asked = new TreeSet<>(observedPlugins.getOrDefault(plugin, Set.of()));
+					for (String mixin : skip) {
+						if (!chosen.contains(mixin) && isMixin(translated.read(config.internalName(mixin) + ".class"))) {
+							asked.add(config.internalName(mixin).replace('/', '.'));
+							askPlugin.add(mixin);
+						}
+					}
+					if (ObservedPlugins.canName(asked)) {
+						observedPlugins.put(plugin, asked);
+						// Mixin may apply them all the same: a plugin it can't load answers yes for each.
+						for (String mixin : askPlugin) {
+							String path = config.internalName(mixin) + ".class";
+							overlay.put(path, ObservedPlugins.inert(translated.read(path)));
+						}
+					} else {
+						askPlugin.clear();
+					}
+				}
 			}
-			if (!skip.isEmpty() || rewritten) {
-				overlay.put(entry.config(), config.withoutMixins(skip).getBytes(StandardCharsets.UTF_8));
+			Set<String> unlisted = new TreeSet<>(skip);
+			unlisted.removeAll(askPlugin);
+			if (!unlisted.isEmpty() || rewritten) {
+				overlay.put(entry.config(), config.withoutMixins(unlisted).getBytes(StandardCharsets.UTF_8));
 			}
 			for (String mixin : config.mixinsFor(env.clientSide())) {
 				ClassNode node = skip.contains(mixin) ? null : classes.apply(config.internalName(mixin));
@@ -776,6 +803,13 @@ public final class ModTranslator {
 			if (!added.contains(entry)) specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
 		pluginMixins(entries, configs, refmaps, preflight, relocated, !override.ignorePreflight(), translated, overlay, findings);
+		for (Map.Entry<String, MixinConfigFile> e : configs.entrySet()) {
+			String plugin = observedPlugin(e.getValue(), translated);
+			if (plugin != null && findings.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && e.getKey().equals(f.config()))) {
+				observedPlugins.putIfAbsent(plugin, Set.of());
+			}
+		}
+		for (Map.Entry<String, Set<String>> e : observedPlugins.entrySet()) overlay.put(e.getKey(), ObservedPlugins.observe(translated.read(e.getKey()), e.getValue()));
 		if (!ducks.isEmpty()) {
 			// The mod's uses of the interfaces, and the bridges' own (one may use another's), call the bridges.
 			Set<String> classesToRewrite = new LinkedHashSet<>(entries);
@@ -969,6 +1003,31 @@ public final class ModTranslator {
 			if (shaped.note() != null) findings.add(new PreflightFinding(Severity.INFO, configName, dotted, shaped.note(), ""));
 		}
 		return whole;
+	}
+
+	/**
+	 * The class file of a config's plugin where the mod's jar has it and Fabricated can observe its answers
+	 * ({@link ObservedPlugins}); null otherwise. Its package must be the config's mixin package, or one inside the other: a
+	 * plugin a library ships for its users' configs (MixinConstraints') may be in another jar too, whose copy the package
+	 * guard could serve instead, which would turn down nothing. A plugin in a package around the mixin package's may be
+	 * served from another jar too: the mixins its config keeps listed are {@link ObservedPlugins#inert} for that.
+	 */
+	private static String observedPlugin(MixinConfigFile config, FileView files) throws ArchiveException {
+		String plugin = config.plugin() == null ? "" : config.plugin().strip();
+		String own = plugin.contains(".") ? plugin.substring(0, plugin.lastIndexOf('.')) : "";
+		String mixins = config.mixinPackage() == null ? "" : config.mixinPackage();
+		if (own.isEmpty() || mixins.isEmpty() || !(own.equals(mixins) || mixins.startsWith(own + ".") || own.startsWith(mixins + "."))) return null;
+		String path = plugin.replace('.', '/') + ".class";
+		byte[] data = files.read(path);
+		return data != null && ObservedPlugins.observable(data) ? path : null;
+	}
+
+	/** Whether a class file is there and has a {@code @Mixin} annotation, which Mixin reads before it asks the plugin. */
+	private static boolean isMixin(byte[] data) {
+		if (data == null) return false;
+		ClassNode node = new ClassNode();
+		new ClassReader(data).accept(node, ClassReader.SKIP_CODE);
+		return Annotations.find(node.invisibleAnnotations, node.visibleAnnotations, Annotations.MIXIN) != null;
 	}
 
 	/**
