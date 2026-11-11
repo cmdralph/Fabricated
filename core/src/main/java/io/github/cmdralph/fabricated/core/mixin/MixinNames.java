@@ -59,13 +59,17 @@ final class MixinNames {
 	static final int THIS = Integer.MIN_VALUE;
 
 	/**
-	 * Fabric Loader's own calls, which its launcher adds to the game where it runs mods' entrypoints, to the call NeoForge's
-	 * build makes at that step, in the same method: Fabricated runs those entrypoints in NeoForge's mod loading. Mods inject
-	 * after them to run once every mod has initialized (owo-lib freezes its registries after the server's, HOOK-1).
+	 * Fabric Loader's own calls, which its launcher adds to the game where it runs mods' entrypoints, to the calls the
+	 * platforms' builds make at that step, in the same method: Fabricated runs those entrypoints in the platform's mod
+	 * loading. A game build makes one of them. Mods inject after them to run once every mod has initialized (owo-lib
+	 * freezes its registries after the server's, HOOK-1): the dedicated server's {@code Main.main} loads mods with
+	 * NeoForge's {@code ServerModLoader.load(boolean)} from 1.21.11, its {@code load()} on 1.21.1, and Forge's
+	 * {@code load()} on every Forge version (HOOK-4).
 	 */
-	static final Map<String, String> LOADER_HOOKS = Map.of(
+	static final Map<String, List<String>> LOADER_HOOKS = Map.of(
 			"Lnet/fabricmc/loader/impl/game/minecraft/Hooks;startServer(Ljava/io/File;Ljava/lang/Object;)V",
-			"Lnet/neoforged/neoforge/server/loading/ServerModLoader;load(Z)V");
+			List.of("Lnet/neoforged/neoforge/server/loading/ServerModLoader;load(Z)V", "Lnet/neoforged/neoforge/server/loading/ServerModLoader;load()V",
+					"Lnet/minecraftforge/server/loading/ServerModLoader;load()V"));
 
 	/** NeoForge's marker for the enums only its own enum extension system may extend. */
 	static final String EXTENSIBLE_ENUM = "net/neoforged/fml/common/asm/enumextension/IExtensibleEnum";

@@ -118,6 +118,11 @@ abstract class PreflightPart {
 		return classes.independentOf(mixin);
 	}
 
+	/** {@link PreflightClasses#stateGroupsOf} */
+	Map<String, MixinPreflight.StateGroup> stateGroupsOf(ClassNode mixin) {
+		return classes.stateGroupsOf(mixin);
+	}
+
 	/** {@link PreflightClasses#isUntransformable} */
 	boolean isUntransformable(String target) {
 		return classes.isUntransformable(target);

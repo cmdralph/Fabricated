@@ -117,6 +117,9 @@ final class PreflightClasses {
 	 */
 	final Map<ClassNode, Set<String>> independent = new IdentityHashMap<>();
 
+	/** {@link MixinPreflight#stateGroups} of each mixin as it was read, for the same reason as {@link #independent}. */
+	final Map<ClassNode, Map<String, MixinPreflight.StateGroup>> stateGroups = new IdentityHashMap<>();
+
 	/** The installed classes the checks read, with their fingerprints. */
 	final Map<String, String> installedRead = new TreeMap<>();
 
@@ -310,6 +313,11 @@ final class PreflightClasses {
 	 */
 	Set<String> independentOf(ClassNode mixin) {
 		return independent.computeIfAbsent(mixin, MixinPreflight::independentHandlers);
+	}
+
+	/** The injectors of a mixin keeping state together ({@link MixinPreflight#stateGroups}), as it was read. */
+	Map<String, MixinPreflight.StateGroup> stateGroupsOf(ClassNode mixin) {
+		return stateGroups.computeIfAbsent(mixin, MixinPreflight::stateGroups);
 	}
 
 	/**

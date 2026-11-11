@@ -77,6 +77,7 @@ import org.objectweb.asm.tree.VarInsnNode;
  */
 public final class MixinPreflight extends PreflightPart {
 	private final MixinRepairs repairer;
+	private final ReplacedMethods replacedMethods;
 
 	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2). */
 	public enum ConstructorInjects {
@@ -253,6 +254,7 @@ public final class MixinPreflight extends PreflightPart {
 				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields,
 				handsOffConstructorArguments, overlapsWideArguments, keepsLocalsPastScope, restrictsInitialisers));
 		this.repairer = new MixinRepairs(classes, this);
+		this.replacedMethods = new ReplacedMethods(classes);
 	}
 
 	/**
@@ -1446,9 +1448,29 @@ public final class MixinPreflight extends PreflightPart {
 			}
 		}
 		List<String> selectors = named.stream().map(MixinPreflight::selector).distinct().toList();
+		String hint = null;
+		for (MemberRef ref : named) {
+			if (hint == null) hint = replacedHint(target, ref.name(), ref.desc());
+		}
 		ctx.injector(handler, require, injectorName + (selectors.size() == 1 ? " targets method " + selectors.get(0) + ", which does not exist in "
 						: " targets methods " + String.join(", ", selectors) + ", none of which exists in ") + targetDotted,
-				"The method was renamed or removed by " + ctx.changer(false) + ".");
+				hint != null ? hint : "The method was renamed or removed by " + ctx.changer(false) + ".");
+	}
+
+	/** {@link #replacedHint(ClassNode, String, String)} for a point's call of a method of the target. */
+	private String replacedHint(ClassNode target, String rawTarget, Context ctx) {
+		MemberRef ref = rawTarget == null ? null : MemberRef.parse(ctx.resolve(rawTarget));
+		return ref == null || ref.fuzzy() || !target.name.equals(ref.owner()) ? null : replacedHint(target, ref.name(), ref.desc());
+	}
+
+	/**
+	 * Why an injector naming a private method of vanilla's the platform replaced with one of its own, or its call, stays
+	 * out ({@link ReplacedMethods}); null for any other method.
+	 */
+	private String replacedHint(ClassNode target, String name, String desc) {
+		ReplacedMethods.Replaced replaced = name == null ? null : replacedMethods.replaced(target, name, desc);
+		return replaced == null ? null : loader + " replaced that private method with " + replaced.named() + ", which " + replaced.caller().name
+				+ " calls in its place; only an @Inject at its call, or at its start or end, moves there (STRUCT-1).";
 	}
 
 	/** A selector's name and descriptor, as reports print it. */
@@ -1750,7 +1772,8 @@ public final class MixinPreflight extends PreflightPart {
 								+ (rawTarget != null ? ", target=\"" + ctx.resolve(rawTarget) + "\"" : "")
 								+ (point.equals("CONSTANT") && Annotations.value(at, "args") instanceof List<?> args ? ", args=" + args : "")
 								+ (ordinal >= 0 ? ", ordinal=" + ordinal : "") + "), which does not occur in that method",
-						ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
+						replacedHint(target, rawTarget, ctx) != null ? replacedHint(target, rawTarget, ctx)
+								: ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 				return;
 			}
 			if (verdict == Verdict.FOUND && ann.desc.equals(MixinNames.WRAP_OPERATION) && rawTarget != null) {

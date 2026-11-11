@@ -2203,6 +2203,215 @@ class MixinPreflightTest {
 		}
 	}
 
+	/** The settings the replaced method tests' {@link #TARGET} places with: Forge 47's {@code StructurePlaceSettings}, with field getters. */
+	private static final String SETTINGS = "net/minecraft/world/Settings";
+	/** Vanilla's {@code placeEntities(level, pos, mirror, rotation, pivot, box, finalize)}, reduced to a level, a mirror, a pivot, a box and the flag. */
+	private static final String PLACE_ENTITIES = "placeEntities(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Z)V";
+	/** Forge's {@code addEntitiesToWorld(level, pos, settings)}, reduced to the level and the settings. */
+	private static final String ADD_ENTITIES = "addEntities(Ljava/lang/Object;L" + SETTINGS + ";)V";
+	private static final String PLACE_IN = "place(Ljava/lang/Object;L" + SETTINGS + ";)Z";
+
+	/** {@link #SETTINGS}: a mirror, a pivot, a box and a flag, each with its getter, and {@code count()}, which returns a constant. */
+	private static byte[] placeSettings() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, SETTINGS, null, "java/lang/Object", null);
+		for (String[] field : new String[][] {{"mirror", "Ljava/lang/String;"}, {"pivot", "Ljava/lang/Object;"}, {"box", "Ljava/lang/Object;"}, {"finish", "Z"}}) {
+			cw.visitField(Opcodes.ACC_PRIVATE, field[0], field[1], null, null).visitEnd();
+			MethodVisitor getter = cw.visitMethod(Opcodes.ACC_PUBLIC, field[0], "()" + field[1], null, null);
+			getter.visitCode();
+			getter.visitVarInsn(Opcodes.ALOAD, 0);
+			getter.visitFieldInsn(Opcodes.GETFIELD, SETTINGS, field[0], field[1]);
+			getter.visitInsn(Type.getType(field[1]).getOpcode(Opcodes.IRETURN));
+			getter.visitMaxs(0, 0);
+			getter.visitEnd();
+		}
+		MethodVisitor count = cw.visitMethod(Opcodes.ACC_PUBLIC, "count", "()Ljava/lang/String;", null, null);
+		count.visitCode();
+		count.visitLdcInsn("1");
+		count.visitInsn(Opcodes.ARETURN);
+		count.visitMaxs(0, 0);
+		count.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * {@link #TARGET} as vanilla's {@code StructureTemplate} places a template ({@code vanilla}): {@code place(level,
+	 * settings)} reads the box into a local first, then calls its private {@code placeEntities} with the level and what
+	 * it reads from the settings (the mirror through {@code mirrorGetter}); or as Forge 47 makes it, calling its private
+	 * {@code addEntities(level, settings)} there instead, and once more from {@code again()} where {@code calledTwice}.
+	 */
+	private static byte[] entityPlacer(boolean vanilla, String mirrorGetter, boolean calledTwice) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor place = cw.visitMethod(Opcodes.ACC_PUBLIC, "place", PLACE_IN.substring(5), null, null);
+		place.visitCode();
+		place.visitVarInsn(Opcodes.ALOAD, 2);
+		place.visitMethodInsn(Opcodes.INVOKEVIRTUAL, SETTINGS, "box", "()Ljava/lang/Object;", false);
+		place.visitVarInsn(Opcodes.ASTORE, 3);
+		place.visitVarInsn(Opcodes.ALOAD, 0);
+		place.visitVarInsn(Opcodes.ALOAD, 1);
+		if (vanilla) {
+			place.visitVarInsn(Opcodes.ALOAD, 2);
+			place.visitMethodInsn(Opcodes.INVOKEVIRTUAL, SETTINGS, mirrorGetter, "()Ljava/lang/String;", false);
+			place.visitVarInsn(Opcodes.ALOAD, 2);
+			place.visitMethodInsn(Opcodes.INVOKEVIRTUAL, SETTINGS, "pivot", "()Ljava/lang/Object;", false);
+			place.visitVarInsn(Opcodes.ALOAD, 3);
+			place.visitVarInsn(Opcodes.ALOAD, 2);
+			place.visitMethodInsn(Opcodes.INVOKEVIRTUAL, SETTINGS, "finish", "()Z", false);
+			place.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "placeEntities", PLACE_ENTITIES.substring(13), false);
+		} else {
+			place.visitVarInsn(Opcodes.ALOAD, 2);
+			place.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "addEntities", ADD_ENTITIES.substring(11), false);
+		}
+		place.visitInsn(Opcodes.ICONST_1);
+		place.visitInsn(Opcodes.IRETURN);
+		place.visitMaxs(0, 0);
+		place.visitEnd();
+		MethodVisitor entities = cw.visitMethod(Opcodes.ACC_PRIVATE, vanilla ? "placeEntities" : "addEntities",
+				vanilla ? PLACE_ENTITIES.substring(13) : ADD_ENTITIES.substring(11), null, null);
+		entities.visitCode();
+		entities.visitInsn(Opcodes.RETURN);
+		entities.visitMaxs(0, 0);
+		entities.visitEnd();
+		if (calledTwice) {
+			MethodVisitor again = cw.visitMethod(Opcodes.ACC_PUBLIC, "again", "()V", null, null);
+			again.visitCode();
+			again.visitVarInsn(Opcodes.ALOAD, 0);
+			again.visitInsn(Opcodes.ACONST_NULL);
+			again.visitInsn(Opcodes.ACONST_NULL);
+			again.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "addEntities", ADD_ENTITIES.substring(11), false);
+			again.visitInsn(Opcodes.RETURN);
+			again.visitMaxs(0, 0);
+			again.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * YUNG's API's and Friends and Foes' entity processing: a {@code ThreadLocal} set before the call of
+	 * {@code placeEntities} and cleared after it, read at the start of {@code placeEntities}, which the handler takes the
+	 * parameters of (or, {@code bare}, the callback info alone, the method named without its descriptor, as a mod without a
+	 * refmap names it); and, {@code wrapped}, Porting Lib's wrapper of the call, setting it too.
+	 */
+	private static byte[] entityProcessor(boolean bare, boolean wrapped) {
+		String mixin = "com/example/mixin/Entities";
+		return mixin(mixin, false, cw -> {
+			cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "context", "Ljava/lang/ThreadLocal;", null, null).visitEnd();
+			List<String[]> hooks = new ArrayList<>(List.of(new String[] {"capture", INJECT, PLACE_IN, "INVOKE", null, "(Ljava/lang/Object;L" + SETTINGS + ";" + CIR + ")V"},
+					new String[] {"clear", INJECT, PLACE_IN, "INVOKE", "AFTER", "(Ljava/lang/Object;L" + SETTINGS + ";" + CIR + ")V"},
+					new String[] {"process", INJECT, bare ? "placeEntities" : PLACE_ENTITIES, "HEAD", null,
+							bare ? "(" + CALLBACK_INFO + ")V" : PLACE_ENTITIES.substring(13).replace(")V", CALLBACK_INFO + ")V")}));
+			if (wrapped) hooks.add(new String[] {"wrap", WRAP_OPERATION, PLACE_IN, "INVOKE", null, "(L" + TARGET + ";" + PLACE_ENTITIES.substring(14, PLACE_ENTITIES.length() - 2)
+					+ "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;)V"});
+			for (String[] hook : hooks) {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, hook[0], hook[5], null, null);
+				AnnotationVisitor ann = mv.visitAnnotation(hook[1], true);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, hook[2]);
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", hook[3]);
+				if (hook[3].equals("INVOKE")) at.visit("target", "L" + TARGET + ";" + PLACE_ENTITIES);
+				if (hook[4] != null) at.visitEnum("shift", "Lorg/spongepowered/asm/mixin/injection/At$Shift;", hook[4]);
+				at.visitEnd();
+				ats.visitEnd();
+				if (hook[0].equals("process")) ann.visit("cancellable", true);
+				ann.visitEnd();
+				mv.visitCode();
+				mv.visitFieldInsn(Opcodes.GETSTATIC, mixin, "context", "Ljava/lang/ThreadLocal;");
+				mv.visitInsn(Opcodes.ACONST_NULL);
+				mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V", false);
+				mv.visitInsn(Opcodes.RETURN);
+				mv.visitMaxs(0, 0);
+				mv.visitEnd();
+			}
+		});
+	}
+
+	@Test
+	void injectorsAtAPrivateMethodThePlatformReplacedWithItsOwnMoveThere() throws Exception {
+		// STRUCT-1: Forge 47 and NeoForge place a structure's entities in addEntitiesToWorld(level, pos, settings), which
+		// placeInWorld calls where vanilla's called its private placeEntities(level, pos, mirror, rotation, pivot, box,
+		// finalize). YUNG's API's hooks at that call and at the method's start move there, the latter taking vanilla's
+		// parameters as the platform's give them: the level as it is, the rest read from the settings.
+		java.util.function.Supplier<Map<String, byte[]>> mod = () -> new HashMap<>(Map.of("com/example/mixin/Entities", entityProcessor(false, false)));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Entities"));
+		Map<String, byte[]> platform = Map.of(TARGET, entityPlacer(false, "mirror", false), SETTINGS, placeSettings());
+		Map<String, byte[]> vanilla = Map.of(TARGET, entityPlacer(true, "mirror", false), SETTINGS, placeSettings());
+		ClassIndex forge = new ClassIndex(platform::get);
+		Map<String, byte[]> classes = mod.get();
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = new MixinPreflight(forge, InstalledClasses.NONE, classes::get, ClassBytesSource.EMPTY, false, true, vanilla::get,
+				"Forge").repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(Set.of("com/example/mixin/Entities.class"), repaired.keySet(), notes.toString());
+		for (String handler : List.of("capture", "clear")) {
+			assertTrue(notes.stream().anyMatch(n -> n.message().contains("@Inject " + handler + " expects the call L" + TARGET + ";" + PLACE_ENTITIES
+					+ ", which Forge's net.minecraft.world.Thing makes no more: it replaced that private method with " + ADD_ENTITIES)), notes.toString());
+		}
+		assertTrue(notes.stream().anyMatch(n -> n.message().contains("@Inject process targets " + PLACE_ENTITIES + ", a private method Forge replaced with "
+				+ ADD_ENTITIES + ", which place calls in its place; the injector is pointed there, its handler taking vanilla's parameters")), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Entities.class")).accept(node, 0);
+		for (String handler : List.of("capture", "clear")) {
+			MethodNode moved = node.methods.stream().filter(m -> m.name.equals(handler)).findFirst().orElseThrow();
+			AnnotationNode at = Annotations.list(Annotations.value(Annotations.find(moved, INJECT), "at")).get(0);
+			assertEquals("L" + TARGET + ";" + ADD_ENTITIES, Annotations.value(at, "target"));
+		}
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("process$fabricated")).findFirst().orElseThrow();
+		assertEquals("(Ljava/lang/Object;L" + SETTINGS + ";" + CALLBACK_INFO + ")V", bridge.desc);
+		assertEquals(List.of(ADD_ENTITIES), Annotations.value(bridge.visibleAnnotations.get(0), "method"));
+		// The level as it is, the mirror, the pivot and the box (which vanilla read into a local) and the flag from the settings.
+		List<String> code = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode load) code.add("load " + load.var);
+			if (insn instanceof MethodInsnNode call) code.add(call.name);
+		}
+		assertEquals(List.of("load 0", "load 1", "load 2", "mirror", "load 2", "pivot", "load 2", "box", "load 2", "finish", "load 3", "process"), code);
+		classes.put("com/example/mixin/Entities", repaired.get("com/example/mixin/Entities.class"));
+		assertTrue(new MixinPreflight(forge, InstalledClasses.NONE, classes::get, ClassBytesSource.EMPTY, false, true, vanilla::get, "Forge")
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().noneMatch(f -> f.severity() != Severity.INFO), "the hooks fit Forge's method");
+
+		// A handler taking the callback info alone moves where the parameters can't be worked out (vanilla's mirror there
+		// comes from a method that isn't a field getter), its method named alone.
+		Map<String, byte[]> unlike = Map.of(TARGET, entityPlacer(true, "count", false), SETTINGS, placeSettings());
+		Map<String, byte[]> bare = new HashMap<>(Map.of("com/example/mixin/Entities", entityProcessor(true, false)));
+		List<PreflightFinding> moved = new ArrayList<>();
+		assertEquals(1, new MixinPreflight(forge, InstalledClasses.NONE, bare::get, ClassBytesSource.EMPTY, false, true, unlike::get, "Forge")
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), moved).size(), moved.toString());
+		assertEquals(3, moved.size(), moved.toString());
+
+		// Nothing moves where the handler's parameters can't be worked out (the hooks keep state together, so neither do
+		// those at the call), where a wrapper of the call keeps that state with them (Porting Lib's, which has nothing of
+		// vanilla's to wrap), where Forge's method is called elsewhere too, or without vanilla's classes. Those naming the
+		// method Forge replaced say so.
+		List<List<Object>> unmoved = List.of(
+				List.of(entityProcessor(false, false), platform, unlike, true),
+				List.of(entityProcessor(false, true), platform, vanilla, true),
+				List.of(entityProcessor(false, false), Map.of(TARGET, entityPlacer(false, "mirror", true), SETTINGS, placeSettings()), vanilla, false),
+				List.of(entityProcessor(false, false), platform, Map.<String, byte[]>of(), false));
+		for (List<Object> game : unmoved) {
+			Map<String, byte[]> own = new HashMap<>(Map.of("com/example/mixin/Entities", (byte[]) game.get(0)));
+			@SuppressWarnings("unchecked")
+			ClassIndex index = new ClassIndex(((Map<String, byte[]>) game.get(1))::get);
+			@SuppressWarnings("unchecked")
+			Map<String, byte[]> original = (Map<String, byte[]>) game.get(2);
+			List<PreflightFinding> stayed = new ArrayList<>();
+			MixinConfigFile both = MixinConfigFile.parse(config(true, "Entities"));
+			assertTrue(new MixinPreflight(index, InstalledClasses.NONE, own::get, ClassBytesSource.EMPTY, false, true, original::get, "Forge")
+					.repairs("test.mixins.json", both, Refmap.EMPTY, Set.of(), stayed).isEmpty(), stayed.toString());
+			List<PreflightFinding> findings = new MixinPreflight(index, InstalledClasses.NONE, own::get, ClassBytesSource.EMPTY, false, true, original::get, "Forge")
+					.check("test.mixins.json", both, Refmap.EMPTY, Set.of());
+			assertTrue(findings.stream().anyMatch(f -> f.message().contains("targets method " + PLACE_ENTITIES + ", which does not exist")), findings.toString());
+			boolean replaced = (Boolean) game.get(3);
+			assertEquals(replaced, findings.stream().anyMatch(f -> f.suggestion().contains("Forge replaced that private method with " + ADD_ENTITIES
+					+ ", which place calls in its place; only an @Inject at its call, or at its start or end, moves there (STRUCT-1)")), findings.toString());
+		}
+	}
+
 	/**
 	 * {@link #TARGET} with {@code destroy()Z} as vanilla's {@code ServerPlayerGameMode.destroyBlock} has it, two booleans
 	 * in scope at its {@code mine()} call ({@code ItemStack.mineBlock}): the block's removal, then the tool check; or,
@@ -3642,7 +3851,7 @@ class MixinPreflightTest {
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
 		MethodVisitor main = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "main", "([Ljava/lang/String;)V", null, null);
 		main.visitCode();
-		main.visitInsn(Opcodes.ICONST_0);
+		if (!desc.startsWith("()")) main.visitInsn(Opcodes.ICONST_0);
 		main.visitMethodInsn(Opcodes.INVOKESTATIC, owner, name, desc, false);
 		main.visitInsn(Opcodes.RETURN);
 		main.visitMaxs(0, 0);
@@ -3652,7 +3861,7 @@ class MixinPreflightTest {
 	}
 
 	@Test
-	void anInjectionAfterFabricLoadersServerHookIsPointedWhereNeoForgeLoadsMods() throws Exception {
+	void anInjectionAfterFabricLoadersServerHookIsPointedWhereThePlatformLoadsMods() throws Exception {
 		// HOOK-1: owo-lib's MainMixin, one of a group for Fabric's and Quilt's hooks; neither is in NeoForge's Main.
 		String fabricHook = "Lnet/fabricmc/loader/impl/game/minecraft/Hooks;startServer(Ljava/io/File;Ljava/lang/Object;)V";
 		String quiltHook = "Lorg/quiltmc/loader/impl/game/minecraft/Hooks;startServer(Ljava/io/File;Ljava/lang/Object;)V";
@@ -3682,21 +3891,27 @@ class MixinPreflightTest {
 			}
 		})));
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "AfterHooks"));
-		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, mainCalling("net/neoforged/neoforge/server/loading/ServerModLoader", "load", "(Z)V"))::get);
-
-		List<PreflightFinding> notes = new ArrayList<>();
-		Map<String, byte[]> repaired = preflight(neoForge, mod::get, n -> null, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
-		assertEquals(1, notes.size(), notes.toString());
-		assertTrue(notes.getFirst().message().contains("afterFabric expects a call to net.fabricmc.loader.impl.game.minecraft.Hooks.startServer")
-				&& notes.getFirst().message().contains("ServerModLoader.load"), notes.toString());
-		mod.put("com/example/mixin/AfterHooks", repaired.get("com/example/mixin/AfterHooks.class"));
-		List<PreflightFinding> findings = preflight(neoForge, mod::get, n -> null, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
-		assertTrue(findings.stream().noneMatch(f -> f.message().contains("fabricmc")), findings.toString());
-		assertTrue(findings.stream().allMatch(f -> f.message().contains("quiltmc") && f.severity() == Severity.WARN), "Quilt's stays unmatched, as on Fabric: " + findings);
+		// HOOK-4: NeoForge loads mods with ServerModLoader.load(boolean) from 1.21.11, its load() on 1.21.1, Forge with its load().
+		Map<String, byte[]> hooked = Map.copyOf(mod);
+		for (String[] loads : new String[][] {{"net/neoforged/neoforge/server/loading/ServerModLoader", "(Z)V"},
+				{"net/neoforged/neoforge/server/loading/ServerModLoader", "()V"}, {"net/minecraftforge/server/loading/ServerModLoader", "()V"}}) {
+			mod.putAll(hooked);
+			ClassIndex platform = new ClassIndex(Map.of(TARGET, mainCalling(loads[0], "load", loads[1]))::get);
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = preflight(platform, mod::get, n -> null, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+			assertEquals(1, notes.size(), notes.toString());
+			assertTrue(notes.getFirst().message().contains("afterFabric expects a call to net.fabricmc.loader.impl.game.minecraft.Hooks.startServer")
+					&& notes.getFirst().message().contains(loads[0].replace('/', '.') + ".load"), notes.toString());
+			mod.put("com/example/mixin/AfterHooks", repaired.get("com/example/mixin/AfterHooks.class"));
+			List<PreflightFinding> findings = preflight(platform, mod::get, n -> null, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(findings.stream().noneMatch(f -> f.message().contains("fabricmc")), findings.toString());
+			assertTrue(findings.stream().allMatch(f -> f.message().contains("quiltmc") && f.severity() == Severity.WARN), "Quilt's stays unmatched, as on Fabric: " + findings);
+		}
+		mod.putAll(hooked);
 
 		ClassIndex elsewhere = new ClassIndex(Map.of(TARGET, mainCalling("com/example/Other", "load", "(Z)V"))::get);
 		assertTrue(preflight(elsewhere, mod::get, n -> null, false)
-				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "only where NeoForge loads mods");
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "only where the platform loads mods");
 	}
 
 	/** {@link #TARGET} whose {@code tick} calls {@code helper} through each of {@code descs} on itself, passing zeros and nulls. */
