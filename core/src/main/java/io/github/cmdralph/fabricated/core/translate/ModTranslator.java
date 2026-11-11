@@ -774,6 +774,11 @@ public final class ModTranslator {
 					}
 					if (ObservedPlugins.canName(asked)) {
 						observedPlugins.put(plugin, asked);
+						// Mixin may apply them all the same: a plugin it can't load answers yes for each.
+						for (String mixin : askPlugin) {
+							String path = config.internalName(mixin) + ".class";
+							overlay.put(path, ObservedPlugins.inert(translated.read(path)));
+						}
 					} else {
 						askPlugin.clear();
 					}
@@ -1004,7 +1009,8 @@ public final class ModTranslator {
 	 * The class file of a config's plugin where the mod's jar has it and Fabricated can observe its answers
 	 * ({@link ObservedPlugins}); null otherwise. Its package must be the config's mixin package, or one inside the other: a
 	 * plugin a library ships for its users' configs (MixinConstraints') may be in another jar too, whose copy the package
-	 * guard could serve instead, which would turn down nothing.
+	 * guard could serve instead, which would turn down nothing. A plugin in a package around the mixin package's may be
+	 * served from another jar too: the mixins its config keeps listed are {@link ObservedPlugins#inert} for that.
 	 */
 	private static String observedPlugin(MixinConfigFile config, FileView files) throws ArchiveException {
 		String plugin = config.plugin() == null ? "" : config.plugin().strip();

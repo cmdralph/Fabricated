@@ -3133,6 +3133,8 @@ class PipelineTest {
 			MethodNode answer = observed.methods.stream().filter(m -> m.name.equals("shouldApplyMixin")).findFirst().orElseThrow();
 			assertTrue(Arrays.stream(answer.instructions.toArray()).anyMatch(i -> i instanceof org.objectweb.asm.tree.LdcInsnNode ldc
 					&& "com.plugged.mixin.Broken".equals(ldc.cst)), "it turns down Broken");
+			assertInert(overlay.read("com/plugged/mixin/Broken.class"));
+			assertFalse(overlay.contains("com/plugged/other/Broken.class"), "left out of its config's listing, as it was");
 		}
 
 		// The plugin turned down Broken (left out whole) and Stateless (an injector left out): listed apart.
@@ -3153,6 +3155,90 @@ class PipelineTest {
 		assertFalse(row.detail().contains("left out in whole or in part"), row.detail());
 	}
 
+	/**
+	 * Mixin applies every mixin of a config whose plugin it couldn't load: its {@code PluginHandle} logs the error and then
+	 * answers yes for each. A mixin pre-flight left out whole that the config keeps listed for the plugin's answers is
+	 * inert in the translated jar, so applying it does nothing (LEAVE-4).
+	 */
+	@Test
+	void aMixinLeftOutWholeAppliesNothingWhereItsConfigsPluginFailsToLoad(@TempDir Path game) throws Exception {
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("plugged-mod", "1.0", "\"mixins\":[\"plugged.mixins.json\"]"))
+				.text("plugged.mixins.json", "{\"required\":true,\"package\":\"com.plugged.mixin\",\"plugin\":\"com.plugged.mixin.Plugin\","
+						+ "\"mixins\":[\"Works\",\"Broken\"]}")
+				.bytes("com/plugged/mixin/Works.class", mixinClass("com/plugged/mixin/Works", "tick"))
+				.bytes("com/plugged/mixin/Broken.class", brokenMixin("com/plugged/mixin/Broken"))
+				.bytes("com/plugged/mixin/Plugin.class", plugin("com/plugged/mixin/Plugin", true))
+				.write(game.resolve("mods/plugged.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertTrue(result.runtime().isModLoaded("plugged-mod"), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertFalse(overlay.contains("plugged.mixins.json"), "Broken stays listed");
+			assertFalse(overlay.contains("com/plugged/mixin/Works.class"), "what pre-flight kept is as it was");
+			assertInert(overlay.read("com/plugged/mixin/Broken.class"));
+			// The plugin, as translated, fails as Mixin constructs it: Mixin would then apply Works and Broken, and Broken has
+			// nothing to apply.
+			byte[] observed = overlay.read("com/plugged/mixin/Plugin.class");
+			ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+				@Override
+				protected Class<?> findClass(String name) throws ClassNotFoundException {
+					if (!name.equals("com.plugged.mixin.Plugin")) throw new ClassNotFoundException(name);
+					return defineClass(name, observed, 0, observed.length);
+				}
+			};
+			java.lang.reflect.InvocationTargetException failed = assertThrows(java.lang.reflect.InvocationTargetException.class,
+					() -> loader.loadClass("com.plugged.mixin.Plugin").getDeclaredConstructor().newInstance());
+			assertTrue(failed.getCause() instanceof IllegalStateException, failed.toString());
+		}
+	}
+
+	/**
+	 * A config's plugin in a package around its mixin package's (as the shared test mod's is) is observed, but the package
+	 * guard may serve another jar's copy of its class, which answers what it answers: the mixins pre-flight left out whole
+	 * that the config keeps listed are inert all the same (LEAVE-4).
+	 */
+	@Test
+	void aMixinLeftOutWholeAppliesNothingWhereAnotherJarsCopyOfItsConfigsPluginIsServed(@TempDir Path game) throws Exception {
+		Path library = TestJars.create().fabricModJson(TestJars.modJson("shared-library", "1.0", ""))
+				.bytes("com/shared/Plugin.class", plugin("com/shared/Plugin"))
+				.write(game.resolve("mods/library.jar"));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("plugged-mod", "1.0", "\"mixins\":[\"plugged.mixins.json\"],"
+						+ "\"depends\":{\"shared-library\":\"*\"}"))
+				.text("plugged.mixins.json", "{\"required\":true,\"package\":\"com.shared.mixin\",\"plugin\":\"com.shared.Plugin\","
+						+ "\"mixins\":[\"Works\",\"Broken\"]}")
+				.bytes("com/shared/mixin/Works.class", mixinClass("com/shared/mixin/Works", "tick"))
+				.bytes("com/shared/mixin/Broken.class", brokenMixin("com/shared/mixin/Broken"))
+				.bytes("com/shared/Plugin.class", plugin("com/shared/Plugin", true))
+				.write(game.resolve("mods/plugged.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(library, jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		Pipeline.LoadedMod plugged = result.mods().stream().filter(m -> m.translated().candidate().id().equals("plugged-mod")).findFirst().orElseThrow();
+		assertTrue(plugged.packages().excludedPackages().contains("com/shared"), "the library's copy of the plugin is served: " + plugged.packages());
+		try (SafeArchive overlay = SafeArchive.open(plugged.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertTrue(overlay.contains("com/shared/Plugin.class"), "observed, though another copy is served");
+			assertFalse(overlay.contains("plugged.mixins.json"), "Broken stays listed");
+			assertInert(overlay.read("com/shared/mixin/Broken.class"));
+		}
+	}
+
+	/** A mixin of {@link #TARGET} with a {@code @Shadow} of a field it doesn't have, which pre-flight leaves out whole. */
+	private static byte[] brokenMixin(String name) {
+		ClassNode broken = new ClassNode();
+		new ClassReader(mixinClass(name, "tick")).accept(broken, 0);
+		org.objectweb.asm.tree.FieldNode shadow = new org.objectweb.asm.tree.FieldNode(Opcodes.ACC_PRIVATE, "missing", "I", null, null);
+		shadow.invisibleAnnotations = new ArrayList<>(List.of(new AnnotationNode("Lorg/spongepowered/asm/mixin/Shadow;")));
+		broken.fields.add(shadow);
+		return write(broken);
+	}
+
+	/** Asserts that a mixin is an empty interface of {@link #TARGET}, as Mixin applies nothing of. */
+	private static void assertInert(byte[] mixin) {
+		ClassNode node = new ClassNode();
+		new ClassReader(mixin).accept(node, 0);
+		assertTrue((node.access & Opcodes.ACC_INTERFACE) != 0 && node.fields.isEmpty() && node.methods.isEmpty() && node.interfaces.isEmpty(), node.name);
+		assertEquals(List.of("Lorg/spongepowered/asm/mixin/Mixin;", "Lorg/spongepowered/asm/mixin/Pseudo;"),
+				node.invisibleAnnotations.stream().map(a -> a.desc).toList(), node.name);
+		assertEquals(List.of("value", List.of(Type.getObjectType(TARGET))), node.invisibleAnnotations.get(0).values, node.name);
+	}
+
 	/** {@code node} as the class {@code name}. */
 	private static ClassNode renamed(ClassNode node, String name) {
 		ClassNode copy = new ClassNode();
@@ -3163,14 +3249,26 @@ class PipelineTest {
 
 	/** A mixin config plugin {@code name} whose {@code shouldApplyMixin} applies every mixin. */
 	private static byte[] plugin(String name) {
+		return plugin(name, false);
+	}
+
+	/** As {@link #plugin(String)}, its constructor throwing where {@code throwing} is (as one touching what isn't there). */
+	private static byte[] plugin(String name, boolean throwing) {
 		ClassWriter cw = new ClassWriter(0);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null);
 		MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
 		init.visitCode();
 		init.visitVarInsn(Opcodes.ALOAD, 0);
 		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
-		init.visitInsn(Opcodes.RETURN);
-		init.visitMaxs(1, 1);
+		if (throwing) {
+			init.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalStateException");
+			init.visitInsn(Opcodes.DUP);
+			init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/IllegalStateException", "<init>", "()V", false);
+			init.visitInsn(Opcodes.ATHROW);
+		} else {
+			init.visitInsn(Opcodes.RETURN);
+		}
+		init.visitMaxs(2, 1);
 		init.visitEnd();
 		MethodVisitor should = cw.visitMethod(Opcodes.ACC_PUBLIC, "shouldApplyMixin", "(Ljava/lang/String;Ljava/lang/String;)Z", null, null);
 		should.visitCode();

@@ -6,12 +6,15 @@ import java.util.Collection;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
+
+import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 
 /**
  * A Fabric mod's mixin config plugin whose {@code shouldApplyMixin} tells Fabricated what it answers Mixin (LEAVE-4).
@@ -20,11 +23,14 @@ import org.objectweb.asm.tree.VarInsnNode;
  * selects the config's mixins, once the game starts: nothing runs the plugin earlier or more often. The plugin's method
  * is renamed and another takes its place, which calls it and hands its answer to the loader's {@code PluginAnswers},
  * which records it for the report and returns it, but false for a mixin pre-flight left out whole: those stay listed in
- * the config, so that Mixin asks the plugin about them as it would on Fabric, and none applies.
+ * the config, so that Mixin asks the plugin about them as it would on Fabric, and none applies. Each of those is made
+ * {@link #inert} too, as Mixin applies every mixin of a config whose plugin it couldn't load (its {@code PluginHandle}
+ * answers yes for all of them then), and the package guard may serve another jar's copy of the plugin's class.
  */
 final class ObservedPlugins {
 	/** The in-game record of the answers (the loader's {@code PluginAnswers}, on every platform). */
 	static final String ANSWERS = "io/github/cmdralph/fabricated/loader/PluginAnswers";
+	private static final String PSEUDO = "Lorg/spongepowered/asm/mixin/Pseudo;";
 	private static final String NAME = "shouldApplyMixin";
 	private static final String DESC = "(Ljava/lang/String;Ljava/lang/String;)Z";
 	private static final String RENAMED = "fabricated$shouldApplyMixin";
@@ -69,6 +75,27 @@ final class ObservedPlugins {
 		node.methods.add(observed);
 		ClassWriter writer = new ClassWriter(0);
 		node.accept(writer);
+		return writer.toByteArray();
+	}
+
+	/**
+	 * A mixin pre-flight left out whole, as it stays listed for the plugin's answers: Mixin applies nothing of it, whatever
+	 * the plugin answers. It is an empty public interface of the same {@code @Mixin}, marked {@code @Pseudo}. Mixin (0.8.5,
+	 * 0.8.7 and Fabric's) reads its targets' names and asks the plugin as it would the mixin's, takes an interface without
+	 * methods as an accessor mixin, which may target a class or an interface and whose superclass is {@code Object}, skips
+	 * a target that isn't there ({@code @Pseudo}), and finds no member, injector or initialiser to apply: applied, it only
+	 * adds itself, empty, to what it targets.
+	 */
+	static byte[] inert(byte[] mixin) {
+		ClassNode node = new ClassNode();
+		new ClassReader(mixin).accept(node, ClassReader.SKIP_CODE);
+		AnnotationNode declared = Annotations.find(node.invisibleAnnotations, node.visibleAnnotations, Annotations.MIXIN);
+		ClassWriter writer = new ClassWriter(0);
+		writer.visit(node.version, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, node.name, null, "java/lang/Object", null);
+		if (node.sourceFile != null) writer.visitSource(node.sourceFile, null);
+		declared.accept(writer.visitAnnotation(declared.desc, false));
+		writer.visitAnnotation(PSEUDO, false).visitEnd();
+		writer.visitEnd();
 		return writer.toByteArray();
 	}
 
