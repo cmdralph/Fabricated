@@ -3,9 +3,10 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-11: The client parts' Mesa install past a package mirror that's down (CI-14)
+## 2026-11-11: The client parts' Mesa install past a package mirror that's down (CI-14); GitHub's actions on Node 24
 
 - **CI-14** (P3, CI only), fixed: every client and mods part failed before any test ran when one of the runner's package sources was down (`archive.ubuntu.com` answering 503), as `apt-get update` reads every source. Each attempt now installs Mesa's EGL packages from the image's package lists first, and refreshes them only where that fails.
+- The workflows use the first major of each GitHub action that runs on Node 24, where Node 20 is deprecated and was forced onto Node 24 with a warning: `actions/checkout` and `actions/setup-java` v5, `actions/cache/restore` and `actions/cache/save` v5, `actions/upload-artifact` v6 and `actions/download-artifact` v7. Their release notes list no other change that applies here: the artifacts are downloaded by name or pattern, not by ID, whose extraction path `download-artifact` v5 changed.
 
 ## 2026-11-11: More of Fabric mods' interface mixins applied on Forge 47 (INTERFACE-2), hooks sharing a ThreadLocal left out together (ITEM-2)
 
