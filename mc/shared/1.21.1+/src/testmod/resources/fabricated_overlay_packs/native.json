@@ -1,0 +1,21 @@
+{
+  "pack": {
+    "description": "Fabricated test mod: a native mod's pack built for both loaders, as Terralith's and Tectonic's are",
+    ${pack_formats}
+  },
+  "overlays": {
+    "entries": []
+  },
+  "neoforge:overlays": {
+    "entries": [
+      {"directory": "neoforge_holds", "formats": [1, 999], "min_format": 1, "max_format": 999, "neoforge:conditions": [{"type": "neoforge:mod_loaded", "modid": "fabricated"}]},
+      {"directory": "neoforge_fails", "formats": [1, 999], "min_format": 1, "max_format": 999, "neoforge:conditions": [{"type": "neoforge:mod_loaded", "modid": "fabricated_mod_that_is_not_installed"}]}
+    ]
+  },
+  "fabric:overlays": {
+    "entries": [
+      {"directory": "fabric_holds", "condition": {"condition": "fabric:true"}},
+      {"directory": "fabric_unregistered", "condition": {"condition": "fabricated_testmod:registered_by_its_fabric_build_only"}}
+    ]
+  }
+}

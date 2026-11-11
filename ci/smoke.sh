@@ -87,6 +87,13 @@ while IFS=$'\x1f' read -r run run_side gates needs mods env skip_reason; do
 				jar --create --file "$extra/connector-standin.jar" -C "$extra/src" "$mods_toml"
 				;;
 			fabricated-copy) cp "$(fabricated_jar)" "$extra/fabricated-0.0.1+mc$mc.jar" ;;
+			unreadable-pack)
+				# A Fabric mod whose pack.mcmeta isn't JSON.
+				mkdir -p "$extra/src"
+				printf '{"schemaVersion": 1, "id": "fabricated-unreadable-pack", "version": "1.0.0"}\n' > "$extra/src/fabric.mod.json"
+				printf '{"pack": {"description": "cut off' > "$extra/src/pack.mcmeta"
+				jar --create --file "$extra/fabricated-unreadable-pack.jar" -C "$extra/src" .
+				;;
 			energy)
 				# Team Reborn's energy library, or without a build of its own the one a Fabric tech mod ships in its jar.
 				fetch "$extra/energy" fabric team-reborn-energy | tee -a "$extra/fetched.txt"
