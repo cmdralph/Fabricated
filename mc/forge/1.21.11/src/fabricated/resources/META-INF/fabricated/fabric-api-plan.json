@@ -58,8 +58,8 @@
     },
     "fabric-resource-conditions-api-v1": {
       "plan": "passthrough",
-      "skipMixins": ["fabric-resource-conditions-api-v1.mixins.json:RegistryDataLoaderMixin"],
-      "reason": "Forge 61 decodes each data pack registry entry through its own conditional decoder (ConditionCodec.wrap), where upstream's hook looks for vanilla's decoding of the entry, so pre-flight left that mixin out and fabric:load_conditions in registry entries were ignored: the in-game mod's FabricResourceConditions has Forge's decoder also give no entry where they fail, with upstream's evaluation. Upstream's hook on JSON data loaders (SimpleJsonResourceReloadListenerMixin) loads, its lambda hook bridged to Forge 61's lambda, which also takes the codec (LAMBDA-8)."
+      "skipMixins": ["fabric-resource-conditions-api-v1.mixins.json:RegistryDataLoaderMixin", "fabric-resource-conditions-api-v1.mixins.json:PackMixin"],
+      "reason": "Forge 61 decodes each data pack registry entry through its own conditional decoder (ConditionCodec.wrap), where upstream's hook looks for vanilla's decoding of the entry, so pre-flight left that mixin out and fabric:load_conditions in registry entries were ignored: the in-game mod's FabricResourceConditions has Forge's decoder also give no entry where they fail, with upstream's evaluation. Upstream's hook on JSON data loaders (SimpleJsonResourceReloadListenerMixin) loads, its lambda hook bridged to Forge 61's lambda, which also takes the codec (LAMBDA-8). Upstream's hook on the reading of a pack's metadata, where Forge reads every mod file's pack, logged an error for a fabric:overlays section it couldn't read, native mods' included (PACK-12): Fabricated applies fabric:overlays there itself, with upstream's conditions, leaving out a section it can't read with one warning naming the pack."
     },
     "fabric-resource-loader-v1": {
       "plan": "passthrough",

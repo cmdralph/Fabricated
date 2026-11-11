@@ -56,6 +56,11 @@
       "skipMixins": ["fabric-renderer-api-v1.mixins.json:block.particle.ScreenEffectRendererMixin", "fabric-renderer-api-v1.mixins.json:block.particle.BlockMarkerMixin"],
       "reason": "Forge 65's screen effect finds the block the player's view is inside in a method of its own (getOverlayBlock), which returns its position too, and no longer calls vanilla's lookup, where upstream's hook reads the position: pre-flight left the mixin out, and the effect showed a Fabric model's particle material without the level. Fabricated's in-game mod gives the level-aware one for the block Forge's lookup found (PART-4). Forge 65's block marker asks its block's model for the particle material with Forge's model data, not the call upstream's hook redirects: pre-flight left that mixin out too, and the in-game mod redirects Forge's call instead. Forge 65 also sets a block's breaking particle's sprite again after upstream's hook gave it (TerrainParticle.updateSprite), from the model with its model data: the in-game mod asks Fabric's level-aware material there. A model whose class gives its own material for Forge's model data, and that neither is a Fabric model nor holds one, keeps Forge's."
     },
+    "fabric-resource-conditions-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-resource-conditions-api-v1.mixins.json:PackMixin"],
+      "reason": "Upstream's hook on the reading of a pack's metadata, where Forge reads every mod file's pack, made a pack whose fabric:overlays it couldn't read unreadable, native mods' included, and Forge left the mod's resources out (PACK-12): Fabricated applies fabric:overlays there itself, with upstream's conditions, leaving out a section it can't read with one warning naming the pack."
+    },
     "fabric-resource-loader-v1": {
       "plan": "passthrough",
       "skipMixins": ["fabric-resource-loader-v1.client.mixins.json:OptionsMixin#onLoad"],

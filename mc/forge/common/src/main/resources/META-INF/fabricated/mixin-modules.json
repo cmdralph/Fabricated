@@ -38,6 +38,7 @@
     "NamespacedWrapperEarlyWriteMixin": [],
     "NamespacedWrapperEntryAddedMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperPendingHoldersMixin": [],
+    "PackOverlaysMixin": ["fabric-resource-conditions-api-v1"],
     "PackRepositorySourcesMixin": [],
     "PlayerListViewMixin": [],
     "PoiTypesMixin": [],
