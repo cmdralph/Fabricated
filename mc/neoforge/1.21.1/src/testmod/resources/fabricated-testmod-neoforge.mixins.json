@@ -2,6 +2,7 @@
   "required": true,
   "package": "io.github.cmdralph.fabricated.testmod.neoforge",
   "compatibilityLevel": "JAVA_21",
+  "mixins": ["ConditionRereadMixin"],
   "client": ["HudLayersMixin", "LayeredDrawLayersAccessor"],
   "injectors": {
     "defaultRequire": 1
