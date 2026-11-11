@@ -478,6 +478,25 @@ if ((testSources.collect { rootProject.file(it) } + [projectDir]).any { new File
     tasks.named('testmods') { dependsOn frapiTestmodJar }
 }
 
+// --- The test mod's calls of vanilla's members the platform's game replaces (vanilla's LootPool constructor, LOOT-3) -----
+// Compiled as a Fabric mod's are, against vanilla: stand-ins of those members (the source set's net/minecraft classes)
+// shadow the game's as they compile, and are left out of the test mod's jar. Each folder's
+// src/testmodvanilla/fabricated-testmod.accesswidener ends the test mod's widener with what its calls reach.
+sourceSets {
+    testmodvanilla {
+        java.srcDir testJava('testmodvanilla')
+    }
+}
+gameDependencies(sourceSets.testmodvanilla)
+dependencies {
+    testmodvanillaCompileOnly project(':fabric-loader-api')
+}
+testmodJar.configure { from(sourceSets.testmodvanilla.output) { exclude 'net/minecraft/**' } }
+testSources.each {
+    def widened = rootProject.file("$it/src/testmodvanilla/fabricated-testmod.accesswidener")
+    if (widened.isFile()) testmodAccessWidener.addAll(widened.readLines().findAll { it.trim() })
+}
+
 // --- Fabric API, at compile time only ----------------------------------------------------------------------------
 // The module jars of the Fabric API release in this version's plan; Fabricated never ships them. The in-game mod compiles
 // against the plan's pass-through modules, which the player's Fabric API provides at runtime (its own sources are the
@@ -546,4 +565,5 @@ dependencies {
     integrationstubsCompileOnly fabricApi(['fabric-transfer-api-v1'])
     testmodCompileOnly fabricApi()
     testmodfrapiCompileOnly fabricApi()
+    testmodvanillaCompileOnly fabricApi()
 }
