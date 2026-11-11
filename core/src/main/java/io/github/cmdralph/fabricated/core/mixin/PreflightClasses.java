@@ -17,6 +17,7 @@ import java.util.TreeSet;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
+import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.ConstructorInjects;
 
 import org.objectweb.asm.Opcodes;
@@ -117,11 +118,17 @@ final class PreflightClasses {
 	 */
 	final Map<ClassNode, Set<String>> independent = new IdentityHashMap<>();
 
+	/** {@link MixinPreflight#stateGroups} of each mixin as it was read, for the same reason as {@link #independent}. */
+	final Map<ClassNode, Map<String, MixinPreflight.StateGroup>> stateGroups = new IdentityHashMap<>();
+
 	/** The installed classes the checks read, with their fingerprints. */
 	final Map<String, String> installedRead = new TreeMap<>();
 
 	/** Access transformer lines {@link MixinPreflight#repairs} needs, by the method they make public. */
 	final Set<String> widened = new TreeSet<>();
+
+	/** The game classes the mixins target that have vanilla methods put back ({@link VanillaSeams}, SEAM-1). */
+	final Set<String> restoredSeams = new TreeSet<>();
 
 	/** The libraries' classes (the JDK, DataFixerUpper, ...), for the supertypes of the classes a game method calls. */
 	ClassIndex libraries;
@@ -271,6 +278,13 @@ final class PreflightClasses {
 		return PreflightAsm.isGameClass(internalName) ? targetCache.computeIfAbsent(internalName, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
 	}
 
+	/** {@link #gameTarget} of a mixin's target, recorded among {@link #restoredSeams} where it has vanilla methods put back. */
+	ClassNode mixinTarget(String internalName) {
+		ClassNode target = gameTarget(internalName);
+		if (target != null && VanillaSeams.names(internalName) && !VanillaSeams.restoredIn(target).isEmpty()) restoredSeams.add(internalName);
+		return target;
+	}
+
 	/**
 	 * A method of a class the game or an installed jar has, with the frames its bytes have, compressed, as ModLauncher hands
 	 * Mixin the classes it walks (the class parsed once per pre-flight; {@link #gameTarget} skips them), or null.
@@ -310,6 +324,11 @@ final class PreflightClasses {
 	 */
 	Set<String> independentOf(ClassNode mixin) {
 		return independent.computeIfAbsent(mixin, MixinPreflight::independentHandlers);
+	}
+
+	/** The injectors of a mixin keeping state together ({@link MixinPreflight#stateGroups}), as it was read. */
+	Map<String, MixinPreflight.StateGroup> stateGroupsOf(ClassNode mixin) {
+		return stateGroups.computeIfAbsent(mixin, MixinPreflight::stateGroups);
 	}
 
 	/**

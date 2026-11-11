@@ -1063,6 +1063,9 @@ class PipelineTest {
 		// FINAL-2: the methods made overridable at class load, by class, each once.
 		assertEquals(Map.of("net/minecraft/world/Thing", Set.of("check()Z")), result.overridableMethods());
 		assertTrue(result.without(Set.of("mod-a", "mod-b")).overridableMethods().isEmpty());
+		// SEAM-1: the classes whose vanilla methods are put back, once.
+		assertEquals(Set.of("net/minecraft/world/Thing"), result.restoredSeams());
+		assertTrue(result.without(Set.of("mod-a", "mod-b")).restoredSeams().isEmpty());
 		// Read from any class-loading thread: never changed after it is published.
 		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().get("net/minecraft/world/Thing").clear());
 		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().clear());
@@ -1092,7 +1095,7 @@ class PipelineTest {
 		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, 1);
 		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
 				List.of(new DefaultBridge("net/minecraft/world/Thing", "net/minecraft/world/Extension", "size", "()I")), Set.of(environmentClass),
-				Set.of("net/minecraft/world/Thing check()Z"), false, 0);
+				Set.of("net/minecraft/world/Thing check()Z"), Set.of("net/minecraft/world/Thing"), false, 0);
 		return new Pipeline.LoadedMod(mod, PackageGuard.Decision.NONE, List.of());
 	}
 
@@ -3090,6 +3093,26 @@ class PipelineTest {
 			new ClassReader(overlay.read("com/partial/mixin/Stateless.class")).accept(stateless, 0);
 			assertTrue(stateless.methods.stream().noneMatch(m -> m.name.equals("handler")), "its failing injector is left out");
 		}
+	}
+
+	/** A hook left out that is a known limit says so in the report, after its suggestion (SPAWN-1). */
+	@Test
+	void aLeftOutHookThatIsAKnownLimitSaysSo(@TempDir Path game) throws Exception {
+		ClassNode spawn = new ClassNode();
+		new ClassReader(mixinClass("com/spawny/mixin/SpawnCheck", "tick")).accept(spawn, 0);
+		AnnotationNode at = (AnnotationNode) ((List<?>) spawn.methods.getFirst().invisibleAnnotations.getFirst().values.get(3)).getFirst();
+		at.values = new ArrayList<>(List.of("value", "INVOKE", "target",
+				"Lnet/minecraft/world/entity/Mob;checkSpawnRules(Lnet/minecraft/world/level/LevelAccessor;Lnet/minecraft/world/entity/EntitySpawnReason;)Z"));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("spawny", "1.0", "\"mixins\":[\"spawny.mixins.json\"]"))
+				.text("spawny.mixins.json", "{\"required\":true,\"package\":\"com.spawny.mixin\",\"mixins\":[\"SpawnCheck\"]}")
+				.bytes("com/spawny/mixin/SpawnCheck.class", write(spawn))
+				.write(game.resolve("mods/spawny.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		String report = result.report().render();
+		assertTrue(result.runtime().isModLoaded("spawny"), report);
+		assertTrue(report.lines().anyMatch(l -> l.startsWith("  spawny: LEFT_OUT [spawny.mixins.json com.spawny.mixin.SpawnCheck]")
+				&& l.endsWith("must be skipped. Known limit: NeoForge and Forge run spawn checks through their own event, so Fabric hooks of those"
+						+ " checks can't apply; use the mod's NeoForge or Forge build (SPAWN-1)")), report);
 	}
 
 	/**

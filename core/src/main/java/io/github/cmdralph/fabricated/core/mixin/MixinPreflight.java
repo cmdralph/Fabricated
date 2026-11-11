@@ -23,6 +23,7 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
+import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.InjectionPoints.Verdict;
 import io.github.cmdralph.fabricated.core.mixin.InjectionPoints.Range;
@@ -77,6 +78,7 @@ import org.objectweb.asm.tree.VarInsnNode;
  */
 public final class MixinPreflight extends PreflightPart {
 	private final MixinRepairs repairer;
+	private final ReplacedMethods replacedMethods;
 
 	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2). */
 	public enum ConstructorInjects {
@@ -253,6 +255,7 @@ public final class MixinPreflight extends PreflightPart {
 				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields,
 				handsOffConstructorArguments, overlapsWideArguments, keepsLocalsPastScope, restrictsInitialisers));
 		this.repairer = new MixinRepairs(classes, this);
+		this.replacedMethods = new ReplacedMethods(classes);
 	}
 
 	/**
@@ -354,6 +357,14 @@ public final class MixinPreflight extends PreflightPart {
 	 */
 	public Set<String> accessTransformers() {
 		return Collections.unmodifiableSet(new TreeSet<>(widened));
+	}
+
+	/**
+	 * The game classes the mixins {@link #check} or {@link #repairs} read target that have vanilla methods put back
+	 * ({@link VanillaSeams}): the game must have them put back as those classes load (SEAM-1).
+	 */
+	public Set<String> restoredSeams() {
+		return Collections.unmodifiableSet(new TreeSet<>(restoredSeams));
 	}
 
 	/**
@@ -860,6 +871,29 @@ public final class MixinPreflight extends PreflightPart {
 		}
 
 		/**
+		 * An {@code @Inject} capturing locals that Mixin skips at each of its points ({@link SkippedCaptures}, SEAM-2). Mixin
+		 * skips it whatever pre-flight does, so leaving it out changes nothing of its own; it lets the injectors keeping
+		 * state with it in the mixin's fields (STATE-1), sharing a local with it (SHARE-1) or a {@code ThreadLocal} of the
+		 * mod (ITEM-2) go with it, which would otherwise read what it never stored. It is left out as its own failure would
+		 * leave it out ({@link #injector}), whatever its {@code require} (Mixin's skipping it isn't a failure Mixin counts):
+		 * alone, with the injectors keeping state with it, or with the whole mixin where pre-flight can't tell which they
+		 * are. Where its failure would disable the mod (a mixin the mod's code reaches, its handler using the mixin's own
+		 * state), it stays as it was, Mixin skipping it, and the report says so: grouping never makes an outcome worse.
+		 */
+		void skippedCapture(MethodNode handler, String message, String suggestion) {
+			String key = handler.name + handler.desc;
+			if (!hasPlugin && !selfContained && !stateless.contains(key)) {
+				info(message + ": Mixin skips it there; it stays, and the injectors keeping state with it too, as leaving them out would disable"
+						+ " the mod (this mixin adds an interface or accessors the mod's code uses; SEAM-2)");
+				return;
+			}
+			boolean wholeMixin = !hasPlugin && addsFields && !stateGroups.containsKey(key);
+			out.add(new PreflightFinding(Severity.LEFT_OUT, configName, mixinDotted, message + ": Mixin skips it there, so it is left out"
+					+ (wholeMixin ? ", with the whole mixin, whose state it shares with code pre-flight can't follow" : "") + " (SEAM-2)", suggestion,
+					wholeMixin ? null : key));
+		}
+
+		/**
 		 * The injectors keeping state with those of this mixin left out by the findings from {@code from} on, left out with
 		 * them (STATE-1), unless the whole mixin is.
 		 */
@@ -976,7 +1010,7 @@ public final class MixinPreflight extends PreflightPart {
 		for (String target : targetsOf(mixin, ctx)) {
 			boolean isGame = PreflightAsm.isGameClass(target);
 			String owner = isGame ? null : installed.owner(target);
-			ClassNode targetNode = isGame ? gameTarget(target) : owner != null ? installedTarget(target) : null;
+			ClassNode targetNode = isGame ? mixinTarget(target) : owner != null ? installedTarget(target) : null;
 			if (targetNode == null) {
 				// Absent now, it may be installed later: the result holds only while no installed jar has it.
 				if (!isGame && owner == null) installedRead.putIfAbsent(target, "");
@@ -1017,7 +1051,45 @@ public final class MixinPreflight extends PreflightPart {
 				continue;
 			}
 			checkMembers(mixin, targetNode, targetCtx);
+			if (isGame) noteRestoredSeams(mixin, targetNode, targetCtx);
 		}
+	}
+
+	/**
+	 * Notes each of the mixin's members that hooks a vanilla method the platform took out of the target and Fabricated
+	 * puts back ({@link VanillaSeams}, SEAM-1): an injector or invoker naming it, through the refmap, or a shadow of it.
+	 */
+	private static void noteRestoredSeams(ClassNode mixin, ClassNode target, Context ctx) {
+		List<VanillaSeams.Restored> seams = VanillaSeams.restoredIn(target);
+		if (seams.isEmpty()) return;
+		String simple = target.name.substring(target.name.lastIndexOf('/') + 1);
+		for (MethodNode method : mixin.methods) {
+			for (AnnotationNode ann : Annotations.all(method)) {
+				boolean shadow = ann.desc.equals(MixinNames.SHADOW);
+				for (VanillaSeams.Restored seam : seams) {
+					if (shadow ? !method.desc.equals(seam.desc()) || !method.name.equals(seam.name()) && !method.name.equals("shadow$" + seam.name())
+							: !namesSeam(ann, seam, target.name, ctx)) continue;
+					ctx.info("@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + seam.name() + seam.desc() + ", vanilla's method "
+							+ ctx.loader() + "'s " + simple + " no longer has; Fabricated puts it back there, answering " + seam.answer() + " as "
+							+ ctx.loader() + "'s code did (SEAM-1)");
+				}
+			}
+		}
+	}
+
+	/** Whether a selector among the annotation's values (its own, its {@code @At}'s), through the refmap, names the seam. */
+	private static boolean namesSeam(Object value, VanillaSeams.Restored seam, String owner, Context ctx) {
+		if (value instanceof AnnotationNode ann) {
+			for (int i = 1; ann.values != null && i < ann.values.size(); i += 2) {
+				if (namesSeam(ann.values.get(i), seam, owner, ctx)) return true;
+			}
+			return false;
+		}
+		if (value instanceof List<?> list) return list.stream().anyMatch(v -> namesSeam(v, seam, owner, ctx));
+		if (!(value instanceof String selector)) return false;
+		MemberRef ref = MemberRef.parse(ctx.resolve(selector));
+		return !ref.fuzzy() && seam.name().equals(ref.name()) && (ref.owner() == null || ref.owner().equals(owner))
+				&& (ref.desc() == null || ref.desc().equals(seam.desc()));
 	}
 
 	/**
@@ -1446,9 +1518,30 @@ public final class MixinPreflight extends PreflightPart {
 			}
 		}
 		List<String> selectors = named.stream().map(MixinPreflight::selector).distinct().toList();
+		String hint = null;
+		for (MemberRef ref : named) {
+			if (hint == null) hint = replacedHint(target, ref.name(), ref.desc());
+		}
 		ctx.injector(handler, require, injectorName + (selectors.size() == 1 ? " targets method " + selectors.get(0) + ", which does not exist in "
 						: " targets methods " + String.join(", ", selectors) + ", none of which exists in ") + targetDotted,
-				"The method was renamed or removed by " + ctx.changer(false) + ".");
+				hint != null ? hint : "The method was renamed or removed by " + ctx.changer(false) + ".");
+	}
+
+	/** {@link #replacedHint(ClassNode, String, String)} for a point's call of a method of the target. */
+	private String replacedHint(ClassNode target, String rawTarget, Context ctx) {
+		MemberRef ref = rawTarget == null ? null : MemberRef.parse(ctx.resolve(rawTarget));
+		return ref == null || ref.fuzzy() || !target.name.equals(ref.owner()) ? null : replacedHint(target, ref.name(), ref.desc());
+	}
+
+	/**
+	 * Why an injector naming a private method of vanilla's the platform replaced with one of its own, or its call, stays
+	 * out ({@link ReplacedMethods}); null for any other method.
+	 */
+	private String replacedHint(ClassNode target, String name, String desc) {
+		ReplacedMethods.Replaced replaced = name == null ? null : replacedMethods.replaced(target, name, desc);
+		return replaced == null ? null : loader + " replaced that private method with " + replaced.named() + ", which " + replaced.caller().name
+				+ " calls in its place; only an @Inject at its call or its start, or at its end where that method returns as vanilla's does, moves there"
+				+ " (STRUCT-1).";
 	}
 
 	/** A selector's name and descriptor, as reports print it. */
@@ -1527,6 +1620,14 @@ public final class MixinPreflight extends PreflightPart {
 							+ " Mixin rejects its descriptor whatever the capture mode",
 					(ctx.owner() == null ? loader + "'s build of Minecraft reduced this method to a call" : ctx.changer(true) + " changed this method")
 							+ "; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+		SkippedCaptures.Skipped skippedCapture = ann.desc.equals(MixinNames.INJECT) && !anyFuzzy && (mixin.access & Opcodes.ACC_INTERFACE) == 0
+				? SkippedCaptures.skipped(mixin, handler, ann, matched, classes::withFrames, target.name, ctx) : null;
+		if (skippedCapture != null) {
+			ctx.skippedCapture(handler, skippedCapture.describe(injectorName, handler, ctx),
+					(ctx.owner() == null ? loader + "'s build of Minecraft orders this method's locals otherwise" : ctx.changer(true) + " orders this method's locals otherwise")
+							+ "; the mod needs an update for it.");
 			return;
 		}
 
@@ -1758,7 +1859,8 @@ public final class MixinPreflight extends PreflightPart {
 								+ (rawTarget != null ? ", target=\"" + ctx.resolve(rawTarget) + "\"" : "")
 								+ (point.equals("CONSTANT") && Annotations.value(at, "args") instanceof List<?> args ? ", args=" + args : "")
 								+ (ordinal >= 0 ? ", ordinal=" + ordinal : "") + "), which does not occur in that method",
-						ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
+						replacedHint(target, rawTarget, ctx) != null ? replacedHint(target, rawTarget, ctx)
+								: ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 				return;
 			}
 			if (verdict == Verdict.FOUND && ann.desc.equals(MixinNames.WRAP_OPERATION) && rawTarget != null) {

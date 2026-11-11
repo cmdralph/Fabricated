@@ -40,6 +40,7 @@ missing) · — doesn't exist there
 | Team Reborn Energy and the platform's energy | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ⚪ 6 | ❌ 6 | ❌ 6 | ❌ 6 | ❌ 6 | ❌ 6 | ❌ 6 |
 | Client modules: key mappings, HUD, screens, client commands | ✅ | ◐ 7 | ✅ | ✅ | ✅ | ◐ 7 | ◐ 7 | ◐ 7 | ✅ | ✅ | ✅ |
 | Fabric mods' hooks inside the HUD method | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ 8 | ✅ | ◐ 8 | ◐ 8 | ◐ 8 | ◐ 8 |
+| Fabric mods' layers added to vanilla's HUD layer stacks in `Gui`'s constructor | ✅ 20 | — | — | — | — | — | ✅ | — | — | — | — |
 | Mod Menu config screens in the platform's mod list | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Fabric mods' plugins for JEI, REI, Jade, WTHIT and Simple Voice Chat | ✅ | ✅ | ✅ | ✅ | ✅ 9 | ✅ | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 | ✅ 17 |
 | Platform mods' properties as Fabric custom values, and the reverse | ✅ | ✅ | ✅ | ✅ | ✅ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
@@ -101,7 +102,7 @@ Notes:
     and a client of every version, as informational runs (`ci/runs.tsv`). On NeoForge every corpus server starts, and
     every client reaches its world but where a mod's own behaviour holds it (CORPUS-66). On Forge the stops the
     advanced corpus found are fixed, some checked on local runs only (`roadmap.md`, *Compatibility baseline*), and one
-    mod, Wover Story, fails on Forge 66 (REG-13). Per-mod results are in *Fabric mods tested*.
+    mod, Wover Story, fails on Forge 66 (REG-13, a known limit). Per-mod results are in *Fabric mods tested*.
 16. The shared suite runs, with Forge's half of it; each shared check Forge doesn't pass yet is listed in `ci/checks.tsv`
     with its reason, and is a cell of this matrix.
 17. Modrinth has Forge builds of WTHIT and Simple Voice Chat for 1.21.11 and 26.x, and of JEI, WTHIT and Simple Voice
@@ -111,6 +112,13 @@ Notes:
     unknown.
 19. On Forge CI runs the Fabric builds of Sodium and Iris without a shader pack (Sodium 0.5 with Indium on 1.20.1): the
     run with CI's shader pack is NeoForge's alone (`ci/runs.tsv`).
+20. NeoForge builds the HUD from layers of its own: a layer a Fabric mod adds to one of vanilla's stacks there (as Apoli
+    adds its resource bars) is a layer of NeoForge's, drawn where vanilla draws it among vanilla's layers and under its
+    stack's condition (the GUI shown), and NeoForge mods' layers order against NeoForge's as before. A vanilla layer a
+    mod takes out of a stack there, or replaces, isn't drawn: NeoForge's layers for it stay, under their names, drawing
+    nothing, and a replacement is drawn where it was. One a mod moves stays where NeoForge draws it. Vanilla has had no
+    such stacks since 1.21.6, which the other versions are past (their mods add HUD elements through Fabric API, above),
+    and 1.20.1 has none yet.
 
 ## How CI tests it
 
@@ -250,6 +258,14 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
   modification changed to clients.
 - **Client entrypoints**: NeoForge 21.1 loads mods inside `Minecraft`'s constructor, so Fabric's main and client
   entrypoints run right after it has (REG-7), where later versions run them at the game thread.
+- **HUD layers added in `Gui`'s constructor**: vanilla builds its two HUD layer stacks there and Fabric mods add their
+  layers to one at the constructor's read of its root stack (Apoli's resource bars); NeoForge 21.1 builds each stack as
+  a layer manager of its own and never makes that read. Pre-flight points such a hook at Fabricated's seam for the
+  read, which holds vanilla's stacks as the constructor does there, and each layer the hook adds becomes one of
+  NeoForge's, drawn where vanilla draws it under its stack's condition (HUD-7, note 20 above). A hook elsewhere in the
+  constructor that captures the stacks stays left out, with the report's reason. Where NeoForge's constructor doesn't
+  add its stacks as Fabricated knows them (another 21.1 build), the hooks still run, and the report names the layers
+  they added, which aren't drawn then.
 - **Particles** (native): NeoForge 21.1 keys the particle engine's providers by id, as Forge 47 does, so Fabricated
   ships the module (PART-3): factories and their sprite sets are registered through the engine's own methods, and
   the block dust tint event is asked where NeoForge decides the tint.
@@ -1176,6 +1192,12 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   registered, as the port does on Fabric) and tooltip providers (placed before or after all component tooltips). A
   NeoForge mod that reads the registries during NeoForge's own registration events doesn't see Fabric mods' content
   on a client. On a dedicated server `main` and `server` entrypoints run while NeoForge registers content, as before.
+- A hook after Fabric Loader's own `Hooks.startServer`, the call its launcher adds to the dedicated server's
+  `Main.main` where mods' entrypoints run, is pointed at the call where the platform loads mods, where Fabricated runs
+  them: NeoForge's `ServerModLoader.load` and, on every Forge version, Forge's (HOOK-1, HOOK-4). owo-lib's registry
+  freeze runs once every mod's `main` and `server` entrypoints have, as on Fabric. Its client hook, after
+  `Hooks.startClient`, isn't pointed anywhere: Fabricated runs the client entrypoints from a hook of its own, which a
+  hook at the same call would come before.
 - A Fabric payload type registered after NeoForge's payload registration (MiniHUD's, from the end of `Minecraft`'s
   constructor; Ledger's, as the server starts) is registered with NeoForge then, as upstream accepts it at any time
   (NET-3). An id a NeoForge mod already registered stays the NeoForge mod's.
@@ -1351,7 +1373,9 @@ code can do without that mixin:
   `removeAllEffects`, at a `Map.clear()` call NeoForge's code doesn't make there), or the whole mixin when it does, as its injectors may share those
   fields. The features the left-out part hooks in for don't work. The report lists each one under "Mixins left out
   (NeoForge's code differs where they hook in)", with what NeoForge's code lacks; the mod's row (and
-  `/fabricated why <mod>`) gives the count, and the log names the mods at startup.
+  `/fabricated why <mod>`) gives the count, and the log names the mods at startup. A hook that is a known limit, which
+  no update of the mod or of Fabricated changes, says so on its line, with what to do and its finding (SPAWN-1,
+  SCREEN-2); an entrypoint failure that is one says so too, in the loading warnings as well (REG-13).
 - **Any other mixin**: the mod's own code casts its target to the interface the mixin adds, or calls its accessors,
   so leaving the mixin out would only move the crash into the mod. The mod is disabled with the reason, as are the
   enum mixins NeoForge's extensible enums don't allow.
@@ -1366,10 +1390,38 @@ code can do without that mixin:
 A mod disabled this way can still be loaded without the mixin, by naming it in `skipMixins` in
 `config/fabricated.json` (the report's suggestion gives the exact entry).
 
+A hook at a private method of vanilla's that the platform replaced with one of its own, called in the place of
+vanilla's one call of it, runs there (STRUCT-1): `StructureTemplate.placeEntities`, which NeoForge, Forge 47 and Forge
+52 replaced with `addEntitiesToWorld(level, pos, settings)`, and Forge 61 to 66 with a `placeEntities` taking the
+settings in the pivot's place, both running the structure processors on each entity. An `@Inject` at the method's call
+moves to the platform's call, and one at its start to the platform's method (at its end too where the platform's
+method returns where vanilla's does), its handler given vanilla's parameters as vanilla's call read them from the
+settings: YUNG's API's and Friends and Foes' entity processing (their structures' armor stands and item frames) works
+on every version. The same goes for methods a platform gave another parameter: on Forge 47
+`HopperBlockEntity.ejectItems`, where Carpet's hopper counters and FrozenLib's ejection guard now hook its start, and
+on Forge 61 to 66 `ServerExplosion.hurtEntities`, where Carpet's explosion event hooks after its call; a hook at their
+end stays out where the platform's method returns otherwise (the hopper's returns first where Forge's insert hook took
+the items). Other injectors there stay out, the report saying why: Porting Lib's port of the platform's own entity
+processing, which the platform runs itself (Porting Lib's processors take the platform's `processEntity`), and Friends
+and Foes' wrapper of a structure mob's spawn in the method's lambda on NeoForge and Forge 47, whose lambda takes the
+settings where vanilla's takes what it reads from them: its spawn event doesn't fire for structure mobs there.
+
 A mod's own call of a game constructor NeoForge replaced with one taking a name too, `LootPool`'s on every version
 (BCLib's loot pool mixin makes its pools so), calls NeoForge's with no name, and its widener's line for vanilla's
 constructor opens NeoForge's (LOOT-3). Any other call of a game constructor NeoForge lacks, a mixin's included, is
 listed among the report's linkage warnings.
+
+Vanilla's piston stickiness methods, `PistonStructureResolver.isSticky` and `canStickToEachOther`, which NeoForge 21.1,
+21.11 and 26.1.2 replace with the block state's `isStickyBlock` and `canStickTo`, are put back where a Fabric mod's
+mixin targets the resolver, answering as NeoForge's code does, so the mod's hooks of them apply as on Fabric (SEAM-1:
+Carpet's, FrozenLib's and Moonlight's sticky blocks). NeoForge's own sticky blocks and slime and honey stick as before.
+NeoForge 26.2 and 26.3 keep both methods. The report notes each hook of one; on 26.1.2, where NeoForge's line check
+asks the first block twice, a resolver with such hooks asks both ways there, as NeoForge 26.2 does. Carpet's hook keeping
+the line's positions finds other locals in NeoForge 21.1 to 26.1.2, whose `addBlockLine` declares its old state before
+vanilla's position, so it is left out, and Carpet's check of the line, which reads them, with it (SEAM-2): its chains
+and chests don't pull the blocks behind them along the push, and stick across it as its rules say. A NeoForge mod's
+mixin hooking the resolver's `isStickyBlock` or `canStickTo` calls finds none there where a Fabric mod's mixin targets
+the resolver too: those calls are then in vanilla's methods put back.
 
 What this can't match of Fabric, seen in a reference pack (2026-10-28):
 
@@ -1418,6 +1470,7 @@ tracked:
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
 | A NeoForge model naming its loader in NeoForge's object form (`"loader": {"id": ...}`), with Moonlight's Fabric build installed | 1.21.1 | Moonlight's hook into vanilla's model deserializer, which NeoForge's runs first, reads `loader` as a string only and fails the model; not seen in the corpus | CORPUS-62 |
 | What Forgified Fabric API's modules do differently from upstream, where it provides them | read on 1.21.1, 26.1.2 and 26.2 | a provider's module is used as it is; on 1.21.1 its trapdoor tag, attack block result, sculk frequencies and default-enabled packs don't take effect (on 26.1.2 and 26.2 the first three too, and a biome modification doesn't reach clients, PROVIDER-10; there its packet context holds nothing for codecs, and its HUD elements attached to vanilla ones ignore vanilla's layer checks, PROVIDER-17), and it makes fewer bridges to NeoForge (enchanting, creator mod, transfer), as listed in *Mods that bring Fabric API or Fabric Loader* above; the test mods skip those checks with it | PROVIDER-8, PROVIDER-10, PROVIDER-17 |
+| Fabric mods' hooks of vanilla's spawn checks (Architectury's spawn check event for spawners and world generation, Friends and Foes' world generation spawn hook) | all | NeoForge makes `Mob.checkSpawnRules` and `checkSpawnObstruction` inside its own spawn position event's hook, so the hooks are left out, and spawners and world generation skip them; the report says so. Use the mod's NeoForge build | SPAWN-1 |
 | Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 
 ### Planned work, in order of impact
@@ -1908,6 +1961,16 @@ What else differs on Forge, for Fabric mods in general:
   no constructor without it, as NeoForge's (an `Optional` there): a Fabric mod's call of vanilla's constructor calls
   Forge's with no name, and its widener's line for vanilla's opens Forge's (LOOT-3: BCLib's merged loot pools,
   BetterNether's piglin bartering table among them; checked on a Forge 47 server). Forge 52 and 61 to 66 keep vanilla's.
+- **Piston stickiness:** Forge 47 to 66 replace vanilla's `PistonStructureResolver.isSticky` and `canStickToEachOther`
+  with the block state's `isStickyBlock` and `canStickTo`; both are put back where a Fabric mod's mixin targets the
+  resolver, answering as Forge's code does (under their SRG names on Forge 47), so the mod's hooks of them apply (SEAM-1:
+  Carpet's, FrozenLib's and Moonlight's sticky blocks). Forge's own sticky blocks and slime and honey stick as before.
+  A Fabric mod's hook answering for every block answers for Forge mods' blocks too: Carpet 1.20.1's does, its own
+  rules deciding each block's stickiness, as it does for other mods' blocks on Fabric. On Forge 47, whose
+  `addBlockLine` declares its old state before vanilla's position, Carpet's hook keeping the line's positions and its
+  check of the line are left out (SEAM-2), as on NeoForge 21.1 to 26.1.2; Forge 52 and 61 to 66 keep vanilla's order.
+  A Forge mod's mixin hooking the resolver's `isStickyBlock` or `canStickTo` calls finds none there where a Fabric mod's
+  mixin targets the resolver too.
 - **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
   into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't
@@ -2023,6 +2086,21 @@ instead.
 - **Data generation only.** Removing entries through a Fabric tag appender, Fabric's key sort orders in generated files,
   and, by version, the advancement builder's Fabric interface and vanilla's block loot provider limited to vanilla's
   blocks; a Fabric model provider also writes item definitions for other mods' block items.
+
+**Known limits** (the report says so where each shows, with its finding):
+
+- **Spawn checks** (every Forge version). As on NeoForge, Forge makes `Mob.checkSpawnRules` and
+  `checkSpawnObstruction` inside its own spawn position event's hook, so Fabric mods' hooks of them are left out:
+  Architectury's spawn check event skips spawners and world generation, and Friends and Foes' world generation spawn
+  hook doesn't run. Use the mod's Forge build (SPAWN-1).
+- **Screen render wrappers** (Forge 65 and 66). Forge draws the screen in its own layer code, which reads the screen
+  itself, so a Fabric mod's wrapper of the screen's render call is left out: Architectury's screen render events,
+  FancyMenu's and SpruceUI's hooks around drawing a screen. An `@Inject` at the call applies, and on Forge 61 and 64
+  Architectury's and FancyMenu's wrappers apply at Forge's hook. Use NeoForge, or the mod's Forge build (SCREEN-2).
+- **Two equal registry entries.** Forge's registries tell entries apart by equality, so a mod registering two equal
+  objects under two names fails at the second: Wover Story's main entrypoint on Forge 66 (two equal point-of-interest
+  types), and the mod is marked as failed. On Fabric and NeoForge they are two entries. Use NeoForge, or the mod's
+  Forge build (REG-13).
 
 ## Fabric mods tested
 
