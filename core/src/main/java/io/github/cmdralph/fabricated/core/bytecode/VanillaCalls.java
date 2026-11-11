@@ -7,6 +7,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import org.objectweb.asm.ClassReader;
@@ -689,10 +690,11 @@ final class VanillaCalls {
 	 * What putting the class's calls back changes ({@code restored}: a copy, put back), for {@link SeamConflicts}: the
 	 * platform's calls they stand in for
 	 * ({@code moved}), the methods holding them, the platform's own methods no longer reached for the blocks keeping the
-	 * default ({@code bypassed}: its private {@code removeBlock}), and the extensions' defaults not called for those blocks
-	 * ({@code defaults}, interface to method).
+	 * default ({@code bypassed}: its private {@code removeBlock}), and the game's other methods whose calls change for those
+	 * blocks ({@code others}, by class, as names): the extensions' defaults, not called, and on Forge's server
+	 * {@code Level.removeBlock}, which vanilla's call put back runs, where Forge's default sets the block itself.
 	 */
-	static void changes(ClassNode node, ClassNode restored, Set<String> moved, Set<String> holders, Set<String> bypassed, Map<String, String> defaults) {
+	static void changes(ClassNode node, ClassNode restored, Set<String> moved, Set<String> holders, Set<String> bypassed, Map<String, Set<String>> others) {
 		boolean srg = VanillaSeams.srg(node);
 		for (PutBack row : applicable(node)) {
 			MethodNode method = holder(restored, row, srg);
@@ -701,8 +703,10 @@ final class VanillaCalls {
 			moved.add(platform.key(false));
 			holders.add(row.method(srg) + DESTROY_BLOCK);
 			if (platform.owner().equals(node.name)) bypassed.add(platform.name() + platform.desc());
-			defaults.put(row.extension().stateInterface(), row.extension().name());
-			defaults.put(row.extension().blockInterface(), row.extension().name());
+			others.computeIfAbsent(row.extension().stateInterface(), k -> new TreeSet<>()).add(row.extension().name());
+			others.computeIfAbsent(row.extension().blockInterface(), k -> new TreeSet<>()).add(row.extension().name());
+			if (row.removal() != Removal.FORGE_SERVER) continue;
+			for (String level : List.of(LEVEL, SERVER_LEVEL)) others.computeIfAbsent(level, k -> new TreeSet<>()).addAll(List.of(REMOVE_BLOCK.name(), REMOVE_BLOCK.srgName()));
 		}
 	}
 

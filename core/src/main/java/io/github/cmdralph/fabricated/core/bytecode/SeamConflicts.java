@@ -132,11 +132,11 @@ public final class SeamConflicts {
 			}
 			// A class the config lists and the jar hasn't, or one that doesn't parse, is so at every launch.
 			if (data == null) return new Found(new Conflict(listed.owner(), listed.mixin(), false), true);
-			// Only a mixin naming the class, or an extension whose default is bypassed, can target it (its @Mixin's class or
+			// Only a mixin naming the class, or another whose methods' calls change, can target it (its @Mixin's class or
 			// string): the others aren't parsed.
 			String text = new String(data, StandardCharsets.ISO_8859_1);
 			if (!text.contains(internal) && !text.contains(dotted)
-					&& rewrite.defaults().keySet().stream().noneMatch(i -> text.contains(i) || text.contains(i.replace('/', '.')))) continue;
+					&& rewrite.others().keySet().stream().noneMatch(i -> text.contains(i) || text.contains(i.replace('/', '.')))) continue;
 			ClassNode mixin = new ClassNode();
 			try {
 				new ClassReader(data).accept(mixin, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
@@ -145,7 +145,7 @@ public final class SeamConflicts {
 			}
 			List<String> targets = InstalledClasses.mixinTargets(mixin);
 			if (targets.contains(internal) && hooks(mixin, platformClass, rewrite)
-					|| rewrite.defaults().entrySet().stream().anyMatch(d -> targets.contains(d.getKey()) && hooksDefault(mixin, d.getValue()))) {
+					|| rewrite.others().entrySet().stream().anyMatch(d -> targets.contains(d.getKey()) && hooksMethod(mixin, d.getValue()))) {
 				return new Found(new Conflict(listed.owner(), listed.mixin(), true), true);
 			}
 		}
@@ -280,11 +280,14 @@ public final class SeamConflicts {
 		return false;
 	}
 
-	/** Whether the mixin, which targets an extension's interface, hooks its method {@code name}, whose default is bypassed. */
-	private static boolean hooksDefault(ClassNode mixin, String name) {
+	/**
+	 * Whether the mixin, which targets a class whose method of one of the {@code names} is called otherwise (an extension's
+	 * default, bypassed; Forge's {@code Level.removeBlock}, newly called), hooks it.
+	 */
+	private static boolean hooksMethod(ClassNode mixin, Set<String> names) {
 		for (MethodNode method : mixin.methods) {
 			for (AnnotationNode ann : annotations(method)) {
-				if (ann.desc.equals(OVERWRITE) && method.name.equals(name)) return true;
+				if (ann.desc.equals(OVERWRITE) && names.contains(method.name)) return true;
 				if (INJECTORS.stream().noneMatch(ann.desc::startsWith) || ann.desc.startsWith("Lcom/llamalad7/mixinextras/expression/")) continue;
 				Object methods = value(ann, "method");
 				List<?> selectors = methods instanceof List<?> list ? list : methods instanceof String one ? List.of(one) : List.of();
@@ -293,7 +296,7 @@ public final class SeamConflicts {
 					if (!(o instanceof String selector) || fuzzy(selector)) return true;
 					String member = selector.startsWith("L") && selector.contains(";") ? selector.substring(selector.indexOf(';') + 1) : selector;
 					int paren = member.indexOf('(');
-					if ((paren < 0 ? member : member.substring(0, paren)).equals(name)) return true;
+					if (names.contains(paren < 0 ? member : member.substring(0, paren))) return true;
 				}
 			}
 		}

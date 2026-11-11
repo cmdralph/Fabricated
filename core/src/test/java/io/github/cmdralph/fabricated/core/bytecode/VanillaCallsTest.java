@@ -206,6 +206,11 @@ public class VanillaCallsTest {
 		return sources(Form.NEOFORGE, server(Form.NEOFORGE), client(Form.NEOFORGE, "level"));
 	}
 
+	/** Forge 52 to 66's game classes, as the fixtures have them. */
+	public static Map<String, String> forgeSources() {
+		return sources(Form.FORGE, server(Form.FORGE), client(Form.FORGE, "level"));
+	}
+
 	private static Map<String, byte[]> platform(Path dir, Form form) throws Exception {
 		return TestSources.compileWithLocals(dir, sources(form, server(form), client(form, "level")));
 	}
@@ -319,8 +324,12 @@ public class VanillaCallsTest {
 		assertEquals(Set.of("removeBlock(" + pos + state + "ZLnet/minecraft/world/item/ItemStack;)Z"), server.bypassed());
 		assertTrue(server.added().containsAll(Set.of("net/minecraft/server/level/ServerLevel;removeBlock(" + pos + "Z)Z",
 				SERVER + ";level:Lnet/minecraft/server/level/ServerLevel;")), server.added().toString());
-		assertEquals(Map.of("net/neoforged/neoforge/common/extensions/IBlockExtension", "onDestroyedByPlayer",
-				"net/neoforged/neoforge/common/extensions/IBlockStateExtension", "onDestroyedByPlayer"), server.defaults());
+		assertEquals(Map.of("net/neoforged/neoforge/common/extensions/IBlockExtension", Set.of("onDestroyedByPlayer"),
+				"net/neoforged/neoforge/common/extensions/IBlockStateExtension", Set.of("onDestroyedByPlayer")), server.others());
+		// Forge's server: Level's removeBlock, which vanilla's call put back runs, where Forge's default sets the block itself.
+		VanillaSeams.Rewrite forge = VanillaSeams.rewriteOf(node(platform(dir.resolve("forge"), Form.FORGE).get(SERVER)));
+		assertEquals(Set.of("removeBlock", "m_7471_"), forge.others().get("net/minecraft/world/level/Level"));
+		assertEquals(Set.of("removeBlock", "m_7471_"), forge.others().get("net/minecraft/server/level/ServerLevel"));
 		VanillaSeams.Rewrite client = VanillaSeams.rewriteOf(node(platform.get(CLIENT)));
 		assertEquals(Set.of(), client.bypassed());
 		assertTrue(client.added().contains("net/minecraft/world/level/Level;setBlock(" + pos + state + "I)Z"), client.added().toString());

@@ -119,7 +119,11 @@ class SeamConflictsTest {
 	 * mode, the mixin targeting {@code nativeTarget}.
 	 */
 	private static SeamConflicts.Conflict breaking(Path dir, String nativeMembers, String nativeTarget) throws Exception {
-		Map<String, String> sources = new HashMap<>(VanillaCallsTest.neoForgeSources());
+		return breaking(dir, VanillaCallsTest.neoForgeSources(), nativeMembers, nativeTarget);
+	}
+
+	private static SeamConflicts.Conflict breaking(Path dir, Map<String, String> gameSources, String nativeMembers, String nativeTarget) throws Exception {
+		Map<String, String> sources = new HashMap<>(gameSources);
 		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value();"
 				+ " String target() default \"\"; }");
 		sources.put("org/spongepowered/asm/mixin/injection/Inject.java", "package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); }");
@@ -148,6 +152,15 @@ class SeamConflictsTest {
 				+ " \"Lnet/minecraft/server/level/ServerLevel;removeBlock(Lnet/minecraft/core/BlockPos;Z)Z\")) private void call(CallbackInfo ci) { }", gameMode));
 		assertEquals("NeoForge mod breaker's mixin NativeBreak hooks the platform's code that putting vanilla's calls back would move",
 				expected.describe("NeoForge", "vanilla's calls"));
+		// Level's removeBlock, which NeoForge's default calls too, but Forge's doesn't: there, vanilla's call put back runs it
+		// for player breaks it never saw, so the class stays as Forge has it.
+		String level = " @Inject(method = \"removeBlock\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		assertNull(breaking(dir.resolve("level"), level, "net.minecraft.world.level.Level"));
+		assertEquals(expected, breaking(dir.resolve("forge-level"), VanillaCallsTest.forgeSources(), level, "net.minecraft.world.level.Level"));
+		assertEquals(expected, breaking(dir.resolve("forge-level-srg"), VanillaCallsTest.forgeSources(), level.replace("removeBlock", "m_7471_"),
+				"net.minecraft.server.level.ServerLevel"));
+		assertNull(breaking(dir.resolve("forge-level-other"), VanillaCallsTest.forgeSources(), level.replace("removeBlock", "setBlock"),
+				"net.minecraft.world.level.Level"));
 		// What stays: destroyBlock's start, and a call NeoForge makes there.
 		assertNull(breaking(dir.resolve("head"), " @Inject(method = \"destroyBlock\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }", gameMode));
 		assertNull(breaking(dir.resolve("kept-call"), " @Inject(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target ="

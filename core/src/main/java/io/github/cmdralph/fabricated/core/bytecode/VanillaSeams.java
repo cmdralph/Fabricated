@@ -193,10 +193,12 @@ public final class VanillaSeams {
 	 *                   {@code name(desc)}
 	 * @param added      the members the rewrite names anew in the class's methods ({@code owner;name(desc)},
 	 *                   {@code owner;name:desc})
-	 * @param defaults   the extensions' default methods not called where vanilla's calls are made instead: interface to name
+	 * @param others     the game's other methods whose calls change where vanilla's calls are made instead, by class, as
+	 *                   names (Mojang's and SRG's): the extensions' defaults, no longer called, and on Forge's server
+	 *                   {@code Level.removeBlock}, called where Forge's default sets the block itself
 	 */
 	public record Rewrite(List<Restored> seams, Set<String> movedCalls, Set<String> holders, Set<String> bypassed, Set<String> added,
-			Map<String, String> defaults) {
+			Map<String, Set<String>> others) {
 		static final Rewrite NONE = new Rewrite(List.of(), Set.of(), Set.of(), Set.of(), Set.of(), Map.of());
 
 		public boolean isEmpty() {
@@ -236,10 +238,10 @@ public final class VanillaSeams {
 			}
 		}
 		Set<String> bypassed = new TreeSet<>();
-		Map<String, String> defaults = new TreeMap<>();
-		VanillaCalls.changes(platformClass, copy, moved, holders, bypassed, defaults);
+		Map<String, Set<String>> others = new TreeMap<>();
+		VanillaCalls.changes(platformClass, copy, moved, holders, bypassed, others);
 		return new Rewrite(List.copyOf(seams), Collections.unmodifiableSet(moved), Collections.unmodifiableSet(holders), Collections.unmodifiableSet(bypassed),
-				Collections.unmodifiableSet(VanillaCalls.added(platformClass, copy)), Collections.unmodifiableMap(defaults));
+				Collections.unmodifiableSet(VanillaCalls.added(platformClass, copy)), Collections.unmodifiableMap(others));
 	}
 
 	/** The game's classes with their seams put back ({@link #restore}): pre-flight's view, as they will load. */
