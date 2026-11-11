@@ -1350,6 +1350,11 @@ code can do without that mixin:
 A mod disabled this way can still be loaded without the mixin, by naming it in `skipMixins` in
 `config/fabricated.json` (the report's suggestion gives the exact entry).
 
+A mod's own call of a game constructor NeoForge replaced with one taking a name too, `LootPool`'s on every version
+(BCLib's loot pool mixin makes its pools so), calls NeoForge's with no name, and its widener's line for vanilla's
+constructor opens NeoForge's (LOOT-3). Any other call of a game constructor NeoForge lacks, a mixin's included, is
+listed among the report's linkage warnings.
+
 What this can't match of Fabric, seen in a reference pack (2026-10-28):
 
 - **A field NeoForge retyped.** NeoForge makes `KeyMapping.MAP` its own `KeyMappingLookup`, not vanilla's `Map`, so an
@@ -1878,6 +1883,10 @@ What else differs on Forge, for Fabric mods in general:
   (`org.spongepowered.include`), which some Fabric mods name (Wover's item API); Forge's Mixin carries none. A mod's
   references there name the game's own Guava and Gson instead (LIB-3: BetterEnd's, BetterNether's, BCLib's and Wover's
   entrypoints on Forge 52 and 64 to 66; checked on a Forge 66 server and a Forge 52 server and client).
+- **Loot pools made with vanilla's constructor:** Forge 47's loot pool takes a name after vanilla's arguments, and has
+  no constructor without it, as NeoForge's (an `Optional` there): a Fabric mod's call of vanilla's constructor calls
+  Forge's with no name, and its widener's line for vanilla's opens Forge's (LOOT-3: BCLib's merged loot pools,
+  BetterNether's piglin bartering table among them; checked on a Forge 47 server). Forge 52 and 61 to 66 keep vanilla's.
 - **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
   into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't
