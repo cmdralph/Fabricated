@@ -1301,7 +1301,7 @@ public final class Pipeline {
 		}).toList();
 		return findings.equals(t.findings()) ? t : new TranslatedMod(t.candidate(), t.neoForgeId(), t.jar(), t.overlay(), findings,
 				t.accessTransformers(), t.notes(), t.injectedInterfaces(), t.defaultBridges(), t.environmentClasses(), t.overridableMethods(),
-				t.cacheHit(), t.millis());
+				t.restoredSeams(), t.cacheHit(), t.millis());
 	}
 
 	/** @param leftOutMixins the mixins the linkage analysis left out of the mod, each with why */
