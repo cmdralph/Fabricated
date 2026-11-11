@@ -1561,6 +1561,14 @@ public final class MixinPreflight extends PreflightPart {
 							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
+		String refusedConstant = anyFuzzy ? null : refusedClassConstant(handler, ann, matched);
+		if (refusedConstant != null) {
+			// Mixin throws as it applies the mixin, as for a signature it refuses.
+			ctx.classLevel(injectorName + " handler " + handler.name + handler.desc + " modifies " + refusedConstant + " in " + target.name.replace('/', '.'),
+					(ctx.owner() == null ? loader + "'s build of Minecraft" : ctx.changer(true)) + " has another instruction there than the handler"
+							+ " takes; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
 
 		String unmatched = anyFuzzy ? null : unmatchedArgument(handler, ann, matched);
 		if (unmatched != null) {
@@ -1927,7 +1935,8 @@ public final class MixinPreflight extends PreflightPart {
 	 * (CORPUS-45). A {@code @ModifyConstant} of a class constant ({@code classValue}) that Mixin finds as an
 	 * {@code instanceof} takes the object and the class instead of the value, and returns whether it is one or the class
 	 * to check against ({@code RedirectInjector.injectAtInstanceOf}), exactly those two (Lithium's collision context hooks,
-	 * PRE-29). Handlers that use {@code @Coerce} are left to Mixin.
+	 * PRE-29), where Mixin finds an {@code instanceof} ({@link #refusedClassConstant}). Handlers that use {@code @Coerce}
+	 * are left to Mixin.
 	 */
 	private static boolean acceptsModifierSignature(MethodNode handler, AnnotationNode injector, List<MethodNode> targets) {
 		List<Type> args = PreflightAsm.handlerArgs(handler);
@@ -1943,6 +1952,36 @@ public final class MixinPreflight extends PreflightPart {
 			List<Type> params = List.of(Type.getArgumentTypes(target.desc));
 			return captured.size() <= params.size() && params.subList(0, captured.size()).equals(captured);
 		});
+	}
+
+	/**
+	 * The class constant ({@code classValue}) of a {@code @ModifyConstant} that Mixin finds where its handler doesn't fit,
+	 * described with the method and why, or null (PRE-29). Mixin's {@code ModifyConstantInjector} modifies an
+	 * {@code instanceof} with a handler taking the object and the class ({@link #acceptsModifierSignature}) and a class
+	 * literal ({@code ldc}) with one taking the class, and refuses a cast; each mismatch throws as the mixin applies. The
+	 * ordinal-th constant is looked at, or each without an ordinal; not a constant within a slice.
+	 */
+	private static String refusedClassConstant(MethodNode handler, AnnotationNode injector, List<MethodNode> targets) {
+		List<Type> args = PreflightAsm.handlerArgs(handler);
+		if (args == null || !injector.desc.equals(MixinNames.MODIFY_CONSTANT) || Annotations.value(injector, "slice") != null) return null;
+		boolean instanceOf = args.size() >= 2 && args.get(0).equals(Type.getType(Object.class)) && args.get(1).equals(Type.getType(Class.class));
+		for (AnnotationNode constant : Annotations.list(Annotations.value(injector, "constant"))) {
+			if (!(Annotations.value(constant, "classValue") instanceof Type type) || Annotations.value(constant, "slice") != null) continue;
+			int ordinal = Annotations.value(constant, "ordinal") instanceof Integer n ? n : -1;
+			for (MethodNode target : targets) {
+				List<AbstractInsnNode> found = InjectionPoints.constantInsns(constant, target);
+				for (int i = 0; i < found.size(); i++) {
+					int op = found.get(i).getOpcode();
+					String why = ordinal >= 0 && i != ordinal ? null
+							: op == Opcodes.CHECKCAST ? "a cast there, which Mixin's @ModifyConstant refuses"
+							: op == Opcodes.INSTANCEOF && !instanceOf ? "an instanceof there, whose handler Mixin requires to take the object and the class"
+							: op == Opcodes.LDC && instanceOf ? "a class literal there, whose handler Mixin requires to take the class, not the object and the class"
+							: null;
+					if (why != null) return "the constant " + type.getClassName() + ".class (ordinal " + i + ") of " + target.name + target.desc + ", " + why;
+				}
+			}
+		}
+		return null;
 	}
 
 	/**

@@ -8757,12 +8757,14 @@ class MixinPreflightTest {
 		init.visitCode();
 		init.visitVarInsn(Opcodes.ALOAD, 0);
 		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
-		// An instanceof (ordinal 0), a cast (1), an instanceof again (2).
+		// An instanceof (ordinal 0), a cast (1), an instanceof again (2), a class literal (3).
 		for (int op : new int[] {Opcodes.INSTANCEOF, Opcodes.CHECKCAST, Opcodes.INSTANCEOF}) {
 			init.visitVarInsn(Opcodes.ALOAD, 1);
 			init.visitTypeInsn(op, "java/lang/String");
 			init.visitInsn(Opcodes.POP);
 		}
+		init.visitLdcInsn(Type.getType(String.class));
+		init.visitInsn(Opcodes.POP);
 		init.visitInsn(Opcodes.RETURN);
 		init.visitMaxs(0, 0);
 		init.visitEnd();
@@ -8770,7 +8772,8 @@ class MixinPreflightTest {
 		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Constants"));
 		for (String fits : List.of("(Ljava/lang/Object;Ljava/lang/Class;)Z/0", "(Ljava/lang/Object;Ljava/lang/Class;)Z/2",
-				"(Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Object;)Z/0", "(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Class;/0")) {
+				"(Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Object;)Z/0", "(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Class;/0",
+				"(Ljava/lang/Class;)Ljava/lang/Class;/3")) {
 			List<PreflightFinding> findings = instanceofCheck(game, config, fits, true);
 			assertTrue(findings.isEmpty(), fits + ": " + findings);
 		}
@@ -8780,9 +8783,22 @@ class MixinPreflightTest {
 		}
 		List<PreflightFinding> notAClass = instanceofCheck(game, config, "(Ljava/lang/Object;Ljava/lang/Class;)Z/0", false);
 		assertTrue(notAClass.stream().anyMatch(f -> f.message().contains("does not match the parameters")), notAClass.toString());
-		// The casts count among the class's constants, as Mixin counts them: there are three.
-		List<PreflightFinding> beyond = instanceofCheck(game, config, "(Ljava/lang/Object;Ljava/lang/Class;)Z/3", true);
+		// The casts and the class literal count among the class's constants, as Mixin counts them: there are four.
+		List<PreflightFinding> beyond = instanceofCheck(game, config, "(Ljava/lang/Object;Ljava/lang/Class;)Z/4", true);
 		assertTrue(beyond.stream().anyMatch(f -> f.message().contains("expects the constant java.lang.String.class, which does not occur")), beyond.toString());
+		// Mixin refuses a cast, an instanceof's handler at a class literal and a class literal's at an instanceof, and without
+		// an ordinal looks at each: the mixin is left out, saying which.
+		Map<String, String> mismatched = Map.of(
+				"(Ljava/lang/Object;Ljava/lang/Class;)Z/1", "(ordinal 1) of <init>(Ljava/lang/Object;)V, a cast there",
+				"(Ljava/lang/Object;Ljava/lang/Class;)Z/-1", "(ordinal 1) of <init>(Ljava/lang/Object;)V, a cast there",
+				"(Ljava/lang/Object;Ljava/lang/Class;)Z/3", "(ordinal 3) of <init>(Ljava/lang/Object;)V, a class literal there",
+				"(Ljava/lang/Class;)Ljava/lang/Class;/0", "(ordinal 0) of <init>(Ljava/lang/Object;)V, an instanceof there");
+		mismatched.forEach((shape, why) -> {
+			List<PreflightFinding> findings = instanceofCheck(game, config, shape, true);
+			assertTrue(findings.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.handler() == null
+					&& f.message().contains("handler h" + shape.substring(0, shape.lastIndexOf('/')) + " modifies the constant java.lang.String.class " + why)),
+					shape + ": " + findings);
+		});
 	}
 
 	/**
@@ -8803,7 +8819,7 @@ class MixinPreflightTest {
 			AnnotationVisitor constant = constants.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/Constant;");
 			if (classValue) constant.visit("classValue", Type.getType(String.class));
 			else constant.visit("intValue", 0);
-			constant.visit("ordinal", ordinal);
+			if (ordinal >= 0) constant.visit("ordinal", ordinal);
 			constant.visitEnd();
 			constants.visitEnd();
 			ann.visitEnd();
