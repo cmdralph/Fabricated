@@ -1,0 +1,1 @@
+accessible method net/minecraft/world/level/storage/loot/LootPool <init> (Ljava/util/List;Ljava/util/Optional;Ljava/util/Optional;Lnet/minecraft/core/Holder;Lnet/minecraft/core/Holder;)V

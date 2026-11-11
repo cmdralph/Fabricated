@@ -461,6 +461,16 @@ A mod that adds a pack source the vanilla way, replacing the repository's source
 (FrozenLib's resource pack API), keeps it: the set is made mutable again before NeoForge adds its own pack finders
 (PACK-1).
 
+With Fabric API, a pack's conditional overlays (`fabric:overlays`) apply where vanilla reads a pack's metadata, as
+upstream applies them, but not to a pack that declares NeoForge's own (`neoforge:overlays`): such a pack is built for
+both loaders, its Fabric overlays gated by conditions only its Fabric build registers (the NeoForge builds of Terralith
+and Tectonic), and NeoForge's overlays alone apply to it, as without Fabricated. A Fabric jar never declares them, as
+its `neoforge:` sections are left out (above). A `fabric:overlays` section that can't be read (a condition nothing
+registers, the wrong shape) is left out with one warning naming the pack, which loads with its other overlays. Upstream's
+hook made such packs unreadable, and a mod passing the missing pack on stopped the server (PACK-12). On 26.x, a Fabric
+mod whose own `pack.mcmeta` can't be read loses its pack, with NeoForge's error naming the file, where NeoForge's second
+read of the file stopped loading every pack; NeoForge stops there for a native mod's, which Fabricated leaves as it is.
+
 `DEFAULT_ENABLED` built-in **resource** packs are switched on as upstream switches them on: the first time the client
 is offered each, and only then, so a pack the player turned off stays off, and a pack whose mod was removed is
 switched on again when it comes back (PACK-6). Which packs were offered before is kept in upstream's own file,
@@ -1350,6 +1360,11 @@ code can do without that mixin:
 A mod disabled this way can still be loaded without the mixin, by naming it in `skipMixins` in
 `config/fabricated.json` (the report's suggestion gives the exact entry).
 
+A mod's own call of a game constructor NeoForge replaced with one taking a name too, `LootPool`'s on every version
+(BCLib's loot pool mixin makes its pools so), calls NeoForge's with no name, and its widener's line for vanilla's
+constructor opens NeoForge's (LOOT-3). Any other call of a game constructor NeoForge lacks, a mixin's included, is
+listed among the report's linkage warnings.
+
 What this can't match of Fabric, seen in a reference pack (2026-10-28):
 
 - **A field NeoForge retyped.** NeoForge makes `KeyMapping.MAP` its own `KeyMappingLookup`, not vanilla's `Map`, so an
@@ -1535,6 +1550,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   which on Fabric is after the Fabric mods' entrypoints and on Forge before them. So the plans leave that hook out,
   and the in-game mod does its work once the entrypoints have run, before the game selects its packs from the
   options (CORPUS-104).
+- **Conditional overlays:** a pack's `fabric:overlays` apply where their conditions hold, and a section that can't be
+  read is left out with one warning naming the pack, which loads with its other overlays (Forge 52 and 61 to 66, with
+  Fabric API; PACK-12). Forge reads every mod file's pack through vanilla's reading of a pack's metadata, where
+  upstream's hook logged an error for such a section and, from Forge 64, made the pack unreadable, so Forge left the
+  mod's resources out, native mods' included. Forge reads no `neoforge:overlays`.
 - **Load conditions:** of two advancements (a JSON data loader's files) and two damage types (a data pack registry's
   entries) with `fabric:load_conditions`, the server loads the ones whose conditions hold and not the others (Forge 61
   to 66, with Fabric API). Forge 61 decodes registry entries through its own conditional decoder, which the in-game mod
@@ -1878,6 +1898,10 @@ What else differs on Forge, for Fabric mods in general:
   (`org.spongepowered.include`), which some Fabric mods name (Wover's item API); Forge's Mixin carries none. A mod's
   references there name the game's own Guava and Gson instead (LIB-3: BetterEnd's, BetterNether's, BCLib's and Wover's
   entrypoints on Forge 52 and 64 to 66; checked on a Forge 66 server and a Forge 52 server and client).
+- **Loot pools made with vanilla's constructor:** Forge 47's loot pool takes a name after vanilla's arguments, and has
+  no constructor without it, as NeoForge's (an `Optional` there): a Fabric mod's call of vanilla's constructor calls
+  Forge's with no name, and its widener's line for vanilla's opens Forge's (LOOT-3: BCLib's merged loot pools,
+  BetterNether's piglin bartering table among them; checked on a Forge 47 server). Forge 52 and 61 to 66 keep vanilla's.
 - **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
   into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't

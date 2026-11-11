@@ -1,0 +1,12 @@
+{
+  "pack": {
+    "description": "Fabricated test mod: a Fabric pack's conditional overlays",
+    ${pack_formats}
+  },
+  "fabric:overlays": {
+    "entries": [
+      {"directory": "fabric_holds", "condition": {"condition": "fabric:true"}},
+      {"directory": "fabric_fails", "condition": {"condition": "fabric:not", "value": {"condition": "fabric:true"}}}
+    ]
+  }
+}

@@ -7,6 +7,7 @@ import java.util.function.Predicate;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Handle;
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
@@ -27,7 +28,7 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * complete for those namespaces. On a dedicated server, classes that reference client-only code or are
  * annotated {@code @Environment(EnvType.CLIENT)} are skipped because they never load there. Client-only code is the
  * client's packages and, on a 1.21.11 server, classes left in Intermediary's names: the server's mappings name only
- * the classes the server has.
+ * the classes the server has. Of a mixin, only the game's constructors it calls are verified.
  */
 public final class LinkageChecker {
 	private static final int MAX_ISSUES = 25;
@@ -64,8 +65,11 @@ public final class LinkageChecker {
 			out.add(new Issue("?", "unreadable class file", "class"));
 			return;
 		}
-		if (isMixin(node)) return;
 		if (!clientSide && (isClientOnly(node) || referencesClientCode(node))) return;
+		if (isMixin(node)) {
+			checkConstructions(node, out);
+			return;
+		}
 
 		Set<String> seen = new LinkedHashSet<>();
 		checkClass(node.name, node.superName, seen, out);
@@ -100,6 +104,26 @@ public final class LinkageChecker {
 					for (Object arg : indy.bsmArgs) {
 						if (arg instanceof Handle h) checkClass(node.name, h.getOwner(), seen, out);
 					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * The game's constructors a mixin calls: Mixin resolves the members a mixin names of its targets, but the objects its
+	 * code makes are the JVM's to link once the code is the targets' (BCLib's loot pool merging, LOOT-3). Not in its own
+	 * constructors, whose call of the delegate constructor Mixin drops.
+	 */
+	private void checkConstructions(ClassNode node, List<Issue> out) {
+		Set<String> seen = new LinkedHashSet<>();
+		for (MethodNode method : node.methods) {
+			if (method.instructions == null || method.name.equals("<init>")) continue;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (out.size() >= MAX_ISSUES) return;
+				if (!(insn instanceof MethodInsnNode m) || m.getOpcode() != Opcodes.INVOKESPECIAL || !m.name.equals("<init>") || !isChecked.test(m.owner)) continue;
+				ClassIndex.ClassInfo owner = available.get(m.owner);
+				if (owner != null && owner.methodAccess(m.name + m.desc) == null && seen.add(m.owner + m.desc)) {
+					out.add(new Issue(node.name, m.owner.replace('/', '.') + "." + m.name + m.desc, "method"));
 				}
 			}
 		}

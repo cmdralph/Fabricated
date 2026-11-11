@@ -10,8 +10,8 @@
 #   projects was fetched for it, or (a path) unless that file exists in a run directory before it.
 # mods: what joins the test mods (ci/smoke.sh): fabric-api, testmod:<name>, modrinth:<loader>:<project>[@<version
 #   id>],..., corpus[:advanced], drop:<jar glob>, standins[:own-loader], connector, fabricated-copy, energy,
-#   seed:<run>/<path>, reuse:<run>; -testmods leaves the test mods out. {plugin_hosts}, {renderers} and
-#   {fabric_renderers} are the version's pins ({renderers.sodium} the Sodium one). env: the harness's settings.
+#   unreadable-pack, seed:<run>/<path>, reuse:<run>; -testmods leaves the test mods out. {plugin_hosts}, {renderers}
+#   and {fabric_renderers} are the version's pins ({renderers.sodium} the Sodium one). env: the harness's settings.
 run	side	part	extended	gates	neoforge	forge	forge-legacy	needs	mods	env	description	why_not
 server	server	server	no	all	*						A dedicated server with the test mods	forge: the row below, with Fabric API, which the test mods need on Forge; forge-legacy: same
 server	server	server	no	all		*	*		fabric-api		A dedicated server with the test mods, with the official Fabric API jar, which the test mods need on Forge: Fabricated ships a few of its modules there	neoforge: the row above
@@ -22,6 +22,7 @@ server-standins	server	server	no	all		*	*		standins fabric-api		With stand-ins f
 refuse-connector	server	server	no	all	*	*	*		-testmods connector	SMOKE_TIMEOUT=300	Sinytra Connector (a stand-in with its mod id) in the mods folder: the launch stops with Fabricated's refusal (DUP-1)
 refuse-twice	server	server	no	all	*	*	*		-testmods fabricated-copy	SMOKE_TIMEOUT=300	A second Fabricated jar in the mods folder: the launch stops with Fabricated's refusal (DUP-1)
 refuse-loader	server	server	no	all		*	*		-testmods standins:own-loader	SMOKE_TIMEOUT=300	A Forge jar with its own copy of Fabric Loader: the launch stops at once with Fabricated's refusal (PROVIDER-2)	neoforge: NeoForge leaves another jar's copy of Fabric Loader's API out (server-standins checks it, PROVIDER-2)
+server-unreadable-pack	server	server	no	all	*				-testmods unreadable-pack	SMOKE_TIMEOUT=300	A Fabric mod whose pack.mcmeta isn't JSON: the server must start, the mod's pack left out where NeoForge can't read it (PACK-12)	forge: Forge leaves out a mod's pack whose metadata it can't read itself; forge-legacy: same
 apply-failure-1	server	server	no	all	*				-testmods testmod:badmixin	SMOKE_TIMEOUT=300 SMOKE_ON_ENTRYPOINT_FAILURE= FABRICATED_MODS={"fabricated-testmod-badmixin":{"ignorePreflight":true}}	The safety net for a mixin pre-flight passed that fails as Mixin applies it (APPLY-1), launch 1: the impossible-mixin test mod with pre-flight's findings ignored	forge: not run on Forge yet; forge-legacy: not run on Forge yet
 apply-failure-2	server	server	no	all	*				reuse:apply-failure-1	SMOKE_TIMEOUT=300 SMOKE_ON_ENTRYPOINT_FAILURE= FABRICATED_MODS={"fabricated-testmod-badmixin":{"ignorePreflight":true}}	APPLY-1, launch 2 in the same game directory	forge: not run on Forge yet; forge-legacy: not run on Forge yet
 apply-failure-3	server	server	no	all	*				reuse:apply-failure-1	SMOKE_TIMEOUT=300 SMOKE_ON_ENTRYPOINT_FAILURE= FABRICATED_MODS={"fabricated-testmod-badmixin":{"ignorePreflight":true}}	APPLY-1, launch 3 in the same game directory	forge: not run on Forge yet; forge-legacy: not run on Forge yet

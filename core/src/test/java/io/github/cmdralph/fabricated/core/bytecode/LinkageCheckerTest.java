@@ -114,6 +114,38 @@ class LinkageCheckerTest {
 		assertTrue(with.isEmpty(), with.toString());
 	}
 
+	/**
+	 * A mixin's code becomes its targets', whose members Mixin resolves, but the JVM links the game's constructors it calls:
+	 * BCLib's loot pool mixin makes pools with a constructor Forge 47 and NeoForge don't have (LOOT-3). Its own
+	 * constructor's delegate call, which Mixin drops, and its other references aren't checked.
+	 */
+	@Test
+	void reportsTheGameConstructorsAMixinCalls() {
+		ClassWriter mixin = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		mixin.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "m/UtilMixin", null, "net/minecraft/Util", null);
+		mixin.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitEnd();
+		for (String name : new String[] {"<init>", "copy"}) {
+			MethodVisitor mv = mixin.visitMethod(Opcodes.ACC_PUBLIC, name, "()V", null, null);
+			mv.visitCode();
+			if (name.equals("<init>")) {
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+			} else {
+				mv.visitTypeInsn(Opcodes.NEW, "net/minecraft/Util");
+				mv.visitInsn(Opcodes.DUP);
+			}
+			mv.visitInsn(Opcodes.ICONST_1);
+			mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "net/minecraft/Util", "<init>", "(I)V", false);
+			if (!name.equals("<init>")) mv.visitInsn(Opcodes.POP);
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "net/minecraft/Util", "shadowed", "()V", false);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		mixin.visitEnd();
+		List<LinkageChecker.Issue> issues = check(mixin.toByteArray(), false);
+		assertEquals(List.of("m.UtilMixin -> missing method net.minecraft.Util.<init>(I)V"), issues.stream().map(Object::toString).toList());
+	}
+
 	@Test
 	void membersMixinsAddCountAsPresent() {
 		// A mixin into net/minecraft/Util adds field "added" and method extra()V, and shadows "count".

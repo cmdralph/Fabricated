@@ -1,5 +1,7 @@
 package io.github.cmdralph.fabricated.testmod;
 
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -8,15 +10,22 @@ import org.jspecify.annotations.Nullable;
 import com.mojang.serialization.Lifecycle;
 
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.minecraft.SharedConstants;
 import net.minecraft.core.Holder;
 import net.minecraft.core.RegistrationInfo;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.packs.PackLocationInfo;
+import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.PathPackResources;
+import net.minecraft.server.packs.repository.Pack;
+import net.minecraft.server.packs.repository.PackSource;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -135,5 +144,12 @@ public final class TestCompat {
 	/** Runs the listener after an entity was damaged. */
 	static void afterDamage(Consumer<LivingEntity> listener) {
 		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, base, taken, blocked) -> listener.accept(entity));
+	}
+
+	/** The overlays the game reads from the metadata of the data pack in this folder, or null where it reads none. */
+	static @Nullable List<String> packOverlays(String id, Path folder) {
+		Pack.Metadata metadata = Pack.readPackMetadata(new PackLocationInfo(id, Component.literal(id), PackSource.DEFAULT, Optional.empty()),
+				new PathPackResources.PathResourcesSupplier(folder), SharedConstants.getCurrentVersion().getPackVersion(PackType.SERVER_DATA));
+		return metadata == null ? null : metadata.overlays();
 	}
 }
