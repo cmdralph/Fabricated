@@ -1355,7 +1355,13 @@ code can do without that mixin:
 - **Any other mixin**: the mod's own code casts its target to the interface the mixin adds, or calls its accessors,
   so leaving the mixin out would only move the crash into the mod. The mod is disabled with the reason, as are the
   enum mixins NeoForge's extensible enums don't allow.
-- In a config with a plugin, which may disable mixins itself, only the failing injector is left out.
+- In a config with a plugin, which may disable mixins itself, only the failing injector is left out. A mixin the
+  plugin turns down itself, as Mixin asks it which to apply, as on Fabric, is listed apart under "Mixins their configs'
+  plugins leave out (as on Fabric)" and not counted in the mod's row (LEAVE-4: Pehkui's version-specific mixins).
+- Injectors of one mixin that hand state to each other through a `ThreadLocal` of the mod's, one storing into it and
+  another using it, are left out together, as one left alone would act on a value the other never stored (ITEM-2:
+  Fabric API's recipe remainder hooks on Forge 47 and 52). Injectors only reading one, or sharing a plain static field
+  (a config's), stay apart.
 
 A mod disabled this way can still be loaded without the mixin, by naming it in `skipMixins` in
 `config/fabricated.json` (the report's suggestion gives the exact entry).
@@ -1907,6 +1913,10 @@ What else differs on Forge, for Fabric mods in general:
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't
   repair so (PRE-28: Cobblemon's item renderer and model loader hooks, which had stopped a Forge 52 client; checked on a
   Forge 52 client).
+- **Static handlers on methods that take `this`:** Forge 47's Mixin (SpongePowered's 0.8.5) refuses a static `@Inject`
+  handler on a method that takes `this`, which Fabric's Mixin calls without it. Pre-flight gives such a handler a bridge
+  taking `this`, which calls it (LAMBDA-12: Architectury's screen click and release hooks into the `MouseHandler`
+  lambdas Forge 47's patch made take `this`; the test mod's static handler, server run).
 - **Pack sources a mod leaves immutable:** a Fabric mod adding a pack source the vanilla way, with a new immutable set,
   keeps it on every Forge version, as on NeoForge (PACK-1): the set is made mutable again before Forge adds its pack
   finders (PACK-11: FrozenLib's resource pack API, which had stopped a Forge 61 client; checked on a Forge 61 client
@@ -1992,11 +2002,18 @@ instead.
   by id, which Forge does its own way; on Forge 47, upgrading a world from before 1.18 with other mods' structures.
 - **Fluid rendering.** A Fabric fluid render handler's overlay sprite on the sides of a fluid beside glass or leaves;
   Forge's own overlay drawing stays (all five).
-- **Forge 47's interface mixins.** Its Mixin (0.8.5) applies no injector in an interface mixin. Fabricated applies an
-  `@Inject` at `HEAD`, `RETURN` or `TAIL` there itself (INTERFACE-1): the oxidizable blocks registry's (the test mod's
-  pair is in vanilla's oxidation map, server run) and `TooltipComponentCallback`'s (rendering-v1, its shape in core's
-  tests). Other injectors in an interface mixin are lost there; the recipe remainder's work is done through Forge's own
-  hook (*Items* above).
+- **Forge 47's interface mixins.** Its Mixin (0.8.5) applies no injector in an interface mixin. Fabricated applies these
+  there itself, as Mixin applies them on Forge 52 and 61 to 66 (INTERFACE-1, INTERFACE-2): an `@Inject` at `HEAD`,
+  `RETURN`, `TAIL`, a call or a field access, capturing locals or not; a `@Redirect` and MixinExtras' `@WrapOperation`
+  of a call; a `@ModifyConstant`; each with the target's parameters and MixinExtras' `@Local` where Mixin takes them.
+  The oxidizable blocks registry's (the test mod's pair is in vanilla's oxidation map), `TooltipComponentCallback`'s,
+  and Origins', owo-lib's, Carpet's, ServerCore's and Wilder Wild's hooks of this kind apply, and the test mod's
+  interface mixin checks each kind (server run). Other injectors in an interface mixin (`@ModifyVariable`, `@ModifyArg`,
+  `@ModifyReturnValue`, `@ModifyExpressionValue`...), slices, `@Coerce`, `@Share`, a `@Local` taken by name and a class
+  constant a cast or an instanceof check names are left out there, as is a second `@Redirect` of a call one already
+  replaces, at that call; a `@WrapOperation` wraps it, as MixinExtras chains them. Fabric API's recipe remainder hook is
+  left out, as on Forge 52: Forge replaced the calls two of its handlers hook, and the other two hand state to them
+  (ITEM-2); Forge's own hook answers from Fabric's remainder (*Items* above).
 - **Sound (Forge 47).** A Fabric sound instance's own audio stream (`FabricSoundInstance.getAudioStream`).
 - **Other hooks inside the HUD method.** A Fabric mod's mixin inside vanilla's HUD method (`Gui.render`; on Forge 64
   `Gui.extractRenderState`, on 65 and 66 `Hud.extractRenderState`) that wraps or redirects one of vanilla's calls,

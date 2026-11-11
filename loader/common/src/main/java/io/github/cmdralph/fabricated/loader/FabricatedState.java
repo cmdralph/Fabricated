@@ -162,8 +162,16 @@ public final class FabricatedState {
 		return added ? named.mixin() + " of " + id : null;
 	}
 
-	/** Writes {@code logs/fabric-bridge-report.txt}; failures are logged, never thrown. */
+	/**
+	 * Writes {@code logs/fabric-bridge-report.txt}, the mixins Fabric mods' plugins turned down by then apart from those
+	 * pre-flight left out ({@link PluginAnswers}); failures are logged, never thrown.
+	 */
 	public void writeReport() {
+		try {
+			Pipeline.leftOutByPlugins(result.report(), result.mods(), PluginAnswers.rejected());
+		} catch (RuntimeException e) {
+			LOGGER.warn("Could not list the mixins Fabric mods' plugins left out: {}", e.toString());
+		}
 		try {
 			result.report().write(logsDir);
 		} catch (IOException e) {

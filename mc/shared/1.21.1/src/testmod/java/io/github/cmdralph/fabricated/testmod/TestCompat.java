@@ -61,6 +61,13 @@ public final class TestCompat {
 	/** The first byte of an empty recipe slot on the network ({@link #slot}): an empty item list's length. */
 	public static final int EMPTY_SLOT = 0;
 
+	/**
+	 * Vanilla's lambda in {@code ChiseledBookShelfBlock.createBlockStateDefinition} that adds each slot's property, by its
+	 * name and descriptor in Minecraft 1.21.1, taking a {@code Property} (LAMBDA-11).
+	 */
+	public static final String PROPERTY_LAMBDA = "lambda$createBlockStateDefinition$1(Lnet/minecraft/world/level/block/state/StateDefinition$Builder;"
+			+ "Lnet/minecraft/world/level/block/state/properties/Property;)V";
+
 	private TestCompat() {
 	}
 
