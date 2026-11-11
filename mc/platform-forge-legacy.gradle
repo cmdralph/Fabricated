@@ -276,7 +276,7 @@ afterEvaluate {
         from(mixinMappings.testmodbroken.file)
         filesMatching('*.mixins.json') { filter(namingRefmap(mixinMappings.testmodbroken.refmap)) }
     }
-    [testmodJar: 'testmod', testmodThrowsJar: 'testmodbroken', testmodBadmixinJar: 'testmodbroken', testmodFrapiJar: 'testmodfrapi'].each { jar, sourceSet ->
+    [testmodJar: 'testmod', testmodThrowsJar: 'testmodbroken', testmodBadmixinJar: 'testmodbroken', testmodBadpluginJar: 'testmodbroken', testmodFrapiJar: 'testmodfrapi'].each { jar, sourceSet ->
         def built = tasks.named(jar, Jar) { destinationDirectory = layout.buildDirectory.dir('devlibs') }
         def remapped = tasks.register("${jar}Intermediary", remapJarType) {
             group = 'verification'
