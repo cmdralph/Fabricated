@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.core.translate;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
@@ -17,6 +18,7 @@ import org.objectweb.asm.tree.FieldNode;
 
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
+import io.github.cmdralph.fabricated.core.bytecode.PlatformConstructors;
 
 /**
  * Members NeoForge renamed that Fabric mods still reach by their old names, through the copies of NeoForge's API made
@@ -32,6 +34,9 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
  * settings, and add a constructor taking the builder. A mod's subclass calling vanilla's constructor (which an access
  * widener opens: Polymer's tabs for a server's item groups) calls that one instead, with a builder Fabricated makes from
  * vanilla's arguments (CTOR-1).
+ *
+ * <p>A mod's call of a constructor the platform replaced with one taking a name too, {@code LootPool}'s on Forge 47 and
+ * NeoForge, calls the platform's with no name ({@link PlatformConstructors}, LOOT-3).
  */
 final class PlatformRenames {
 	private static final String CONFIGURATION_SCREEN = "net/neoforged/neoforge/client/gui/ConfigurationScreen";
@@ -55,13 +60,15 @@ final class PlatformRenames {
 			"net/neoforged/fml/config/ModConfig$Type", Map.of("COMMON", "LOCAL", "SERVER", "SYNCED"));
 
 	private final Map<String, Map<String, String>> active;
+	private final ClassIndex game;
 	/** Whether the game's creative tab has NeoForge's constructor taking a builder, and not vanilla's. */
 	private final boolean tabBuilders;
 	/** Whether the port's screens get Fabricated's factories, which the platform's in-game mod has when it provides the port. */
 	private final boolean portScreens;
 
-	private PlatformRenames(Map<String, Map<String, String>> active, boolean tabBuilders, boolean portScreens) {
+	private PlatformRenames(Map<String, Map<String, String>> active, ClassIndex game, boolean tabBuilders, boolean portScreens) {
 		this.active = active;
+		this.game = game;
 		this.tabBuilders = tabBuilders;
 		this.portScreens = portScreens;
 	}
@@ -86,16 +93,20 @@ final class PlatformRenames {
 		ClassIndex.ClassInfo tab = game.get(CREATIVE_TAB);
 		boolean tabBuilders = tab != null && tab.methodAccess("<init>" + BUILDER_CONSTRUCTOR) != null
 				&& tab.methodAccess("<init>" + VANILLA_TAB_ARGUMENTS + "V") == null;
-		return new PlatformRenames(Map.copyOf(active), tabBuilders, portScreens);
+		return new PlatformRenames(Map.copyOf(active), game, tabBuilders, portScreens);
 	}
 
-	/** {@code classFile} with the renames and adaptations applied, or null when it uses none of those members. */
-	byte[] apply(byte[] classFile) {
+	/**
+	 * {@code classFile} with the renames and adaptations applied, or null when it uses none of those members;
+	 * {@code constructors} gets the classes whose replaced constructor it calls (dotted).
+	 */
+	byte[] apply(byte[] classFile, Set<String> constructors) {
 		String text = new String(classFile, StandardCharsets.ISO_8859_1);
 		boolean renames = active.keySet().stream().anyMatch(text::contains);
 		boolean screens = portScreens && text.contains(CONFIGURATION_SCREEN) && text.contains(PORT_CONSTRUCTOR);
 		boolean tabs = tabBuilders && text.contains(VANILLA_TAB_ARGUMENTS);
-		if (!renames && !screens && !tabs) return null;
+		boolean named = PlatformConstructors.NAMED.stream().anyMatch(text::contains);
+		if (!renames && !screens && !tabs && !named) return null;
 		boolean[] changed = {false};
 		ClassReader reader = new ClassReader(classFile);
 		// Maxs recomputed: the argument shuffling below needs up to two more stack slots.
@@ -125,6 +136,19 @@ final class PlatformRenames {
 							// only a subclass's call of it links.
 							super.visitMethodInsn(Opcodes.INVOKESTATIC, TAB_BUILDERS, "builder", VANILLA_TAB_ARGUMENTS + "L" + TAB_BUILDER + ";", false);
 							super.visitMethodInsn(Opcodes.INVOKESPECIAL, CREATIVE_TAB, "<init>", BUILDER_CONSTRUCTOR, false);
+							changed[0] = true;
+							return;
+						}
+						String platform = named && opcode == Opcodes.INVOKESPECIAL && method.equals("<init>") ? PlatformConstructors.of(game, owner, desc) : null;
+						if (platform != null) {
+							// vanilla's arguments, then no name
+							if (PlatformConstructors.optionalName(platform)) {
+								super.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Optional", "empty", "()Ljava/util/Optional;", false);
+							} else {
+								super.visitInsn(Opcodes.ACONST_NULL);
+							}
+							super.visitMethodInsn(opcode, owner, method, platform, itf);
+							constructors.add(owner.replace('/', '.'));
 							changed[0] = true;
 							return;
 						}

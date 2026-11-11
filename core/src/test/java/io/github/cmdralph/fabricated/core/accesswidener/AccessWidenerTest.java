@@ -124,6 +124,25 @@ class AccessWidenerTest {
 	}
 
 	/**
+	 * NeoForge's loot pool has no constructor with vanilla's parameters, only one taking a name too (Forge 47's alike): the
+	 * line naming vanilla's, BCLib's, opens that one, which a mod's calls reach instead (LOOT-3).
+	 */
+	@Test
+	void opensThePlatformsConstructorForVanillasALootPoolWidenerNames() throws Exception {
+		String pool = "net/minecraft/world/level/storage/loot/LootPool";
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, pool, null, "java/lang/Object", null);
+		cw.visitMethod(Opcodes.ACC_PRIVATE, "<init>", "(Ljava/util/List;Ljava/util/List;Ljava/util/Optional;)V", null, null).visitEnd();
+		cw.visitEnd();
+		AccessWidenerFile file = AccessWidenerParser.parse("accessWidener v2 named\naccessible method " + pool + " <init> (Ljava/util/List;Ljava/util/List;)V\n");
+		AccessTransformerConverter.Result result = AccessTransformerConverter.convert(file, new ClassIndex(Map.of(pool, cw.toByteArray())::get), NEOFORGE, "NeoForge");
+		assertEquals(List.of("public net.minecraft.world.level.storage.loot.LootPool",
+				"public net.minecraft.world.level.storage.loot.LootPool <init>(Ljava/util/List;Ljava/util/List;Ljava/util/Optional;)V"),
+				result.accessTransformer().lines().filter(l -> !l.startsWith("#")).toList());
+		assertEquals(List.of(), result.warnings());
+	}
+
+	/**
 	 * Forge's transformer throws unless the fields it redirects to getters are private, and Forge's list isn't NeoForge's:
 	 * a fluid mod's widened {@code BucketItem.content} stays private on Forge and is widened on NeoForge, and the
 	 * warnings name the platform's loader (PLAT-4).

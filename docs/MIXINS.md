@@ -21,9 +21,9 @@ a version's own configs come in through `version_mixin_configs` in its `gradle.p
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/neoforge/1.21.1/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.1 | mixins 53, client 17 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
-| `mc/neoforge/1.21.11/src/main/resources/fabricated.mixins.json` | same | 1.21.11 | mixins 64, client 24 | 1 | true | same |
-| `mc/neoforge/common26/src/main/resources/fabricated.mixins.json` | same | 26.x | mixins 74, client 28 | 1 | true | same |
+| `mc/neoforge/1.21.1/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.1 | mixins 54, client 17 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
+| `mc/neoforge/1.21.11/src/main/resources/fabricated.mixins.json` | same | 1.21.11 | mixins 65, client 24 | 1 | true | same |
+| `mc/neoforge/common26/src/main/resources/fabricated.mixins.json` | same | 26.x | mixins 76, client 28 | 1 | true | same |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-biome.mixins.json` | `net.fabricmc.fabric.mixin.biome` | 1.21.1 | mixins 8 | 1 | true | none |
 | `mc/neoforge/1.21.11/src/main/resources/fabricated-biome.mixins.json` | same | 1.21.11 | mixins 10 | 1 | true | none |
 | `mc/neoforge/common26early/src/main/resources/fabricated-biome.mixins.json` | same | 26.1.2, 26.2 | mixins 10 | 1 | true | none |
@@ -361,6 +361,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.neoforge.mixin` · re
 | mixins | SimpleMenuProviderMixin | common121 (1.21.1,1.21.11) | n.m.world.SimpleMenuProvider | no injectors; implements MenuProvider; adds methods writeClientSideData | | | | |
 | mixins | TagFileRemoveMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.tags.TagFile | @ModifyExpressionValue → fabricated$readFabricRemove | "<clinit>" | INVOKE `L…/RecordCodecBuilder;create(L…/Function;)L…/Codec;` | — | default |
 | mixins | ConditionalOpsMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.common.conditions.ConditionalOps | @ModifyReturnValue → fabricated$fabricConditions | "createConditionalCodec(L…/Codec;L…/String;)L…/Codec;" | RETURN | — | default |
+| mixins | PackOverlaysMixin | common121 (1.21.1,1.21.11) | n.m.server.packs.repository.Pack | @ModifyArg → fabricated$fabricOverlays (Fabric's conditional overlays after those the game read, none for a pack declaring NeoForge's, a section that can't be read left out with one warning, PACK-12) | "readPackMetadata" | INVOKE `L…/Pack$Metadata;<init>(L…/Component;L…/PackCompatibility;L…/FeatureFlagSet;L…/List;Z)V` index=3  sugar:@Local(argsOnly = true), @Local PackResources | — | default |
 | mixins | EnchantmentBuilderMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.item.enchantment.Enchantment$Builder | @Inject → fabricated$markModified | "*" | RETURN | — | default |
 | mixins | RegistryDataLoaderEnchantmentMixin | common121 (1.21.1,1.21.11) | n.m.resources.RegistryDataLoader | @ModifyExpressionValue → fabricated$modifyEnchantment | "loadElementFromResource" | INVOKE `L…/DataResult;getOrThrow()L…/Object;`  sugar:@Local(argsOnly = true),@Local(argsOnly = true),@Local(argsOnly = true) | — | default |
 | mixins | LevelChunkBlockEntityMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.level.chunk.LevelChunk | @ModifyExpressionValue → fabricated$blockEntityLoaded | "setBlockEntity" | INVOKE `L…/Map;put(…)L…/Object;` sugar:@Local(argsOnly = true) | — | default |
@@ -557,6 +558,7 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · r
 | mixins | SimpleMenuProviderMixin | common121 (1.21.1,1.21.11) | n.m.world.SimpleMenuProvider | no injectors; implements MenuProvider; adds methods writeClientSideData | | | | |
 | mixins | TagFileRemoveMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.tags.TagFile | @ModifyExpressionValue → fabricated$readFabricRemove | "<clinit>" | INVOKE `L…/RecordCodecBuilder;create(L…/Function;)L…/Codec;` | — | default |
 | mixins | ConditionalOpsMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.common.conditions.ConditionalOps | @ModifyReturnValue → fabricated$fabricConditions | "createConditionalCodec(L…/Codec;L…/String;)L…/Codec;" | RETURN | — | default |
+| mixins | PackOverlaysMixin | common121 (1.21.1,1.21.11) | n.m.server.packs.repository.Pack | @ModifyArg → fabricated$fabricOverlays (Fabric's conditional overlays after those the game read, none for a pack declaring NeoForge's, a section that can't be read left out with one warning, PACK-12) | "readPackMetadata" | INVOKE `L…/Pack$Metadata;<init>(L…/Component;L…/PackCompatibility;L…/FeatureFlagSet;L…/List;Z)V` index=3  sugar:@Local(argsOnly = true), @Local PackResources | — | default |
 | mixins | RegistryFriendlyByteBufMixin | 1.21.11 (1.21.11) | n.m.network.RegistryFriendlyByteBuf | no injectors; implements FabricRegistryByteBuf; adds methods fabric_getSendableConfigurationChannels, fabric_setSendableConfigurationChannels; @Unique fields fabricated$sendableConfigurationChannels | | | | |
 | mixins | EnchantmentBuilderMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.item.enchantment.Enchantment$Builder | @Inject → fabricated$markModified | "*" | RETURN | — | default |
 | mixins | RegistryDataLoaderEnchantmentMixin | common121 (1.21.1,1.21.11) | n.m.resources.RegistryDataLoader | @ModifyExpressionValue → fabricated$modifyEnchantment | "loadElementFromResource" | INVOKE `L…/DataResult;getOrThrow()L…/Object;`  sugar:@Local(argsOnly = true),@Local(argsOnly = true),@Local(argsOnly = true) | — | default |
@@ -926,6 +928,9 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | SimpleMenuProviderMixin | common26 (26.1.2,26.2,26.3) | n.m.world.SimpleMenuProvider | no injectors; implements MenuProvider; adds methods writeClientSideData | | | | |
 | mixins | TagFileRemoveMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.tags.TagFile | @ModifyExpressionValue → fabricated$readFabricRemove | "<clinit>" | INVOKE `L…/RecordCodecBuilder;create(L…/Function;)L…/Codec;` | — | default |
 | mixins | ConditionalOpsMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.common.conditions.ConditionalOps | @ModifyReturnValue → fabricated$fabricConditions | "createConditionalCodec(L…/Codec;L…/String;)L…/Codec;" | RETURN | — | default |
+| mixins | PackOverlaysMixin | 26.3 (26.3) | n.m.server.packs.repository.Pack | @ModifyArg → fabricated$fabricOverlays (Fabric's conditional overlays after those the game read, none for a pack declaring NeoForge's, a section that can't be read left out with one warning, PACK-12) | "readPackMetadata" | INVOKE `L…/Pack$Metadata;<init>(L…/Component;L…/PackCompatibility;L…/FeatureFlagSet;L…/List;Z)V` index=3  sugar:@Local(argsOnly = true), @Local PackMetadataResources | — | default |
+| mixins | PackOverlaysMixin | common26early (26.1.2,26.2) | n.m.server.packs.repository.Pack | @ModifyArg → fabricated$fabricOverlays (Fabric's conditional overlays after those the game read, none for a pack declaring NeoForge's, a section that can't be read left out with one warning, PACK-12) | "readPackMetadata" | INVOKE `L…/Pack$Metadata;<init>(L…/Component;L…/PackCompatibility;L…/FeatureFlagSet;L…/List;Z)V` index=3  sugar:@Local(argsOnly = true), @Local PackResources | — | default |
+| mixins | ResourcePackLoaderMixin | common26 (26.1.2,26.2,26.3) | neo.resource.ResourcePackLoader | @WrapOperation → fabricated$leaveOutUnreadableFabricPack (a Fabric mod's pack whose pack.mcmeta can't be read is left out with NeoForge's own error, PACK-12) | "packFinder" | INVOKE `L…/ResourcePackLoader;readWithOptionalMeta(L…/PackLocationInfo;L…/Pack$ResourcesSupplier;L…/PackType;L…/PackSelectionConfig;)L…/Pack;`  sugar:@Local | — | default |
 | mixins | AdvancementReloadMixin | 26.3 (26.3) | n.m.server.ReloadableServerRegistries | @WrapOperation → fabricated$advancementReload | "reload" | INVOKE `L…/RegistryDataLoader;load(L…/ResourceManager;L…/List;L…/List;L…/Executor;L…/List;)L…/CompletableFuture;`  sugar:@Local(name = "loadingContextWithTags") | — | default |
 | mixins | AdvancementReloadMixin | common26early (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | no injectors | | | | |
 | mixins | EnchantmentBuilderMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.item.enchantment.Enchantment$Builder | @Inject → fabricated$markModified | "*" | RETURN | — | default |
@@ -1072,7 +1077,7 @@ them, with that folder's version groups that serve the version (`mc/forge-shared
 `overwrites.requireAnnotations`, which every NeoForge config sets: in the others, a method a mixin adds that its
 target already declares replaces the target's without an `@Overwrite` (MIX-3).
 
-## Forge 61 to 66 (`forge`): 88 mixins in 24 configs
+## Forge 61 to 66 (`forge`): 89 mixins in 24 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1092,7 +1097,7 @@ target already declares replaces the target's without an `@Overwrite` (MIX-3).
 | `mc/forge/common/src/main/resources/fabricated-forge-entity.mixins.json` | `io.github.cmdralph.fabricated.forge.entity.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 2 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 1 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge-screen.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | client 2 | 1 | — | none |
-| `mc/forge/common/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 24 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge/common/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 25 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge/common/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 5 | 1 | true | none |
 | `mc/forge/common/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | client 1 | 1 | — | none |
 | `mc/forge/common26/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 26.1.2, 26.2, 26.3 | client 10 | 1 | — | `FrapiMixinPlugin` |
@@ -1339,6 +1344,8 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 | mixins | PlayerListViewMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, POLY-2) | "getPlayers" | RETURN | — | default |
 | mixins | PoiTypesMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.ai.village.poi.PoiTypes | @Inject → fabricated$withoutCallbackEntries | "registerBlockStates" | HEAD | — | default |
 | mixins | PackRepositorySourcesMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.repository.PackRepository | @Inject → fabricated$keepSourcesMutable (a set a Fabric mod made immutable is made mutable again before Forge adds a pack finder, PACK-1, PACK-11); @Shadow @Mutable sources | "addPackFinder" remap=false | HEAD | — | default |
+| mixins | PackOverlaysMixin | 26.3 (26.3) | n.m.server.packs.repository.Pack | @ModifyArg → fabricated$fabricOverlays (Fabric's conditional overlays after those the game read, a section that can't be read left out with one warning, PACK-12) | "readPackMetadata" | INVOKE `L…/Pack$Metadata;<init>(L…/Component;L…/PackCompatibility;L…/FeatureFlagSet;L…/List;)V` index=3  sugar:@Local(argsOnly = true), @Local PackMetadataResources | — | default |
+| mixins | PackOverlaysMixin | mc/forge-shared/1.21.1-26.2 (1.21.11,26.1.2,26.2) | n.m.server.packs.repository.Pack | @ModifyArg → fabricated$fabricOverlays (Fabric's conditional overlays after those the game read, a section that can't be read left out with one warning, PACK-12) | "readPackMetadata" | INVOKE `L…/Pack$Metadata;<init>(L…/Component;L…/PackCompatibility;L…/FeatureFlagSet;L…/List;Z)V` index=3  sugar:@Local(argsOnly = true), @Local PackResources | — | default |
 | mixins | BiomeWeatherWriteMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | fapi.impl.biome.modification.BiomeModificationContextImpl$WeatherContextImpl (`targets`) (@Pseudo) | @Redirect → fabricated$setClimate (the climate into the field and Forge's biome info, BIOME-3) | "setPrecipitation", "setTemperature", "setTemperatureModifier", "setDownfall" | FIELD `L…/Biome;climateSettings:L…/Biome$ClimateSettings;` opcode=PUTFIELD | — | default |
 | mixins | BiomeClimateAccessor | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.world.level.biome.Biome | @Accessor @Mutable → fabricated$setClimateSettings | "climateSettings" |  | — | default |
 | mixins | ModifiableBiomeInfoAccessor | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.common.world.ModifiableBiomeInfo | @Accessor @Mutable → fabricated$setOriginalBiomeInfo; @Accessor → fabricated$setModifiedBiomeInfo | "originalBiomeInfo", "modifiedBiomeInfo" |  | — | default |
@@ -1703,7 +1710,7 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.testmod.frapi.mixin` 
 |---|---|---|---|---|---|---|---|---|
 | client | McRuntimeTestHoldMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedFrapiTest$holdForMovingBlocks | "tickHook" | HEAD cancellable=true | — | default |
 
-## Forge 52 (`forge-legacy`): 70 mixins in 14 configs
+## Forge 52 (`forge-legacy`): 71 mixins in 14 configs
 
 Minecraft 1.21.1, in Mojang's names without a refmap, as on Forge 61 to 66. The mixins come from `mc/forge-shared` and its
 groups, as the source column says, but `NamespacedWrapperAliasMixin`, over 1.21.1's lookups, `LoadingRegistriesMixin`, on
@@ -1714,7 +1721,7 @@ vanilla form (NET-13), and the bridges of the fields it replaced, named after Mo
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 25, client 6 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 26, client 6 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.1 | mixins 4 | 1 | true | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 1.21.1 | mixins 2 | 1 | — | none |
 | `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
@@ -1761,6 +1768,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | PlayerListViewMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, POLY-2) | "getPlayers" | RETURN | — | default |
 | mixins | PoiTypesMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.world.entity.ai.village.poi.PoiTypes | @Inject → fabricated$withoutCallbackEntries | "registerBlockStates" | HEAD | — | default |
 | mixins | PackRepositorySourcesMixin | mc/forge-shared (1.21.1) | n.m.server.packs.repository.PackRepository | @Inject → fabricated$keepSourcesMutable (a set a Fabric mod made immutable is made mutable again before Forge adds a pack finder, PACK-1, PACK-11); @Shadow @Mutable sources | "addPackFinder" remap=false | HEAD | — | default |
+| mixins | PackOverlaysMixin | mc/forge-shared/1.21.1-26.2 (1.21.1) | n.m.server.packs.repository.Pack | @ModifyArg → fabricated$fabricOverlays (Fabric's conditional overlays after those the game read, a section that can't be read left out with one warning, PACK-12) | "readPackMetadata" | INVOKE `L…/Pack$Metadata;<init>(L…/Component;L…/PackCompatibility;L…/FeatureFlagSet;L…/List;Z)V` index=3  sugar:@Local(argsOnly = true), @Local PackResources | — | default |
 | mixins | LivingEntityDropCaptureMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @Inject → fabricated$captureAfterForgesEvent (Forge 47's or Forge 52's event, whichever the method asks) | "dropAllDeathLoot" | INVOKE `L…/ForgeHooks;onLivingDrops(L…/LivingEntity;L…/DamageSource;L…/Collection;IZ)Z` shift=AFTER remap=false, INVOKE `L…/ForgeEventFactory;onLivingDrops(L…/LivingEntity;L…/DamageSource;L…/Collection;Z)Z` shift=AFTER remap=false | — | default |
 | mixins | LivingEntityDropCaptureMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @WrapWithCondition → fabricated$keepDropsCaptured | "dropAllDeathLoot" | INVOKE `L…/Collection;forEach(L…/Consumer;)V` remap=false | — | default |
 | mixins | LivingEntityDropCaptureMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @Inject → fabricated$addCapturedDrops | "dropAllDeathLoot" | RETURN | — | default |
