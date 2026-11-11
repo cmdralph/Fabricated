@@ -206,7 +206,9 @@ public final class ModTranslator {
 				// Not only the jar's: a config a containing mod declares may come with it.
 				candidate.metadata().mixins().toString(), env.unsupportedPackages().toString(),
 				// Pre-flight reads vanilla's code where it was found (VANILLA-1).
-				env.vanilla() == ClassBytesSource.EMPTY ? "no vanilla" : "vanilla"));
+				env.vanilla() == ClassBytesSource.EMPTY ? "no vanilla" : "vanilla",
+				// The classes whose seams native mods' mixins keep from being put back (SEAM-1).
+				env.seamsKept()));
 		String entryName = TranslationCache.entryName(neoId, key);
 
 		Optional<TranslationCache.Entry> hit = env.namespace() == Namespace.INTERMEDIARY

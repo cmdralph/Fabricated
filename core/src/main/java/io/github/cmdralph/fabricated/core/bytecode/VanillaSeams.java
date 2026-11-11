@@ -2,9 +2,11 @@ package io.github.cmdralph.fabricated.core.bytecode;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -161,11 +163,68 @@ public final class VanillaSeams {
 		}
 	}
 
+	/**
+	 * What putting a class's seams back would change, read on a copy of the class as the platform has it.
+	 *
+	 * @param seams      the seams put back, as {@link #restoredIn} names them
+	 * @param movedCalls the platform's calls that move into them, as {@code owner;name(desc)}
+	 * @param holders    the class's methods holding those calls, as {@code name(desc)}
+	 */
+	public record Rewrite(List<Restored> seams, Set<String> movedCalls, Set<String> holders) {
+		static final Rewrite NONE = new Rewrite(List.of(), Set.of(), Set.of());
+
+		public boolean isEmpty() {
+			return seams.isEmpty();
+		}
+	}
+
+	/** {@link Rewrite What putting the class's seams back would change}; nothing where none would be put back. */
+	public static Rewrite rewriteOf(ClassNode platformClass) {
+		if (!names(platformClass.name)) return Rewrite.NONE;
+		ClassNode copy = new ClassNode();
+		platformClass.accept(copy);
+		try {
+			if (restore(copy).isEmpty()) return Rewrite.NONE;
+		} catch (RuntimeException | LinkageError e) {
+			return Rewrite.NONE; // nothing would be put back as it loads (restoreWhole)
+		}
+		List<Restored> seams = restoredIn(copy);
+		Set<String> put = new HashSet<>();
+		for (Restored seam : seams) put.add(seam.name() + seam.desc());
+		Set<String> holders = new TreeSet<>();
+		for (MethodNode method : copy.methods) {
+			if (put.contains(method.name + method.desc) || method.instructions == null) continue;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof MethodInsnNode call && call.owner.equals(copy.name) && put.contains(call.name + call.desc)) {
+					holders.add(method.name + method.desc);
+					break;
+				}
+			}
+		}
+		Set<String> moved = new TreeSet<>();
+		for (Seam seam : SEAMS) {
+			if (!seam.owner().equals(copy.name) || seams.stream().noneMatch(r -> r.desc().equals(seam.desc())
+					&& (r.name().equals(seam.name()) || r.name().equals(seam.srgName())))) continue;
+			for (List<Call> form : seam.forms()) {
+				for (Call call : form) moved.add(call.owner() + ";" + call.name() + call.desc());
+			}
+		}
+		return new Rewrite(List.copyOf(seams), Collections.unmodifiableSet(moved), Collections.unmodifiableSet(holders));
+	}
+
 	/** The game's classes with their seams put back ({@link #restore}): pre-flight's view, as they will load. */
 	public static ClassBytesSource over(ClassBytesSource game) {
+		return over(game, Set.of());
+	}
+
+	/**
+	 * As {@link #over(ClassBytesSource)}, but for the classes {@code kept} (internal names), left as the platform has them,
+	 * as they then load: a native mod's mixin hooks the platform's code their rewrite would move ({@link SeamConflicts}).
+	 */
+	public static ClassBytesSource over(ClassBytesSource game, Set<String> kept) {
 		return internalName -> {
 			byte[] data = game.read(internalName);
-			if (data == null || !names(internalName)) return data;
+			if (data == null || !names(internalName) || kept.contains(internalName)) return data;
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, 0);
 			if (restore(node).isEmpty()) return data;

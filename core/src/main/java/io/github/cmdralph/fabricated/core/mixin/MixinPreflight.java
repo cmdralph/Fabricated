@@ -23,6 +23,7 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
+import io.github.cmdralph.fabricated.core.bytecode.SeamConflicts;
 import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.InjectionPoints.Verdict;
@@ -1115,6 +1116,10 @@ public final class MixinPreflight extends PreflightPart {
 	 */
 	private void noteRestoredSeams(ClassNode mixin, ClassNode target, Context ctx) {
 		List<VanillaSeams.Restored> seams = VanillaSeams.restoredIn(target);
+		// Where a native mod's mixin hooks the platform's code putting a seam back would move, the class stays the platform's:
+		// each hook is noted with the mixin keeping it, the hook itself failing as before SEAM-1 (no record, no rewrite).
+		SeamConflicts.Conflict kept = seams.isEmpty() ? classes.keptSeams(target) : null;
+		if (kept != null) seams = VanillaSeams.rewriteOf(target).seams();
 		if (seams.isEmpty()) return;
 		String simple = target.name.substring(target.name.lastIndexOf('/') + 1);
 		for (MethodNode method : mixin.methods) {
@@ -1123,6 +1128,12 @@ public final class MixinPreflight extends PreflightPart {
 				for (VanillaSeams.Restored seam : seams) {
 					if (shadow ? !method.desc.equals(seam.desc()) || !method.name.equals(seam.name()) && !method.name.equals("shadow$" + seam.name())
 							: !namesSeam(ann, seam, target.name, ctx)) continue;
+					if (kept != null) {
+						ctx.info("@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + seam.name() + seam.desc() + ", vanilla's method "
+								+ ctx.loader() + "'s " + simple + " no longer has, which Fabricated doesn't put back there, so it finds nothing to hook, as"
+								+ " before SEAM-1: " + kept.describe(ctx.loader()) + " (SEAM-1)");
+						continue;
+					}
 					restoredSeams.add(target.name);
 					ctx.info("@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + seam.name() + seam.desc() + ", vanilla's method "
 							+ ctx.loader() + "'s " + simple + " no longer has; Fabricated puts it back there, answering " + seam.answer() + " as "

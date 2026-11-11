@@ -9,7 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
 import java.io.StringReader;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -56,6 +59,7 @@ import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
 import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
+import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingComposer;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
@@ -607,6 +611,85 @@ class PipelineTest {
 		Report.ModRow row = changed.report().mods().stream().filter(r -> r.id().equals("addon")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
 		assertTrue(row.detail().contains("drawSections, which does not exist in net.example.sodium.Renderer"), row.detail());
+	}
+
+	/**
+	 * SEAM-1: vanilla's methods aren't put back in a class where a native mod's mixin hooks the platform's code that would
+	 * move, as Moonlight's NeoForge build wraps the resolver's {@code isStickyBlock} calls: the Fabric mod's hook of them
+	 * finds nothing, as before SEAM-1, the class isn't rewritten, and the report names the native mixin. Where the native
+	 * mod's mixin hooks only what stays, they are put back; a cached translation is redone when that decision changes.
+	 */
+	@Test
+	void vanillaMethodsArentPutBackWhereANativeModsMixinHooksThePlatformsCode(@TempDir Path game, @TempDir Path src) throws Exception {
+		String resolver = "net/minecraft/world/level/block/piston/PistonStructureResolver";
+		String state = "Lnet/minecraft/world/level/block/state/BlockState;";
+		Map<String, String> gameSources = Map.of(
+				"net/minecraft/world/level/block/state/BlockState.java", "package net.minecraft.world.level.block.state; public class BlockState {"
+						+ " public boolean isStickyBlock() { return false; } public boolean canStickTo(BlockState other) { return false; } }",
+				resolver + ".java", "package net.minecraft.world.level.block.piston; import net.minecraft.world.level.block.state.BlockState;"
+						+ " public class PistonStructureResolver { public boolean resolve(BlockState s) { return s.isStickyBlock(); }"
+						+ " boolean addBranchingBlocks(BlockState n, BlockState f) { return n.canStickTo(f) && f.canStickTo(n); } }");
+		Map<String, String> annotations = Map.of(
+				"org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); String target() default \"\"; }",
+				"org/spongepowered/asm/mixin/injection/Inject.java", "package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); boolean cancellable() default false; }",
+				"org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable.java", "package org.spongepowered.asm.mixin.injection.callback; public class CallbackInfoReturnable<R> { }",
+				"com/llamalad7/mixinextras/injector/wrapoperation/WrapOperation.java", "package com.llamalad7.mixinextras.injector.wrapoperation;"
+						+ " public @interface WrapOperation { String[] method(); org.spongepowered.asm.mixin.injection.At[] at(); }",
+				"com/llamalad7/mixinextras/injector/wrapoperation/Operation.java", "package com.llamalad7.mixinextras.injector.wrapoperation; public interface Operation<R> { R call(Object... args); }");
+		String imports = " import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.injection.*; import org.spongepowered.asm.mixin.injection.callback.*;"
+				+ " import com.llamalad7.mixinextras.injector.wrapoperation.*; import net.minecraft.world.level.block.state.BlockState;"
+				+ " import net.minecraft.world.level.block.piston.PistonStructureResolver;";
+		Map<String, byte[]> gameClasses = TestSources.compile(src.resolve("game"), gameSources);
+		Map<String, byte[]> fabric = TestSources.compile(src.resolve("fabric"), TestSources.MIXIN_ANNOTATIONS, annotations, gameSources, Map.of(
+				"com/sticky/mixin/StickyMixin.java", "package com.sticky.mixin;" + imports + " @Mixin(PistonStructureResolver.class) public class StickyMixin {"
+						+ " @Inject(method = \"isSticky\", at = @At(\"HEAD\"), cancellable = true)"
+						+ " private static void sticky(BlockState s, CallbackInfoReturnable<Boolean> cir) { } }"));
+		Path sticky = TestJars.create().fabricModJson(TestJars.modJson("sticky", "1.0", "\"mixins\":[\"sticky.mixins.json\"]"))
+				.text("sticky.mixins.json", "{\"required\":true,\"package\":\"com.sticky.mixin\",\"mixins\":[\"StickyMixin\"],\"injectors\":{\"defaultRequire\":1}}")
+				.bytes("com/sticky/mixin/StickyMixin.class", fabric.get("com/sticky/mixin/StickyMixin"))
+				.write(Files.createDirectories(game.resolve("mods")).resolve("sticky.jar"));
+		BiFunction<String, String, InstalledClasses> moonlight = (dir, members) -> {
+			try {
+				Map<String, byte[]> classes = TestSources.compile(src.resolve(dir), TestSources.MIXIN_ANNOTATIONS, annotations, gameSources, Map.of(
+						"com/moon/NativeSticky.java", "package com.moon;" + imports + " @Mixin(PistonStructureResolver.class) public abstract class NativeSticky {"
+								+ members + " }"));
+				return new InstalledClasses(List.of(new InstalledClasses.Jar("moonlight", n -> n.startsWith("com/moon/") && classes.containsKey(n), classes::get,
+						() -> List.of("com/moon/NativeSticky"))));
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+		};
+		InstalledClasses wrapping = moonlight.apply("wrapping", " @WrapOperation(method = \"resolve\", at = @At(value = \"INVOKE\", target = \"L"
+				+ "net/minecraft/world/level/block/state/BlockState;isStickyBlock()Z\")) private boolean stickyOnAnyFace(BlockState s, Operation<Boolean> original) {"
+				+ " return original.call(s); }");
+		InstalledClasses unrelated = moonlight.apply("unrelated", " @Inject(method = \"resolve\", at = @At(\"HEAD\"))"
+				+ " private void start(BlockState s, CallbackInfoReturnable<Boolean> cir) { }");
+
+		Pipeline.Input wrapped = input(game, List.of(sticky), Namespace.OFFICIAL, gameClasses, null, List.of(), wrapping);
+		Pipeline.Result kept = Pipeline.run(wrapped);
+		String report = kept.report().render();
+		assertEquals(List.of("sticky"), kept.mods().stream().map(m -> m.translated().candidate().id()).toList(), report);
+		assertEquals(Set.of(), kept.restoredSeams(), "the resolver loads as NeoForge has it");
+		assertTrue(report.contains("@Inject sticky hooks isSticky(" + state + ")Z, vanilla's method NeoForge's PistonStructureResolver no longer has, which"
+				+ " Fabricated doesn't put back there, so it finds nothing to hook, as before SEAM-1: NeoForge mod moonlight's mixin NativeSticky hooks the"
+				+ " platform's code that putting vanilla's method back would move (SEAM-1)"), report);
+		assertTrue(report.contains("Vanilla's methods not put back in PistonStructureResolver"), report);
+		assertTrue(kept.mods().getFirst().translated().findings().stream()
+				.anyMatch(f -> f.severity() == PreflightFinding.Severity.LEFT_OUT
+						&& ("sticky(" + state + "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V").equals(f.handler())), report);
+		wrapped.cache().finish(5);
+
+		// The native mod hooks only what stays: the methods are put back, the cached translation redone for it.
+		Pipeline.Input put = input(game, List.of(sticky), Namespace.OFFICIAL, gameClasses, null, List.of(), unrelated);
+		Pipeline.Result restored = Pipeline.run(put);
+		assertFalse(restored.mods().getFirst().translated().cacheHit());
+		assertEquals(Set.of(resolver), restored.restoredSeams(), restored.report().render());
+		put.cache().finish(5);
+		Pipeline.Input again = input(game, List.of(sticky), Namespace.OFFICIAL, gameClasses, null, List.of(), unrelated);
+		Pipeline.Result cached = Pipeline.run(again);
+		assertTrue(cached.mods().getFirst().translated().cacheHit());
+		assertEquals(Set.of(resolver), cached.restoredSeams());
+		again.cache().finish(5);
 	}
 
 	/**

@@ -17,6 +17,7 @@ import java.util.TreeSet;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
+import io.github.cmdralph.fabricated.core.bytecode.SeamConflicts;
 import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.ConstructorInjects;
 
@@ -275,6 +276,18 @@ final class PreflightClasses {
 		ClassNode node = game.readNode(owner);
 		MethodNode method = node == null ? null : PreflightAsm.declared(node, name, desc);
 		return method != null && (method.access & Opcodes.ACC_STATIC) != 0;
+	}
+
+	/** {@link #keptSeams} by class: the native mixin keeping its seams, or none. */
+	private final Map<String, Optional<SeamConflicts.Conflict>> keptSeams = new HashMap<>();
+
+	/**
+	 * The native mod's mixin keeping a game class's seams from being put back ({@link SeamConflicts}), or null: the class
+	 * pre-flight reads is then the platform's, as it loads. Told from the class as read, as the game's classes were made.
+	 */
+	SeamConflicts.Conflict keptSeams(ClassNode target) {
+		if (!VanillaSeams.names(target.name) || !VanillaSeams.restoredIn(target).isEmpty()) return null;
+		return keptSeams.computeIfAbsent(target.name, n -> Optional.ofNullable(SeamConflicts.find(target, installed))).orElse(null);
 	}
 
 	/** A Minecraft class as the game has it (parsed once per pre-flight), or null when absent or not a game class. */
