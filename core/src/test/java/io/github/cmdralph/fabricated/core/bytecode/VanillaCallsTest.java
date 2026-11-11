@@ -12,6 +12,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -250,6 +256,32 @@ public class VanillaCallsTest {
 		}
 	}
 
+	/** Translation reads classes in parallel: every class put back at once is the same, the helpers copied whole. */
+	@Test
+	void classesPutBackInParallelAreTheSame(@TempDir Path dir) throws Exception {
+		Map<String, byte[]> platform = platform(dir, Form.NEOFORGE);
+		Callable<byte[]> restore = () -> {
+			ClassNode node = node(platform.get(SERVER));
+			assertTrue(!VanillaSeams.restore(node).isEmpty());
+			return write(node);
+		};
+		byte[] reference = restore.call();
+		ExecutorService pool = Executors.newFixedThreadPool(8);
+		try {
+			for (int round = 0; round < 100; round++) {
+				CyclicBarrier start = new CyclicBarrier(8);
+				List<Future<byte[]>> copies = new ArrayList<>();
+				for (int i = 0; i < 8; i++) copies.add(pool.submit(() -> {
+					start.await();
+					return restore.call();
+				}));
+				for (Future<byte[]> copy : copies) assertArrayEquals(reference, copy.get(60, TimeUnit.SECONDS), "round " + round);
+			}
+		} finally {
+			pool.shutdownNow();
+		}
+	}
+
 	@Test
 	void whatPuttingTheCallsBackChangesIsToldForNativeMixins(@TempDir Path dir) throws Exception {
 		Map<String, byte[]> platform = platform(dir, Form.NEOFORGE);
@@ -285,6 +317,9 @@ public class VanillaCallsTest {
 		ClassBytesSource lacking = name -> name.endsWith("IBlockExtension") ? null : platform.get(name);
 		assertArrayEquals(platform.get(SERVER), VanillaSeams.over(lacking).read(SERVER));
 		assertTrue(!VanillaSeams.restoredIn(VanillaSeams.over(platform::get).readNode(SERVER, 0)).isEmpty());
+		// One the rewrite fails on (here, one that doesn't parse) is read as it is, as it then loads.
+		byte[] broken = {(byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE, 0, 0, 0, 61, 0, 99};
+		assertArrayEquals(broken, VanillaSeams.over(name -> name.equals(SERVER) ? broken : null).read(SERVER));
 	}
 
 	/** The server's break of a block of the class at 1, in creative or not; with {@code hook}, vanilla's call put back is hooked. */

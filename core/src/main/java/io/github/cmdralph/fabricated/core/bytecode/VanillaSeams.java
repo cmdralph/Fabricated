@@ -209,7 +209,7 @@ public final class VanillaSeams {
 		platformClass.accept(copy);
 		try {
 			if (restore(copy).isEmpty()) return Rewrite.NONE;
-		} catch (RuntimeException | LinkageError e) {
+		} catch (RuntimeException | LinkageError | StackOverflowError e) {
 			return Rewrite.NONE; // nothing would be put back as it loads (restoreWhole)
 		}
 		List<Restored> seams = restoredIn(copy);
@@ -248,21 +248,26 @@ public final class VanillaSeams {
 	/**
 	 * As {@link #over(ClassBytesSource)}, but for the classes {@code kept} (internal names), left as the platform has them,
 	 * as they then load: a native mod's mixin hooks the platform's code their rewrite would move ({@link SeamConflicts}).
+	 * Where the rewrite throws, the class is read as the platform has it, as {@link #restoreWhole} then loads it.
 	 */
 	public static ClassBytesSource over(ClassBytesSource game, Set<String> kept) {
 		return internalName -> {
 			byte[] data = game.read(internalName);
 			if (data == null || !names(internalName) || kept.contains(internalName)) return data;
-			ClassNode node = new ClassNode();
-			new ClassReader(data).accept(node, 0);
-			if (restore(node).isEmpty()) return data;
-			// Nothing is put back that names what the game lacks: the class then loads, and pre-flight reads it, as it is.
-			ClassNode platform = new ClassNode();
-			new ClassReader(data).accept(platform, 0);
-			if (!VanillaCalls.resolves(VanillaCalls.added(platform, node), game)) return data;
-			ClassWriter writer = new ClassWriter(0);
-			node.accept(writer);
-			return writer.toByteArray();
+			try {
+				ClassNode node = new ClassNode();
+				new ClassReader(data).accept(node, 0);
+				if (restore(node).isEmpty()) return data;
+				// Nothing is put back that names what the game lacks: the class then loads, and pre-flight reads it, as it is.
+				ClassNode platform = new ClassNode();
+				new ClassReader(data).accept(platform, 0);
+				if (!VanillaCalls.resolves(VanillaCalls.added(platform, node), game)) return data;
+				ClassWriter writer = new ClassWriter(0);
+				node.accept(writer);
+				return writer.toByteArray();
+			} catch (RuntimeException | LinkageError | StackOverflowError e) {
+				return data;
+			}
 		};
 	}
 

@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.core.bytecode;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
@@ -24,6 +25,7 @@ import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.LineNumberNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
@@ -203,7 +205,10 @@ final class VanillaCalls {
 			restored.add(method.name + method.desc + ": " + String.join(", ", calls));
 		}
 		if (rewritten.isEmpty()) return restored;
-		ClassNode compressed = read(write(expanded), 0);
+		byte[] written = write(expanded);
+		// The helpers name only the JDK's classes and the class's own: the game can't load KeepsDefault.
+		if (new String(written, StandardCharsets.ISO_8859_1).contains(KEEPS_OWNER)) throw new IllegalStateException("a copy of " + KEEPS_OWNER + " names it");
+		ClassNode compressed = read(written, 0);
 		for (MethodNode method : compressed.methods) {
 			int at = indexOf(node, method.name, method.desc);
 			if (at < 0) node.methods.add(method);
@@ -477,39 +482,40 @@ final class VanillaCalls {
 	private static final String KEEPS = "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/Class;"
 			+ "[Ljava/lang/Class;)Z";
 	private static final String KEEPS_OWNER = Type.getInternalName(KeepsDefault.class);
-	private static volatile ClassNode keepsClass;
+	private static volatile byte[] keepsClass;
 
 	/**
 	 * {@link KeepsDefault}'s methods, as javac wrote them, made the class's own private helpers: {@code fabricated$keeps},
 	 * {@code fabricated$overrides} and {@code fabricated$declares}, their calls of each other the class's. They name only the
-	 * JDK's classes.
+	 * JDK's classes. Read afresh for each class: a tree shared between threads isn't safe to copy (ASM's
+	 * {@code MethodNode.accept} resets and sets its labels' state as it goes), and translation reads classes in parallel.
 	 */
 	private static List<MethodNode> keepsHelpers(String owner) {
-		ClassNode keeps = keepsClass;
-		if (keeps == null) {
+		byte[] data = keepsClass;
+		if (data == null) {
 			try (java.io.InputStream in = KeepsDefault.class.getResourceAsStream(KeepsDefault.class.getSimpleName() + ".class")) {
 				if (in == null) throw new IllegalStateException("no " + KEEPS_OWNER);
-				keepsClass = keeps = read(in.readAllBytes(), 0);
+				keepsClass = data = in.readAllBytes();
 			} catch (java.io.IOException e) {
 				throw new java.io.UncheckedIOException(e);
 			}
 		}
 		List<MethodNode> helpers = new ArrayList<>();
-		for (MethodNode source : keeps.methods) {
-			if ((source.access & Opcodes.ACC_STATIC) == 0 || source.name.startsWith("<")) continue;
-			MethodNode copy = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, helperName(source.name), source.desc, null,
-					source.exceptions.toArray(String[]::new));
-			source.accept(copy);
-			copy.name = helperName(source.name);
-			copy.access = Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC;
-			copy.localVariables = null;
-			for (AbstractInsnNode insn : copy.instructions) {
+		for (MethodNode helper : read(data, 0).methods) {
+			if ((helper.access & Opcodes.ACC_STATIC) == 0 || helper.name.startsWith("<")) continue;
+			helper.name = helperName(helper.name);
+			helper.access = Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC;
+			// Of KeepsDefault's source: its generic signature, its locals' names and its lines.
+			helper.signature = null;
+			helper.localVariables = null;
+			for (AbstractInsnNode insn : helper.instructions) {
+				if (insn instanceof LineNumberNode) helper.instructions.remove(insn);
 				if (insn instanceof MethodInsnNode call && call.owner.equals(KEEPS_OWNER)) {
 					call.owner = owner;
 					call.name = helperName(call.name);
 				}
 			}
-			helpers.add(copy);
+			helpers.add(helper);
 		}
 		return helpers;
 	}
