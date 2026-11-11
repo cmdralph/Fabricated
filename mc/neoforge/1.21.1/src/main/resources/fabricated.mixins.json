@@ -82,6 +82,9 @@
     "client.SoundEngineStreamMixin",
     "client.ClientChunkCacheMixin",
     "client.ExtendedBlockModelDeserializerMixin",
-    "client.OptionsDefaultPacksMixin"
+    "client.OptionsDefaultPacksMixin",
+    "client.GuiVanillaStacksMixin",
+    "client.GuiLayerManagerLayersAccessor",
+    "client.LayeredDrawLayersAccessor"
   ]
 }

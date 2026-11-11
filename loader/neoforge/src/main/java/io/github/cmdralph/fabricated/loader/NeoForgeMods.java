@@ -23,6 +23,7 @@ import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
+import io.github.cmdralph.fabricated.core.mixin.NativeModMixins;
 import io.github.cmdralph.fabricated.core.resolve.NativeModules;
 import io.github.cmdralph.fabricated.core.resolve.NestedNeoForgeJars;
 import net.neoforged.neoforgespi.language.IModInfo;
@@ -53,10 +54,12 @@ final class NeoForgeMods {
 	}
 
 	/**
-	 * @param nested whether to read the mods nested in the files too, and the classes of all (only Fabric mods need them)
-	 * @param first  jars whose classes come before the mods' (Fabricated's own Fabric API)
+	 * @param nested     whether to read the mods nested in the files too, and the classes of all (only Fabric mods need them)
+	 * @param first      jars whose classes come before the mods' (Fabricated's own Fabric API)
+	 * @param clientSide the side, whose mixins each jar lists (read once asked: what a Fabric mod's pre-flight reads of the
+	 *                   NeoForge mods' mixins, and whether one keeps a class's vanilla methods from being put back, SEAM-1)
 	 */
-	static Found of(List<IModFile> files, boolean nested, List<InstalledClasses.Jar> first) {
+	static Found of(List<IModFile> files, boolean nested, List<InstalledClasses.Jar> first, boolean clientSide) {
 		List<Pipeline.NeoForgeMod> mods = new ArrayList<>();
 		List<InstalledClasses.Jar> jars = new ArrayList<>(first);
 		List<NativeModules.Provider> providers = new ArrayList<>();
@@ -74,7 +77,8 @@ final class NeoForgeMods {
 			mods.addAll(declared);
 			if (!infos.isEmpty() && infos.stream().noneMatch(mod -> GAME.contains(mod.getModId()) || mod.getModId().equals(ModIds.FABRICATED))) {
 				jars.add(new InstalledClasses.Jar(infos.getFirst().getDisplayName(), name -> Fml.contains(file, name + ".class"),
-						name -> Fml.read(file, name + ".class")));
+						name -> Fml.read(file, name + ".class"),
+						() -> NativeModMixins.declaredMixins(entry -> Fml.read(file, entry), mixinConfigs(readToml(file)), clientSide)));
 				if (nested && !declared.isEmpty()) {
 					providers.add(new NativeModules.Provider(declared.getFirst(), file.getFileName(), PlatformMods.internal(Fml.packages(file))));
 				}
@@ -95,7 +99,9 @@ final class NeoForgeMods {
 					Set<String> classes = toml.classes();
 					providers.add(new NativeModules.Provider(declared.getFirst(), toml.origin(), PlatformMods.packagesOf(classes)));
 					jars.add(new InstalledClasses.Jar(declared.getFirst().displayName(), classes::contains,
-							name -> NestedNeoForgeJars.readClass(path, toml.chain(), name, ArchiveLimits.DEFAULTS)));
+							name -> NestedNeoForgeJars.readClass(path, toml.chain(), name, ArchiveLimits.DEFAULTS),
+							() -> NativeModMixins.declaredMixins(entry -> NestedNeoForgeJars.readFile(path, toml.chain(), entry, ArchiveLimits.DEFAULTS),
+									mixinConfigs(toml.text()), clientSide)));
 				}
 			} catch (IOException | JsonException | ParsingException e) {
 				// NeoForge reports a broken nested jar itself; Fabric mods just don't see its mods.
@@ -103,6 +109,31 @@ final class NeoForgeMods {
 			}
 		}
 		return new Found(mods, new InstalledClasses(jars), providers, Set.copyOf(libraryPackages));
+	}
+
+	/** The mods.toml of a mod file, as text; null where it has none, too large a one, or it can't be read. */
+	private static String readToml(IModFile file) {
+		try {
+			byte[] toml = Fml.read(file, NestedNeoForgeJars.MODS_TOML);
+			return toml == null || toml.length > NestedNeoForgeJars.MAX_TEXT_BYTES ? null : new String(toml, StandardCharsets.UTF_8);
+		} catch (IOException e) {
+			return null;
+		}
+	}
+
+	/** The mixin configs a mods.toml declares ({@code [[mixins]] config = ...}), in order; none where it can't be parsed. */
+	static List<String> mixinConfigs(String toml) {
+		List<String> configs = new ArrayList<>();
+		if (toml == null) return configs;
+		try {
+			if (!(new TomlParser().parse(toml).get("mixins") instanceof List<?> mixins)) return configs;
+			for (Object entry : mixins) {
+				if (entry instanceof UnmodifiableConfig mixin && mixin.get("config") instanceof String config) configs.add(config);
+			}
+		} catch (ParsingException e) {
+			// NeoForge reports a broken mods.toml itself.
+		}
+		return configs;
 	}
 
 	/**

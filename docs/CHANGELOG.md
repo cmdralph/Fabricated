@@ -14,6 +14,149 @@ One entry per working session, newest first: what changed, and how it was verifi
   other change that applies here: the artifacts are downloaded by name or pattern, not by ID, whose extraction path
   `download-artifact` v5 changed.
 
+## 2026-11-11: Vanilla's piston stickiness methods put back where Fabric mods hook them (SEAM-1), what reads a capture Mixin skips left out (SEAM-2)
+
+- **SEAM-1** (P1), fixed: NeoForge 21.1, 21.11 and 26.1.2 and every Forge version replace `PistonStructureResolver`'s
+  `isSticky` and `canStickToEachOther` with the block state's `isStickyBlock` and `canStickTo`, so Carpet's, FrozenLib's
+  and Moonlight's hooks of them were left out and their sticky blocks didn't stick. Where a Fabric mod's mixin targets
+  the resolver, both methods are now put back as the class loads, answering as the platform's code does, and the
+  resolver calls them where vanilla does: the mods' `@Inject`s, `@Redirect`s, `@WrapOperation`s and `@Shadow`s apply as
+  on Fabric, and the report notes each. Platform mods' sticky blocks, and slime and honey, stick as before; NeoForge
+  26.2 and 26.3 keep the methods. A table in core (`VanillaSeams`) holds the method and the platform's code for it, so
+  the other seams the platforms replaced can follow as rows. The test mod hooks both methods and checks two pushes
+  (`vanilla-piston`, every platform and version).
+- **SEAM-2** (P1), fixed: with SEAM-1, Carpet's redirect of the line's check applied on NeoForge 21.1 to 26.1.2 and
+  Forge 47, while its capture of the line's positions, finding other locals there, was skipped: with its `chainStone`
+  rule on, a piston pushing a chain along its axis threw a `NullPointerException`. Pre-flight now tells where Mixin
+  skips a locals capture at each of its points and notes it; the injectors left reading what only such captures store
+  in the mixin's own fields are left out alone, where STATE-1 could leave them out alone and they share no `@Share`
+  local or `ThreadLocal` with an injector that stays. An alternative capture that applies, storing the same field,
+  keeps everything; otherwise nothing changes and the report says why. Carpet's line redirect is left out there, as
+  before SEAM-1; its other hooks of the resolver apply. Rewriting such a capture into MixinExtras `@Local`s, which would keep Carpet's chains
+  sticking along a push, is left for later.
+- Verified (SEAM-2): core's tests (595), CI's script tests and the inventory; NeoForge 1.21.1 and 26.1.2 and Forge 47
+  build. On local advanced corpus servers the reports gain Carpet's two lines alone (its capture left out, its line
+  redirect with it) on NeoForge 1.21.1, 26.1.2 and Forge 47, and the main corpus servers of NeoForge 1.21.1 and
+  Forge 47 report the same as before; every check as before. With Carpet's `chainStone` on (its `carpet.conf`), a
+  piston a scarpet app places to push a chain threw before the change on NeoForge 1.21.1 and pushes it after, there and
+  on Forge 47.
+- Review fixes: as first written, SEAM-2 left the skipped capture out, so STATE-1 took every injector sharing a field
+  with it (an alternative capture that applied, the redirect reading what both store) or the whole mixin; now only what
+  reads its state goes, as above. SEAM-1 rewrote a class wherever a Fabric mod's mixin targeted it, so Lithium's and
+  Carpet's other mixins of the resolver had it rewritten; now only where a mixin member names or shadows a seam. The
+  rewrite at load is all or nothing: where it throws, the class loads as the platform has it and one error names it.
+  SEAM-2 no longer judges `@At("NEW")` points, which Mixin's versions inject at and count differently.
+- Native mods' mixins (SEAM-1, found in review): putting the methods back moves the resolver's own `isStickyBlock` and
+  `canStickTo` calls into them, and Moonlight's NeoForge build (3.8.3 for 1.21.1) wraps those calls in a required
+  config, so it and a Fabric mod hooking the stickiness methods (Carpet, FrozenLib for 26.x) would have stopped the
+  game together. Now a class isn't rewritten where an installed native mod's mixin hooks the platform's code that would
+  move, or a place the move shifts, or where what it hooks can't be told: the class stays as the platform has it, the
+  Fabric mods' hooks of its seams find nothing, as before SEAM-1, each with a line naming the native mixin, and the
+  report's environment names it too. The decision is read from the native mods' mixins at translation and is part of
+  the translation cache key, so a translation is redone when the native mods change it.
+- Verified (native mods' mixins): core's tests (619), CI's script tests and the inventory; NeoForge 1.21.1 and 26.1.2
+  build. A local NeoForge 1.21.1 advanced corpus server with Moonlight's NeoForge build in place of its Fabric build,
+  beside Carpet's, starts; the resolver isn't rewritten, the report names Moonlight's mixin in its environment and on
+  each of Carpet's and the test mod's seven hooks, and only the test mod's `vanilla-piston` check (its hooks finding
+  nothing, as they should) and its json loader conditions check (Moonlight's NeoForge build has a mixin of NeoForge's
+  conditions) fail beyond CORPUS-113's. NeoForge's installed jars now list their mods' mixins too, from their mods.toml
+  and manifest, as Forge's did.
+- Verified (review fixes): core's tests (613), CI's script tests and the inventory; NeoForge 1.21.1 and Forge 47
+  build. On local advanced corpus servers, against runs before SEAM-2, the only line newly left out is Carpet's line
+  redirect on NeoForge 1.21.1 and Forge 47 (the other changes are STRUCT-1's), every check passes but CORPUS-113's on
+  NeoForge 1.21.1 (81 and 110 passing), and with Carpet's `chainStone` on the piston's push of a chain completes
+  without an exception on both.
+- Verified: core's tests, CI's script tests and the mixin inventory; NeoForge 1.21.1 and 26.1.2 and Forge 47, 52 and 66
+  build (NeoForge 26.2 and 26.3 don't build locally, on main as it is either), and the rewrite finds vanilla's five
+  calls in every platform's own class. Local servers with the test mods pass every check on NeoForge 1.21.1 and
+  26.1.2 and Forge 47, 52 and 66. On the local advanced corpus servers of those five the mods' hooks of the resolver
+  are noted as applying, none left out, and the new check passes; NeoForge 26.1.2 and Forge 47 pass every check,
+  NeoForge 1.21.1 and Forge 52 fail only CORPUS-113's, Forge 66 only CORPUS-114's and REG-13's, as before.
+
+## 2026-11-11: Known limits explained in the report (SPAWN-1, SCREEN-2, REG-13)
+
+- Three failures no generic change can fix now say so where they show, with what to do and their finding, instead of
+  "the mod needs an update" or the platform's exception alone. Core's `KnownLimits` is a short table of them: a
+  pre-flight finding matches by the platform and its message, an entrypoint's failure by the class and message of its
+  root cause. The line is added after the suggestion of a finding that leaves its hook out or disables its mod, never a
+  warning (a `@Group`'s member that didn't apply while its group did), and after the failure's cause in the report,
+  the log and the loading warnings. Nothing loads or is left out differently.
+- **SPAWN-1** (P1, known limit): NeoForge and Forge make vanilla's `Mob.checkSpawnRules` and `checkSpawnObstruction`
+  inside their own spawn position event's hook, so Architectury's spawner and world generation spawn hooks, and Friends
+  and Foes' world generation one, are left out on every version: "Known limit: NeoForge and Forge run spawn checks
+  through their own event, so Fabric hooks of those checks can't apply; use the mod's NeoForge or Forge build
+  (SPAWN-1)".
+- **SCREEN-2** (P1, known limit): Forge 65 and 66 draw the screen in `ForgeLayerInstance.drawScreen`, which reads the
+  screen itself, so Architectury's, FancyMenu's and SpruceUI's wrappers of the screen's render call are left out there
+  (on Forge 61 and 64 Architectury's and FancyMenu's apply at Forge's static hook, HOOK-2): "Known limit: Forge draws
+  screens through its own layer code, so wrappers of a screen's render call can't apply; use NeoForge or the mod's
+  Forge build (SCREEN-2)".
+- **REG-13** (P1, known limit): Forge's registries tell entries apart by equality, so Wover Story's two equal
+  point-of-interest types fail its main entrypoint on Forge 66, two objects by the identity hashes Forge's message
+  gives (one object registered under two names, the same hash twice, gets no hint): "Known limit: Forge's registries
+  take two equal entries for one, so the mod's second one can't be registered; use NeoForge or the mod's Forge build
+  (REG-13)".
+- Verified: core's tests (`KnownLimitsTest`, a case per limit, a warning, one object registered twice and lines that
+  aren't one; `PipelineTest`, a left-out spawn check hook's line), CI's script tests and the mixin inventory. On a
+  local NeoForge 1.21.1 corpus server Architectury's three spawn hook lines and Friends and Foes' one end with
+  SPAWN-1's line, in the translating launch and the cached one; the run's checks pass, and its mods loaded and
+  disabled (140 and 1) are the release run's.
+
+## 2026-11-11: Fabric HUD layers added in `Gui`'s constructor drawn on NeoForge 1.21.1 (HUD-7)
+
+- **HUD-7** (P2), fixed: vanilla's `Gui` constructor builds its two HUD layer stacks, then reads its root stack, where
+  Fabric mods add their layers to a stack they capture (Apoli's resource bars, Origins 1.13). NeoForge 21.1 builds each
+  stack as a layer manager of its own and never makes that read, so pre-flight left such hooks out. NeoForge 1.21.1's
+  in-game mod adds a seam for the read, holding vanilla's stacks as the constructor holds them there, and calls it as
+  NeoForge's constructor adds vanilla's first stack to its HUD, telling NeoForge's stacks by the layers they hold;
+  pre-flight points the hooks at it. Each layer a hook adds becomes a layer of NeoForge's stack, before NeoForge's first
+  layer of the vanilla layer after it, under the stack's condition, and NeoForge's layers and its mods' keep NeoForge's
+  order. A vanilla layer a hook takes out or replaces isn't drawn: NeoForge's layers for it draw nothing, under their
+  names, and a replacement is drawn where it was. Where NeoForge's constructor doesn't add its stacks as Fabricated
+  knows them, the hooks run as the constructor ends and the report names the layers they added, which aren't drawn;
+  nothing fails.
+  Mixin injects at a field access in a method another mixin merged only from a mixin of higher priority, so the seam's
+  mixin has the lowest and pre-flight checks it. Pre-flight makes the seam anew on each read of `Gui`, as mods are
+  translated in parallel, and marks every method Fabricated's mixins add as merged, so a selector matching any number
+  of methods leaves them out, as Mixin does. NeoForge 1.21.11 and 26.x have no such stacks: vanilla dropped them in
+  1.21.6. NeoForge 1.21.1's test mod adds a layer as Apoli does and replaces vanilla's demo overlay layer
+  (`neoforge-client-hud-vanilla-layer`).
+- Verified: the core tests, CI's script tests and the mixin inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2 build (26.2
+  and 26.3 don't build locally, as before). Locally on NeoForge 1.21.1 the client passes every check, the new one among
+  them, with and without Fabric API; the advanced corpus client applies Apoli's hook at the seam, builds its HUD and
+  passes the check, then waits on Origins' screen, as before (CORPUS-66); the server passes. A NeoForge 26.1.2 client
+  passes, the check skipped there; after the fixes the NeoForge 1.21.1 client and server pass again, the replacement's
+  check included. With the stacks never found (a scratch build), the client runs, the test mod's check fails as it
+  should, and the report names the layer each stack lost.
+
+## 2026-11-11: Hooks at a method the platform replaced moved to its own (STRUCT-1), Fabric Loader's server hook on every platform (HOOK-4)
+
+- **STRUCT-1** (P1), fixed: YUNG's API's and Friends and Foes' entity processing hooks vanilla's private
+  `StructureTemplate.placeEntities`, which NeoForge, Forge 47 and Forge 52 replaced with `addEntitiesToWorld(level, pos,
+  settings)` and Forge 61 to 66 with a `placeEntities` taking the settings in the pivot's place; pre-flight left the
+  hooks out on every version, so the mods' structure entity processors never ran. Where vanilla's classes show a private
+  method the platform replaced with a private one of its own, called once in the place of vanilla's one call, an
+  `@Inject` at that call moves to the platform's call, and one at the method's start to the platform's method, its
+  handler given vanilla's parameters as vanilla's call read them (from the settings, through their field getters); one
+  at its end only where the platform's method returns where vanilla's does. Hooks sharing state move together or not at
+  all. Other injectors there stay out, the report saying why: Porting Lib's port of the platform's own entity
+  processing, which the platform runs, and Friends and Foes' wrapper of a structure mob's spawn in the method's lambda
+  on NeoForge and Forge 47. The rule also serves methods a platform gave another parameter: Carpet's hopper counters and
+  FrozenLib's ejection guard at the start of Forge 47's `HopperBlockEntity.ejectItems` apply, where they were left out;
+  a hook at the end of `ejectItems`, which returns first where Forge's insert hook took the items, stays out.
+- **HOOK-4** (P2), fixed: Fabric Loader's `Hooks.startServer`, which owo-lib's registry freeze follows, was pointed at
+  NeoForge's `ServerModLoader.load(boolean)` alone; it now maps to NeoForge 21.1's and Forge's `load()` too, so owo
+  freezes after the entrypoints on every dedicated server.
+- The test mod hooks `placeEntities` as those mods do (`structure-entity-hooks`) and Fabric Loader's server hook as owo
+  does (`loader-server-hook`), on every platform's servers.
+- Verified: core's tests (`MixinPreflightTest`, a case for each), CI's script tests and the mixin inventory; NeoForge
+  1.21.1, 1.21.11 and 26.1.2 and Forge 47, 52, 61, 64, 65 and 66 build. Locally the servers of NeoForge 1.21.1 and
+  Forge 47, 52 and 66 pass both checks, their other checks as before; on the NeoForge 1.21.1 and Forge 47 advanced
+  corpus servers YUNG's API's three hooks apply, and on Forge 47's corpus server Friends and Foes' three and owo-lib's
+  freeze, Porting Lib's four staying out with the reason, those runs' other checks as before. For the end rule: core's
+  tests (a case with the hopper's early return), CI's script tests and the inventory; Forge 47 builds, and on its
+  advanced corpus server Carpet's and FrozenLib's `ejectItems` hooks apply, its other report lines and checks as before.
+
 ## 2026-11-11: More of Fabric mods' interface mixins applied on Forge 47 (INTERFACE-2), hooks sharing a ThreadLocal left out together (ITEM-2)
 
 - **INTERFACE-2** (P1), fixed: Forge 47's Mixin (0.8.5) applies no injector in an interface mixin, and Fabricated

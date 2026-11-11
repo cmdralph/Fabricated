@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "io.github.cmdralph.fabricated.testmod.neoforge",
+  "compatibilityLevel": "JAVA_21",
+  "client": ["HudLayersMixin", "LayeredDrawLayersAccessor"],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}
