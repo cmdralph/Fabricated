@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 
 import io.github.cmdralph.fabricated.core.archive.AtomicFiles;
 
@@ -67,6 +68,28 @@ public final class Report {
 	/** Adds a line to a named section (created on first use, in insertion order). */
 	public synchronized Report line(String section, String line) {
 		sections.computeIfAbsent(section, k -> new ArrayList<>()).add(oneLine(line));
+		return this;
+	}
+
+	/**
+	 * Takes {@code line} out of the section that has it (and the section, once empty); returns the section's name, or
+	 * null where none has it.
+	 */
+	public synchronized String withdraw(String line) {
+		String text = oneLine(line);
+		for (Map.Entry<String, List<String>> section : sections.entrySet()) {
+			if (!section.getValue().remove(text)) continue;
+			String name = section.getKey();
+			if (section.getValue().isEmpty()) sections.remove(name);
+			return name;
+		}
+		return null;
+	}
+
+	/** Changes the detail of a loaded mod's row. */
+	public synchronized Report detail(String id, UnaryOperator<String> change) {
+		mods.replaceAll(row -> row.id().equals(id) && row.status() == Status.LOADED
+				? new ModRow(row.id(), row.version(), row.source(), row.status(), change.apply(row.detail()), row.suggestion()) : row);
 		return this;
 	}
 

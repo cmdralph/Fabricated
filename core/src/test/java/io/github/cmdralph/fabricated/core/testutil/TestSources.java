@@ -32,9 +32,21 @@ public final class TestSources {
 	 */
 	@SafeVarargs
 	public static Map<String, byte[]> compile(Path dir, Map<String, String>... sources) throws IOException {
+		return compile(dir, List.of(), sources);
+	}
+
+	/** As {@link #compile}, with the classes' local variable tables. */
+	@SafeVarargs
+	public static Map<String, byte[]> compileWithLocals(Path dir, Map<String, String>... sources) throws IOException {
+		return compile(dir, List.of("-g"), sources);
+	}
+
+	@SafeVarargs
+	private static Map<String, byte[]> compile(Path dir, List<String> options, Map<String, String>... sources) throws IOException {
 		Path src = Files.createDirectories(dir.resolve("src"));
 		Path out = Files.createDirectories(dir.resolve("out"));
 		List<String> args = new ArrayList<>(List.of("-d", out.toString(), "--release", "21", "-nowarn"));
+		args.addAll(options);
 		for (Map<String, String> set : sources) {
 			for (Map.Entry<String, String> e : set.entrySet()) {
 				Path file = src.resolve(e.getKey());

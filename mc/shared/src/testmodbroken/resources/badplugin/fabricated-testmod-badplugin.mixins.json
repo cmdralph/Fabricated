@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "io.github.cmdralph.fabricated.testmod.broken.plugin",
+  "plugin": "io.github.cmdralph.fabricated.testmod.broken.plugin.FailingPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["LeftOutMixin"]
+}

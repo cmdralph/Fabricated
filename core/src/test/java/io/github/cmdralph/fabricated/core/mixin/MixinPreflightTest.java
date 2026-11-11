@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -3170,6 +3171,167 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aStaticHandlerNamingMethodsThatTakeThisByTwoSelectorsGetsABridgeTakingThisWhereMixinRefusesIt() throws Exception {
+		// LAMBDA-12: Architectury's screen click hooks name Forge 47's MouseHandler lambda by javac's name and by vanilla's;
+		// the lambda takes this there, and SpongePowered's 0.8.5 refuses their static handlers.
+		Type string = Type.getType(String.class);
+		String desc = Type.getMethodDescriptor(Type.VOID_TYPE, string, Type.getType(CALLBACK_INFO));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Captures"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Captures", twoSelectorMixin(desc)));
+		java.util.function.BiFunction<Boolean, Boolean, MixinPreflight> forge = (exact, lambdaStatic) -> new MixinPreflight(
+				new ClassIndex(Map.of(TARGET, lambdaClass("m_1000_", "(Ljava/lang/String;)V", lambdaStatic, mv -> mv.visitInsn(Opcodes.RETURN)))::get),
+				InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge", !exact,
+				exact ? MixinPreflight.ConstructorInjects.RETURNS_ONLY : MixinPreflight.ConstructorInjects.UNSAFE_POINTS, false, exact);
+		List<PreflightFinding> refused = forge.apply(true, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(refused.stream().anyMatch(f -> f.message().contains("@Inject handler h is static where m_1000_")), refused.toString());
+		assertTrue(forge.apply(false, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "0.8.7 takes it");
+		assertTrue(forge.apply(true, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "a static method takes it");
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = forge.apply(true, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Captures.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("@Inject h targets m_1000_(Ljava/lang/String;)V, which this game build declares taking this"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(mn -> mn.name.equals("h$fabricated")).findFirst().orElseThrow();
+		assertEquals(0, bridge.access & Opcodes.ACC_STATIC, "the bridge takes this");
+		assertEquals(desc, bridge.desc);
+		assertEquals(List.of("lambda$onPress$0", "m_1000_"), Annotations.value(Annotations.find(bridge, INJECT), "method"), "both selectors stay");
+		List<Integer> loads = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode v) loads.add(v.var);
+		}
+		assertEquals(List.of(1, 2), loads, "the handler gets the bridge's parameters, not this");
+		MethodNode handler = node.methods.stream().filter(mn -> mn.name.equals("h")).findFirst().orElseThrow();
+		assertNull(Annotations.find(handler, INJECT));
+		assertNotNull(Annotations.find(handler, MixinNames.UNIQUE));
+		defineMixin(repaired);
+		mod.put("com/example/mixin/Captures", repaired);
+		List<PreflightFinding> after = forge.apply(true, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
+	/** A mixin {@code Captures} whose static {@code @Inject} handler {@code h}, of {@code desc}, names {@code lambda$onPress$0} and {@code m_1000_}. */
+	private static byte[] twoSelectorMixin(String desc) {
+		return mixin("com/example/mixin/Captures", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "h", desc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "lambda$onPress$0");
+			methods.visit(null, "m_1000_");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "HEAD");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, Type.getArgumentTypes(desc).length);
+			mv.visitEnd();
+		});
+	}
+
+	@Test
+	void aHandlerTakingWhatVanillasLambdaTakesGetsABridgeTakingTheSubtypeThisBuildsTakes() throws Exception {
+		// LAMBDA-11: Forge's and NeoForge 21.1's KeyboardHandler.charTyped lambdas take the screen where vanilla's take a
+		// GuiEventListener, which JEI's and owo-lib's handlers take, naming vanilla's lambda with its descriptor (JEI's
+		// selector, owo's refmap).
+		String screen = "net/minecraft/world/Screen";
+		String listener = "net/minecraft/world/Listener";
+		String vanillaDesc = "(L" + listener + ";II)V";
+		String forgeDesc = "(L" + screen + ";II)V";
+		Map<String, byte[]> classes = Map.of(TARGET, charTypedTarget(screen), listener, plainClass(listener, Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT),
+				screen, plainClass(screen, 0, listener));
+		ClassIndex game = new ClassIndex(classes::get);
+		Map<String, byte[]> vanilla = Map.of(TARGET, charTypedTarget(listener), listener, classes.get(listener));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Captures"));
+		Refmap refmap = Refmap.parse("{\"mappings\":{\"com/example/mixin/Captures\":{\"lambda$charTyped$6\":\"L" + TARGET + ";lambda$charTyped$6" + vanillaDesc + "\"}}}");
+		List<Type> listened = List.of(Type.getObjectType(listener), Type.INT_TYPE, Type.INT_TYPE);
+		// By vanilla's descriptor, inline or the refmap's, or by name with vanilla's code at hand, which tells what it takes.
+		for (Map.Entry<String, Refmap> named : List.of(Map.entry("lambda$charTyped$6" + vanillaDesc, Refmap.EMPTY), Map.entry("lambda$charTyped$6", refmap),
+				Map.entry("lambda$charTyped$6", Refmap.EMPTY))) {
+			Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Captures", capturingMixin(named.getKey(), listened, 0)));
+			List<PreflightFinding> notes = new ArrayList<>();
+			byte[] repaired = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+					.repairs("test.mixins.json", config, named.getValue(), Set.of(), notes).get("com/example/mixin/Captures.class");
+			assertNotNull(repaired, named + ": " + notes);
+			assertTrue(notes.getLast().message().contains("h targets lambda$charTyped$6" + forgeDesc + ", which this game build declares taking a subtype of"
+					+ " what the handler takes (net.minecraft.world.Screen for net.minecraft.world.Listener)"), named + ": " + notes);
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired).accept(node, 0);
+			MethodNode bridge = node.methods.stream().filter(mn -> mn.name.equals("h$fabricated")).findFirst().orElseThrow();
+			assertEquals(forgeDesc.replace(")V", CALLBACK_INFO + ")V"), bridge.desc);
+			List<Integer> loads = new ArrayList<>();
+			for (AbstractInsnNode insn : bridge.instructions) {
+				if (insn instanceof VarInsnNode v) loads.add(v.var);
+			}
+			assertEquals(List.of(0, 1, 2, 3), loads, "the screen goes where the handler takes the listener");
+			defineMixin("com.example.mixin.Captures", repaired, classes);
+			mod.put("com/example/mixin/Captures", repaired);
+			List<PreflightFinding> after = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+					.check("test.mixins.json", config, named.getValue(), Set.of());
+			assertTrue(after.isEmpty(), named + ": " + after);
+		}
+
+		// Fabric's Mixin takes a handler with vanilla's exact types only: one taking a supertype of the listener isn't bridged,
+		// nor one by name where nothing tells what vanilla's takes.
+		Map<String, byte[]> wider = new HashMap<>(Map.of("com/example/mixin/Captures", capturingMixin("lambda$charTyped$6" + vanillaDesc,
+				List.of(Type.getType(Object.class), Type.INT_TYPE, Type.INT_TYPE), 0)));
+		List<PreflightFinding> pointed = new ArrayList<>();
+		wider.put("com/example/mixin/Captures", new MixinPreflight(game, InstalledClasses.NONE, wider::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), pointed).get("com/example/mixin/Captures.class"));
+		assertEquals(1, pointed.size(), "only pointed at this build's lambda: " + pointed);
+		List<PreflightFinding> refused = new MixinPreflight(game, InstalledClasses.NONE, wider::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(refused.stream().anyMatch(f -> f.message().contains("does not match the parameters of lambda$charTyped$6" + forgeDesc)), refused.toString());
+		Map<String, byte[]> byName = Map.of("com/example/mixin/Captures", capturingMixin("lambda$charTyped$6", listened, 0));
+		List<PreflightFinding> unknown = preflight(game, byName::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(unknown.stream().anyMatch(f -> f.message().contains("does not match the parameters of lambda$charTyped$6" + forgeDesc)), unknown.toString());
+	}
+
+	/**
+	 * {@link #TARGET} with a static {@code charTyped(II)V} that makes a {@code Runnable} of its lambda
+	 * {@code lambda$charTyped$6}, capturing a {@code listener} (by internal name) and the two values.
+	 */
+	private static byte[] charTypedTarget(String listener) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		String desc = "(L" + listener + ";II)V";
+		Handle metafactory = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+				"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
+		MethodVisitor typed = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "charTyped", "(II)V", null, null);
+		typed.visitCode();
+		typed.visitInsn(Opcodes.ACONST_NULL);
+		typed.visitTypeInsn(Opcodes.CHECKCAST, listener);
+		typed.visitVarInsn(Opcodes.ILOAD, 0);
+		typed.visitVarInsn(Opcodes.ILOAD, 1);
+		typed.visitInvokeDynamicInsn("run", "(L" + listener + ";II)Ljava/lang/Runnable;", metafactory, Type.getType("()V"),
+				new Handle(Opcodes.H_INVOKESTATIC, TARGET, "lambda$charTyped$6", desc, false), Type.getType("()V"));
+		typed.visitInsn(Opcodes.POP);
+		typed.visitInsn(Opcodes.RETURN);
+		typed.visitMaxs(0, 0);
+		typed.visitEnd();
+		MethodVisitor lambda = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "lambda$charTyped$6", desc, null, null);
+		lambda.visitCode();
+		lambda.visitInsn(Opcodes.RETURN);
+		lambda.visitMaxs(0, 3);
+		lambda.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** An empty class (or interface, by {@code access}) {@code name}, implementing {@code interfaces}. */
+	private static byte[] plainClass(String name, int access, String... interfaces) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | access, name, null, "java/lang/Object", interfaces);
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
 	void aStaticHandlerOnAReorderedLambdaThatTakesThisGetsABridgeWhereMixinTakesStaticHandlers() throws Exception {
 		// LAMBDA-8: Forge 66's SimpleJsonResourceReloadListener.prepare lambda reads the listener's codec, so it takes this,
 		// and captures the id before the map, where vanilla's is static and takes the map first. Fabric API's resource
@@ -3503,9 +3665,16 @@ class MixinPreflightTest {
 
 	/** Defines the repaired mixin {@code className} in a class loader of its own, which verifies it. */
 	private void defineMixin(String className, byte[] bytes) throws Exception {
+		defineMixin(className, bytes, Map.of());
+	}
+
+	/** {@link #defineMixin(String, byte[])}, with the classes {@code others} has (by internal name) for the verifier. */
+	private void defineMixin(String className, byte[] bytes, Map<String, byte[]> others) throws Exception {
 		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
 			@Override
 			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				byte[] other = others.get(name.replace('.', '/'));
+				if (other != null) return defineClass(name, other, 0, other.length);
 				if (!name.equals(className)) throw new ClassNotFoundException(name);
 				return defineClass(name, bytes, 0, bytes.length);
 			}
@@ -8625,6 +8794,88 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void anInstanceofConstantsHandlerTakesTheObjectAndTheClass() throws Exception {
+		// PRE-29: Lithium's collision context hooks modify vanilla's instanceof LivingEntity checks in EntityCollisionContext's
+		// constructor, with handlers taking the object and the class (Mixin's RedirectInjector.injectAtInstanceOf).
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor init = target.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(Ljava/lang/Object;)V", null, null);
+		init.visitCode();
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		// An instanceof (ordinal 0), a cast (1), an instanceof again (2), a class literal (3).
+		for (int op : new int[] {Opcodes.INSTANCEOF, Opcodes.CHECKCAST, Opcodes.INSTANCEOF}) {
+			init.visitVarInsn(Opcodes.ALOAD, 1);
+			init.visitTypeInsn(op, "java/lang/String");
+			init.visitInsn(Opcodes.POP);
+		}
+		init.visitLdcInsn(Type.getType(String.class));
+		init.visitInsn(Opcodes.POP);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(0, 0);
+		init.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Constants"));
+		for (String fits : List.of("(Ljava/lang/Object;Ljava/lang/Class;)Z/0", "(Ljava/lang/Object;Ljava/lang/Class;)Z/2",
+				"(Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Object;)Z/0", "(Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Class;/0",
+				"(Ljava/lang/Class;)Ljava/lang/Class;/3")) {
+			List<PreflightFinding> findings = instanceofCheck(game, config, fits, true);
+			assertTrue(findings.isEmpty(), fits + ": " + findings);
+		}
+		for (String refused : List.of("(Ljava/lang/Object;Ljava/lang/Class;)I/0", "(Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/String;)Z/0")) {
+			List<PreflightFinding> findings = instanceofCheck(game, config, refused, true);
+			assertTrue(findings.stream().anyMatch(f -> f.message().contains("does not match the parameters of <init>(Ljava/lang/Object;)V")), refused + ": " + findings);
+		}
+		List<PreflightFinding> notAClass = instanceofCheck(game, config, "(Ljava/lang/Object;Ljava/lang/Class;)Z/0", false);
+		assertTrue(notAClass.stream().anyMatch(f -> f.message().contains("does not match the parameters")), notAClass.toString());
+		// The casts and the class literal count among the class's constants, as Mixin counts them: there are four.
+		List<PreflightFinding> beyond = instanceofCheck(game, config, "(Ljava/lang/Object;Ljava/lang/Class;)Z/4", true);
+		assertTrue(beyond.stream().anyMatch(f -> f.message().contains("expects the constant java.lang.String.class, which does not occur")), beyond.toString());
+		// Mixin refuses a cast, an instanceof's handler at a class literal and a class literal's at an instanceof, and without
+		// an ordinal looks at each: the mixin is left out, saying which.
+		Map<String, String> mismatched = Map.of(
+				"(Ljava/lang/Object;Ljava/lang/Class;)Z/1", "(ordinal 1) of <init>(Ljava/lang/Object;)V, a cast there",
+				"(Ljava/lang/Object;Ljava/lang/Class;)Z/-1", "(ordinal 1) of <init>(Ljava/lang/Object;)V, a cast there",
+				"(Ljava/lang/Object;Ljava/lang/Class;)Z/3", "(ordinal 3) of <init>(Ljava/lang/Object;)V, a class literal there",
+				"(Ljava/lang/Class;)Ljava/lang/Class;/0", "(ordinal 0) of <init>(Ljava/lang/Object;)V, an instanceof there");
+		mismatched.forEach((shape, why) -> {
+			List<PreflightFinding> findings = instanceofCheck(game, config, shape, true);
+			assertTrue(findings.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.handler() == null
+					&& f.message().contains("handler h" + shape.substring(0, shape.lastIndexOf('/')) + " modifies the constant java.lang.String.class " + why)),
+					shape + ": " + findings);
+		});
+	}
+
+	/**
+	 * Pre-flight's findings for a mixin {@code Constants} whose static {@code @ModifyConstant} handler, of the descriptor
+	 * {@code shape} names before its slash, modifies {@link #TARGET}'s constructor's {@code String.class} (or 0, without
+	 * {@code classValue}) of the ordinal after it.
+	 */
+	private static List<PreflightFinding> instanceofCheck(ClassIndex game, MixinConfigFile config, String shape, boolean classValue) {
+		String desc = shape.substring(0, shape.lastIndexOf('/'));
+		int ordinal = Integer.parseInt(shape.substring(shape.lastIndexOf('/') + 1));
+		byte[] mixin = mixin("com/example/mixin/Constants", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "h", desc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/ModifyConstant;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "<init>(Ljava/lang/Object;)V");
+			methods.visitEnd();
+			AnnotationVisitor constants = ann.visitArray("constant");
+			AnnotationVisitor constant = constants.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/Constant;");
+			if (classValue) constant.visit("classValue", Type.getType(String.class));
+			else constant.visit("intValue", 0);
+			if (ordinal >= 0) constant.visit("ordinal", ordinal);
+			constant.visitEnd();
+			constants.visitEnd();
+			ann.visitEnd();
+			mv.visitEnd();
+		});
+		return preflight(game, Map.of("com/example/mixin/Constants", mixin)::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY,
+				Set.of());
+	}
+
+	@Test
 	void anInjectIsPinnedToTheOverloadItsHandlerWasWrittenFor() throws Exception {
 		ClassIndex game = new ClassIndex(Map.of(TARGET, overloadedTarget())::get);
 		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Pinned", mixin("com/example/mixin/Pinned", false,
@@ -10889,6 +11140,202 @@ class MixinPreflightTest {
 			assertTrue(whole.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.handler() == null), e.getKey() + ": " + whole);
 			assertTrue(whole.stream().noneMatch(f -> "recall()V".equals(f.handler())), e.getKey() + ": " + whole);
 		}
+	}
+
+	/**
+	 * ITEM-2: injectors handing state to each other through a static {@code ThreadLocal} of the mod's own classes go
+	 * together, whether a handler uses it itself, through the mixin's own method or through the mod's static method, and
+	 * the mixin's other injectors stay: Fabric API's {@code RecipeMixin} on Forge 47 and 52, two of whose four hooks into
+	 * {@code Recipe.getRemainingItems} have no call to hook there, and whose other two pass a stack's remainder through
+	 * {@code RecipeRemainderHandler.REMAINDER_STACK}.
+	 */
+	@Test
+	void aFailingInjectorTakesTheInjectorsSharingAThreadLocalOfTheModWithIt() throws Exception {
+		String name = "com/example/mixin/Remainders";
+		byte[] mixin = mixin(name, false, cw -> {
+			injectWith(cw, "lost", "INVOKE", "Lnet/minecraft/world/Thing;removed()V", mv -> readState(mv, "HOLDER", "Ljava/lang/ThreadLocal;")); // fails
+			injectWith(cw, "capture", "HEAD", null, mv -> mv.visitMethodInsn(Opcodes.INVOKESTATIC, STATE_CLASS, "remember", "()V", false));
+			injectWith(cw, "store", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", mv -> {
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitMethodInsn(Opcodes.INVOKESPECIAL, name, "read", "()V", false);
+			});
+			injectWith(cw, "plain", "HEAD", null, mv -> readState(mv, "enabled", "Z")); // shares only a config's field
+			MethodVisitor read = cw.visitMethod(Opcodes.ACC_PRIVATE, "read", "()V", null, null);
+			read.visitCode();
+			readState(read, "HOLDER", "Ljava/lang/ThreadLocal;");
+			read.visitInsn(Opcodes.RETURN);
+			read.visitMaxs(1, 1);
+			read.visitEnd();
+		});
+		List<PreflightFinding> findings = run(config(true, "Remainders"), null, Map.of(name, mixin, STATE_CLASS, stateClass()), false);
+		assertTrue(findings.stream().allMatch(f -> f.severity() == Severity.LEFT_OUT && f.handler() != null), findings.toString());
+		assertEquals(Set.of("lost()V", "capture()V", "store()V"), findings.stream().map(PreflightFinding::handler).collect(Collectors.toSet()),
+				"the hook reading only a config's field stays: " + findings);
+		assertEquals("The injector of capture()V goes with that of lost()V: it shares the ThreadLocal com.example.State.HOLDER with lost()V, which"
+				+ " can't apply (ITEM-2)", findings.stream().filter(f -> f.handler().equals("capture()V")).findFirst().orElseThrow().message());
+	}
+
+	/**
+	 * ITEM-2: injectors sharing only a plain static field of the mod (a config's) don't go together, nor do injectors that
+	 * only read a {@code ThreadLocal} of the mod, a context its other code sets (Fabric API 0.116's fluid render hooks).
+	 */
+	@Test
+	void injectorsSharingAModsPlainStaticFieldOrOnlyReadingAThreadLocalStayApart() throws Exception {
+		for (String[] shared : List.of(new String[] {"enabled", "Z"}, new String[] {"HOLDER", "Ljava/lang/ThreadLocal;"})) {
+			String name = "com/example/mixin/Configured";
+			byte[] mixin = mixin(name, false, cw -> {
+				injectWith(cw, "lost", "INVOKE", "Lnet/minecraft/world/Thing;removed()V", mv -> readState(mv, shared[0], shared[1])); // fails
+				injectWith(cw, "kept", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", mv -> readState(mv, shared[0], shared[1]));
+			});
+			List<PreflightFinding> findings = run(config(true, "Configured"), null, Map.of(name, mixin, STATE_CLASS, stateClass()), false);
+			assertEquals(List.of("lost()V"), findings.stream().map(PreflightFinding::handler).toList(), shared[0] + ": " + findings);
+			assertEquals(Severity.LEFT_OUT, findings.getFirst().severity());
+		}
+	}
+
+	/**
+	 * ITEM-2 never disables a mod pre-flight would only have left a hook out of: in a mixin adding an interface, without a
+	 * plugin, a failing handler using nothing of the mixin's own is left out alone (LEAVE-3), and of its partners through
+	 * a {@code ThreadLocal} the one using nothing of the mixin's own goes with it, where the one going through the mixin's
+	 * own method stays, as it did before, the report saying so: its own failure would disable the mod.
+	 */
+	@Test
+	void aThreadLocalPartnerWhoseOwnFailureWouldDisableTheModStays() throws Exception {
+		List<PreflightFinding> findings = duckRemainders(1);
+		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.FAIL), findings.toString());
+		assertEquals(Set.of("lost()V", "capture()V"), findings.stream().filter(f -> f.severity() == Severity.LEFT_OUT).map(PreflightFinding::handler)
+				.collect(Collectors.toSet()), findings.toString());
+		assertEquals(List.of("The injector of store()V shares the ThreadLocal com.example.State.HOLDER with lost()V, which can't apply, but stays:"
+				+ " leaving it out would disable the mod (ITEM-2)"), findings.stream().filter(f -> f.severity() == Severity.INFO).map(PreflightFinding::message)
+				.toList());
+	}
+
+	/** ITEM-2: a partner requiring no injection, whose own failure would only be warned of, goes with the failing handler. */
+	@Test
+	void aThreadLocalPartnerRequiringNothingGoesWithTheFailingInjector() throws Exception {
+		List<PreflightFinding> findings = duckRemainders(0);
+		assertTrue(findings.stream().allMatch(f -> f.severity() == Severity.LEFT_OUT), findings.toString());
+		assertEquals(Set.of("lost()V", "capture()V", "store()V"), findings.stream().map(PreflightFinding::handler).collect(Collectors.toSet()));
+	}
+
+	/**
+	 * A required config's mixin adding an interface, without a plugin: {@code lost} fails, reading {@code HOLDER};
+	 * {@code capture} sets it through the mod's static method; {@code store}, requiring {@code storeRequires}, reads it
+	 * through the mixin's own method.
+	 */
+	private static List<PreflightFinding> duckRemainders(int storeRequires) throws Exception {
+		String name = "com/example/mixin/DuckRemainders";
+		byte[] mixin = mixin(name, false, List.of("com/example/api/Duck"), cw -> {
+			injectWith(cw, "lost", "INVOKE", "Lnet/minecraft/world/Thing;removed()V", 1, mv -> readState(mv, "HOLDER", "Ljava/lang/ThreadLocal;")); // fails
+			injectWith(cw, "capture", "HEAD", null, 1, mv -> mv.visitMethodInsn(Opcodes.INVOKESTATIC, STATE_CLASS, "remember", "()V", false));
+			injectWith(cw, "store", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", storeRequires, mv -> {
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitMethodInsn(Opcodes.INVOKESPECIAL, name, "read", "()V", false);
+			});
+			MethodVisitor read = cw.visitMethod(Opcodes.ACC_PRIVATE, "read", "()V", null, null);
+			read.visitCode();
+			readState(read, "HOLDER", "Ljava/lang/ThreadLocal;");
+			read.visitInsn(Opcodes.RETURN);
+			read.visitMaxs(1, 1);
+			read.visitEnd();
+		});
+		return run(config(true, "DuckRemainders"), null, Map.of(name, mixin, STATE_CLASS, stateClass()), false);
+	}
+
+	/**
+	 * ITEM-2: a {@code ThreadLocal} is stored into where its own value, on the stack or through a local, is the receiver
+	 * of a {@code set}: {@code HOLDER} read into a local before another's is set isn't, nor is {@code OTHER} read for
+	 * {@code HOLDER.set(OTHER.get())}.
+	 */
+	@Test
+	void aThreadLocalIsStoredIntoWhereItsOwnValueIsSet() throws Exception {
+		Map<Consumer<MethodVisitor>, List<String>> cases = new LinkedHashMap<>();
+		cases.put(mv -> { // HOLDER read into a local, OTHER set: HOLDER only read
+			mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, "HOLDER", "Ljava/lang/ThreadLocal;");
+			mv.visitVarInsn(Opcodes.ASTORE, 1);
+			mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, "OTHER", "Ljava/lang/ThreadLocal;");
+			mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V", false);
+		}, List.of("lost()V"));
+		cases.put(mv -> { // HOLDER set through a local
+			mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, "HOLDER", "Ljava/lang/ThreadLocal;");
+			mv.visitVarInsn(Opcodes.ASTORE, 1);
+			mv.visitVarInsn(Opcodes.ALOAD, 1);
+			mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V", false);
+		}, List.of("lost()V", "kept()V"));
+		cases.put(mv -> { // HOLDER.set(OTHER.get())
+			mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, "HOLDER", "Ljava/lang/ThreadLocal;");
+			mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, "OTHER", "Ljava/lang/ThreadLocal;");
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/ThreadLocal", "get", "()Ljava/lang/Object;", false);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V", false);
+		}, List.of("lost()V", "kept()V"));
+		for (Map.Entry<Consumer<MethodVisitor>, List<String>> c : cases.entrySet()) {
+			String name = "com/example/mixin/Stores";
+			byte[] mixin = mixin(name, false, cw -> {
+				injectWith(cw, "lost", "INVOKE", "Lnet/minecraft/world/Thing;removed()V", 1, mv -> readState(mv, "HOLDER", "Ljava/lang/ThreadLocal;")); // fails
+				injectWith(cw, "kept", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", 1, c.getKey());
+			});
+			List<PreflightFinding> findings = run(config(true, "Stores"), null, Map.of(name, mixin, STATE_CLASS, stateClass()), false);
+			assertEquals(c.getValue(), findings.stream().map(PreflightFinding::handler).toList(), findings.toString());
+		}
+	}
+
+	private static final String STATE_CLASS = "com/example/State";
+
+	/**
+	 * A class of the mod: static {@code ThreadLocal}s HOLDER and OTHER, a config's static {@code enabled}, and remember(),
+	 * which sets HOLDER.
+	 */
+	private static byte[] stateClass() {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, STATE_CLASS, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "HOLDER", "Ljava/lang/ThreadLocal;", null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "OTHER", "Ljava/lang/ThreadLocal;", null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "enabled", "Z", null, null).visitEnd();
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "remember", "()V", null, null);
+		mv.visitCode();
+		mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, "HOLDER", "Ljava/lang/ThreadLocal;");
+		mv.visitInsn(Opcodes.ACONST_NULL);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(2, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** Reads a static field of {@link #STATE_CLASS} and drops it. */
+	private static void readState(MethodVisitor mv, String field, String desc) {
+		mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, field, desc);
+		mv.visitInsn(Opcodes.POP);
+	}
+
+	/** A required {@code @Inject} into {@code tick} whose handler's code is {@code body}, then a return. */
+	private static void injectWith(ClassWriter cw, String handler, String atValue, String atTarget, Consumer<MethodVisitor> body) {
+		injectWith(cw, handler, atValue, atTarget, 1, body);
+	}
+
+	/** An {@code @Inject} into {@code tick} requiring {@code require} whose handler's code is {@code body}, then a return. */
+	private static void injectWith(ClassWriter cw, String handler, String atValue, String atTarget, int require, Consumer<MethodVisitor> body) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, handler, "()V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "tick");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", atValue);
+		if (atTarget != null) at.visit("target", atTarget);
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visit("require", require);
+		ann.visitEnd();
+		mv.visitCode();
+		body.accept(mv);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(2, 2);
+		mv.visitEnd();
 	}
 
 	/** An {@code @Inject} handler with code, using the mixin's {@code neighbor} field where {@code keepsState}. */
