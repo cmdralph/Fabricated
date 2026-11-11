@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.FakePlayer;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
@@ -30,7 +31,10 @@ import net.minecraft.world.level.block.state.BlockState;
  * tuff where calcite breaks. Once the server has started, a fake player breaks calcite, which must turn to tuff through
  * the hook, and stone, which the hook passes on and which must be gone; and, where the platform's half provides one, a
  * block overriding the platform's extension ({@code fabricated_testmod:break_override}), which must break as its override
- * says (it leaves amethyst) without the hook. With Fabric API's fake player, so on Forge only with Fabric API.
+ * says (it leaves amethyst) without the hook. Fabric API's {@code PlayerBlockBreakEvents.AFTER} must fire once for each
+ * break, with the block broken: Fabricated fires it on vanilla's path, the calcite's and the stone's (whose class the
+ * hook has rewritten), and on the platform's, the overriding block's (on Forge 47, through its SRG-named hooks too).
+ * With Fabric API's fake player, so on Forge only with Fabric API.
  */
 public final class VanillaBreakTest implements ModInitializer {
 	private static final Logger LOGGER = LoggerFactory.getLogger("fabricated_testmod");
@@ -52,12 +56,18 @@ public final class VanillaBreakTest implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STARTED.register(Breaking::check);
 	}
 
-	/** The breaks, apart: only this class names Fabric API's fake player. */
+	/** The breaks, apart: only this class names Fabric API's fake player and events. */
 	private static final class Breaking {
+		/** The block break events' AFTER, as it fired: where, and the block broken. */
+		private static final List<String> AFTER = new ArrayList<>();
+
 		static void check(MinecraftServer server) {
 			ServerLevel level = server.overworld();
 			BlockPos calcite = new BlockPos(-96, 250, -80), stone = calcite.east(2), overriding = calcite.east(4);
 			List<BlockPos> placed = new ArrayList<>(List.of(calcite, stone, overriding));
+			PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, blockEntity) -> {
+				if (placed.contains(pos)) AFTER.add(pos.toShortString() + " " + BuiltInRegistries.BLOCK.getKey(state.getBlock()));
+			});
 			try {
 				List<String> failures = new ArrayList<>();
 				FakePlayer player = FakePlayer.get(level);
@@ -77,6 +87,9 @@ public final class VanillaBreakTest implements ModInitializer {
 					if (!left.is(Blocks.AMETHYST_BLOCK)) failures.add("the block overriding the platform's extension broke to " + left + ", not its amethyst");
 					if (WRAPPED.get() != before) failures.add("the hook of vanilla's removeBlock ran for the block overriding the platform's extension");
 				}
+				List<String> expected = new ArrayList<>(List.of(calcite.toShortString() + " minecraft:calcite", stone.toShortString() + " minecraft:stone"));
+				if (override != null) expected.add(overriding.toShortString() + " " + BuiltInRegistries.BLOCK.getKey(override));
+				if (!AFTER.equals(expected)) failures.add("PlayerBlockBreakEvents.AFTER fired " + AFTER + ", not " + expected);
 				if (failures.isEmpty()) {
 					LOGGER.info("FABRICATED-TEST vanilla block breaking OK{}", override != null ? " (with a block overriding the platform's extension)" : "");
 				} else {

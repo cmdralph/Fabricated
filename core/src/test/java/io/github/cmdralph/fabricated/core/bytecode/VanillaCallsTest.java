@@ -37,8 +37,9 @@ import io.github.cmdralph.fabricated.core.testutil.TestSources;
  * platform's code in its form (NeoForge 21.1's, NeoForge 21.11 to 26.3's, Forge's; the server's and the client's; Forge 47's
  * under SRG's names), against stand-ins of the game whose calls log what they do; the extensions also name a class the
  * game lacks as it runs, as Forge 66's name client classes. The class rewritten does what the platform's did, step for
- * step, for a block keeping the default, one overriding it, one overriding it to call it and one overriding it through an
- * interface of its own; a hook of the call put back runs where the block keeps the default, and only there.
+ * step, for a block keeping the default, one overriding it, one overriding it to call it, one overriding it through an
+ * interface of its own, one inheriting an override and a state whose class overrides the state's; a hook of the call
+ * put back runs where the block keeps the default, and only there.
  */
 public class VanillaCallsTest {
 	private static final String SERVER = "net/minecraft/server/level/ServerPlayerGameMode";
@@ -151,6 +152,11 @@ public class VanillaCallsTest {
 				+ " return level.$setBlock$(pos, new BlockState(new Block(\"stump\")), 3); } }");
 		sources.put("com/example/ViaInterface.java", "package com.example;" + imports + " public class ViaInterface extends Block implements OverridingExtension {"
 				+ " public ViaInterface() { super(\"via\"); } }");
+		// One inheriting another's override; and a state of a class of its own overriding the state's extension.
+		sources.put("com/example/Inheriting.java", "package com.example; public class Inheriting extends Overriding { }");
+		sources.put("com/example/OverridingState.java", "package com.example;" + imports + " public class OverridingState extends BlockState {"
+				+ " public OverridingState(Block block) { super(block); } @Override public boolean onDestroyedByPlayer(Level level, BlockPos pos, Player player,"
+				+ form.params() + ") { level.log.add(\"state override\"); return level.$setBlock$(pos, new BlockState(new Block(\"stump\")), 3); } }");
 		// One whose own methods name a class the game lacks as it runs: whether it overrides the default can't be told.
 		sources.put("com/example/Unreadable.java", "package com.example;" + imports + " public class Unreadable extends Block { public Unreadable() {"
 				+ " super(\"unreadable\"); } public void drawn(ClientOnly client) { } }");
@@ -235,7 +241,8 @@ public class VanillaCallsTest {
 			Map<String, byte[]> restored = restored(platform);
 			Map<String, String> names = form.srg ? SRG : MOJANG;
 			// Every block, on either path, does what the platform's code made it do; the default's steps are vanilla's calls.
-			for (String block : List.of("net.minecraft.world.level.block.Block", "com.example.Overriding", "com.example.Calling", "com.example.ViaInterface")) {
+			for (String block : List.of("net.minecraft.world.level.block.Block", "com.example.Overriding", "com.example.Calling", "com.example.ViaInterface",
+					"com.example.Inheriting", "com.example.OverridingState")) {
 				for (boolean creative : List.of(false, true)) {
 					List<String> before = server(platform, block, creative, false), after = server(restored, block, creative, false);
 					List<String> expected = new ArrayList<>(before);
@@ -248,7 +255,8 @@ public class VanillaCallsTest {
 			// A hook of vanilla's call put back runs for the block keeping the default, and only for it.
 			assertTrue(server(restored, "net.minecraft.world.level.block.Block", false, true).contains("hooked"), form.name());
 			assertTrue(client(restored, "net.minecraft.world.level.block.Block", true).contains("hooked"), form.name());
-			for (String block : List.of("com.example.Overriding", "com.example.Calling", "com.example.ViaInterface")) {
+			for (String block : List.of("com.example.Overriding", "com.example.Calling", "com.example.ViaInterface", "com.example.Inheriting",
+					"com.example.OverridingState")) {
 				assertTrue(!server(restored, block, false, true).contains("hooked"), form + " " + block);
 				assertTrue(!client(restored, block, true).contains("hooked"), form + " " + block);
 			}
@@ -386,10 +394,13 @@ public class VanillaCallsTest {
 		return log(loader, level);
 	}
 
+	/** Places a block of the class at 1, or a plain block in a state of the class ({@code OverridingState}). */
 	private static void place(ClassLoader loader, Object level, String block) throws Exception {
 		Class<?> blockClass = loader.loadClass("net.minecraft.world.level.block.Block");
-		Object instance = block.endsWith(".Block") ? blockClass.getConstructor(String.class).newInstance("stone") : loader.loadClass(block).getConstructor().newInstance();
-		Constructor<?> state = loader.loadClass("net.minecraft.world.level.block.state.BlockState").getConstructor(blockClass);
+		boolean ownState = block.endsWith("State");
+		Object instance = block.endsWith(".Block") || ownState ? blockClass.getConstructor(String.class).newInstance("stone")
+				: loader.loadClass(block).getConstructor().newInstance();
+		Constructor<?> state = loader.loadClass(ownState ? block : "net.minecraft.world.level.block.state.BlockState").getConstructor(blockClass);
 		@SuppressWarnings("unchecked")
 		Map<Integer, Object> blocks = (Map<Integer, Object>) level.getClass().getField("blocks").get(level);
 		blocks.put(1, state.newInstance(instance));
