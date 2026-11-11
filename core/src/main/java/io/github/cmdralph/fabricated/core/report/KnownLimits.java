@@ -36,6 +36,12 @@ public final class KnownLimits {
 							+ "extractRenderStateWithTooltipAndSubtitles\\("),
 					"Forge draws screens through its own layer code, so wrappers of a screen's render call can't apply;"
 							+ " use NeoForge or the mod's Forge build (SCREEN-2)"),
+			// A hook of vanilla's playerWillDestroy call in the server's destroyBlock, which Forge makes from the block state's
+			// onDestroyedByPlayer once the tool is damaged, and Fabricated doesn't put back there (Mojang's and SRG's names).
+			new Limit(Set.of("Forge"), null,
+					Pattern.compile("in (?:destroyBlock|m_9280_) expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;(?:playerWillDestroy|m_5707_)\\("),
+					"Forge calls playerWillDestroy from the block state's onDestroyedByPlayer, after the tool is damaged, so hooks of vanilla's call"
+							+ " before it can't apply there; Fabricated puts back only the removal (SEAM-3)"),
 			// ForgeRegistry.add, whose maps key a value by its equality: two objects, by their identity hashes, not one object
 			// under two names.
 			new Limit(Set.of(), IllegalArgumentException.class.getName(),

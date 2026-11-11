@@ -53,6 +53,15 @@ class KnownLimitsTest {
 	}
 
 	@Test
+	void aHookOfTheServersPlayerWillDestroyCallIsSeam3OnForgeOnly() {
+		PreflightFinding forge47 = finding(Severity.LEFT_OUT, "@ModifyExpressionValue in m_9280_ expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;"
+				+ "m_5707_(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;"
+				+ "Lnet/minecraft/world/entity/player/Player;)V\"), which does not occur in that method");
+		assertTrue(KnownLimits.ofFinding("Forge", forge47).endsWith("(SEAM-3)"), KnownLimits.ofFinding("Forge", forge47));
+		assertNull(KnownLimits.ofFinding("NeoForge", forge47), "NeoForge keeps the call in destroyBlock: a hook left out there is left out for another reason");
+	}
+
+	@Test
 	void twoEqualEntriesRegisteredOnForgeAreReg13() {
 		IllegalArgumentException thrown = new IllegalArgumentException(registeredTwice("36b858fa", "4bef7d97"));
 		EntrypointRunner.Failure failure = new EntrypointRunner.Failure("wover_story", "main", "org.example.Story", new RuntimeException("wrapped", thrown));
