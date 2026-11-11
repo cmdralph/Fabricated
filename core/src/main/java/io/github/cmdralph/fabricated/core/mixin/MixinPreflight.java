@@ -871,6 +871,29 @@ public final class MixinPreflight extends PreflightPart {
 		}
 
 		/**
+		 * An {@code @Inject} capturing locals that Mixin skips at each of its points ({@link SkippedCaptures}, SEAM-2). Mixin
+		 * skips it whatever pre-flight does, so leaving it out changes nothing of its own; it lets the injectors keeping
+		 * state with it in the mixin's fields (STATE-1), sharing a local with it (SHARE-1) or a {@code ThreadLocal} of the
+		 * mod (ITEM-2) go with it, which would otherwise read what it never stored. It is left out as its own failure would
+		 * leave it out ({@link #injector}), whatever its {@code require} (Mixin's skipping it isn't a failure Mixin counts):
+		 * alone, with the injectors keeping state with it, or with the whole mixin where pre-flight can't tell which they
+		 * are. Where its failure would disable the mod (a mixin the mod's code reaches, its handler using the mixin's own
+		 * state), it stays as it was, Mixin skipping it, and the report says so: grouping never makes an outcome worse.
+		 */
+		void skippedCapture(MethodNode handler, String message, String suggestion) {
+			String key = handler.name + handler.desc;
+			if (!hasPlugin && !selfContained && !stateless.contains(key)) {
+				info(message + ": Mixin skips it there; it stays, and the injectors keeping state with it too, as leaving them out would disable"
+						+ " the mod (this mixin adds an interface or accessors the mod's code uses; SEAM-2)");
+				return;
+			}
+			boolean wholeMixin = !hasPlugin && addsFields && !stateGroups.containsKey(key);
+			out.add(new PreflightFinding(Severity.LEFT_OUT, configName, mixinDotted, message + ": Mixin skips it there, so it is left out"
+					+ (wholeMixin ? ", with the whole mixin, whose state it shares with code pre-flight can't follow" : "") + " (SEAM-2)", suggestion,
+					wholeMixin ? null : key));
+		}
+
+		/**
 		 * The injectors keeping state with those of this mixin left out by the findings from {@code from} on, left out with
 		 * them (STATE-1), unless the whole mixin is.
 		 */
@@ -1597,6 +1620,14 @@ public final class MixinPreflight extends PreflightPart {
 							+ " Mixin rejects its descriptor whatever the capture mode",
 					(ctx.owner() == null ? loader + "'s build of Minecraft reduced this method to a call" : ctx.changer(true) + " changed this method")
 							+ "; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+		SkippedCaptures.Skipped skippedCapture = ann.desc.equals(MixinNames.INJECT) && !anyFuzzy && (mixin.access & Opcodes.ACC_INTERFACE) == 0
+				? SkippedCaptures.skipped(mixin, handler, ann, matched, classes::withFrames, target.name, ctx) : null;
+		if (skippedCapture != null) {
+			ctx.skippedCapture(handler, skippedCapture.describe(injectorName, handler, ctx),
+					(ctx.owner() == null ? loader + "'s build of Minecraft orders this method's locals otherwise" : ctx.changer(true) + " orders this method's locals otherwise")
+							+ "; the mod needs an update for it.");
 			return;
 		}
 
