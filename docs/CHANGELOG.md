@@ -19,7 +19,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **SHARE-2** (P2), fixed: a hook sharing a local with another mixin's left-out hook through a namespaced `@Share` now
   goes with it, as one of the same mixin did (SHARE-1): Apoli's break action, which reads the broken block its harvest
   mixin keeps, stays left out with that mixin's harvest wrapper.
-- Verified: core's tests (629), CI's script tests and the inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2 and Forge 47,
+- Verified: core's tests (632), CI's script tests and the inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2 and Forge 47,
   52 and 66 build; local servers pass every check (NeoForge 1.21.1, 26.1.2; Forge 47, 52, 66); on the advanced corpus
   servers of NeoForge 1.21.1 and Forge 47, against runs before the change, only the hooks above change, now applying,
   and the checks are as before. The first check, by `Class.getMethod`, failed on Forge 66, whose extensions name client
