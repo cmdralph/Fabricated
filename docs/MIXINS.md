@@ -1467,7 +1467,7 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
 | mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 
-## Forge 47 (`forge-legacy`): 83 mixins in 14 configs
+## Forge 47 (`forge-legacy`): 84 mixins in 14 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1483,7 +1483,7 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.20.1 | client 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.20.1 | mixins 7 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.20.1 | client 4 | 1 | — | none |
-| `mc/forge-legacy/1.20.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.20.1 | mixins 11, client 4 | 1 | — | none |
+| `mc/forge-legacy/1.20.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.20.1 | mixins 12, client 4 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json` | `io.github.cmdralph.fabricated.testmod.frapi.mixin` | 1.20.1 | client 1 | 1 | — | none |
 
 ### `mc/forge-legacy/1.20.1/src/main/resources/fabricated-biome.mixins.json`
@@ -1683,7 +1683,7 @@ Versions: 1.20.1 · package `net.fabricmc.fabric.mixin.client.particle` · requi
 
 Versions: 1.20.1 · package `io.github.cmdralph.fabricated.forgetest.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
 
-Written in Mojang's names; the test mod's jar names them in Intermediary's, its refmap from Mixin's annotation processor (`mc/platform-forge-legacy.gradle`). The accessors of fields Forge 47 replaced name them in Intermediary's, `remap = false`.
+Written in Mojang's names; the test mod's jar names them in Intermediary's, its refmap from Mixin's annotation processor (`mc/platform-forge-legacy.gradle`). The accessors of fields Forge 47 replaced name them in Intermediary's, `remap = false`. The interface mixin's injectors, which Forge 47's processor only warns of there, are mapped as Fabric's processor maps them.
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
@@ -1691,6 +1691,10 @@ Written in Mojang's names; the test mod's jar names them in Intermediary's, its 
 | mixins | BiomeGenerationSettingsAccessor | 1.20.1 (1.20.1) | n.m.world.level.biome.BiomeGenerationSettings | @Accessor → fabricatedtest$setFeatureSet (no `@Mutable`: BIOME-6's check) | "featureSet" |  | — | default |
 | mixins | CommandsMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.commands.Commands | @Inject → fabricatedForgeTest$beforeSetConsumer; @Unique fields fabricatedForgeTest$logged, fabricatedForgeTest$constructionLogged | "<init>" | INVOKE `L…/CommandDispatcher;setConsumer(L…/ResultConsumer;)V` remap=false | — | default |
 | mixins | CommandsMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.commands.Commands | @Inject → fabricatedForgeTest$afterDispatcher | "<init>" | INVOKE `L…/CommandDispatcher;<init>()V` shift=BY by=2 | — | default |
+| mixins | ContainerInterfaceMixin | 1.20.1 (1.20.1) | n.m.world.Container (an interface mixin: INTERFACE-1's checks) | @Inject → fabricatedForgeTest$beforeGetItem | "countItem" | INVOKE `L…/Container;getItem(I)L…/ItemStack;` locals=CAPTURE_FAILHARD | — | default |
+| mixins | ContainerInterfaceMixin | 1.20.1 (1.20.1) | n.m.world.Container (an interface mixin: INTERFACE-1's checks) | @WrapOperation → fabricatedForgeTest$tenfold | "countItem" | INVOKE `L…/ItemStack;getCount()I` | — | default |
+| mixins | ContainerInterfaceMixin | 1.20.1 (1.20.1) | n.m.world.Container (an interface mixin: INTERFACE-1's checks) | @Redirect → fabricatedForgeTest$test | "hasAnyMatching" | INVOKE `L…/Predicate;test(L…/Object;)Z` @Local | — | default |
+| mixins | ContainerInterfaceMixin | 1.20.1 (1.20.1) | n.m.world.Container (an interface mixin: INTERFACE-1's checks) | @ModifyConstant → fabricatedForgeTest$maxStackSize | "getMaxStackSize" | CONSTANT intValue=64 | — | default |
 | mixins | LanguageReaderMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.locale.Language | @ModifyVariable → fabricatedForgeTest$watch | "loadFromJson(Ljava/io/InputStream;Ljava/util/function/BiConsumer;)V" | HEAD | — | default |
 | mixins | LivingEntityCapturedDropsMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.world.entity.LivingEntity prio=1500 | @Inject → fabricatedForgeTest$takeCapturedDrops | "dropAllDeathLoot" | RETURN | — | default |
 | mixins | MinecraftServerArgsMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1) | n.m.server.MinecraftServer | @ModifyArgs → fabricatedForgeTest$tickChildrenArgs; @Unique fields fabricatedForgeTest$modified | "tickServer" | INVOKE `L…/MinecraftServer;tickChildren(L…/BooleanSupplier;)V` | — | default |

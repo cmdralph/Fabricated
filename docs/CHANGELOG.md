@@ -3,6 +3,27 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-11: More of Fabric mods' interface mixins applied on Forge 47 (INTERFACE-2)
+
+- **INTERFACE-2** (P1), fixed: Forge 47's Mixin (0.8.5) applies no injector in an interface mixin, and Fabricated applied
+  only an `@Inject` at `HEAD`, `RETURN` or `TAIL` there (INTERFACE-1). It now also applies an `@Inject` at a call or a
+  field access, shifted before or after it or not, capturing the locals Mixin works out there; a `@Redirect` and
+  MixinExtras' `@WrapOperation` of a call; and a `@ModifyConstant`; each with the target's parameters and MixinExtras'
+  `@Local` where Mixin takes them, as Mixin applies them on Forge 52 and 61 to 66, whose Mixin (0.8.7) applies these
+  itself. Pre-flight checks such a handler as it checks a class mixin's injector. Origins' armour restriction, owo-lib's
+  recipe remainders, Carpet's, ServerCore's and Wilder Wild's hooks apply on Forge 47; Porting Lib's custom light and
+  redstone and reach-entity-attributes' reach hooks stay left out, Forge 47 having replaced the calls and the constant
+  they hook. Other injectors, slices, `@Coerce` and `@Share` in an interface mixin stay left out there, the report
+  saying why.
+- **ITEM-2** (open): Fabric API's recipe remainder mixin now applies two of its four handlers on Forge 47, as on Forge
+  52, which can give a Forge item's own crafting remainder Fabric's default; the owner's decision (roadmap).
+- Forge 47's test mod has an interface mixin into `Container` with each of these, checked by
+  `forge-legacy-interface-inject`, `-redirect`, `-wrap-operation` and `-constant`.
+- Verified: core's tests (`InterfaceInjectsTest`, a test per kind), CI's script tests and the mixin inventory; Forge 47
+  builds. Locally on Forge 47 the server and client parts pass, the four checks among them; the advanced corpus server
+  leaves out 4 interface hooks where the release's left out 12, and the corpus server 6 where it left out 9, every other
+  hook left out, mod disabled and entrypoint failing as in the release's runs.
+
 ## 2026-11-11: Pre-flight's bridges for a supertype and a static handler, instanceof constants, a plugin's own choices
 
 - **LAMBDA-11** (P1), fixed: JEI's and owo-lib's char typed hooks take the `GuiEventListener` vanilla's
