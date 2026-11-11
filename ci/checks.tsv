@@ -93,7 +93,12 @@ environment-stripping	server	*	yes	*	*	*	out	FABRICATED-TEST environment strippi
 missing-dependency-reported	server	*	yes	*	*	*	report	fabricated-testmod-missing		missing-dependency	missing dependency reported	
 missing-dependency-named	server	*	yes	*	*	*	report	fabricated-library-that-does-not-exist		missing-dependency	missing dependency named	
 impossible-mixin	server	*	yes	*	*	*	report	LEFT_OUT .*ImpossibleMixin.*fabricatedMethodThatDoesNotExist			impossible mixin caught by pre-flight and left out	
-unmatched-call-mixin	server	*	yes	*	*	*	report	LEFT_OUT .*UnmatchedCallMixin.*fabricatedCallThatIsNeverMade			mixin at a call its method never makes caught by pre-flight and left out	
+unmatched-call-mixin	server	*	yes	*	*	*	report	LEFT_OUT .*UnmatchedCallMixin.*fabricatedCallThatIsNeverMade			mixin at a call its method never makes caught by pre-flight and left out
+supertype-handler	server	*	yes	*	*	*	out	FABRICATED-TEST supertype handler OK			an @Inject handler taking a supertype of what its method takes runs, through pre-flight's bridge (LAMBDA-11)
+static-handler	server	*	yes	*	*	*	out	FABRICATED-TEST static handler OK			a static @Inject handler on a method that takes this runs, through pre-flight's bridge where the running Mixin refuses it (Forge 47, LAMBDA-12)
+instanceof-constant	server	*	yes	*	*	*	out	FABRICATED-TEST instanceof constant OK			a @ModifyConstant of an instanceof, its handler taking the object and the class, applies (PRE-29)
+plugin-turned-down	server	*	yes	*	*	*	report	<report#Mixins their configs' plugins leave out>fabricated-testmod: fabricated-testmod\.mixins\.json's plugin leaves out 1 mixin\(s\): io\.github\.cmdralph\.fabricated\.testmod\.mixin\.PluginRejectedMixin$ && !LEFT_OUT .*PluginRejectedMixin			a mixin pre-flight leaves out that its config's plugin turns down is listed apart, as the plugin answered Mixin (LEAVE-4)
+plugin-asked-left-out	server	*	yes	*	*	*	report	LEFT_OUT .*PreflightLeftOutMixin.*fabricatedTestNoSuchField			a mixin pre-flight leaves out whole that the test mod's plugin would apply stays listed for Mixin to ask the plugin, which, translated, turns it down: it is reported left out, and the server starts (LEAVE-4)
 throwing-entrypoint	server	*	yes	*	*	*	report	intentional failure for Fabricated CI			throwing entrypoint isolated	
 holder-dropped	server	*	yes	*	*	*	report	built but never registered, left by a Fabric mod whose entrypoint failed			the holder the throwing mod left is dropped at the registries' freeze, with an error (CORPUS-42, HOLD-2)	
 no-failed	server	*	yes	*	*	*	out	!FABRICATED-TEST .*FAILED		no-failed	no test mod check reported a failure	its test mods' FAILED lines are no gate of their own
