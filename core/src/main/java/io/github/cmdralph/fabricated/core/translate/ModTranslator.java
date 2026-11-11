@@ -847,6 +847,8 @@ public final class ModTranslator {
 		}
 		installedClasses.putAll(preflight.installedClasses());
 		widened.addAll(preflight.accessTransformers());
+		// A hook another config's check left out (SHARE-2) applies to nothing put back.
+		MixinPreflight.withoutSeamNotesOfLeftOut(findings);
 		seams.addAll(preflight.restoredSeams());
 		Set<String> written = new TreeSet<>(override.skipMixins());
 		written.removeAll(plannedSkips);

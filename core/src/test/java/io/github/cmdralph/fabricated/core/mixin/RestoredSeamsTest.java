@@ -71,14 +71,23 @@ class RestoredSeamsTest {
 				+ " public @interface WrapOperation { String[] method(); org.spongepowered.asm.mixin.injection.At[] at(); int allow() default -1; }");
 		sources.put("com/llamalad7/mixinextras/injector/wrapoperation/Operation.java", "package com.llamalad7.mixinextras.injector.wrapoperation;"
 				+ " public interface Operation<R> { R call(Object... args); }");
+		sources.put("org/spongepowered/asm/mixin/injection/Inject.java", "package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); }");
+		sources.put("org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable.java", "package org.spongepowered.asm.mixin.injection.callback;"
+				+ " public class CallbackInfoReturnable<R> { }");
+		sources.put("com/llamalad7/mixinextras/sugar/Share.java", "package com.llamalad7.mixinextras.sugar; public @interface Share { String value();"
+				+ " String namespace() default \"\"; }");
+		sources.put("com/llamalad7/mixinextras/sugar/ref/LocalRef.java", "package com.llamalad7.mixinextras.sugar.ref; public interface LocalRef<T> { T get();"
+				+ " void set(T value); }");
 		sources.put("com/example/mixin/Breaking.java", "package com.example.mixin; import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.injection.*;"
+				+ " import org.spongepowered.asm.mixin.injection.callback.*; import com.llamalad7.mixinextras.sugar.*; import com.llamalad7.mixinextras.sugar.ref.*;"
 				+ " import com.llamalad7.mixinextras.injector.wrapoperation.*; import net.minecraft.core.BlockPos; import net.minecraft.server.level.*;"
 				+ " @Mixin(ServerPlayerGameMode.class) public abstract class Breaking {" + members + " }");
 		classes.putAll(TestSources.compileWithLocals(dir, TestSources.MIXIN_ANNOTATIONS, sources));
 		ClassBytesSource game = VanillaSeams.over(classes::get);
 		MixinPreflight preflight = new MixinPreflight(new ClassIndex(game), InstalledClasses.NONE, classes::get, ClassBytesSource.EMPTY, false, true,
 				ClassBytesSource.EMPTY);
-		MixinConfigFile config = MixinConfigFile.parse("{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Breaking\"]}");
+		MixinConfigFile config = MixinConfigFile.parse("{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Breaking\"],"
+				+ "\"injectors\":{\"defaultRequire\":1}}");
 		preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), findings)
 				.forEach((file, data) -> classes.put(file.substring(0, file.length() - ".class".length()), data));
 		findings.addAll(preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of()));
@@ -99,6 +108,16 @@ class RestoredSeamsTest {
 				+ " in destroyBlock, vanilla's call NeoForge's ServerPlayerGameMode makes through the block's IBlockExtension.onDestroyedByPlayer instead;"
 				+ " Fabricated puts it back there for the blocks keeping that method's default, so the hook applies to their breaking, and a block"
 				+ " overriding it breaks as NeoForge has it, without the hook (SEAM-3)")), findings.toString());
+
+		// Left out with another injector of the mixin, whose state it reads (SHARE-1), it applies to nothing put back: the class
+		// isn't rewritten for it, nor is its hook noted.
+		String reading = wrap.replace("Operation<Boolean> original) {", "Operation<Boolean> original, @Share(\"x\") LocalRef<Object> x) { x.get();")
+				+ " @Inject(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/world/level/block/Block;noSuchCall()V\"))"
+				+ " private void keep(BlockPos pos, CallbackInfoReturnable<Boolean> cir, @Share(\"x\") LocalRef<Object> x) { x.set(pos); }";
+		List<PreflightFinding> shared = new java.util.ArrayList<>();
+		assertEquals(Set.of(), breaking(dir.resolve("shared"), reading, shared).restoredSeams());
+		assertTrue(shared.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.handler() != null && f.handler().startsWith("removed(")), shared.toString());
+		assertTrue(shared.stream().noneMatch(f -> f.message().endsWith("(SEAM-3)")), shared.toString());
 
 		// The same call wrapped in a method it isn't put back in finds nothing there, and the class isn't rewritten for it.
 		List<PreflightFinding> elsewhere = new java.util.ArrayList<>();

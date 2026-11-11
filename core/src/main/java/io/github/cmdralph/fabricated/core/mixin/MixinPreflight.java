@@ -80,6 +80,14 @@ import org.objectweb.asm.tree.VarInsnNode;
 public final class MixinPreflight extends PreflightPart {
 	private final MixinRepairs repairer;
 	private final ReplacedMethods replacedMethods;
+	/** The hooks of seams put back noted so far ({@link #noteRestoredSeams}), across the mod's configs. */
+	private final List<SeamNote> seamNotes = new ArrayList<>();
+	/** The injectors left out so far, across the mod's configs, as {@link #handlerKey}s. */
+	private final Set<String> leftOutHandlers = new HashSet<>();
+
+	/** A hook of a seam put back: its mixin, its handler, and the class to rewrite for it. */
+	private record SeamNote(String mixin, String handler, String target) {
+	}
 
 	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2). */
 	public enum ConstructorInjects {
@@ -296,6 +304,10 @@ public final class MixinPreflight extends PreflightPart {
 					: modClasses.readNode(internal, ClassReader.SKIP_FRAMES), modClassCache));
 		}
 		leaveOutNamespacedSharers(out, configName, configShares);
+		for (PreflightFinding f : out) {
+			if (f.severity() == Severity.LEFT_OUT && f.mixin() != null) leftOutHandlers.add(handlerKey(f.mixin(), f.handler()));
+		}
+		withoutSeamNotesOfLeftOut(out);
 		if (hasPlugin && out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
 			out.add(new PreflightFinding(Severity.INFO, configName, null, "This config uses a mixin plugin (" + config.plugin()
 					+ ") that may disable mixins at runtime, so an injector that would crash the game is left out instead of disabling the mod.", ""));
@@ -376,11 +388,43 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * The game classes the mixins {@link #check} or {@link #repairs} read target that have vanilla methods put back
-	 * ({@link VanillaSeams}): the game must have them put back as those classes load (SEAM-1).
+	 * The game classes the mixins {@link #check} read target that have vanilla's methods or calls put back
+	 * ({@link VanillaSeams}) a hook left in names: the game must have them put back as those classes load (SEAM-1, SEAM-3).
+	 * Only those are rewritten, so a native mod's mixin of the platform's code there still finds it where no Fabric mod's
+	 * hook needs a seam (Lithium's mixin of the resolver hooks none), nor where the hooks needing one are left out.
 	 */
 	public Set<String> restoredSeams() {
-		return Collections.unmodifiableSet(new TreeSet<>(restoredSeams));
+		Set<String> restored = new TreeSet<>();
+		for (SeamNote note : seamNotes) {
+			if (!leftOut(leftOutHandlers, note.mixin(), note.handler())) restored.add(note.target());
+		}
+		return Collections.unmodifiableSet(restored);
+	}
+
+	/**
+	 * Takes out the notes of hooks of seams put back ({@link #noteRestoredSeams}) whose injector the findings leave out, with
+	 * its mixin or alone: the hook doesn't apply, whatever was put back. A config's check does so for its own; translation,
+	 * for those a later config's leaves out (SHARE-2).
+	 */
+	public static void withoutSeamNotesOfLeftOut(List<PreflightFinding> findings) {
+		Set<String> gone = new HashSet<>();
+		for (PreflightFinding f : findings) {
+			if (f.severity() == Severity.LEFT_OUT && f.mixin() != null) gone.add(handlerKey(f.mixin(), f.handler()));
+		}
+		if (!gone.isEmpty()) findings.removeIf(f -> isSeamNote(f) && leftOut(gone, f.mixin(), f.handler()));
+	}
+
+	private static boolean isSeamNote(PreflightFinding f) {
+		return f.severity() == Severity.INFO && f.handler() != null && f.mixin() != null && (f.message().endsWith("(SEAM-1)") || f.message().endsWith("(SEAM-3)"));
+	}
+
+	/** A left-out injector's key: its mixin and handler, or its mixin alone where all of it is. */
+	private static String handlerKey(String mixin, String handler) {
+		return mixin + "#" + (handler == null ? "" : handler);
+	}
+
+	private static boolean leftOut(Set<String> gone, String mixin, String handler) {
+		return gone.contains(handlerKey(mixin, null)) || gone.contains(handlerKey(mixin, handler));
 	}
 
 	/**
@@ -1164,8 +1208,9 @@ public final class MixinPreflight extends PreflightPart {
 	/**
 	 * Notes each of the mixin's members that hooks a vanilla method the platform took out of the target and Fabricated
 	 * puts back ({@link VanillaSeams}, SEAM-1): an injector or invoker naming it, through the refmap, or a shadow of it;
-	 * or an injector of a method of the target naming vanilla's call Fabricated puts back there (SEAM-3). The target is
-	 * then recorded among the classes rewritten as they load ({@link #restoredSeams}), and only then.
+	 * or an injector of a method of the target naming vanilla's call Fabricated puts back there (SEAM-3). Each note is the
+	 * member's (its handler's), and the target is recorded among the classes rewritten as they load ({@link #restoredSeams})
+	 * once the config's checks leave the member in, and only then.
 	 */
 	private void noteRestoredSeams(ClassNode mixin, ClassNode target, Context ctx) {
 		List<VanillaSeams.Restored> seams = VanillaSeams.restoredIn(target);
@@ -1190,11 +1235,10 @@ public final class MixinPreflight extends PreflightPart {
 									+ " nothing to hook, as before SEAM-3: " + kept.describe(ctx.loader(), "vanilla's calls") + " (SEAM-3)");
 							continue;
 						}
-						restoredSeams.add(target.name);
-						ctx.info("@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + call + " in " + in + ", vanilla's call " + ctx.loader()
-								+ "'s " + simple + " makes through the block's " + keeps + " instead; Fabricated puts it back there for the blocks keeping"
-								+ " that method's default, so the hook applies to their breaking, and a block overriding it breaks as " + ctx.loader()
-								+ " has it, without the hook (SEAM-3)");
+						seamNote(ctx, method, target.name, "@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + call + " in " + in
+								+ ", vanilla's call " + ctx.loader() + "'s " + simple + " makes through the block's " + keeps + " instead; Fabricated puts it back"
+								+ " there for the blocks keeping that method's default, so the hook applies to their breaking, and a block overriding it breaks as "
+								+ ctx.loader() + " has it, without the hook (SEAM-3)");
 						continue;
 					}
 					if (shadow ? !method.desc.equals(seam.desc()) || !method.name.equals(seam.name()) && !method.name.equals("shadow$" + seam.name())
@@ -1205,13 +1249,21 @@ public final class MixinPreflight extends PreflightPart {
 								+ " before SEAM-1: " + kept.describe(ctx.loader()) + " (SEAM-1)");
 						continue;
 					}
-					restoredSeams.add(target.name);
-					ctx.info("@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + seam.name() + seam.desc() + ", vanilla's method "
-							+ ctx.loader() + "'s " + simple + " no longer has; Fabricated puts it back there, answering " + seam.answer() + " as "
-							+ ctx.loader() + "'s code did (SEAM-1)");
+					seamNote(ctx, method, target.name, "@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + seam.name() + seam.desc()
+							+ ", vanilla's method " + ctx.loader() + "'s " + simple + " no longer has; Fabricated puts it back there, answering " + seam.answer()
+							+ " as " + ctx.loader() + "'s code did (SEAM-1)");
 				}
 			}
 		}
+	}
+
+	/**
+	 * Notes a member's hook of a seam put back, as its handler's, with the class to rewrite for it. (A note of one kept,
+	 * which explains why the hook finds nothing, is the mixin's.)
+	 */
+	private void seamNote(Context ctx, MethodNode member, String target, String message) {
+		ctx.out().add(new PreflightFinding(Severity.INFO, ctx.configName(), ctx.mixinDotted(), message, "", member.name + member.desc));
+		seamNotes.add(new SeamNote(ctx.mixinDotted(), member.name + member.desc, target));
 	}
 
 	/**
