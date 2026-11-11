@@ -935,7 +935,10 @@ public final class MixinPreflight extends PreflightPart {
 			}
 		}
 
-		/** The injections an injector requires: its own {@code require}, else none in a group (whose minimum is the check, as Mixin's), else its config's default. */
+		/**
+		 * The injections an injector requires: its own {@code require}, else none in a group (whose minimum is the check, as
+		 * Mixin's), else its config's default.
+		 */
 		int require(MethodNode handler, AnnotationNode injector) {
 			return Annotations.value(injector, "require") instanceof Integer r && r >= 0 ? r : PreflightAsm.grouped(handler) ? 0 : config.defaultRequire();
 		}

@@ -2002,17 +2002,18 @@ instead.
   by id, which Forge does its own way; on Forge 47, upgrading a world from before 1.18 with other mods' structures.
 - **Fluid rendering.** A Fabric fluid render handler's overlay sprite on the sides of a fluid beside glass or leaves;
   Forge's own overlay drawing stays (all five).
-- **Forge 47's interface mixins.** Its Mixin (0.8.5) applies no injector in an interface mixin. Fabricated applies
-  these there itself, as Mixin applies them on Forge 52 and 61 to 66 (INTERFACE-1, INTERFACE-2): an `@Inject` at `HEAD`,
-  `RETURN`, `TAIL`, a call or a field access, capturing locals or not; a `@Redirect` and MixinExtras' `@WrapOperation` of
-  a call; a `@ModifyConstant`; each with the target's parameters and MixinExtras' `@Local` where Mixin takes them. The
-  oxidizable blocks registry's (the test mod's pair is in vanilla's oxidation map), `TooltipComponentCallback`'s, and
-  Origins', owo-lib's, Carpet's, ServerCore's and Wilder Wild's hooks of this kind apply, and the test mod's interface
-  mixin checks each kind (server run). Other injectors in an interface mixin (`@ModifyVariable`, `@ModifyArg`,
-  `@ModifyReturnValue`, `@ModifyExpressionValue`...), slices, `@Coerce`, `@Share`, a `@Local` taken by name and a second
-  redirect or wrap of a call one already replaces are left out there. Fabric API's recipe remainder hook is left out,
-  as on Forge 52: Forge replaced the calls two of its handlers hook, and the other two hand state to them (ITEM-2);
-  Forge's own hook answers from Fabric's remainder (*Items* above).
+- **Forge 47's interface mixins.** Its Mixin (0.8.5) applies no injector in an interface mixin. Fabricated applies these
+  there itself, as Mixin applies them on Forge 52 and 61 to 66 (INTERFACE-1, INTERFACE-2): an `@Inject` at `HEAD`,
+  `RETURN`, `TAIL`, a call or a field access, capturing locals or not; a `@Redirect` and MixinExtras' `@WrapOperation`
+  of a call; a `@ModifyConstant`; each with the target's parameters and MixinExtras' `@Local` where Mixin takes them.
+  The oxidizable blocks registry's (the test mod's pair is in vanilla's oxidation map), `TooltipComponentCallback`'s,
+  and Origins', owo-lib's, Carpet's, ServerCore's and Wilder Wild's hooks of this kind apply, and the test mod's
+  interface mixin checks each kind (server run). Other injectors in an interface mixin (`@ModifyVariable`, `@ModifyArg`,
+  `@ModifyReturnValue`, `@ModifyExpressionValue`...), slices, `@Coerce`, `@Share`, a `@Local` taken by name and a class
+  constant a cast or an instanceof check names are left out there, as is a second `@Redirect` of a call one already
+  replaces, at that call; a `@WrapOperation` wraps it, as MixinExtras chains them. Fabric API's recipe remainder hook is
+  left out, as on Forge 52: Forge replaced the calls two of its handlers hook, and the other two hand state to them
+  (ITEM-2); Forge's own hook answers from Fabric's remainder (*Items* above).
 - **Sound (Forge 47).** A Fabric sound instance's own audio stream (`FabricSoundInstance.getAudioStream`).
 - **Other hooks inside the HUD method.** A Fabric mod's mixin inside vanilla's HUD method (`Gui.render`; on Forge 64
   `Gui.extractRenderState`, on 65 and 66 `Hud.extractRenderState`) that wraps or redirects one of vanilla's calls,
