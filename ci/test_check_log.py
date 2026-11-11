@@ -183,7 +183,7 @@ class ManifestTest(unittest.TestCase):
             self.assertIn(gates, ("all", "own", "none"), r)
             for token in r["mods"].split():
                 self.assertRegex(token, r"^(-testmods|fabric-api|testmod:\w+|modrinth:(fabric|neoforge|forge):[\w@.,{}-]+|corpus(:advanced)?"
-                                        r"|drop:\S+|standins(:own-loader)?|connector|fabricated-copy|energy|seed:\S+|reuse:\S+)$", r["run"])
+                                        r"|drop:\S+|standins(:own-loader)?|connector|fabricated-copy|energy|unreadable-pack|seed:\S+|reuse:\S+)$", r["run"])
         for platform in PLATFORMS:
             for version in ("1.20.1", "1.21.1", "1.21.11", "26.1.2", "26.2", "26.3"):
                 names = [r["run"] for r in self.runs if plan.applies(r, platform, version)]

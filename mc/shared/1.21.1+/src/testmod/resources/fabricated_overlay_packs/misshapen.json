@@ -1,0 +1,14 @@
+{
+  "pack": {
+    "description": "Fabricated test mod: a pack whose fabric:overlays have the wrong shape",
+    ${pack_formats}
+  },
+  "overlays": {
+    "entries": [
+      {"directory": "vanilla_overlay", "formats": [1, 999], "min_format": 1, "max_format": 999}
+    ]
+  },
+  "fabric:overlays": {
+    "entries": {"directory": "fabric_holds", "condition": {"condition": "fabric:true"}}
+  }
+}

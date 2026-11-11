@@ -73,6 +73,8 @@
     "SimpleMenuProviderMixin",
     "TagFileRemoveMixin",
     "ConditionalOpsMixin",
+    "PackOverlaysMixin",
+    "ResourcePackLoaderMixin",
     "AdvancementReloadMixin",
     "EnchantmentBuilderMixin",
     "ResourceManagerRegistryLoadTaskMixin",

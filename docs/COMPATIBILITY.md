@@ -461,6 +461,16 @@ A mod that adds a pack source the vanilla way, replacing the repository's source
 (FrozenLib's resource pack API), keeps it: the set is made mutable again before NeoForge adds its own pack finders
 (PACK-1).
 
+With Fabric API, a pack's conditional overlays (`fabric:overlays`) apply where vanilla reads a pack's metadata, as
+upstream applies them, but not to a pack that declares NeoForge's own (`neoforge:overlays`): such a pack is built for
+both loaders, its Fabric overlays gated by conditions only its Fabric build registers (the NeoForge builds of Terralith
+and Tectonic), and NeoForge's overlays alone apply to it, as without Fabricated. A Fabric jar never declares them, as
+its `neoforge:` sections are left out (above). A `fabric:overlays` section that can't be read (a condition nothing
+registers, the wrong shape) is left out with one warning naming the pack, which loads with its other overlays. Upstream's
+hook made such packs unreadable, and a mod passing the missing pack on stopped the server (PACK-12). On 26.x, a Fabric
+mod whose own `pack.mcmeta` can't be read loses its pack, with NeoForge's error naming the file, where NeoForge's second
+read of the file stopped loading every pack; NeoForge stops there for a native mod's, which Fabricated leaves as it is.
+
 `DEFAULT_ENABLED` built-in **resource** packs are switched on as upstream switches them on: the first time the client
 is offered each, and only then, so a pack the player turned off stays off, and a pack whose mod was removed is
 switched on again when it comes back (PACK-6). Which packs were offered before is kept in upstream's own file,
@@ -1540,6 +1550,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   which on Fabric is after the Fabric mods' entrypoints and on Forge before them. So the plans leave that hook out,
   and the in-game mod does its work once the entrypoints have run, before the game selects its packs from the
   options (CORPUS-104).
+- **Conditional overlays:** a pack's `fabric:overlays` apply where their conditions hold, and a section that can't be
+  read is left out with one warning naming the pack, which loads with its other overlays (Forge 52 and 61 to 66, with
+  Fabric API; PACK-12). Forge reads every mod file's pack through vanilla's reading of a pack's metadata, where
+  upstream's hook logged an error for such a section and, from Forge 64, made the pack unreadable, so Forge left the
+  mod's resources out, native mods' included. Forge reads no `neoforge:overlays`.
 - **Load conditions:** of two advancements (a JSON data loader's files) and two damage types (a data pack registry's
   entries) with `fabric:load_conditions`, the server loads the ones whose conditions hold and not the others (Forge 61
   to 66, with Fabric API). Forge 61 decodes registry entries through its own conditional decoder, which the in-game mod

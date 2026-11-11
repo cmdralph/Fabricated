@@ -203,9 +203,10 @@
     "fabric-resource-conditions-api-v1": {
       "plan": "passthrough",
       "skipMixins": [
-        "fabric-resource-conditions-api-v1.mixins.json:SimpleJsonResourceReloadListenerMixin"
+        "fabric-resource-conditions-api-v1.mixins.json:SimpleJsonResourceReloadListenerMixin",
+        "fabric-resource-conditions-api-v1.mixins.json:PackMixin"
       ],
-      "reason": "NeoForge decides whether data files and registry entries load with its own conditions: Fabricated evaluates fabric:load_conditions there, with upstream's conditions, instead of upstream's mixins on the code NeoForge rewrote."
+      "reason": "NeoForge decides whether data files and registry entries load with its own conditions: Fabricated evaluates fabric:load_conditions there, with upstream's conditions, instead of upstream's mixins on the code NeoForge rewrote. NeoForge's patch to the reading of a pack's metadata adds its neoforge:overlays to the list upstream's hook there had replaced with an immutable one, so every pack declaring them, native mods' built-in packs among them, failed to read (PACK-12): Fabricated applies fabric:overlays there itself, with upstream's conditions, leaving out a section it can't read with one warning, and none for a pack declaring NeoForge's own."
     },
     "fabric-resource-loader-v0": {
       "plan": "passthrough"

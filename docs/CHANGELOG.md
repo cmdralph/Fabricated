@@ -3,6 +3,26 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-11: Fabric's conditional overlays on the packs of mods built for both loaders (PACK-12)
+
+- **PACK-12** (P0), fixed: with Fabric API, a NeoForge mod's built-in pack declaring both loaders' conditional overlays
+  (Tectonic's) stopped the server loading its data packs (#400). Fabric API's hook on the reading of a pack's metadata
+  replaced the list NeoForge adds its `neoforge:overlays` to with an immutable one, and on 26.x failed the whole pack on
+  a `fabric:overlays` naming a condition nothing registers (Terralith's, Tectonic's). The plans leave that hook out on
+  NeoForge and Forge 52 and 61 to 66, and the in-game mod applies `fabric:overlays` with upstream's conditions: not for
+  a pack declaring NeoForge's own, which keeps those, and a section that can't be read is left out with one warning
+  naming the pack. On NeoForge 26.x a Fabric mod whose `pack.mcmeta` can't be read loses its pack with NeoForge's own
+  error, where it stopped every pack loading.
+- New checks: the test mod reads a native-like pack, two unreadable ones and a Fabric one through the game's pack
+  metadata with Fabric API (`pack-overlays`, `forge-pack-overlays`, `pack-overlays-warned`), and a NeoForge run has a
+  Fabric mod whose `pack.mcmeta` isn't JSON (`server-unreadable-pack`).
+- Verified: core's unit tests (566) and CI's script tests; the mixin inventory on all three branches. NeoForge 1.21.1,
+  1.21.11 and 26.1.2 and Forge 52, 61, 64, 65 and 66 built locally, their `server-fapi` runs passing; the new check
+  failing on NeoForge 1.21.1, 1.21.11 and 26.1.2 with the jars before the fix; servers with Fabric API, Terralith and
+  Tectonic starting on NeoForge 1.21.1, 1.21.11 and 26.1.2, Tectonic's built-in pack with NeoForge's overlays; the hook
+  standing down beside Forgified Fabric API (`server-coexist`, NeoForge 1.21.1 and 26.1.2); Forge 47 building. NeoForge
+  26.2 and 26.3 compiled against their games with javac.
+
 ## 2026-11-11: Loot pools a Fabric mod makes with vanilla's constructor (LOOT-3)
 
 - **LOOT-3** (P2), fixed: BCLib's loot pool mixin makes pools with vanilla's `LootPool` constructor, which Forge 47

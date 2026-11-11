@@ -63,6 +63,7 @@
     "SimpleMenuProviderMixin",
     "TagFileRemoveMixin",
     "ConditionalOpsMixin",
+    "PackOverlaysMixin",
     "RegistryFriendlyByteBufMixin",
     "EnchantmentBuilderMixin",
     "RegistryDataLoaderEnchantmentMixin",
