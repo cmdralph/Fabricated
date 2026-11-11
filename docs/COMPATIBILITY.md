@@ -1416,7 +1416,12 @@ Vanilla's piston stickiness methods, `PistonStructureResolver.isSticky` and `can
 mixin targets the resolver, answering as NeoForge's code does, so the mod's hooks of them apply as on Fabric (SEAM-1:
 Carpet's, FrozenLib's and Moonlight's sticky blocks). NeoForge's own sticky blocks and slime and honey stick as before.
 NeoForge 26.2 and 26.3 keep both methods. The report notes each hook of one; on 26.1.2, where NeoForge's line check
-asks the first block twice, a resolver with such hooks asks both ways there, as NeoForge 26.2 does.
+asks the first block twice, a resolver with such hooks asks both ways there, as NeoForge 26.2 does. Carpet's hook keeping
+the line's positions finds other locals in NeoForge 21.1 to 26.1.2, whose `addBlockLine` declares its old state before
+vanilla's position, so it is left out, and Carpet's check of the line, which reads them, with it (SEAM-2): its chains
+and chests don't pull the blocks behind them along the push, and stick across it as its rules say. A NeoForge mod's
+mixin hooking the resolver's `isStickyBlock` or `canStickTo` calls finds none there where a Fabric mod's mixin targets
+the resolver too: those calls are then in vanilla's methods put back.
 
 What this can't match of Fabric, seen in a reference pack (2026-10-28):
 
@@ -1961,7 +1966,11 @@ What else differs on Forge, for Fabric mods in general:
   resolver, answering as Forge's code does (under their SRG names on Forge 47), so the mod's hooks of them apply (SEAM-1:
   Carpet's, FrozenLib's and Moonlight's sticky blocks). Forge's own sticky blocks and slime and honey stick as before.
   A Fabric mod's hook answering for every block answers for Forge mods' blocks too: Carpet 1.20.1's does, its own
-  rules deciding each block's stickiness, as it does for other mods' blocks on Fabric.
+  rules deciding each block's stickiness, as it does for other mods' blocks on Fabric. On Forge 47, whose
+  `addBlockLine` declares its old state before vanilla's position, Carpet's hook keeping the line's positions and its
+  check of the line are left out (SEAM-2), as on NeoForge 21.1 to 26.1.2; Forge 52 and 61 to 66 keep vanilla's order.
+  A Forge mod's mixin hooking the resolver's `isStickyBlock` or `canStickTo` calls finds none there where a Fabric mod's
+  mixin targets the resolver too.
 - **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
   into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't

@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-11: Vanilla's piston stickiness methods put back where Fabric mods hook them (SEAM-1)
+## 2026-11-11: Vanilla's piston stickiness methods put back where Fabric mods hook them (SEAM-1), captures Mixin skips left out with their state (SEAM-2)
 
 - **SEAM-1** (P1), fixed: NeoForge 21.1, 21.11 and 26.1.2 and every Forge version replace `PistonStructureResolver`'s
   `isSticky` and `canStickToEachOther` with the block state's `isStickyBlock` and `canStickTo`, so Carpet's, FrozenLib's
@@ -14,8 +14,20 @@ One entry per working session, newest first: what changed, and how it was verifi
   26.2 and 26.3 keep the methods. A table in core (`VanillaSeams`) holds the method and the platform's code for it, so
   the other seams the platforms replaced can follow as rows. The test mod hooks both methods and checks two pushes
   (`vanilla-piston`, every platform and version).
-- Open: on NeoForge 21.1 to 26.1.2 and Forge 47, Carpet's hook keeping the line's positions still finds other locals,
-  so its chain code would get no position with its `chainStone` rule on (SEAM-2).
+- **SEAM-2** (P1), fixed: with SEAM-1, Carpet's redirect of the line's check applied on NeoForge 21.1 to 26.1.2 and
+  Forge 47, while its capture of the line's positions, finding other locals there, was skipped: with its `chainStone`
+  rule on, a piston pushing a chain along its axis threw a `NullPointerException`. Pre-flight now tells where Mixin
+  skips a locals capture at each of its points and leaves it out, so the injectors keeping state with it in the
+  mixin's fields, sharing a local or a mod's `ThreadLocal` go with it; where that would disable the mod, it stays as it
+  was, the report saying so. Carpet's line redirect is left out with its capture there, as before SEAM-1; its other
+  hooks of the resolver apply. Rewriting such a capture into MixinExtras `@Local`s, which would keep Carpet's chains
+  sticking along a push, is left for later.
+- Verified (SEAM-2): core's tests (595), CI's script tests and the inventory; NeoForge 1.21.1 and 26.1.2 and Forge 47
+  build. On local advanced corpus servers the reports gain Carpet's two lines alone (its capture left out, its line
+  redirect with it) on NeoForge 1.21.1, 26.1.2 and Forge 47, and the main corpus servers of NeoForge 1.21.1 and
+  Forge 47 report the same as before; every check as before. With Carpet's `chainStone` on (its `carpet.conf`), a
+  piston a scarpet app places to push a chain threw before the change on NeoForge 1.21.1 and pushes it after, there and
+  on Forge 47.
 - Verified: core's tests, CI's script tests and the mixin inventory; NeoForge 1.21.1 and 26.1.2 and Forge 47, 52 and 66
   build (NeoForge 26.2 and 26.3 don't build locally, on main as it is either), and the rewrite finds vanilla's five
   calls in every platform's own class. Local servers with the test mods pass every check on NeoForge 1.21.1 and
