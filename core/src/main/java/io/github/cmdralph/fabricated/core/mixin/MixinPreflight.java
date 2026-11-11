@@ -364,10 +364,6 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * The game classes the mixins {@link #check} or {@link #repairs} read target that have vanilla methods put back
-	 * ({@link VanillaSeams}): the game must have them put back as those classes load (SEAM-1).
-	 */
-	/**
 	 * The decision the game's classes were made by ({@link SeamConflicts}, which the pipeline makes once a launch and caches):
 	 * the classes whose seams aren't put back, with the native mod's mixin keeping each. Pre-flight tells it itself without.
 	 */
@@ -376,6 +372,10 @@ public final class MixinPreflight extends PreflightPart {
 		return this;
 	}
 
+	/**
+	 * The game classes the mixins {@link #check} or {@link #repairs} read target that have vanilla methods put back
+	 * ({@link VanillaSeams}): the game must have them put back as those classes load (SEAM-1).
+	 */
 	public Set<String> restoredSeams() {
 		return Collections.unmodifiableSet(new TreeSet<>(restoredSeams));
 	}

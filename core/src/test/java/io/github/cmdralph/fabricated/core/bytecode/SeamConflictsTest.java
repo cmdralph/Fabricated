@@ -1,8 +1,11 @@
 package io.github.cmdralph.fabricated.core.bytecode;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -131,7 +134,7 @@ class SeamConflictsTest {
 		Files.write(file, new byte[] {1});
 		Files.setLastModifiedTime(file, FileTime.fromMillis(1_000_000));
 		Function<String, InstalledClasses> installed = fingerprint -> new InstalledClasses(List.of(new InstalledClasses.Jar("moonlight",
-				classes::containsKey, counted, () -> List.of("com/moon/NativeSticky"), false, fingerprint)));
+				classes::containsKey, counted, () -> new InstalledClasses.Listing(List.of("com/moon/NativeSticky"), List.of()), false, fingerprint)));
 		Supplier<InstalledClasses> current = () -> installed.apply(InstalledClasses.fingerprint(file, ""));
 		TranslationCache cache = new TranslationCache(game, true, true);
 		Map<String, SeamConflicts.Conflict> decided = Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "com/moon/NativeSticky", true));
@@ -182,6 +185,93 @@ class SeamConflictsTest {
 		// A jar listing none needs none.
 		assertEquals(Map.of(), SeamConflicts.of(gameClasses, new InstalledClasses(List.of(new InstalledClasses.Jar("api", classes::containsKey, counted))),
 				cache, "env"));
+	}
+
+	/**
+	 * A read error on one launch (EIO on a network mount, a sync client holding the file) keeps the class for that launch,
+	 * and isn't cached: the next launch, reading cleanly, decides again, and caches that.
+	 */
+	@Test
+	void aDecisionAReadErrorMadeIsntCached(@TempDir Path dir, @TempDir Path game, @TempDir Path mods) throws Exception {
+		Map<String, byte[]> classes = new HashMap<>(classes(dir, wrap("\"resolve\"", STATE.substring(0, STATE.length() - 1) + ";isStickyBlock()Z"),
+				"net.minecraft.world.level.block.piston.PistonStructureResolver"));
+		ClassBytesSource gameClasses = classes::get;
+		boolean[] listFails = {false};
+		boolean[] mixinFails = {false};
+		int[] reads = {0};
+		ClassBytesSource flaky = name -> {
+			if (name.startsWith("com/moon/")) {
+				reads[0]++;
+				if (mixinFails[0]) throw new IOException("EIO");
+			}
+			return classes.get(name);
+		};
+		Path file = mods.resolve("moonlight.jar");
+		Files.write(file, new byte[] {1});
+		Supplier<InstalledClasses> installed = () -> new InstalledClasses(List.of(new InstalledClasses.Jar("moonlight", classes::containsKey, flaky,
+				() -> listFails[0] ? new InstalledClasses.Listing(List.of(), List.of("moonlight.mixins.json"))
+						: new InstalledClasses.Listing(List.of("com/moon/NativeSticky"), List.of()), false, InstalledClasses.fingerprint(file, ""))));
+		TranslationCache cache = new TranslationCache(game, true, true);
+		Map<String, SeamConflicts.Conflict> decided = Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "com/moon/NativeSticky", true));
+
+		// The jar's mixin config fails to read: it lists none that read, so without it the seams would be put back, and
+		// cached so, Moonlight's mixin then failing at every launch. The class is kept, by the list that failed.
+		listFails[0] = true;
+		SeamConflicts.Decision unclean = SeamConflicts.decide(gameClasses, installed.get());
+		assertFalse(unclean.clean());
+		assertEquals(Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "moonlight.mixins.json", false)), unclean.kept());
+		assertEquals(unclean.kept(), SeamConflicts.of(gameClasses, installed.get(), cache, "env"));
+		assertTrue(unclean.kept().get(RESOLVER).describe("NeoForge").contains("moonlight.mixins.json, which lists its mixins, failed to read"));
+		// Read cleanly next launch: decided again, and cached.
+		listFails[0] = false;
+		assertEquals(decided, SeamConflicts.of(gameClasses, installed.get(), cache, "env"));
+		int before = reads[0];
+		assertEquals(decided, SeamConflicts.of(gameClasses, installed.get(), cache, "env"));
+		assertEquals(before, reads[0], "the clean decision was cached");
+
+		// The mixin fails to read: kept for the launch as unreadable, not cached; read cleanly, a mixin hooking only what
+		// stays lets the seams be put back.
+		Map<String, byte[]> staying = new HashMap<>(classes(dir.resolve("staying"), " @Inject(method = \"resolve\", at = @At(\"HEAD\"))"
+				+ " private void start(BlockState s, CallbackInfo ci) { }", "net.minecraft.world.level.block.piston.PistonStructureResolver"));
+		classes.putAll(staying);
+		Files.write(file, new byte[] {1, 2});
+		Files.setLastModifiedTime(file, FileTime.fromMillis(3_000_000));
+		mixinFails[0] = true;
+		assertEquals(Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "com/moon/NativeSticky", false)),
+				SeamConflicts.of(gameClasses, installed.get(), cache, "env"));
+		mixinFails[0] = false;
+		assertEquals(Map.of(), SeamConflicts.of(gameClasses, installed.get(), cache, "env"), "decided again: the seams are put back");
+		before = reads[0];
+		assertEquals(Map.of(), SeamConflicts.of(gameClasses, installed.get(), cache, "env"));
+		assertEquals(before, reads[0], "and cached");
+	}
+
+	/**
+	 * A seam class that fails to read as the platform has it (an error from its transformers) keeps the class, no error
+	 * reaching the caller, and isn't cached.
+	 */
+	@Test
+	void aSeamClassThatFailsToReadIsKept(@TempDir Path dir, @TempDir Path game, @TempDir Path mods) throws Exception {
+		Map<String, byte[]> classes = new HashMap<>(classes(dir, " @Inject(method = \"resolve\", at = @At(\"HEAD\"))"
+				+ " private void start(BlockState s, CallbackInfo ci) { }", "net.minecraft.world.level.block.piston.PistonStructureResolver"));
+		boolean[] fails = {true};
+		ClassBytesSource gameClasses = name -> {
+			if (fails[0] && name.equals(RESOLVER)) throw new java.io.UncheckedIOException(new IOException("a transformer failed"));
+			return classes.get(name);
+		};
+		Path file = mods.resolve("moonlight.jar");
+		Files.write(file, new byte[] {1});
+		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("moonlight", classes::containsKey, classes::get,
+				() -> new InstalledClasses.Listing(List.of("com/moon/NativeSticky"), List.of()), false, InstalledClasses.fingerprint(file, ""))));
+		TranslationCache cache = new TranslationCache(game, true, true);
+
+		Map<String, SeamConflicts.Conflict> kept = SeamConflicts.of(gameClasses, installed, cache, "env");
+		assertEquals(Set.of(RESOLVER), kept.keySet());
+		assertEquals("", kept.get(RESOLVER).owner());
+		assertTrue(kept.get(RESOLVER).describe("NeoForge").startsWith("the class failed to read as NeoForge has it"));
+		assertFalse(SeamConflicts.decide(gameClasses, installed).clean());
+		fails[0] = false;
+		assertEquals(Map.of(), SeamConflicts.of(gameClasses, installed, cache, "env"), "read next launch: decided again, the seams put back");
 	}
 
 	@Test

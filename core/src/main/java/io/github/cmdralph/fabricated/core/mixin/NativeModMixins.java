@@ -68,30 +68,34 @@ public final class NativeModMixins {
 
 	/**
 	 * The mixin classes a platform mod's jar lists for this side, by internal name, in order: on Forge, whose Mixin reads a
-	 * mod's mixin configs from its manifest's {@code MixinConfigs}, not from its mods.toml. None where the jar's files
-	 * can't be read (its mod's loader reports that).
+	 * mod's mixin configs from its manifest's {@code MixinConfigs}, not from its mods.toml. A file that fails to read is
+	 * among the listing's unread ones, what it lists unknown (its mod's loader reports that).
 	 */
-	public static List<String> manifestMixins(Files files, boolean clientSide) {
+	public static InstalledClasses.Listing manifestMixins(Files files, boolean clientSide) {
+		byte[] manifest;
 		try {
-			return listed(files, manifestConfigs(files.read(MANIFEST)), clientSide);
-		} catch (IOException e) {
-			return List.of();
+			manifest = files.read(MANIFEST);
+		} catch (IOException | RuntimeException e) {
+			return InstalledClasses.Listing.NONE.withUnread(MANIFEST);
 		}
+		return listed(files, manifestConfigs(manifest), clientSide);
 	}
 
 	/**
 	 * The mixin classes a NeoForge mod's jar lists for this side, by internal name, in order: those of the configs its
 	 * mods.toml declares ({@code [[mixins]] config = ...}, {@code configs}), then those its manifest names, which NeoForge's
-	 * FML reads too. None where the jar's files can't be read.
+	 * FML reads too. A file that fails to read is among the listing's unread ones.
 	 */
-	public static List<String> declaredMixins(Files files, Collection<String> configs, boolean clientSide) {
+	public static InstalledClasses.Listing declaredMixins(Files files, Collection<String> configs, boolean clientSide) {
+		Set<String> all = new LinkedHashSet<>(configs);
+		boolean manifestRead = true;
 		try {
-			Set<String> all = new LinkedHashSet<>(configs);
 			all.addAll(manifestConfigs(files.read(MANIFEST)));
-			return listed(files, all, clientSide);
-		} catch (IOException e) {
-			return List.of();
+		} catch (IOException | RuntimeException e) {
+			manifestRead = false;
 		}
+		InstalledClasses.Listing listing = listed(files, all, clientSide);
+		return manifestRead ? listing : listing.withUnread(MANIFEST);
 	}
 
 	/** The mixin configs a jar's manifest names ({@code MixinConfigs}, which Forge's Mixin reads), in order. */
@@ -113,21 +117,29 @@ public final class NativeModMixins {
 
 	/**
 	 * The mixin classes the configs list for this side, by internal name, in order: those of a config the jar doesn't
-	 * have, or that doesn't parse, are left out (its mod's loader reports it).
+	 * have, or that doesn't parse, are left out (its mod's loader reports it); a config that fails to read is among the
+	 * listing's unread ones.
 	 */
-	static List<String> listed(Files files, Collection<String> configs, boolean clientSide) {
+	static InstalledClasses.Listing listed(Files files, Collection<String> configs, boolean clientSide) {
 		Set<String> mixins = new LinkedHashSet<>();
+		List<String> unread = new ArrayList<>();
 		for (String path : configs) {
+			byte[] data;
 			try {
-				byte[] data = files.read(path);
-				if (data == null) continue;
+				data = files.read(path);
+			} catch (IOException | RuntimeException e) {
+				unread.add(path);
+				continue;
+			}
+			if (data == null) continue;
+			try {
 				MixinConfigFile config = MixinConfigFile.parse(new String(data, StandardCharsets.UTF_8));
 				for (String mixin : config.mixinsFor(clientSide)) mixins.add(config.internalName(mixin));
-			} catch (IOException | JsonException | RuntimeException e) {
+			} catch (JsonException | RuntimeException e) {
 				// As above.
 			}
 		}
-		return List.copyOf(mixins);
+		return new InstalledClasses.Listing(List.copyOf(mixins), unread);
 	}
 
 	/**

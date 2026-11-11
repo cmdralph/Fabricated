@@ -35,19 +35,20 @@ public final class InstalledClasses implements ClassBytesSource {
 	/**
 	 * One jar.
 	 *
-	 * @param owner    the name of the mod it belongs to, for messages
-	 * @param contains whether it has a class, by internal name (without reading it)
-	 * @param mixins   the mixin classes its configs list for this side, by internal name
+	 * @param owner       the name of the mod it belongs to, for messages
+	 * @param contains    whether it has a class, by internal name (without reading it)
+	 * @param listing     the mixin classes its configs list for this side ({@link #mixins}), and the files listing them
+	 *                    that failed to read, read each time asked
 	 * @param fabric      whether it is a Fabric mod's own jar, whose classes are the ones Fabric Loader would load (not a
 	 *                    NeoForge mod's, nor Fabricated's Fabric API)
 	 * @param fingerprint what changes when the jar does ({@link InstalledClasses#fingerprint(Path, String)}), for what is cached
 	 *                    from its mixins ({@link InstalledClasses#nativeFingerprint}); null where unknown
 	 */
-	public record Jar(String owner, Predicate<String> contains, ClassBytesSource classes, Supplier<List<String>> mixins, boolean fabric,
+	public record Jar(String owner, Predicate<String> contains, ClassBytesSource classes, Supplier<Listing> listing, boolean fabric,
 			String fingerprint) {
-		/** Without a fingerprint. */
+		/** Its mixins, listed by files that all read ({@code mixins}), without a fingerprint. */
 		public Jar(String owner, Predicate<String> contains, ClassBytesSource classes, Supplier<List<String>> mixins, boolean fabric) {
-			this(owner, contains, classes, mixins, fabric, null);
+			this(owner, contains, classes, () -> new Listing(mixins.get(), List.of()), fabric, null);
 		}
 
 		/** Not a Fabric mod's jar. */
@@ -57,8 +58,54 @@ public final class InstalledClasses implements ClassBytesSource {
 
 		/** A jar without mixins, not a Fabric mod's. */
 		public Jar(String owner, Predicate<String> contains, ClassBytesSource classes) {
-			this(owner, contains, classes, List::of, false);
+			this(owner, contains, classes, () -> Listing.NONE, false, null);
 		}
+
+		/** The mixin classes its configs list for this side, by internal name (those its listing could read). */
+		public List<String> mixins() {
+			return listing.get().mixins();
+		}
+	}
+
+	/**
+	 * The mixins a jar's files list for this side, and the files listing them that failed to read (an error reading
+	 * them, not a file the jar hasn't or one that doesn't parse, which are as the platform finds them): where any did,
+	 * what they list is unknown.
+	 *
+	 * @param mixins the mixin classes, by internal name, in order
+	 * @param unread the paths of the files that failed to read: a mods.toml, a manifest, a mixin config
+	 */
+	public record Listing(List<String> mixins, List<String> unread) {
+		/** None, every file read. */
+		public static final Listing NONE = new Listing(List.of(), List.of());
+
+		public Listing {
+			mixins = List.copyOf(mixins);
+			unread = List.copyOf(unread);
+		}
+
+		/** This, with {@code path} among the files that failed to read. */
+		public Listing withUnread(String path) {
+			List<String> all = new ArrayList<>(unread);
+			all.add(path);
+			return new Listing(mixins, all);
+		}
+	}
+
+	/**
+	 * The mixins the native jars list ({@link #nativeMixins}), read once, with the files listing them that failed to read.
+	 *
+	 * @param unread by each jar with one, its name and the file's path
+	 */
+	public record NativeListing(List<ListedMixin> mixins, List<UnreadList> unread) {
+		/** Whether every file listing the mixins read. */
+		public boolean complete() {
+			return unread.isEmpty();
+		}
+	}
+
+	/** A file listing a native jar's mixins that failed to read: the mod's name and the file's path in the jar. */
+	public record UnreadList(String owner, String path) {
 	}
 
 	/** A field or method a mixin of an installed jar adds to its target: the mod's name and the mixin class's internal name. */
@@ -143,7 +190,7 @@ public final class InstalledClasses implements ClassBytesSource {
 		for (Jar jar : jars) {
 			if (jar.fabric()) continue;
 			if (jar.fingerprint() != null) all.append(jar.owner()).append('=').append(jar.fingerprint()).append('\n');
-			else if (!jar.mixins().get().isEmpty()) return null;
+			else if (!jar.listing().get().equals(Listing.NONE)) return null;
 		}
 		return Hashing.sha256(all.toString());
 	}
@@ -164,12 +211,20 @@ public final class InstalledClasses implements ClassBytesSource {
 
 	/** The mixins the jars that aren't Fabric mods' own ({@link Jar#fabric}) list for this side, jar by jar. */
 	public List<ListedMixin> nativeMixins() {
+		return nativeListing().mixins();
+	}
+
+	/** {@link #nativeMixins}, read once, with the files listing them that failed to read. */
+	public NativeListing nativeListing() {
 		List<ListedMixin> mixins = new ArrayList<>();
+		List<UnreadList> unread = new ArrayList<>();
 		for (Jar jar : jars) {
 			if (jar.fabric()) continue;
-			for (String mixin : jar.mixins().get()) mixins.add(new ListedMixin(jar.owner(), mixin, jar.classes()));
+			Listing listing = jar.listing().get();
+			for (String mixin : listing.mixins()) mixins.add(new ListedMixin(jar.owner(), mixin, jar.classes()));
+			for (String path : listing.unread()) unread.add(new UnreadList(jar.owner(), path));
 		}
-		return mixins;
+		return new NativeListing(List.copyOf(mixins), List.copyOf(unread));
 	}
 
 	/**
@@ -206,7 +261,7 @@ public final class InstalledClasses implements ClassBytesSource {
 		if (added != null) return added;
 		Map<String, Map<String, List<AddedMember>>> index = new HashMap<>();
 		for (Jar jar : jars) {
-			for (String mixin : jar.mixins().get()) {
+			for (String mixin : jar.mixins()) {
 				ClassNode node = readMixin(jar, mixin);
 				if (node == null) continue;
 				List<String> members = new ArrayList<>();
