@@ -214,7 +214,8 @@ Forge 52): on 26.2 and 26.3 Xaero's World Map's world unload handler deadlocks w
 | Forge 64 to 66, advanced client | Emotecraft disabled: pre-flight fails an `@Inject` naming two methods, one of which exists, where Mixin needs one | Fixed (PRE-23), verified on a local Forge 66 client |
 | Forge 47, advanced corpus | ReplayMod's 1.20.1 jar rejected for a duplicate directory entry (`assets/`) | Fixed (SEC-11), with pre-flight checking the configs ReplayMod adds from its code (MIXCFG-1), whose scroll hook stopped the client once the jar was accepted: a local Forge 47 client with ReplayMod 1.20.1-2.6.23 joins its world; the next extended run confirms it |
 | Forge 47, advanced corpus | Carpet disabled, and hooks of five mods left out, at `ServerPlayer.changeDimension`, for which Forge 47 has an overload taking a teleporter | Fixed (PRE-24): on a local Forge 47 server Carpet loads, and its, Balm's, GlitchCore's and Polymer's hooks apply at the overload; FrozenLib's move there too |
-| Forge 47, advanced corpus | Friends and Foes', Porting Lib's and YUNG's API's hooks at `StructureTemplate`'s `m_74523_` (vanilla's private `placeEntities`, not `processBlockInfos`) left out | Not repaired: Forge replaced the method with `addEntitiesToWorld(level, pos, settings)`, which runs the structure processors on entities itself (*Not in this pass*) |
+| Every version, corpus and advanced corpus | Friends and Foes', Porting Lib's and YUNG's API's hooks at `StructureTemplate`'s private `placeEntities` (`m_74523_` on Forge 47) left out: NeoForge, Forge 47 and Forge 52 replaced it with `addEntitiesToWorld(level, pos, settings)`, Forge 61 to 66 with a `placeEntities` taking the settings in the pivot's place | Fixed (STRUCT-1) for the `@Inject`s at its call and its start (YUNG's API's and Friends and Foes' entity processing), which move to the platform's method; Porting Lib's wrapper and expression hooks, which port the platform's own entity processing, stay out, the report saying why. Friends and Foes' structure mob spawn wrapper in the method's lambda stays out on NeoForge and Forge 47 (*Not in this pass*) |
+| Forge 47, 52 and 61 to 66, NeoForge 1.21.1 | owo-lib's registry freeze hooks, after Fabric Loader's `Hooks.startServer`, left out on dedicated servers: HOOK-1 mapped the hook to NeoForge's `ServerModLoader.load(boolean)` alone | Fixed (HOOK-4): mapped to NeoForge 21.1's and Forge's `ServerModLoader.load()` too |
 | Forge 61 to 66 | Constructor hooks at points other than a return left out (FrozenLib, Wover, ImmediatelyFast, owo), where CTOR-4 serves Forge 47 alone | Fixed (CTOR-7) for FrozenLib, Wover and ImmediatelyFast: FrozenLib's and Wover's apply on a local Forge 66 server; ImmediatelyFast's, a client's, the next extended run confirms. owo's follow Fabric Loader's and Quilt's client start hooks, which neither Forge's nor NeoForge's `Minecraft` constructor calls: left out as on NeoForge, now reported as missing |
 | Forge 66, advanced server | Wover Story's main entrypoint throws registering a `PoiType` "twice" (a local Forge 66 server with WorldWeaver 26.302.1; CI's advanced server stopped before the entrypoints, PRE-21, and in the fourth round on LIB-3); Fabricated disables the mod there, as the run's setting asks | Open (REG-13): its two point-of-interest types are equal records, which Forge's registry, keyed by equality, takes for one; no generic fix |
 | Forge 64 to 66, advanced client | `@WrapOperation`s of `Screen.extractRenderStateWithTooltipAndSubtitles` (Architectury, FancyMenu, SpruceUI) left out, which HOOK-2 points at NeoForge's hook | Not repaired: Forge's call, `drawScreen(graphics, x, y, delta)` of the `ForgeLayerInstance` `Gui` extends, doesn't take the screen the wrappers take as the call's receiver (*Not in this pass*); `@Inject`s there move (HOOK-3) |
@@ -249,12 +250,11 @@ Candidates, each waiting for a mod or a report that needs it:
 - Wrappers PRE-22 leaves out kept instead: a mixin's wrappers reordered so a long or double is stored before the
   locals they share are, where they wrap different instructions (ShulkerBoxTooltip's bundle preview on Forge).
 - Fabric Loader's old `LanguageAdapter` interface (CORPUS-38), if a mod needs it.
-- Structure entity processing on Forge 47: Friends and Foes', Porting Lib's and YUNG's API's hooks at vanilla's private
-  `StructureTemplate.placeEntities` (`m_74523_`), which Forge replaced with `addEntitiesToWorld(level, pos, settings)`:
-  it takes the placement settings in place of their mirror, rotation, pivot, bounding box and entity flag, and runs the
-  structure processors on each entity (`processEntityInfos`, `StructureProcessor.processEntity`), which Porting Lib's
-  mixin ports to Fabric itself (it adds those very methods). An injector has nothing of vanilla's left to move to; a
-  Fabric mod's entity processors would run on Forge through its `processEntity`, not an injector move.
+- Wrappers in a lambda of a method the platform replaced (STRUCT-1): Friends and Foes' `@WrapOperation` of a structure
+  mob's `finalizeSpawn` in vanilla's `placeEntities` lambda, which fires its spawn event, on NeoForge and Forge 47,
+  whose lambda in `addEntitiesToWorld` captures the settings where vanilla's captures their rotation, mirror and flag.
+  Its handler would take vanilla's captured values worked out from the platform's two levels down (the lambda's, then
+  the method's).
 - Screen render wrappers on Forge 64 to 66: Forge renders the screen in `ForgeLayerInstance.drawScreen(graphics, x, y,
   delta)`, which `Gui` inherits and calls on itself, which reads the screen itself (`this.screen()`) and calls
   `extractRenderStateWithTooltipAndSubtitles` through a static helper once for each background layer and once for the
@@ -290,6 +290,10 @@ Candidates, each waiting for a mod or a report that needs it:
   Forge 52 and 61 to 66 (checked on a local Forge 47 server), LOADER-6 on Forge 52 and 61 (checked on a local Forge
   66 client), SEC-11 and MIXCFG-1 in the Forge 47 advanced corpus (checked on a local Forge 47 client with ReplayMod),
   CTOR-7 on Forge 61 and 64 to 65, and ImmediatelyFast's client hook (checked on a local Forge 66 server).
+- STRUCT-1 and HOOK-4 on NeoForge 1.21.11, 26.x and Forge 61, 64 and 65 (checked on local NeoForge 1.21.1, Forge 47,
+  52 and 66 servers, and NeoForge 1.21.1's and Forge 47's corpus servers), NeoForge 26.3's `StructureTemplate` among
+  them (read in 26.2's alone); YUNG's and Friends and Foes' processors on a structure that carries their entities (the
+  hooks apply, and the test mod's own run).
 - INTERFACE-2 and ITEM-2 on the Forge 47 and 52 client corpora (the server corpora checked locally), and a second
   redirect or wrap of one call by Fabricated's handlers, which it skips with a warning where MixinExtras chains
   wrappers (no corpus mod has one).

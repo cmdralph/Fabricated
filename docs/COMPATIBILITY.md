@@ -1176,6 +1176,12 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   registered, as the port does on Fabric) and tooltip providers (placed before or after all component tooltips). A
   NeoForge mod that reads the registries during NeoForge's own registration events doesn't see Fabric mods' content
   on a client. On a dedicated server `main` and `server` entrypoints run while NeoForge registers content, as before.
+- A hook after Fabric Loader's own `Hooks.startServer`, the call its launcher adds to the dedicated server's
+  `Main.main` where mods' entrypoints run, is pointed at the call where the platform loads mods, where Fabricated runs
+  them: NeoForge's `ServerModLoader.load` and, on every Forge version, Forge's (HOOK-1, HOOK-4). owo-lib's registry
+  freeze runs once every mod's `main` and `server` entrypoints have, as on Fabric. Its client hook, after
+  `Hooks.startClient`, isn't pointed anywhere: Fabricated runs the client entrypoints from a hook of its own, which a
+  hook at the same call would come before.
 - A Fabric payload type registered after NeoForge's payload registration (MiniHUD's, from the end of `Minecraft`'s
   constructor; Ledger's, as the server starts) is registered with NeoForge then, as upstream accepts it at any time
   (NET-3). An id a NeoForge mod already registered stays the NeoForge mod's.
@@ -1365,6 +1371,18 @@ code can do without that mixin:
 
 A mod disabled this way can still be loaded without the mixin, by naming it in `skipMixins` in
 `config/fabricated.json` (the report's suggestion gives the exact entry).
+
+A hook at a private method of vanilla's that the platform replaced with one of its own, called in the place of
+vanilla's one call of it, runs there (STRUCT-1): `StructureTemplate.placeEntities`, which NeoForge, Forge 47 and Forge
+52 replaced with `addEntitiesToWorld(level, pos, settings)`, and Forge 61 to 66 with a `placeEntities` taking the
+settings in the pivot's place, both running the structure processors on each entity. An `@Inject` at the method's call
+moves to the platform's call, and one at its start or end to the platform's method, its handler given vanilla's
+parameters as vanilla's call read them from the settings: YUNG's API's and Friends and Foes' entity processing (their
+structures' armor stands and item frames) works on every version. Other injectors there stay out, the report saying
+why: Porting Lib's port of the platform's own entity processing, which the platform runs itself (Porting Lib's
+processors take the platform's `processEntity`), and Friends and Foes' wrapper of a structure mob's spawn in the
+method's lambda on NeoForge and Forge 47, whose lambda takes the settings where vanilla's takes what it reads from them:
+its spawn event doesn't fire for structure mobs there.
 
 A mod's own call of a game constructor NeoForge replaced with one taking a name too, `LootPool`'s on every version
 (BCLib's loot pool mixin makes its pools so), calls NeoForge's with no name, and its widener's line for vanilla's

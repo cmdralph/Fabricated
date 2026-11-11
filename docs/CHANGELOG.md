@@ -3,6 +3,29 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-11: Hooks at a method the platform replaced moved to its own (STRUCT-1), Fabric Loader's server hook on every platform (HOOK-4)
+
+- **STRUCT-1** (P1), fixed: YUNG's API's and Friends and Foes' entity processing hooks vanilla's private
+  `StructureTemplate.placeEntities`, which NeoForge, Forge 47 and Forge 52 replaced with `addEntitiesToWorld(level, pos,
+  settings)` and Forge 61 to 66 with a `placeEntities` taking the settings in the pivot's place; pre-flight left the
+  hooks out on every version, so the mods' structure entity processors never ran. Where vanilla's classes show a private
+  method the platform replaced with a private one of its own, called once in the place of vanilla's one call, an
+  `@Inject` at that call moves to the platform's call, and one at the method's start or end to the platform's method,
+  its handler given vanilla's parameters as vanilla's call read them (from the settings, through their field getters).
+  Hooks sharing state move together or not at all. Other injectors there stay out, the report saying why: Porting
+  Lib's port of the platform's own entity processing, which the platform runs, and Friends and Foes' wrapper of a
+  structure mob's spawn in the method's lambda on NeoForge and Forge 47.
+- **HOOK-4** (P2), fixed: Fabric Loader's `Hooks.startServer`, which owo-lib's registry freeze follows, was pointed at
+  NeoForge's `ServerModLoader.load(boolean)` alone; it now maps to NeoForge 21.1's and Forge's `load()` too, so owo
+  freezes after the entrypoints on every dedicated server.
+- The test mod hooks `placeEntities` as those mods do (`structure-entity-hooks`) and Fabric Loader's server hook as owo
+  does (`loader-server-hook`), on every platform's servers.
+- Verified: core's tests (`MixinPreflightTest`, a case for each), CI's script tests and the mixin inventory; NeoForge
+  1.21.1, 1.21.11 and 26.1.2 and Forge 47, 52, 61, 64, 65 and 66 build. Locally the servers of NeoForge 1.21.1 and
+  Forge 47, 52 and 66 pass both checks, their other checks as before; on the NeoForge 1.21.1 and Forge 47 advanced
+  corpus servers YUNG's API's three hooks apply, and on Forge 47's corpus server Friends and Foes' three and owo-lib's
+  freeze, Porting Lib's four staying out with the reason, those runs' other checks as before.
+
 ## 2026-11-11: More of Fabric mods' interface mixins applied on Forge 47 (INTERFACE-2), hooks sharing a ThreadLocal left out together (ITEM-2)
 
 - **INTERFACE-2** (P1), fixed: Forge 47's Mixin (0.8.5) applies no injector in an interface mixin, and Fabricated
