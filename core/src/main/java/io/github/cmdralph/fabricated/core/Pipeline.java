@@ -32,6 +32,7 @@ import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
+import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
@@ -230,6 +231,8 @@ public final class Pipeline {
 	 *                           copies of these stand down
 	 * @param instanceHandlers   the static handlers of other mods' mixins into {@code mods}' classes to apply as instance
 	 *                           handlers, by mixin class ({@link NativeModMixins}, immutable)
+	 * @param restoredSeams      the game classes {@code mods}' mixins target that have vanilla methods put back as they load
+	 *                           ({@link VanillaSeams}, SEAM-1; immutable)
 	 */
 	public record Result(
 			FabricatedConfig config,
@@ -243,12 +246,14 @@ public final class Pipeline {
 			Report report,
 			Set<String> dependencyFailures,
 			Set<String> providedElsewhere,
-			Map<String, Set<String>> instanceHandlers) {
+			Map<String, Set<String>> instanceHandlers,
+			Set<String> restoredSeams) {
 
 		Result(FabricatedConfig config, List<LoadedMod> mods, FabricLoaderRuntime runtime, Map<String, ModContainerImpl> containers,
 				Report report, Set<String> dependencyFailures, Set<String> providedElsewhere, Map<String, Set<String>> instanceHandlers) {
 			this(config, List.copyOf(mods), injectedInterfacesOf(mods), defaultBridgesOf(mods), environmentClassesOf(mods),
-					overridableMethodsOf(mods), runtime, containers, report, dependencyFailures, Set.copyOf(providedElsewhere), Map.copyOf(instanceHandlers));
+					overridableMethodsOf(mods), runtime, containers, report, dependencyFailures, Set.copyOf(providedElsewhere), Map.copyOf(instanceHandlers),
+					mods.stream().flatMap(m -> m.translated().restoredSeams().stream()).collect(Collectors.toUnmodifiableSet()));
 		}
 
 		/**
@@ -261,7 +266,7 @@ public final class Pipeline {
 			Set<String> all = new LinkedHashSet<>(providedElsewhere);
 			all.addAll(modules);
 			return new Result(config, mods, injectedInterfaces, defaultBridges, environmentClasses, overridableMethods, runtime, containers,
-					report, dependencyFailures, Set.copyOf(all), instanceHandlers);
+					report, dependencyFailures, Set.copyOf(all), instanceHandlers, restoredSeams);
 		}
 
 		/**
@@ -522,7 +527,8 @@ public final class Pipeline {
 					+ coremods.redirectedClasses() + " classes through " + in.descriptor().loaderName() + "'s event hook, fields read through its getters)");
 		}
 		RestoredFields restored = RestoredFields.of(in.fabricatedFiles());
-		ClassBytesSource gameClasses = restored.over(coremods.over(in.gameClasses()));
+		// With vanilla's methods the platform took out put back where Fabric mods' mixins target them, as they then load (SEAM-1).
+		ClassBytesSource gameClasses = restored.over(VanillaSeams.over(coremods.over(in.gameClasses())));
 		ClassIndex game = new ClassIndex(gameClasses);
 		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11
 		// remapped from intermediary names, as translating each mod remaps it.

@@ -17,6 +17,7 @@ import java.util.TreeSet;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
+import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.ConstructorInjects;
 
 import org.objectweb.asm.Opcodes;
@@ -125,6 +126,9 @@ final class PreflightClasses {
 
 	/** Access transformer lines {@link MixinPreflight#repairs} needs, by the method they make public. */
 	final Set<String> widened = new TreeSet<>();
+
+	/** The game classes the mixins target that have vanilla methods put back ({@link VanillaSeams}, SEAM-1). */
+	final Set<String> restoredSeams = new TreeSet<>();
 
 	/** The libraries' classes (the JDK, DataFixerUpper, ...), for the supertypes of the classes a game method calls. */
 	ClassIndex libraries;
@@ -272,6 +276,13 @@ final class PreflightClasses {
 	/** A Minecraft class as the game has it (parsed once per pre-flight), or null when absent or not a game class. */
 	ClassNode gameTarget(String internalName) {
 		return PreflightAsm.isGameClass(internalName) ? targetCache.computeIfAbsent(internalName, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
+	}
+
+	/** {@link #gameTarget} of a mixin's target, recorded among {@link #restoredSeams} where it has vanilla methods put back. */
+	ClassNode mixinTarget(String internalName) {
+		ClassNode target = gameTarget(internalName);
+		if (target != null && VanillaSeams.names(internalName) && !VanillaSeams.restoredIn(target).isEmpty()) restoredSeams.add(internalName);
+		return target;
 	}
 
 	/**

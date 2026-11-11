@@ -52,6 +52,7 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
+import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.testutil.BytesClassLoader;
 import io.github.cmdralph.fabricated.core.testutil.TestSources;
@@ -12458,6 +12459,62 @@ class MixinPreflightTest {
 		List<PreflightFinding> unmatched = preflight(new ClassIndex(neoForge::get), anywhereMod::get, ClassBytesSource.EMPTY, true)
 				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Hook")), Refmap.EMPTY, Set.of());
 		assertEquals(1, unmatched.size(), unmatched.toString());
+	}
+
+	@Test
+	void hooksOfVanillasStickinessMethodsApplyWhereTheyArePutBack(@TempDir Path dir) throws Exception {
+		// SEAM-1: Forge and NeoForge 21.1 to 26.1.2 ask the block state's extensions where vanilla's PistonStructureResolver
+		// calls its isSticky and canStickToEachOther; Carpet, FrozenLib and Moonlight hook those.
+		String resolver = "net/minecraft/world/level/block/piston/PistonStructureResolver";
+		String state = "Lnet/minecraft/world/level/block/state/BlockState;";
+		String eachOther = "L" + resolver + ";canStickToEachOther(" + state + state + ")Z";
+		Map<String, byte[]> classes = TestSources.compile(dir, TestSources.MIXIN_ANNOTATIONS, Map.of(
+				"net/minecraft/world/level/block/state/BlockState.java", "package net.minecraft.world.level.block.state; public class BlockState {"
+						+ " public boolean isAir() { return false; } public boolean isStickyBlock() { return false; }"
+						+ " public boolean canStickTo(BlockState other) { return false; } }",
+				resolver + ".java", "package net.minecraft.world.level.block.piston; import net.minecraft.world.level.block.state.BlockState;"
+						+ " public class PistonStructureResolver { boolean blocked(BlockState s) { return false; }"
+						+ " public boolean resolve(BlockState s) { return s.isStickyBlock(); }"
+						+ " boolean addBlockLine(BlockState old, BlockState next) {"
+						+ "  if (next.isAir() || !(old.canStickTo(next) && next.canStickTo(old)) || blocked(next)) return false; return true; }"
+						+ " boolean addBranchingBlocks(BlockState n, BlockState f) { if (n.canStickTo(f) && f.canStickTo(n) && !blocked(n)) return false; return true; } }",
+				"org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); String target() default \"\"; }",
+				"org/spongepowered/asm/mixin/injection/Inject.java", "package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); boolean cancellable() default false; }",
+				"org/spongepowered/asm/mixin/injection/Redirect.java", "package org.spongepowered.asm.mixin.injection; public @interface Redirect { String[] method(); At at(); }",
+				"org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable.java", "package org.spongepowered.asm.mixin.injection.callback; public class CallbackInfoReturnable<R> { public void setReturnValue(R r) { } }",
+				"com/llamalad7/mixinextras/injector/wrapoperation/WrapOperation.java", "package com.llamalad7.mixinextras.injector.wrapoperation; public @interface WrapOperation { String[] method(); org.spongepowered.asm.mixin.injection.At[] at(); }",
+				"com/llamalad7/mixinextras/injector/wrapoperation/Operation.java", "package com.llamalad7.mixinextras.injector.wrapoperation; public interface Operation<R> { R call(Object... args); }",
+				"com/example/mixin/Sticky.java", "package com.example.mixin; import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.injection.*;"
+						+ " import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable; import com.llamalad7.mixinextras.injector.wrapoperation.*;"
+						+ " import net.minecraft.world.level.block.state.BlockState; import net.minecraft.world.level.block.piston.PistonStructureResolver;"
+						+ " @Mixin(PistonStructureResolver.class) public class Sticky {"
+						+ " @Shadow private static boolean canStickToEachOther(BlockState a, BlockState b) { throw new AssertionError(); }"
+						+ " @Inject(method = \"isSticky\", at = @At(\"HEAD\"), cancellable = true) private static void sticky(BlockState s, CallbackInfoReturnable<Boolean> cir) { }"
+						+ " @WrapOperation(method = {\"resolve\", \"addBlockLine\"}, at = @At(value = \"INVOKE\", target = \"L" + resolver + ";isSticky(" + state + ")Z\"))"
+						+ "  private boolean origin(BlockState s, Operation<Boolean> original) { return original.call(s); }"
+						+ " @Redirect(method = \"addBlockLine\", at = @At(value = \"INVOKE\", target = \"" + eachOther + "\"))"
+						+ "  private boolean line(BlockState a, BlockState b) { return canStickToEachOther(a, b); }"
+						+ " @WrapOperation(method = \"addBranchingBlocks\", at = @At(value = \"INVOKE\", target = \"" + eachOther + "\"))"
+						+ "  private boolean branch(BlockState a, BlockState b, Operation<Boolean> original) { return original.call(a, b); } }"));
+		ClassBytesSource platform = classes::get;
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Sticky"));
+
+		// As the platform has the resolver, the hooks have nothing to hook.
+		MixinPreflight before = preflight(new ClassIndex(platform), classes::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> left = before.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(left.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT), left.toString());
+		assertTrue(before.restoredSeams().isEmpty());
+
+		// With vanilla's methods put back, every hook applies, and each is noted.
+		MixinPreflight after = preflight(new ClassIndex(VanillaSeams.over(platform)), classes::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> found = after.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(found.stream().allMatch(f -> f.severity() == Severity.INFO), found.toString());
+		assertEquals(List.of("@Shadow canStickToEachOther", "@Inject sticky", "@WrapOperation origin", "@Redirect line", "@WrapOperation branch"),
+				found.stream().map(f -> f.message().substring(0, f.message().indexOf(" hooks "))).toList());
+		assertTrue(found.get(1).message().endsWith("hooks isSticky(" + state + ")Z, vanilla's method NeoForge's PistonStructureResolver no longer has;"
+				+ " Fabricated puts it back there, answering a.isStickyBlock() as NeoForge's code did (SEAM-1)"), found.get(1).message());
+		assertTrue(found.get(3).message().contains("answering a.canStickTo(b) && b.canStickTo(a)"), found.get(3).message());
+		assertEquals(Set.of(resolver), after.restoredSeams());
 	}
 
 	/** Pre-flight with no installed jars, and missing targets fatal unless said otherwise. */

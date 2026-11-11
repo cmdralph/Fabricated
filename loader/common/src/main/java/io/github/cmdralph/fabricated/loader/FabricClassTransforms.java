@@ -18,6 +18,7 @@ import org.objectweb.asm.tree.VarInsnNode;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.bytecode.EnvironmentStripper;
+import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.NativeModMixins;
 import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
 
@@ -32,6 +33,8 @@ import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
  *   <li>the static handlers of other mods' mixins into Fabric mods' classes that the running Mixin would refuse for
  *       their instance targets are made instance handlers, as Mixin reads the mixin through the platform's transformers
  *       ({@link NativeModMixins}, CORPUS-87).</li>
+ *   <li>vanilla's methods the platform took out of a game class Fabric mods' mixins target are put back, and its code
+ *       calls them where vanilla does, so the mods' hooks of them apply ({@link VanillaSeams}, SEAM-1).</li>
  * </ul>
  * After Mixin, {@link DefaultBridge}s are declared ({@link #declareDefaultBridges}). A platform where nothing of
  * Fabricated's runs after Mixin on every class (NeoForge 21.1's ModLauncher) declares them before Mixin too, for the
@@ -46,7 +49,8 @@ public final class FabricClassTransforms {
 	/** Whether {@link #beforeMixin} may change the class (internal name). */
 	public static boolean transformsBeforeMixin(FabricatedState state, String internalName) {
 		return state.environmentClasses().contains(internalName) || state.injectedInterfaces().containsKey(internalName)
-				|| state.overridableMethods().containsKey(internalName) || state.instanceHandlers().containsKey(internalName);
+				|| state.overridableMethods().containsKey(internalName) || state.instanceHandlers().containsKey(internalName)
+				|| state.restoredSeams().contains(internalName);
 	}
 
 	/** Every class {@link #beforeMixin} may change, for a platform that names its targets up front. */
@@ -55,6 +59,7 @@ public final class FabricClassTransforms {
 		classes.addAll(state.injectedInterfaces().keySet());
 		classes.addAll(state.overridableMethods().keySet());
 		classes.addAll(state.instanceHandlers().keySet());
+		classes.addAll(state.restoredSeams());
 		return classes;
 	}
 
@@ -66,7 +71,8 @@ public final class FabricClassTransforms {
 	/**
 	 * Strips the other side's members, adds injected interfaces, removes {@code final} from the methods Fabric mods
 	 * override where only the platform's build declares it (FINAL-2; the platform's own access transformers have run by
-	 * then) and makes instance handlers of another mod's mixin's static handlers (CORPUS-87); whether the class changed.
+	 * then), makes instance handlers of another mod's mixin's static handlers (CORPUS-87) and puts back vanilla's methods
+	 * the platform took out (SEAM-1); whether the class changed.
 	 */
 	public static boolean beforeMixin(FabricatedState state, ClassNode node, BiConsumer<String, String> audit) {
 		boolean changed = false;
@@ -98,6 +104,13 @@ public final class FabricClassTransforms {
 		if (!handlers.isEmpty() && NativeModMixins.applyInstanceHandlers(node, handlers)) {
 			audit.accept("fabricated:instance_handler", String.join(", ", handlers));
 			changed = true;
+		}
+		if (state.restoredSeams().contains(node.name)) {
+			List<String> restored = VanillaSeams.restore(node);
+			if (!restored.isEmpty()) {
+				audit.accept("fabricated:vanilla_seam", String.join(", ", restored));
+				changed = true;
+			}
 		}
 		return changed;
 	}

@@ -116,7 +116,7 @@ final class MixinRepairs extends PreflightPart {
 			}
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : MixinPreflight.targetsOf(node, ctx)) {
-				ClassNode targetNode = gameTarget(target);
+				ClassNode targetNode = mixinTarget(target);
 				if (targetNode == null) {
 					targets = List.of();
 					break;

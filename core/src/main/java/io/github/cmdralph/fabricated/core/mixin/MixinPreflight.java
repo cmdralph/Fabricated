@@ -23,6 +23,7 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
+import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.InjectionPoints.Verdict;
 import io.github.cmdralph.fabricated.core.mixin.InjectionPoints.Range;
@@ -356,6 +357,14 @@ public final class MixinPreflight extends PreflightPart {
 	 */
 	public Set<String> accessTransformers() {
 		return Collections.unmodifiableSet(new TreeSet<>(widened));
+	}
+
+	/**
+	 * The game classes the mixins {@link #check} or {@link #repairs} read target that have vanilla methods put back
+	 * ({@link VanillaSeams}): the game must have them put back as those classes load (SEAM-1).
+	 */
+	public Set<String> restoredSeams() {
+		return Collections.unmodifiableSet(new TreeSet<>(restoredSeams));
 	}
 
 	/**
@@ -978,7 +987,7 @@ public final class MixinPreflight extends PreflightPart {
 		for (String target : targetsOf(mixin, ctx)) {
 			boolean isGame = PreflightAsm.isGameClass(target);
 			String owner = isGame ? null : installed.owner(target);
-			ClassNode targetNode = isGame ? gameTarget(target) : owner != null ? installedTarget(target) : null;
+			ClassNode targetNode = isGame ? mixinTarget(target) : owner != null ? installedTarget(target) : null;
 			if (targetNode == null) {
 				// Absent now, it may be installed later: the result holds only while no installed jar has it.
 				if (!isGame && owner == null) installedRead.putIfAbsent(target, "");
@@ -1019,7 +1028,45 @@ public final class MixinPreflight extends PreflightPart {
 				continue;
 			}
 			checkMembers(mixin, targetNode, targetCtx);
+			if (isGame) noteRestoredSeams(mixin, targetNode, targetCtx);
 		}
+	}
+
+	/**
+	 * Notes each of the mixin's members that hooks a vanilla method the platform took out of the target and Fabricated
+	 * puts back ({@link VanillaSeams}, SEAM-1): an injector or invoker naming it, through the refmap, or a shadow of it.
+	 */
+	private static void noteRestoredSeams(ClassNode mixin, ClassNode target, Context ctx) {
+		List<VanillaSeams.Restored> seams = VanillaSeams.restoredIn(target);
+		if (seams.isEmpty()) return;
+		String simple = target.name.substring(target.name.lastIndexOf('/') + 1);
+		for (MethodNode method : mixin.methods) {
+			for (AnnotationNode ann : Annotations.all(method)) {
+				boolean shadow = ann.desc.equals(MixinNames.SHADOW);
+				for (VanillaSeams.Restored seam : seams) {
+					if (shadow ? !method.desc.equals(seam.desc()) || !method.name.equals(seam.name()) && !method.name.equals("shadow$" + seam.name())
+							: !namesSeam(ann, seam, target.name, ctx)) continue;
+					ctx.info("@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + seam.name() + seam.desc() + ", vanilla's method "
+							+ ctx.loader() + "'s " + simple + " no longer has; Fabricated puts it back there, answering " + seam.answer() + " as "
+							+ ctx.loader() + "'s code did (SEAM-1)");
+				}
+			}
+		}
+	}
+
+	/** Whether a selector among the annotation's values (its own, its {@code @At}'s), through the refmap, names the seam. */
+	private static boolean namesSeam(Object value, VanillaSeams.Restored seam, String owner, Context ctx) {
+		if (value instanceof AnnotationNode ann) {
+			for (int i = 1; ann.values != null && i < ann.values.size(); i += 2) {
+				if (namesSeam(ann.values.get(i), seam, owner, ctx)) return true;
+			}
+			return false;
+		}
+		if (value instanceof List<?> list) return list.stream().anyMatch(v -> namesSeam(v, seam, owner, ctx));
+		if (!(value instanceof String selector)) return false;
+		MemberRef ref = MemberRef.parse(ctx.resolve(selector));
+		return !ref.fuzzy() && seam.name().equals(ref.name()) && (ref.owner() == null || ref.owner().equals(owner))
+				&& (ref.desc() == null || ref.desc().equals(seam.desc()));
 	}
 
 	/**
