@@ -51,6 +51,7 @@ import io.github.cmdralph.fabricated.core.remap.LazyMappingTable;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.remap.Supertypes;
+import io.github.cmdralph.fabricated.core.report.KnownLimits;
 import io.github.cmdralph.fabricated.core.report.LaunchPhases;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.report.Report.ModRow;
@@ -1165,9 +1166,10 @@ public final class Pipeline {
 		Map<String, ModContainerImpl> containers = new LinkedHashMap<>();
 		Set<String> finalIds = rounds.translated.stream().map(t -> t.candidate().id()).filter(id -> !rounds.dropped.containsKey(id))
 				.collect(Collectors.toSet());
-		for (TranslatedMod t : rounds.translated) {
-			Candidate c = t.candidate();
+		for (TranslatedMod translated : rounds.translated) {
+			Candidate c = translated.candidate();
 			if (!finalIds.contains(c.id())) continue;
+			TranslatedMod t = withKnownLimits(translated);
 			PackageGuard.Decision decision = rounds.decisions.get(t.neoForgeId());
 			reportLoaded(t, rounds.translatedThisLaunch.get(c.id()), decision, rounds.linkage.get(t.neoForgeId()),
 					rounds.leftOutMixins.getOrDefault(c.id(), Map.of()));
@@ -1277,6 +1279,22 @@ public final class Pipeline {
 			String now = left == 0 ? "" : leftOutCount(left, section);
 			report.detail(id, detail -> detail.replaceFirst(counted, Matcher.quoteReplacement(now)));
 		}
+	}
+
+	/**
+	 * {@code t} with its pre-flight findings that are a known limit on this platform saying so after their suggestion
+	 * ({@link KnownLimits}), as the report and its count of what plugins leave out read them.
+	 */
+	private TranslatedMod withKnownLimits(TranslatedMod t) {
+		String loader = in.descriptor().loaderName();
+		List<PreflightFinding> findings = t.findings().stream().map(f -> {
+			String limit = KnownLimits.ofFinding(loader, f.message());
+			return limit == null ? f : new PreflightFinding(f.severity(), f.config(), f.mixin(), f.message(),
+					f.suggestion().isEmpty() ? limit : f.suggestion() + " " + limit, f.handler());
+		}).toList();
+		return findings.equals(t.findings()) ? t : new TranslatedMod(t.candidate(), t.neoForgeId(), t.jar(), t.overlay(), findings,
+				t.accessTransformers(), t.notes(), t.injectedInterfaces(), t.defaultBridges(), t.environmentClasses(), t.overridableMethods(),
+				t.cacheHit(), t.millis());
 	}
 
 	/** @param leftOutMixins the mixins the linkage analysis left out of the mod, each with why */

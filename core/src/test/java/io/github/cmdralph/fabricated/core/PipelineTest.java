@@ -3092,6 +3092,26 @@ class PipelineTest {
 		}
 	}
 
+	/** A hook left out that is a known limit says so in the report, after its suggestion (SPAWN-1). */
+	@Test
+	void aLeftOutHookThatIsAKnownLimitSaysSo(@TempDir Path game) throws Exception {
+		ClassNode spawn = new ClassNode();
+		new ClassReader(mixinClass("com/spawny/mixin/SpawnCheck", "tick")).accept(spawn, 0);
+		AnnotationNode at = (AnnotationNode) ((List<?>) spawn.methods.getFirst().invisibleAnnotations.getFirst().values.get(3)).getFirst();
+		at.values = new ArrayList<>(List.of("value", "INVOKE", "target",
+				"Lnet/minecraft/world/entity/Mob;checkSpawnRules(Lnet/minecraft/world/level/LevelAccessor;Lnet/minecraft/world/entity/EntitySpawnReason;)Z"));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("spawny", "1.0", "\"mixins\":[\"spawny.mixins.json\"]"))
+				.text("spawny.mixins.json", "{\"required\":true,\"package\":\"com.spawny.mixin\",\"mixins\":[\"SpawnCheck\"]}")
+				.bytes("com/spawny/mixin/SpawnCheck.class", write(spawn))
+				.write(game.resolve("mods/spawny.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		String report = result.report().render();
+		assertTrue(result.runtime().isModLoaded("spawny"), report);
+		assertTrue(report.lines().anyMatch(l -> l.startsWith("  spawny: LEFT_OUT [spawny.mixins.json com.spawny.mixin.SpawnCheck]")
+				&& l.endsWith("must be skipped. Known limit: NeoForge and Forge run spawn checks through their own event, so Fabric hooks of those"
+						+ " checks can't apply; use the mod's NeoForge or Forge build (SPAWN-1)")), report);
+	}
+
 	/**
 	 * In a config whose plugin is in its mixin package (or one inside the other), a mixin pre-flight leaves out whole
 	 * stays listed, for Mixin to ask the plugin about it as on Fabric, and the plugin, as translated, turns it down
