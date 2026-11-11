@@ -278,6 +278,9 @@ final class PreflightClasses {
 		return method != null && (method.access & Opcodes.ACC_STATIC) != 0;
 	}
 
+	/** The decision the game's classes were made by ({@link MixinPreflight#keptSeams}), or null for {@link #keptSeams} to tell. */
+	Map<String, SeamConflicts.Conflict> decidedSeams;
+
 	/** {@link #keptSeams} by class: the native mixin keeping its seams, or none. */
 	private final Map<String, Optional<SeamConflicts.Conflict>> keptSeams = new HashMap<>();
 
@@ -287,6 +290,7 @@ final class PreflightClasses {
 	 */
 	SeamConflicts.Conflict keptSeams(ClassNode target) {
 		if (!VanillaSeams.names(target.name) || !VanillaSeams.restoredIn(target).isEmpty()) return null;
+		if (decidedSeams != null) return decidedSeams.get(target.name);
 		return keptSeams.computeIfAbsent(target.name, n -> Optional.ofNullable(SeamConflicts.find(target, installed))).orElse(null);
 	}
 

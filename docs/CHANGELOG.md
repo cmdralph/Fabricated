@@ -3,6 +3,53 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-11: SEAM-1's decision kept in the cache; Fabric's load conditions decided before other mods' hooks on NeoForge 1.21.1 (COND-1)
+
+- SEAM-1's decision (which classes a native mod's mixin keeps as the platform has them) read every mixin the native
+  mods' configs list at each launch with Fabric mods: 193 ms cold and about 140 ms warm for a synthetic 300 native jars
+  listing 5,000 mixins. It is now a cache blob keyed by the native jars' paths and file stamps (size, times and file
+  key, as the cache tells a changed jar), the seam classes as the platform has them, and Fabricated's build, the game's
+  versions and the side: a hit takes 1.7 ms, a miss 243 ms. A damaged or unreadable blob is decided again and
+  rewritten; a jar listing mixins without a file (a mod in development) is never cached, and neither is a decision a
+  read error made (a list of a jar's mixins, a mixin or a seam class failing to read keeps the class for that launch,
+  and the next decides again). On the NeoForge 1.21.1 advanced corpus server the game classes phase, which holds the
+  decision, took 24 to 91 ms across runs (few native mods list mixins there).
+- **COND-1** (P1), fixed: Moonlight's NeoForge build for 1.21.1 (3.8.3) reads every JSON data loader's
+  `fabric:load_conditions` again at the start of applying its files, as NeoForge's own conditions, its
+  `all_mods_loaded` asking NeoForge's mod list, which names a Fabric mod by its id with underscores and has none of the
+  Fabric API modules Fabricated provides. With it installed, a Fabric mod's recipe, advancement or other JSON data whose
+  `fabric:all_mods_loaded` named a Fabric mod with a dash in its id, or such a module, wasn't loaded, though upstream's
+  conditions keep it. Fabricated now decides those files first, at the same point (priority 500), with upstream's
+  evaluation and the registries upstream gives the recipe and advancement loaders, and gives each file that loads a
+  copy without its conditions in its place: upstream's hook finds none and keeps it, and so does Moonlight's. A file
+  whose conditions upstream can't parse is left exactly as it is, as upstream keeps it, and no prepared object is
+  changed. The test mod's NeoForge 1.21.1 half reads the conditions again as Moonlight does, so the
+  `json-loader-conditions` check fails without the fix, and checks that a file whose conditions name a type no mod
+  registers keeps them and that the prepared objects are as they were (`json-loader-conditions-as-they-are`).
+- Verified: core's tests (623), CI's script tests and the inventory; NeoForge 1.21.1 builds (Forge's installed jars
+  carry the same fingerprints, not built here). `SeamConflictsTest` covers a miss, a hit, a jar whose file changed,
+  another environment, a damaged, an empty and a misshapen blob, and a jar without a file. A local NeoForge 1.21.1
+  `server-fapi` run passes every check (89); with the new in-game mixin taken out of its config, its
+  `json-loader-conditions` check fails (`the loader read []`), as with Moonlight. A local NeoForge 1.21.1 advanced
+  corpus server with Moonlight's NeoForge build in place of its Fabric build, beside Carpet's, loads the test mod's
+  conditioned file (which failed there before) and keeps the resolver as NeoForge has it, Moonlight's mixin named, as
+  before; its other failures as before (CORPUS-113's `/reload` check, and `vanilla-piston`, whose hooks find nothing
+  there).
+- Review fixes: the cache stored whatever decision a launch made, so a transient read error on the launch that missed
+  it (a list of a jar's mixins dropped, a mixin read as unreadable) would have held for every later launch, the jars'
+  stamps unchanged: with Moonlight's NeoForge build, a list failing to read put the resolver's methods back and Mixin
+  would have stopped every launch. Now the listings say which files failed to read, the decision says whether every
+  read succeeded, and only such a one is stored; a seam class failing to read is kept, where its error reached the
+  locator before. COND-1 took the conditions off files upstream kept without deciding them (conditions it can't
+  parse), and changed the objects in place; neither now. `MixinPreflight.keptSeams` no longer sits between
+  `restoredSeams`' Javadoc and its method.
+- Verified (review fixes): core's tests (625), CI's script tests and the inventory; NeoForge 1.21.1 builds. A local
+  NeoForge 1.21.1 `server-fapi` run passes every check (90), both conditions checks among them, at the first load and
+  after `/reload`; with COND-1's evaluator as first written, `json-loader-conditions-as-they-are` fails for both
+  reasons. A local NeoForge 1.21.1 advanced corpus server with Moonlight's NeoForge build in place of its Fabric
+  build passes both, keeps the resolver as NeoForge has it, Moonlight's mixin named, and fails only as before
+  (CORPUS-113's `/reload` check and `vanilla-piston`).
+
 ## 2026-11-11: The client parts' Mesa install past a package mirror that's down (CI-14); GitHub's actions on Node 24
 
 - **CI-14** (P3, CI only), fixed: every client and mods part failed before any test ran when one of the runner's package
