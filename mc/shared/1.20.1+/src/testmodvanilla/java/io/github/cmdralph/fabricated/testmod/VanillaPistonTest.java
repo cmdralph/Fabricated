@@ -21,8 +21,8 @@ import net.minecraft.world.level.block.state.BlockState;
 /**
  * CI test mod part for vanilla's piston stickiness methods, {@code PistonStructureResolver.isSticky} and
  * {@code canStickToEachOther}, which the platforms replaced with the block state's extensions and Fabricated puts back
- * (SEAM-1): the test mod's mixin ({@code vanilla.PistonStickinessMixin}) makes smooth basalt sticky and says it doesn't
- * stick to calcite. Once the server has started, a piston pushing smooth basalt must move the stone on it and not the
+ * (SEAM-1): the test mod's mixins ({@code vanilla.PistonStickyStartMixin}, {@code vanilla.PistonStickinessMixin}) make
+ * smooth basalt sticky and say it doesn't stick to calcite. Once the server has started, a piston pushing smooth basalt must move the stone on it and not the
  * calcite beside it, through the mixin's hooks; and with them, a piston pushing slime must still move the stone on it and
  * not the honey beside it, which the platform says doesn't stick to slime.
  */
