@@ -44,22 +44,29 @@ One entry per working session, newest first: what changed, and how it was verifi
 
 - **LAMBDA-11** (P1), fixed: JEI's and owo-lib's char typed hooks take the `GuiEventListener` vanilla's
   `KeyboardHandler.charTyped` lambdas take, which NeoForge 21.1's, Forge 47's and Forge 52's pass as a `Screen`; they
-  were left out. Pre-flight's bridge passes a parameter of the platform's method to a handler taking a supertype of it.
+  were left out. Pre-flight's bridge passes a parameter of the platform's method to a handler taking a supertype of it,
+  where the handler takes exactly what vanilla's method takes (by its selector's descriptor, inline or the refmap's, or
+  vanilla's method of that name), as Fabric's Mixin requires.
 - **LAMBDA-12** (P1), fixed: Forge 47's Mixin refuses a static `@Inject` handler on a method that takes `this`, which
   Fabric's Mixin calls without it; Architectury's screen click and release hooks, which name their lambda twice, were
   left out. Such a handler gets a bridge taking `this`.
 - **PRE-29** (P2), fixed: pre-flight refused a `@ModifyConstant` of an `instanceof`, whose handler takes the object and
-  the class, and left Lithium's collision context mixin out on every platform. It takes the two shapes Mixin takes, and
-  counts a cast and an `instanceof` among a class's constants, as Mixin does.
+  the class, and left Lithium's collision context mixin out on every platform. It takes the two shapes Mixin takes where
+  Mixin finds an `instanceof` for the constant, and leaves out a mixin whose class constant Mixin finds as a cast, which
+  it refuses, or as an instruction the handler doesn't fit; it counts a cast and an `instanceof` among a class's
+  constants, as Mixin does.
 - **LEAVE-4** (P3), fixed: the mixins a config's own plugin turns down, as Mixin asks it which to apply, are listed
   apart from those pre-flight left out and not counted in the mod's row: Pehkui's version-specific mixins, most of its
   164 to 220 lines a run on 1.20.1 and 1.21.1. Nothing asks a plugin anything: translation makes it hand Fabricated the
   answers it gives Mixin, and turn down, whatever it answers, a mixin pre-flight left out whole, which stays listed for
-  Mixin to ask about.
+  Mixin to ask about. That mixin is an empty interface in the translated jar, so it applies nothing where Mixin applies
+  it all the same: every mixin of a config whose plugin fails to load, or one whose plugin another jar's copy serves.
 - Forge's in-game mod writes the report once the Fabric entrypoints have run, failures or not, as NeoForge's does as
   loading completes: a client whose mods all started kept discovery's report, from before the plugins answered.
-- The shared test mod checks each on every platform's server runs: a handler taking a supertype, a static handler, an
-  `instanceof` constant, and two mixins pre-flight leaves out in its plugin's config, one the plugin turns down.
+- The shared test mod checks each on every platform's server runs: a handler taking the `Property` vanilla's chiseled
+  bookshelf lambda takes (bridged where NeoForge's recompiled game, 21.11 and later, takes a `BooleanProperty`), a
+  static handler, an `instanceof` constant, and two mixins pre-flight leaves out in its plugin's config, one the plugin
+  turns down; a broken test mod's plugin fails to load, and the mixin pre-flight left out of its config applies nothing.
 - Verified: core's tests, CI's script tests and the mixin inventory; NeoForge 1.21.1, NeoForge 26.1.2, Forge 47 and
   Forge 66 build. Locally the new checks pass on the NeoForge 1.21.1, Forge 47 and Forge 66 servers. Against the release
   run (42805036593), the left-out sections change only as these findings say: the NeoForge 1.21.1 corpus client lists
@@ -67,6 +74,12 @@ One entry per working session, newest first: what changed, and how it was verifi
   plugin turns down, gone; the test mod's one added), the Forge 47 corpus client 173 instead of 184 (Architectury's four
   mouse hooks gone too), and Pehkui's lines on the advanced server fall from 188 to 3 on NeoForge 1.21.1 and from 132 to
   9 on Forge 47, each left one its plugin applies there.
+- Verified with those mixins inert, the constants' instructions checked and vanilla's types required: core's tests, CI's
+  script tests and the mixin inventory; NeoForge 1.21.1 and Forge 47 build, and their server parts pass, but for Forge
+  47's four interface mixin checks (INTERFACE-2), whose test mixins the forge-legacy branch doesn't have yet. On both
+  servers Mixin logs the broken test mod's plugin failing, mixes the inert mixin into `MinecraftServer`, and the server
+  starts. Forge 47's advanced corpus server keeps Pehkui's 9 left-out lines and the 79 mixins its plugin leaves out;
+  its corpus server applies Lithium's two `instanceof` hooks.
 
 ## 2026-11-11: Fabric's conditional overlays on the packs of mods built for both loaders (PACK-12)
 
