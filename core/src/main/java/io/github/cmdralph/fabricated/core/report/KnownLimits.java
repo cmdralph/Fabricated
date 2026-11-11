@@ -11,8 +11,8 @@ import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 /**
  * What Fabricated reports and can't fix: each known limit with the one line the report adds to what matches it, naming
  * its finding (COMPATIBILITY.md, FINDINGS.md). A pre-flight finding that leaves a hook out or disables its mod matches by
- * the platform and its message, an entrypoint's failure by the class and message of what it threw, at the root of its
- * causes. Nothing else changes.
+ * the platform and its message or suggestion, an entrypoint's failure by the class and message of what it threw, at the
+ * root of its causes. Nothing else changes.
  */
 public final class KnownLimits {
 	/**
@@ -37,9 +37,11 @@ public final class KnownLimits {
 					"Forge draws screens through its own layer code, so wrappers of a screen's render call can't apply;"
 							+ " use NeoForge or the mod's Forge build (SCREEN-2)"),
 			// A hook of vanilla's playerWillDestroy call in the server's destroyBlock, which Forge makes from the block state's
-			// onDestroyedByPlayer once the tool is damaged, and Fabricated doesn't put back there (Mojang's and SRG's names).
+			// onDestroyedByPlayer once the tool is damaged, and Fabricated doesn't put back there: pre-flight's hint names the
+			// server's class (the client's method has the same name on Forge 52 on, and there the call goes back).
 			new Limit(Set.of("Forge"), null,
-					Pattern.compile("in (?:destroyBlock|m_9280_) expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;(?:playerWillDestroy|m_5707_)\\("),
+					Pattern.compile("expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;(?:playerWillDestroy|m_5707_)\\(.*Forge's"
+							+ " ServerPlayerGameMode makes that call through the block's IForgeBlock\\.onDestroyedByPlayer instead", Pattern.DOTALL),
 					"Forge calls playerWillDestroy from the block state's onDestroyedByPlayer, after the tool is damaged, so hooks of vanilla's call"
 							+ " before it can't apply there; Fabricated puts back only the removal (SEAM-3)"),
 			// ForgeRegistry.add, whose maps key a value by its equality: two objects, by their identity hashes, not one object
@@ -59,7 +61,9 @@ public final class KnownLimits {
 	public static String ofFinding(String loader, PreflightFinding finding) {
 		if (finding.severity() != Severity.LEFT_OUT && finding.severity() != Severity.FAIL) return null;
 		for (Limit limit : LIMITS) {
-			if (limit.exception() == null && limit.loaders().contains(loader) && matches(limit, finding.message())) return "Known limit: " + limit.reason();
+			if (limit.exception() == null && limit.loaders().contains(loader) && matches(limit, finding.message() + "\n" + finding.suggestion())) {
+				return "Known limit: " + limit.reason();
+			}
 		}
 		return null;
 	}

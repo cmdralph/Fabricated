@@ -668,6 +668,26 @@ final class VanillaCalls {
 		return false;
 	}
 
+	/**
+	 * How the class's platform makes vanilla's call {@code owner;name} in the method, where Fabricated doesn't put that call
+	 * back ({@code Forge's ServerPlayerGameMode makes that call through the block's IForgeBlock.onDestroyedByPlayer
+	 * instead}); null for any other. Forge's server makes {@code playerWillDestroy} from its extension, once the tool is
+	 * damaged, where vanilla makes it before the creative check: only the removal goes back there.
+	 */
+	static String notPutBack(ClassNode node, String method, String desc, String owner, String name) {
+		boolean srg = VanillaSeams.srg(node);
+		for (PutBack row : PUT_BACKS) {
+			if (row.removal() != Removal.FORGE_SERVER || !row.owner().equals(node.name) || !row.method(srg).equals(method) || !DESTROY_BLOCK.equals(desc)
+					|| !owner.equals(WILL_DESTROY.owner()) || !name.equals(WILL_DESTROY.name(srg))) continue;
+			MethodNode holder = holder(node, row, srg);
+			if (holder != null && !calls(holder, row.platform()).isEmpty() && references(node, row.extension().platformPackage())) {
+				return "Forge's " + node.name.substring(node.name.lastIndexOf('/') + 1) + " makes that call through the block's "
+						+ row.extension().blockInterface().substring(row.extension().blockInterface().lastIndexOf('/') + 1) + "." + row.extension().name() + " instead";
+			}
+		}
+		return null;
+	}
+
 	/** In how many places of the method, as read, vanilla's calls are put back (each makes each call once); 0 for none. */
 	static int places(MethodNode method) {
 		if (method.invisibleAnnotations == null) return 0;

@@ -64,7 +64,12 @@ class RestoredSeamsTest {
 	}
 
 	private static MixinPreflight breaking(Path dir, String members, List<PreflightFinding> findings, Map<String, byte[]> classes) throws Exception {
-		Map<String, String> sources = new HashMap<>(io.github.cmdralph.fabricated.core.bytecode.VanillaCallsTest.neoForgeSources());
+		return breaking(dir, io.github.cmdralph.fabricated.core.bytecode.VanillaCallsTest.neoForgeSources(), members, findings, classes);
+	}
+
+	private static MixinPreflight breaking(Path dir, Map<String, String> gameSources, String members, List<PreflightFinding> findings, Map<String, byte[]> classes)
+			throws Exception {
+		Map<String, String> sources = new HashMap<>(gameSources);
 		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); String target() default \"\";"
 				+ " int ordinal() default -1; }");
 		sources.put("com/llamalad7/mixinextras/injector/wrapoperation/WrapOperation.java", "package com.llamalad7.mixinextras.injector.wrapoperation;"
@@ -163,6 +168,26 @@ class RestoredSeamsTest {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * On Forge's server a wrapper of vanilla's playerWillDestroy call, which Forge makes from its extension once the tool is
+	 * damaged, stays out, its hint naming the class, which the known limit reads (SEAM-3).
+	 */
+	@Test
+	void aWrapperOfForgesServersPlayerWillDestroyCallStaysOutSayingWhy(@TempDir Path dir) throws Exception {
+		String state = "net.minecraft.world.level.block.state.BlockState";
+		String wrap = " @WrapOperation(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/world/level/block/Block;playerWillDestroy("
+				+ "Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;"
+				+ "Lnet/minecraft/world/entity/player/Player;)Lnet/minecraft/world/level/block/state/BlockState;\")) private " + state + " willDestroy("
+				+ "net.minecraft.world.level.block.Block block, net.minecraft.world.level.Level level, BlockPos pos, " + state + " s,"
+				+ " net.minecraft.world.entity.player.Player player, Operation<" + state + "> original) { return original.call(block, level, pos, s, player); }";
+		List<PreflightFinding> findings = new java.util.ArrayList<>();
+		breaking(dir, io.github.cmdralph.fabricated.core.bytecode.VanillaCallsTest.forgeSources(), wrap, findings, new HashMap<>());
+		PreflightFinding out = findings.stream().filter(f -> f.severity() == Severity.LEFT_OUT).findFirst().orElseThrow();
+		assertEquals("Forge's ServerPlayerGameMode makes that call through the block's IForgeBlock.onDestroyedByPlayer instead, which Fabricated doesn't"
+				+ " put back there (SEAM-3).", out.suggestion(), findings.toString());
+		assertTrue(io.github.cmdralph.fabricated.core.report.KnownLimits.ofFinding("Forge", out).endsWith("(SEAM-3)"));
 	}
 
 	@Test

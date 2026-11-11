@@ -1873,6 +1873,17 @@ public final class MixinPreflight extends PreflightPart {
 				+ " (STRUCT-1).";
 	}
 
+	/**
+	 * Why an injector at vanilla's call that the platform makes through its extension, and Fabricated doesn't put back,
+	 * stays out (SEAM-3, {@link VanillaSeams#callNotPutBack}); null for any other call.
+	 */
+	private String notPutBackHint(ClassNode target, MethodNode method, String rawTarget, Context ctx) {
+		MemberRef ref = rawTarget == null ? null : MemberRef.parse(ctx.resolve(rawTarget));
+		String how = ref == null || ref.fuzzy() || ref.owner() == null || ref.name() == null ? null
+				: VanillaSeams.callNotPutBack(target, method.name, method.desc, ref.owner(), ref.name());
+		return how == null ? null : how + ", which Fabricated doesn't put back there (SEAM-3).";
+	}
+
 	/** A selector's name and descriptor, as reports print it. */
 	private static String selector(MemberRef ref) {
 		return ref.name() + (ref.desc() != null ? ref.desc() : "");
@@ -2189,6 +2200,7 @@ public final class MixinPreflight extends PreflightPart {
 								+ (point.equals("CONSTANT") && Annotations.value(at, "args") instanceof List<?> args ? ", args=" + args : "")
 								+ (ordinal >= 0 ? ", ordinal=" + ordinal : "") + "), which does not occur in that method",
 						replacedHint(target, rawTarget, ctx) != null ? replacedHint(target, rawTarget, ctx)
+								: notPutBackHint(target, matched.get(0), rawTarget, ctx) != null ? notPutBackHint(target, matched.get(0), rawTarget, ctx)
 								: ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 				return;
 			}

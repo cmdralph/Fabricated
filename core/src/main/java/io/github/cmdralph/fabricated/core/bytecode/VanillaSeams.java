@@ -118,6 +118,14 @@ public final class VanillaSeams {
 	}
 
 	/**
+	 * How the class's platform makes vanilla's call {@code owner;name} in its method, through its extension, where
+	 * Fabricated doesn't put the call back (SEAM-3: Forge's server's {@code playerWillDestroy}); null for any other.
+	 */
+	public static String callNotPutBack(ClassNode target, String method, String desc, String owner, String name) {
+		return VanillaCalls.notPutBack(target, method, desc, owner, name);
+	}
+
+	/**
 	 * In how many places of the method, as read, vanilla's calls are put back (SEAM-3): each of the platform's calls of its
 	 * extension, where vanilla's code makes its calls once; 0 where none are.
 	 */
