@@ -38,6 +38,7 @@
     "NamespacedWrapperPendingHoldersMixin": [],
     "ParticleEngineProvidersBridgeMixin": [],
     "ParticleEngineRenderMixin": [],
+    "PackOverlaysMixin": ["fabric-resource-conditions-api-v1"],
     "PackRepositorySourcesMixin": [],
     "PlayerListViewMixin": [],
     "PoiTypesMixin": [],

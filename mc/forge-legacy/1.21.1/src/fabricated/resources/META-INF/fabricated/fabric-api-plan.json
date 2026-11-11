@@ -62,6 +62,13 @@
       ],
       "reason": "Forge 52's Registries.elementsDirPath already reads a registry outside the minecraft namespace from data/<pack namespace>/<registry namespace>/<registry path>, the directory upstream's hook makes for a Fabric mod's dynamic registry, so with the hook the namespace went in twice and no entry of such a registry was read (REG-11, as on Forge 47)."
     },
+    "fabric-resource-conditions-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-resource-conditions-api-v1.mixins.json:ResourcePackProfileMixin"
+      ],
+      "reason": "Upstream's hook on the reading of a pack's metadata, where Forge reads every mod file's pack, logged an error for a fabric:overlays section it couldn't read, native mods' included (PACK-12): Fabricated applies fabric:overlays there itself, with upstream's conditions, leaving out a section it can't read with one warning naming the pack."
+    },
     "fabric-resource-loader-v0": {
       "plan": "passthrough",
       "skipMixins": [
