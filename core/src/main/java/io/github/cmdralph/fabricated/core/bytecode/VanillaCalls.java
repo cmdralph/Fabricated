@@ -39,7 +39,7 @@ import org.objectweb.asm.tree.VarInsnNode;
  * the state's {@code onDestroyedByPlayer} there (the server through a private {@code removeBlock} of theirs), whose default
  * makes those calls (NeoForge's) or {@code playerWillDestroy} and the {@code setBlock} (Forge's). Where the platform calls
  * it, the rewrite asks whether the block keeps the default ({@code fabricated$keepsDefault}: neither the state's class
- * nor the block's overrides either interface's method, by reflection), and then makes vanilla's calls, which hooks find;
+ * nor the block's overrides either interface's method, {@link KeepsDefault}), and then makes vanilla's calls, which hooks find;
  * otherwise the platform's call, as before. Each operand of the platform's call is evaluated as before, once, in the
  * branch the call is in; vanilla's branch loads again the plain ones it needs. What vanilla doesn't call there (the
  * block's {@code getBlock}, Forge's server reading the state and its {@code playerWillDestroy}, which vanilla makes before
@@ -181,6 +181,11 @@ final class VanillaCalls {
 		List<PutBack> rows = applicable(node);
 		List<String> restored = new ArrayList<>();
 		if (rows.isEmpty()) return restored;
+		try {
+			keepsHelpers(node.name);
+		} catch (RuntimeException e) {
+			return restored; // the check can't be copied: nothing is put back, in pre-flight's view as at load
+		}
 		boolean srg = VanillaSeams.srg(node);
 		// Frames are worked out on a copy with them expanded; the rewritten method is read back with them compressed again.
 		ClassNode expanded = read(write(node), ClassReader.EXPAND_FRAMES);
@@ -418,7 +423,8 @@ final class VanillaCalls {
 	/** The private helpers vanilla's branch calls: the check, the block's {@code getBlock}, and Forge's server's reads. */
 	private static void addHelpers(ClassNode node, PutBack row, boolean srg) {
 		if (indexOf(node, KEEPS_DEFAULT, "(L" + STATE + ";)Z") >= 0) return;
-		node.methods.add(keepsDefault(row.extension(), srg));
+		node.methods.add(keepsDefault(row.extension(), node.name));
+		node.methods.addAll(keepsHelpers(node.name));
 		node.methods.add(helper("fabricated$block", "(L" + STATE + ";)L" + BLOCK + ";", Opcodes.ARETURN,
 				new VarInsnNode(Opcodes.ALOAD, 0), invoke(GET_BLOCK, srg)));
 		if (row.removal() != Removal.FORGE_SERVER) return;
@@ -434,57 +440,82 @@ final class VanillaCalls {
 	}
 
 	/**
-	 * {@code private static boolean fabricated$keepsDefault(BlockState state)}: whether the extension's methods the state's
-	 * class and its block's class have are the interfaces' defaults; false where reflection can't tell (a class it can't
-	 * load in a signature), so the platform's call is made.
+	 * {@code private static boolean fabricated$keepsDefault(BlockState state)}: {@link KeepsDefault#keepsDefault} of the state
+	 * and its block, for the extension's methods, whose code is copied into the class beside it ({@link #keepsHelpers}).
 	 */
-	private static MethodNode keepsDefault(Extension extension, boolean srg) {
+	private static MethodNode keepsDefault(Extension extension, String owner) {
 		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KEEPS_DEFAULT, "(L" + STATE + ";)Z", null, null);
-		LabelNode start = new LabelNode(), end = new LabelNode(), no = new LabelNode(), failed = new LabelNode();
 		InsnList code = method.instructions;
-		code.add(start);
-		declaredBy(code, extension.name(), extension.desc(), extension.stateInterface(), false, srg, no);
-		declaredBy(code, extension.name(), extension.blockDesc(), extension.blockInterface(), true, srg, no);
-		code.add(new InsnNode(Opcodes.ICONST_1));
-		code.add(end);
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$block", "(L" + STATE + ";)L" + BLOCK + ";", false));
+		code.add(new LdcInsnNode(Type.getObjectType(extension.stateInterface())));
+		code.add(new LdcInsnNode(Type.getObjectType(extension.blockInterface())));
+		code.add(new LdcInsnNode(extension.name()));
+		classes(code, Type.getArgumentTypes(extension.desc()));
+		classes(code, Type.getArgumentTypes(extension.blockDesc()));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$keeps", KEEPS, false));
 		code.add(new InsnNode(Opcodes.IRETURN));
-		Object[] locals = {STATE};
-		code.add(no);
-		code.add(new FrameNode(Opcodes.F_NEW, 1, locals, 0, new Object[0]));
-		code.add(new InsnNode(Opcodes.ICONST_0));
-		code.add(new InsnNode(Opcodes.IRETURN));
-		code.add(failed);
-		code.add(new FrameNode(Opcodes.F_NEW, 1, locals, 1, new Object[] {"java/lang/Throwable"}));
-		code.add(new InsnNode(Opcodes.POP));
-		code.add(new InsnNode(Opcodes.ICONST_0));
-		code.add(new InsnNode(Opcodes.IRETURN));
-		method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, failed, "java/lang/Exception"));
-		method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, failed, "java/lang/LinkageError"));
-		method.maxStack = 7;
+		method.maxStack = 11;
 		method.maxLocals = 1;
 		return method;
 	}
 
-	/** {@code (block ? state.getBlock() : state).getClass().getMethod(name, params).getDeclaringClass() == iface}, else to {@code no}. */
-	private static void declaredBy(InsnList code, String name, String desc, String iface, boolean block, boolean srg, LabelNode no) {
-		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		if (block) code.add(invoke(GET_BLOCK, srg));
-		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/lang/Object", "getClass", "()Ljava/lang/Class;", false));
-		code.add(new LdcInsnNode(name));
-		Type[] params = Type.getArgumentTypes(desc);
-		code.add(new IntInsnNode(Opcodes.BIPUSH, params.length));
+	/** Pushes a {@code Class[]} of the types. */
+	private static void classes(InsnList code, Type[] types) {
+		code.add(new IntInsnNode(Opcodes.BIPUSH, types.length));
 		code.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Class"));
-		for (int i = 0; i < params.length; i++) {
+		for (int i = 0; i < types.length; i++) {
 			code.add(new InsnNode(Opcodes.DUP));
 			code.add(new IntInsnNode(Opcodes.BIPUSH, i));
-			if (params[i].getSort() == Type.BOOLEAN) code.add(new FieldInsnNode(Opcodes.GETSTATIC, "java/lang/Boolean", "TYPE", "Ljava/lang/Class;"));
-			else code.add(new LdcInsnNode(params[i]));
+			if (types[i].getSort() == Type.BOOLEAN) code.add(new FieldInsnNode(Opcodes.GETSTATIC, "java/lang/Boolean", "TYPE", "Ljava/lang/Class;"));
+			else code.add(new LdcInsnNode(types[i]));
 			code.add(new InsnNode(Opcodes.AASTORE));
 		}
-		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/lang/Class", "getMethod", "(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;", false));
-		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/lang/reflect/Method", "getDeclaringClass", "()Ljava/lang/Class;", false));
-		code.add(new LdcInsnNode(Type.getObjectType(iface)));
-		code.add(new JumpInsnNode(Opcodes.IF_ACMPNE, no));
+	}
+
+	private static final String KEEPS = "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/Class;"
+			+ "[Ljava/lang/Class;)Z";
+	private static final String KEEPS_OWNER = Type.getInternalName(KeepsDefault.class);
+	private static volatile ClassNode keepsClass;
+
+	/**
+	 * {@link KeepsDefault}'s methods, as javac wrote them, made the class's own private helpers: {@code fabricated$keeps},
+	 * {@code fabricated$overrides} and {@code fabricated$declares}, their calls of each other the class's. They name only the
+	 * JDK's classes.
+	 */
+	private static List<MethodNode> keepsHelpers(String owner) {
+		ClassNode keeps = keepsClass;
+		if (keeps == null) {
+			try (java.io.InputStream in = KeepsDefault.class.getResourceAsStream(KeepsDefault.class.getSimpleName() + ".class")) {
+				if (in == null) throw new IllegalStateException("no " + KEEPS_OWNER);
+				keepsClass = keeps = read(in.readAllBytes(), 0);
+			} catch (java.io.IOException e) {
+				throw new java.io.UncheckedIOException(e);
+			}
+		}
+		List<MethodNode> helpers = new ArrayList<>();
+		for (MethodNode source : keeps.methods) {
+			if ((source.access & Opcodes.ACC_STATIC) == 0 || source.name.startsWith("<")) continue;
+			MethodNode copy = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, helperName(source.name), source.desc, null,
+					source.exceptions.toArray(String[]::new));
+			source.accept(copy);
+			copy.name = helperName(source.name);
+			copy.access = Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC;
+			copy.localVariables = null;
+			for (AbstractInsnNode insn : copy.instructions) {
+				if (insn instanceof MethodInsnNode call && call.owner.equals(KEEPS_OWNER)) {
+					call.owner = owner;
+					call.name = helperName(call.name);
+				}
+			}
+			helpers.add(copy);
+		}
+		return helpers;
+	}
+
+	private static String helperName(String name) {
+		return "fabricated$" + (name.equals("keepsDefault") ? "keeps" : name);
 	}
 
 	/** A private static method of straight code, its parameters' slots enough for what it loads. */
@@ -662,7 +693,7 @@ final class VanillaCalls {
 			if (method.name.startsWith("fabricated$")) {
 				for (AbstractInsnNode insn : method.instructions) {
 					String key = key(insn);
-					if (key != null) added.add(key);
+					if (key != null && !(key.startsWith(restored.name + ";") && key.contains("("))) added.add(key);
 					if (insn instanceof LdcInsnNode ldc && ldc.cst instanceof Type type && type.getSort() == Type.OBJECT) added.add(type.getInternalName());
 				}
 				continue;

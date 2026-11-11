@@ -29,9 +29,10 @@ import io.github.cmdralph.fabricated.core.testutil.TestSources;
  * SEAM-3: vanilla's block-breaking calls, which NeoForge and Forge make through the block state's
  * {@code onDestroyedByPlayer}, put back in {@code destroyBlock} for the blocks keeping its default. Each fixture is the
  * platform's code in its form (NeoForge 21.1's, NeoForge 21.11 to 26.3's, Forge's; the server's and the client's; Forge 47's
- * under SRG's names), against stand-ins of the game whose calls log what they do. The class rewritten does what the
- * platform's did, step for step, for a block keeping the default, one overriding it and one overriding it to call it; a
- * hook of the call put back runs where the block keeps the default, and only there.
+ * under SRG's names), against stand-ins of the game whose calls log what they do; the extensions also name a class the
+ * game lacks as it runs, as Forge 66's name client classes. The class rewritten does what the platform's did, step for
+ * step, for a block keeping the default, one overriding it, one overriding it to call it and one overriding it through an
+ * interface of its own; a hook of the call put back runs where the block keeps the default, and only there.
  */
 public class VanillaCallsTest {
 	private static final String SERVER = "net/minecraft/server/level/ServerPlayerGameMode";
@@ -126,7 +127,9 @@ public class VanillaCallsTest {
 		String body = form.forge ? " ((Block) this).$playerWillDestroy$(level, pos, state, player); return level.$setBlock$(pos, fluid.$createLegacyBlock$(), level.isClientSide() ? 11 : 3);"
 				: " if (level.isClientSide()) return level.$setBlock$(pos, fluid.$createLegacyBlock$(), 11); return level.$removeBlock$(pos, false);";
 		sources.put(ext + form.blockExt() + ".java", "package " + form.ext() + ";" + imports + " public interface " + form.blockExt() + " {"
-				+ " default boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player," + form.params() + ") {" + body + " } }");
+				+ " default boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player," + form.params() + ") {" + body + " }"
+				+ " default void drawn(com.example.ClientOnly client) { } }");
+		sources.put("com/example/ClientOnly.java", "package com.example; public class ClientOnly { }");
 		sources.put(form.forge ? "net/minecraftforge/common/ForgeHooks.java" : "net/neoforged/neoforge/common/CommonHooks.java",
 				form.forge ? "package net.minecraftforge.common; public class ForgeHooks { public static void onBlockBreakEvent() { } }"
 						: "package net.neoforged.neoforge.common; public class CommonHooks { public static void fireBlockBreak() { } }");
@@ -136,6 +139,12 @@ public class VanillaCallsTest {
 				+ override + " level.log.add(\"override \" + willHarvest); return level.$setBlock$(pos, new BlockState(new Block(\"stump\")), 3); } }");
 		sources.put("com/example/Hook.java", "package com.example; public class Hook { public static final java.util.List<String> LOG = new java.util.ArrayList<>();"
 				+ " public static void hooked() { LOG.add(\"hooked\"); } }");
+		// One overriding it through an interface of its own extending the platform's.
+		sources.put("com/example/OverridingExtension.java", "package com.example;" + imports + " public interface OverridingExtension extends "
+				+ form.ext() + "." + form.blockExt() + " {" + override.replace(" @Override public", " @Override default") + " level.log.add(\"interface\");"
+				+ " return level.$setBlock$(pos, new BlockState(new Block(\"stump\")), 3); } }");
+		sources.put("com/example/ViaInterface.java", "package com.example;" + imports + " public class ViaInterface extends Block implements OverridingExtension {"
+				+ " public ViaInterface() { super(\"via\"); } }");
 		sources.put("com/example/Calling.java", "package com.example;" + imports + " public class Calling extends Block { public Calling() { super(\"calling\"); }"
 				+ override + " level.log.add(\"calling\"); return super.onDestroyedByPlayer(state, level, pos, player," + form.args() + "); } }");
 		sources.put(SERVER + ".java", "package net.minecraft.server.level;" + imports + " public class ServerPlayerGameMode {"
@@ -212,7 +221,7 @@ public class VanillaCallsTest {
 			Map<String, byte[]> restored = restored(platform);
 			Map<String, String> names = form.srg ? SRG : MOJANG;
 			// Every block, on either path, does what the platform's code made it do; the default's steps are vanilla's calls.
-			for (String block : List.of("net.minecraft.world.level.block.Block", "com.example.Overriding", "com.example.Calling")) {
+			for (String block : List.of("net.minecraft.world.level.block.Block", "com.example.Overriding", "com.example.Calling", "com.example.ViaInterface")) {
 				for (boolean creative : List.of(false, true)) {
 					List<String> before = server(platform, block, creative, false), after = server(restored, block, creative, false);
 					List<String> expected = new ArrayList<>(before);
@@ -225,7 +234,7 @@ public class VanillaCallsTest {
 			// A hook of vanilla's call put back runs for the block keeping the default, and only for it.
 			assertTrue(server(restored, "net.minecraft.world.level.block.Block", false, true).contains("hooked"), form.name());
 			assertTrue(client(restored, "net.minecraft.world.level.block.Block", true).contains("hooked"), form.name());
-			for (String block : List.of("com.example.Overriding", "com.example.Calling")) {
+			for (String block : List.of("com.example.Overriding", "com.example.Calling", "com.example.ViaInterface")) {
 				assertTrue(!server(restored, block, false, true).contains("hooked"), form + " " + block);
 				assertTrue(!client(restored, block, true).contains("hooked"), form + " " + block);
 			}
@@ -350,7 +359,7 @@ public class VanillaCallsTest {
 		return new ClassLoader(VanillaCallsTest.class.getClassLoader()) {
 			@Override
 			protected Class<?> findClass(String name) throws ClassNotFoundException {
-				byte[] data = classes.get(name.replace('.', '/'));
+				byte[] data = name.equals("com.example.ClientOnly") ? null : classes.get(name.replace('.', '/'));
 				if (data == null) throw new ClassNotFoundException(name);
 				return defineClass(name, data, 0, data.length);
 			}
