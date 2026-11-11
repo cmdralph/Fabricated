@@ -376,8 +376,8 @@ public final class ModTranslator {
 					addBridges(DefaultBridge.of(ii.target(), List.of(ii.interfaceName()), classes), List.of(ii.interfaceName()), bridges, notes);
 				}
 
-				int renamed = remapped != null ? applyRenames(remapped, remapped.keySet(), files, notes)
-						: applyRenames(overlay, archive.classEntryNames(), archive::read, notes);
+				int renamed = remapped != null ? applyRenames(overlay, remapped, remapped.keySet(), files, notes)
+						: applyRenames(overlay, overlay, archive.classEntryNames(), archive::read, notes);
 				if (renamed > 0) notes.add(renamed + " class(es) use NeoForge members as Forge Config API Port's copy of NeoForge declares them; the references are adapted to NeoForge's own");
 				// Last, on the classes as they will load: the members Fabric's @Environment reserves for the other side (ENV-1).
 				stripEnvironment(overlay, remapped, remapped != null ? remapped.keySet() : archive.classEntryNames(), files,
@@ -573,22 +573,32 @@ public final class ModTranslator {
 	}
 
 	/**
-	 * Puts the mod's classes that use members NeoForge renamed (see {@link PlatformRenames}), with the references
-	 * renamed, into {@code target}, those calling a loader's methods the platform made static through its accessor, with
-	 * the calls made static ({@link PlatformStatics}, noted), those reading resources through a class, with the reads
-	 * made to look beyond the mod's module as on Fabric ({@link ResourceLookups}), those naming the libraries Fabric's Mixin
-	 * carries where the running Mixin doesn't, with the game's own named ({@link ShadedLibraries}, noted), and those adding
-	 * mixin configs to a Mixin that gives them no environment, with the default one given ({@link AddedMixinConfigs},
-	 * noted); returns how many used renamed members.
+	 * Puts into {@code classes}, or into the overlay where it holds the class (its copy is the one that loads), the mod's
+	 * classes that use members NeoForge renamed (see {@link PlatformRenames}), with the references renamed, or call a
+	 * constructor the platform replaced with one taking a name too, with the platform's called (noted), those calling a
+	 * loader's methods the platform made static through its accessor, with the calls made static ({@link PlatformStatics},
+	 * noted), those reading resources through a class, with the reads made to look beyond the mod's module as on Fabric
+	 * ({@link ResourceLookups}), those naming the libraries Fabric's Mixin carries where the running Mixin doesn't, with the
+	 * game's own named ({@link ShadedLibraries}, noted), and those adding mixin configs to a Mixin that gives them no
+	 * environment, with the default one given ({@link AddedMixinConfigs}, noted); returns how many used renamed members.
 	 */
-	private int applyRenames(Map<String, byte[]> target, Collection<String> entries, FileView files, List<String> notes) throws ArchiveException {
+	private int applyRenames(Map<String, byte[]> overlay, Map<String, byte[]> classes, Collection<String> entries, FileView files, List<String> notes)
+			throws ArchiveException {
 		int count = 0;
 		for (String name : List.copyOf(entries)) {
 			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
+			Map<String, byte[]> target = overlay.containsKey(name) ? overlay : classes;
 			byte[] data = target.containsKey(name) ? target.get(name) : files.read(name);
 			if (data == null) continue;
-			byte[] renamed = renames.apply(data);
-			if (renamed != null) count++;
+			Set<String> constructors = new TreeSet<>();
+			byte[] renamed = renames.apply(data, constructors);
+			if (!constructors.isEmpty()) {
+				notes.add(name.substring(0, name.length() - ".class".length()).replace('/', '.') + " calls vanilla's constructor of "
+						+ String.join(", ", constructors) + ", which " + env.descriptor().loaderName() + " replaced with one taking a name too; the calls"
+						+ " give it none, as " + env.descriptor().loaderName() + "'s builder does (LOOT-3)");
+			} else if (renamed != null) {
+				count++;
+			}
 			byte[] made = statics.apply(renamed != null ? renamed : data);
 			if (made != null) {
 				notes.add(name.substring(0, name.length() - ".class".length()).replace('/', '.') + " calls methods of " + env.descriptor().loaderName()

@@ -10,6 +10,7 @@ import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Access
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Entry;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
+import io.github.cmdralph.fabricated.core.bytecode.PlatformConstructors;
 import io.github.cmdralph.fabricated.core.bytecode.PlatformRetypes;
 
 /**
@@ -114,11 +115,15 @@ public final class AccessTransformerConverter {
 				}
 				case METHOD -> {
 					Integer access = owner != null ? owner.methodAccess(e.name() + e.descriptor()) : null;
+					// A constructor the platform replaced with one taking a name too (LOOT-3): the mod's calls reach the platform's.
+					String named = access == null && e.name().equals("<init>") ? PlatformConstructors.of(game, e.owner(), e.descriptor()) : null;
+					String descriptor = named != null ? named : e.descriptor();
+					if (named != null) access = owner.methodAccess(e.name() + named);
 					if (game != null && access == null) {
 						warnings.add("line " + e.line() + ": method " + e.owner() + "." + e.name() + e.descriptor() + " does not exist; ignored");
 						continue;
 					}
-					Target t = targets.computeIfAbsent(ownerDotted + " " + e.name() + e.descriptor(), k -> new Target());
+					Target t = targets.computeIfAbsent(ownerDotted + " " + e.name() + descriptor, k -> new Target());
 					Target cls = targets.computeIfAbsent(ownerDotted, k -> new Target());
 					cls.widen(Modifier.PUBLIC);
 					if (e.access() == Access.ACCESSIBLE) {
