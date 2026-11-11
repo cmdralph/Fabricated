@@ -38,8 +38,9 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * (CORPUS-107), and the seams they add for a method the platform never calls ({@link MixinNames#SEAM_START},
  * {@link MixinNames#SEAM_END}), which Fabric mods' hooks into that method are pointed at (HUD-4); pre-flight reads their
  * declarations, not their code. A seam for a read the platform's constructor never makes ({@link MixinNames#SEAM_READ},
- * HUD-7) keeps its code, its mixin's name made the game class's, and Mixin's mark of its mixin's priority, as Mixin
- * merges it: pre-flight finds the read and the locals there that Fabric mods' hooks at it capture.
+ * HUD-7) keeps its code, its mixin's name made the game class's, as Mixin merges it: pre-flight finds the read and the
+ * locals there that Fabric mods' hooks at it capture. Each carries Mixin's mark of a merged method, with its mixin's
+ * priority. Each read of a class makes them anew: mods are translated in parallel.
  */
 public final class RestoredFields {
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
@@ -75,9 +76,9 @@ public final class RestoredFields {
 	public Map<String, String> bridgedFields() {
 		Map<String, String> fields = new TreeMap<>();
 		added.forEach((owner, more) -> {
-			for (MethodNode method : more.methods()) {
-				if (method.name.startsWith(MixinNames.BRIDGE_GETTER) && method.desc.startsWith("()")) {
-					fields.put(owner + " " + method.name.substring(MixinNames.BRIDGE_GETTER.length()), method.name);
+			for (AddedMethod method : more.methods()) {
+				if (method.name().startsWith(MixinNames.BRIDGE_GETTER) && method.desc().startsWith("()")) {
+					fields.put(owner + " " + method.name().substring(MixinNames.BRIDGE_GETTER.length()), method.name());
 				}
 			}
 		});
@@ -98,10 +99,8 @@ public final class RestoredFields {
 					node.fields.add(new FieldNode(field.access, field.name, field.desc, field.signature, null));
 				}
 			}
-			for (MethodNode method : more.methods()) {
-				if (node.methods.stream().noneMatch(m -> m.name.equals(method.name) && m.desc.equals(method.desc))) {
-					node.methods.add(method.name.startsWith(MixinNames.SEAM_READ) ? method : declaration(method));
-				}
+			for (AddedMethod method : more.methods()) {
+				if (node.methods.stream().noneMatch(m -> m.name.equals(method.name()) && m.desc.equals(method.desc()))) node.methods.add(method.merged(name));
 			}
 			ClassWriter writer = new ClassWriter(0);
 			node.accept(writer);
@@ -110,28 +109,39 @@ public final class RestoredFields {
 	}
 
 	/** What Fabricated's mixins add to one game class. */
-	private record Added(List<FieldNode> fields, List<MethodNode> methods) {
+	private record Added(List<FieldNode> fields, List<AddedMethod> methods) {
 	}
 
 	/**
-	 * A method of {@code mixin}, of that priority, as Mixin merges it into {@code target}: the mixin's name in its code made
-	 * the target's, and Mixin's mark of a merged method on it.
+	 * A method a mixin of Fabricated's, of that priority, adds to a game class; {@code mixinClass} is the mixin's class
+	 * file where pre-flight reads the method's code (a read seam), else null.
 	 */
-	private static MethodNode merged(MethodNode method, String mixin, int priority, String target) {
-		MethodNode copy = new MethodNode(method.access, method.name, method.desc, method.signature,
-				method.exceptions == null ? null : method.exceptions.toArray(String[]::new));
-		method.accept(new MethodRemapper(copy, new SimpleRemapper(mixin, target)));
-		AnnotationNode merged = new AnnotationNode(MixinNames.MIXIN_MERGED);
-		merged.values = new ArrayList<>(List.of("mixin", mixin.replace('/', '.'), "priority", priority));
-		if (copy.visibleAnnotations == null) copy.visibleAnnotations = new ArrayList<>();
-		copy.visibleAnnotations.add(merged);
-		return copy;
+	private record AddedMethod(int access, String name, String desc, String signature, String mixin, int priority, byte[] mixinClass) {
+		/** The method as Mixin merges it into {@code target}, made anew, with Mixin's mark of a merged method. */
+		MethodNode merged(String target) {
+			MethodNode merged = mixinClass == null ? declaration(access, name, desc, signature) : withCode(target);
+			AnnotationNode mark = new AnnotationNode(MixinNames.MIXIN_MERGED);
+			mark.values = new ArrayList<>(List.of("mixin", mixin.replace('/', '.'), "priority", priority));
+			if (merged.visibleAnnotations == null) merged.visibleAnnotations = new ArrayList<>();
+			merged.visibleAnnotations.add(mark);
+			return merged;
+		}
+
+		/** The method with its code, parsed from the mixin's class file, the mixin's name in it made the target's. */
+		private MethodNode withCode(String target) {
+			ClassNode node = new ClassNode();
+			new ClassReader(mixinClass).accept(node, 0);
+			MethodNode method = PreflightAsm.declared(node, name, desc);
+			MethodNode copy = new MethodNode(access, name, desc, signature, method.exceptions == null ? null : method.exceptions.toArray(String[]::new));
+			method.accept(new MethodRemapper(copy, new SimpleRemapper(mixin, target)));
+			return copy;
+		}
 	}
 
 	/** A bridge as pre-flight reads it: its declaration, with a body returning its type's default value. */
-	private static MethodNode declaration(MethodNode method) {
-		MethodNode copy = new MethodNode(method.access & ~Opcodes.ACC_ABSTRACT, method.name, method.desc, method.signature, null);
-		Type returned = Type.getReturnType(method.desc);
+	private static MethodNode declaration(int access, String name, String desc, String signature) {
+		MethodNode copy = new MethodNode(access & ~Opcodes.ACC_ABSTRACT, name, desc, signature, null);
+		Type returned = Type.getReturnType(desc);
 		switch (returned.getSort()) {
 			case Type.VOID -> copy.visitInsn(Opcodes.RETURN);
 			case Type.OBJECT, Type.ARRAY -> {
@@ -155,7 +165,7 @@ public final class RestoredFields {
 				copy.visitInsn(Opcodes.IRETURN);
 			}
 		}
-		copy.visitMaxs(2, 1 + (Type.getArgumentsAndReturnSizes(method.desc) >> 2));
+		copy.visitMaxs(2, 1 + (Type.getArgumentsAndReturnSizes(desc) >> 2));
 		return copy;
 	}
 
@@ -198,24 +208,22 @@ public final class RestoredFields {
 			if (data == null) continue;
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, ClassReader.SKIP_CODE);
-			if (node.methods.stream().anyMatch(m -> m.name.startsWith(MixinNames.SEAM_READ))) {
-				node = new ClassNode();
-				new ClassReader(data).accept(node, 0);
-			}
 			List<FieldNode> fields = new ArrayList<>();
 			for (FieldNode field : node.fields) {
 				if ((field.access & Opcodes.ACC_SYNTHETIC) == 0 && Annotations.find(field, SHADOW) == null && Annotations.find(field, UNIQUE) == null) {
 					fields.add(field);
 				}
 			}
-			List<MethodNode> methods = new ArrayList<>();
+			int priority = PreflightAsm.priority(node, config);
+			List<AddedMethod> methods = new ArrayList<>();
 			for (MethodNode method : node.methods) {
 				boolean bridge = method.name.startsWith(MixinNames.BRIDGE_GETTER) || method.name.startsWith(MixinNames.BRIDGE_SETTER)
 						|| method.name.startsWith(MixinNames.SEAM_START) || method.name.startsWith(MixinNames.SEAM_END)
 						|| method.name.startsWith(MixinNames.SEAM_READ);
 				if (bridge && (method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC)) == 0 && (method.access & Opcodes.ACC_PUBLIC) != 0
 						&& Annotations.find(method, SHADOW) == null) {
-					methods.add(method);
+					methods.add(new AddedMethod(method.access, method.name, method.desc, method.signature, node.name, priority,
+							method.name.startsWith(MixinNames.SEAM_READ) ? data : null));
 				}
 			}
 			if (fields.isEmpty() && methods.isEmpty()) continue;
@@ -225,10 +233,7 @@ public final class RestoredFields {
 				if (!(target instanceof Type type)) continue;
 				Added into = added.computeIfAbsent(type.getInternalName(), k -> new Added(new ArrayList<>(), new ArrayList<>()));
 				into.fields().addAll(fields);
-				for (MethodNode method : methods) {
-					into.methods().add(method.name.startsWith(MixinNames.SEAM_READ)
-							? merged(method, node.name, PreflightAsm.priority(node, config), type.getInternalName()) : method);
-				}
+				into.methods().addAll(methods);
 			}
 		}
 	}
