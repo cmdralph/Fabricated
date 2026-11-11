@@ -9,6 +9,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
+import io.github.cmdralph.fabricated.core.report.KnownLimits;
+
 /**
  * Runs the {@code main}, {@code client} and {@code server} entrypoints once, in mod load order, with a
  * per-entrypoint guard. A failing mod is recorded and its later entrypoints are skipped; what happens
@@ -24,11 +26,13 @@ public final class EntrypointRunner {
 
 	/** One entrypoint that threw. */
 	public record Failure(String modId, String key, String definition, Throwable error) {
+		/** What threw, at the root of its causes, and the known limit it is ({@link KnownLimits}). */
 		public String describe() {
 			Throwable root = error;
 			while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+			String limit = KnownLimits.ofFailure(root);
 			return modId + ": " + key + " entrypoint " + definition + " threw " + root.getClass().getName()
-					+ (root.getMessage() != null ? ": " + root.getMessage() : "");
+					+ (root.getMessage() != null ? ": " + root.getMessage() : "") + (limit == null ? "" : ". " + limit);
 		}
 	}
 

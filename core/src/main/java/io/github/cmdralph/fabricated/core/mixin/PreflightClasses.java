@@ -17,6 +17,8 @@ import java.util.TreeSet;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
+import io.github.cmdralph.fabricated.core.bytecode.SeamConflicts;
+import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.ConstructorInjects;
 
 import org.objectweb.asm.Opcodes;
@@ -117,11 +119,21 @@ final class PreflightClasses {
 	 */
 	final Map<ClassNode, Set<String>> independent = new IdentityHashMap<>();
 
+	/** {@link MixinPreflight#stateGroups} of each mixin as it was read, for the same reason as {@link #independent}. */
+	final Map<ClassNode, Map<String, MixinPreflight.StateGroup>> stateGroups = new IdentityHashMap<>();
+
 	/** The installed classes the checks read, with their fingerprints. */
 	final Map<String, String> installedRead = new TreeMap<>();
 
 	/** Access transformer lines {@link MixinPreflight#repairs} needs, by the method they make public. */
 	final Set<String> widened = new TreeSet<>();
+
+	/**
+	 * The game classes whose vanilla methods put back ({@link VanillaSeams}, SEAM-1) a mixin member hooks: only those are
+	 * rewritten as they load, so a native mod's mixin of the platform's calls there still finds them where no Fabric mod's
+	 * hooks a seam (Lithium's mixin of the resolver hooks none).
+	 */
+	final Set<String> restoredSeams = new TreeSet<>();
 
 	/** The libraries' classes (the JDK, DataFixerUpper, ...), for the supertypes of the classes a game method calls. */
 	ClassIndex libraries;
@@ -266,6 +278,18 @@ final class PreflightClasses {
 		return method != null && (method.access & Opcodes.ACC_STATIC) != 0;
 	}
 
+	/** {@link #keptSeams} by class: the native mixin keeping its seams, or none. */
+	private final Map<String, Optional<SeamConflicts.Conflict>> keptSeams = new HashMap<>();
+
+	/**
+	 * The native mod's mixin keeping a game class's seams from being put back ({@link SeamConflicts}), or null: the class
+	 * pre-flight reads is then the platform's, as it loads. Told from the class as read, as the game's classes were made.
+	 */
+	SeamConflicts.Conflict keptSeams(ClassNode target) {
+		if (!VanillaSeams.names(target.name) || !VanillaSeams.restoredIn(target).isEmpty()) return null;
+		return keptSeams.computeIfAbsent(target.name, n -> Optional.ofNullable(SeamConflicts.find(target, installed))).orElse(null);
+	}
+
 	/** A Minecraft class as the game has it (parsed once per pre-flight), or null when absent or not a game class. */
 	ClassNode gameTarget(String internalName) {
 		return PreflightAsm.isGameClass(internalName) ? targetCache.computeIfAbsent(internalName, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
@@ -310,6 +334,11 @@ final class PreflightClasses {
 	 */
 	Set<String> independentOf(ClassNode mixin) {
 		return independent.computeIfAbsent(mixin, MixinPreflight::independentHandlers);
+	}
+
+	/** The injectors of a mixin keeping state together ({@link MixinPreflight#stateGroups}), as it was read. */
+	Map<String, MixinPreflight.StateGroup> stateGroupsOf(ClassNode mixin) {
+		return stateGroups.computeIfAbsent(mixin, MixinPreflight::stateGroups);
 	}
 
 	/**
