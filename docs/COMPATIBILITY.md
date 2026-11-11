@@ -318,7 +318,8 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
   so a NeoForge mod reading them again as NeoForge's own conditions finds none: Moonlight's NeoForge build (3.8.3) does,
   asking NeoForge's mod list, which names a Fabric mod by its id with underscores and has none of the Fabric API modules
   Fabricated provides, so with it installed a Fabric mod's recipe, advancement or other JSON data whose
-  `fabric:all_mods_loaded` named such a mod wasn't loaded (COND-1).
+  `fabric:all_mods_loaded` named such a mod wasn't loaded (COND-1). A file whose conditions Fabric API can't parse is
+  left as it is, as Fabric API keeps it without deciding, so a mod that can read them still decides.
 
 ### Why modules are disabled
 
