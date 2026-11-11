@@ -1,0 +1,9 @@
+{
+  "required": true,
+  "package": "io.github.cmdralph.fabricated.testmod.vanilla",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": ["PistonStickinessMixin"],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

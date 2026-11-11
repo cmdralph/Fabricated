@@ -130,6 +130,11 @@ sourceSets {
         java.srcDir testJava('testmod')
         testSources.each { resources.srcDir rootProject.file("$it/src/testmod/resources") }
     }
+    // the test mod's uses of vanilla's members the platform's game replaces (below; declared here, so the platform's
+    // script configures it as it does the test mod's other mixins),
+    testmodvanilla {
+        java.srcDir testJava('testmodvanilla')
+    }
     // Test sources every platform shares, in mc/shared: the broken test mods,
     testmodbroken {
         java.srcDir renamedJava('testmodbroken', [rootProject.file('mc/shared/src/testmodbroken/java')])
@@ -479,18 +484,16 @@ if ((testSources.collect { rootProject.file(it) } + [projectDir]).any { new File
     tasks.named('testmods') { dependsOn frapiTestmodJar }
 }
 
-// --- The test mod's calls of vanilla's members the platform's game replaces (vanilla's LootPool constructor, LOOT-3) -----
+// --- The test mod's uses of vanilla's members the platform's game replaces (vanilla's LootPool constructor, LOOT-3;
+// the piston resolver's stickiness methods, SEAM-1) --------------------------------------------------------------------
 // Compiled as a Fabric mod's are, against vanilla: stand-ins of those members (the source set's net/minecraft classes)
 // shadow the game's as they compile, and are left out of the test mod's jar. Each folder's
 // src/testmodvanilla/fabricated-testmod.accesswidener ends the test mod's widener with what its calls reach.
-sourceSets {
-    testmodvanilla {
-        java.srcDir testJava('testmodvanilla')
-    }
-}
 gameDependencies(sourceSets.testmodvanilla)
 dependencies {
     testmodvanillaCompileOnly project(':fabric-loader-api')
+    // Its mixin's @WrapOperations: the MixinExtras a Forge version nests for Fabric mods (NeoForge's game has its own).
+    if (project.findProperty('mixinextras_version')) testmodvanillaCompileOnly "io.github.llamalad7:mixinextras-common:${project.mixinextras_version}"
 }
 testmodJar.configure { from(sourceSets.testmodvanilla.output) { exclude 'net/minecraft/**' } }
 testSources.each {
