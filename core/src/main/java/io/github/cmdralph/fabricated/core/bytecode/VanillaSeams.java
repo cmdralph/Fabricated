@@ -117,6 +117,14 @@ public final class VanillaSeams {
 		return VanillaCalls.CLASSES.contains(internalName);
 	}
 
+	/**
+	 * In how many places of the method, as read, vanilla's calls are put back (SEAM-3): each of the platform's calls of its
+	 * extension, where vanilla's code makes its calls once; 0 where none are.
+	 */
+	public static int putBackPlaces(MethodNode method) {
+		return VanillaCalls.places(method);
+	}
+
 	/** Whether the table names the class (internal name): a class whose seams {@link #restore} may put back. */
 	public static boolean names(String internalName) {
 		return CLASSES.contains(internalName);

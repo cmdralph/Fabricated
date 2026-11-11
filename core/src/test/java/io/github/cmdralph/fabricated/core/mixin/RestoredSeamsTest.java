@@ -55,23 +55,33 @@ class RestoredSeamsTest {
 		return preflight.restoredSeams();
 	}
 
-	/** Pre-flight's findings and the classes recorded for a Fabric mixin of NeoForge's server game mode (SEAM-3). */
+	/**
+	 * Pre-flight's findings and the classes recorded for a Fabric mixin of NeoForge's server game mode (SEAM-3), checked
+	 * once repaired; {@code classes}, if given, gets the mod's classes as repaired.
+	 */
 	private static MixinPreflight breaking(Path dir, String members, List<PreflightFinding> findings) throws Exception {
+		return breaking(dir, members, findings, new HashMap<>());
+	}
+
+	private static MixinPreflight breaking(Path dir, String members, List<PreflightFinding> findings, Map<String, byte[]> classes) throws Exception {
 		Map<String, String> sources = new HashMap<>(io.github.cmdralph.fabricated.core.bytecode.VanillaCallsTest.neoForgeSources());
-		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); String target() default \"\"; }");
+		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); String target() default \"\";"
+				+ " int ordinal() default -1; }");
 		sources.put("com/llamalad7/mixinextras/injector/wrapoperation/WrapOperation.java", "package com.llamalad7.mixinextras.injector.wrapoperation;"
-				+ " public @interface WrapOperation { String[] method(); org.spongepowered.asm.mixin.injection.At[] at(); }");
+				+ " public @interface WrapOperation { String[] method(); org.spongepowered.asm.mixin.injection.At[] at(); int allow() default -1; }");
 		sources.put("com/llamalad7/mixinextras/injector/wrapoperation/Operation.java", "package com.llamalad7.mixinextras.injector.wrapoperation;"
 				+ " public interface Operation<R> { R call(Object... args); }");
 		sources.put("com/example/mixin/Breaking.java", "package com.example.mixin; import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.injection.*;"
 				+ " import com.llamalad7.mixinextras.injector.wrapoperation.*; import net.minecraft.core.BlockPos; import net.minecraft.server.level.*;"
 				+ " @Mixin(ServerPlayerGameMode.class) public abstract class Breaking {" + members + " }");
-		Map<String, byte[]> classes = new HashMap<>(TestSources.compileWithLocals(dir, TestSources.MIXIN_ANNOTATIONS, sources));
+		classes.putAll(TestSources.compileWithLocals(dir, TestSources.MIXIN_ANNOTATIONS, sources));
 		ClassBytesSource game = VanillaSeams.over(classes::get);
 		MixinPreflight preflight = new MixinPreflight(new ClassIndex(game), InstalledClasses.NONE, classes::get, ClassBytesSource.EMPTY, false, true,
 				ClassBytesSource.EMPTY);
-		findings.addAll(preflight.check("test.mixins.json",
-				MixinConfigFile.parse("{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Breaking\"]}"), Refmap.EMPTY, Set.of()));
+		MixinConfigFile config = MixinConfigFile.parse("{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Breaking\"]}");
+		preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), findings)
+				.forEach((file, data) -> classes.put(file.substring(0, file.length() - ".class".length()), data));
+		findings.addAll(preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of()));
 		return preflight;
 	}
 
@@ -94,6 +104,46 @@ class RestoredSeamsTest {
 		List<PreflightFinding> elsewhere = new java.util.ArrayList<>();
 		assertEquals(Set.of(), breaking(dir.resolve("elsewhere"), wrap.replace("method = \"destroyBlock\"", "method = \"harvest\""), elsewhere).restoredSeams());
 		assertTrue(elsewhere.stream().anyMatch(f -> f.message().contains("which does not occur in that method")), elsewhere.toString());
+	}
+
+	/**
+	 * Vanilla's one removal call, which the platforms' server makes in a creative branch and a survival one: put back in
+	 * each, a wrapper picking it by ordinal 0 would hook creative breaks alone. The ordinal is dropped; where the wrapper
+	 * allows one injection alone, it stays.
+	 */
+	@Test
+	void anOrdinalOfVanillasOneCallPutBackInEachBranchIsDropped(@TempDir Path dir) throws Exception {
+		String wrap = " @WrapOperation(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/server/level/ServerLevel;"
+				+ "removeBlock(Lnet/minecraft/core/BlockPos;Z)Z\", ordinal = 0)) private boolean removed(ServerLevel level, BlockPos pos, boolean moving,"
+				+ " Operation<Boolean> original) { return original.call(level, pos, moving); }";
+		List<PreflightFinding> findings = new java.util.ArrayList<>();
+		Map<String, byte[]> classes = new HashMap<>();
+		assertEquals(Set.of("net/minecraft/server/level/ServerPlayerGameMode"), breaking(dir.resolve("ordinal"), wrap, findings, classes).restoredSeams());
+		assertTrue(findings.stream().anyMatch(f -> f.severity() == Severity.INFO && f.message().equals("@WrapOperation removed picks the call"
+				+ " Lnet/minecraft/server/level/ServerLevel;removeBlock(Lnet/minecraft/core/BlockPos;Z)Z by ordinal 0, vanilla's one call there, which"
+				+ " Fabricated puts back in each of NeoForge's places making it through the block's extension (SEAM-3); the ordinal is dropped, so it"
+				+ " picks the call in each")), findings.toString());
+		assertEquals(null, ordinal(classes.get("com/example/mixin/Breaking")));
+
+		List<PreflightFinding> once = new java.util.ArrayList<>();
+		Map<String, byte[]> allowing = new HashMap<>();
+		breaking(dir.resolve("allow"), wrap.replace("ordinal = 0))", "ordinal = 0), allow = 1)"), once, allowing);
+		assertEquals(0, ordinal(allowing.get("com/example/mixin/Breaking")));
+	}
+
+	/** The ordinal of the first {@code @At} of the class's first method annotated with one, or null. */
+	private static Object ordinal(byte[] mixin) {
+		org.objectweb.asm.tree.ClassNode node = new org.objectweb.asm.tree.ClassNode();
+		new org.objectweb.asm.ClassReader(mixin).accept(node, 0);
+		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+			for (org.objectweb.asm.tree.AnnotationNode ann : io.github.cmdralph.fabricated.core.bytecode.Annotations.all(method)) {
+				for (org.objectweb.asm.tree.AnnotationNode at : io.github.cmdralph.fabricated.core.bytecode.Annotations.list(
+						io.github.cmdralph.fabricated.core.bytecode.Annotations.value(ann, "at"))) {
+					return io.github.cmdralph.fabricated.core.bytecode.Annotations.value(at, "ordinal");
+				}
+			}
+		}
+		return null;
 	}
 
 	@Test

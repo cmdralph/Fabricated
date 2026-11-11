@@ -404,6 +404,9 @@ final class MixinRepairs extends PreflightPart {
 			new RepairStep(RepairScope.ONE_TARGET_UNGROUPED, Severity.INFO, s -> OverloadRepairs.overloadByParameters(s.handler(), s.injector(), s.target(), s.ctx(), true),
 					(s, pinned) -> s.named() + " targets " + pinned + ", one of several methods of that name in this game build; it is pinned to that one,"
 							+ " as a mixin replacing it (@Overwrite, which Mixin adds after the others) would leave the injector on another"),
+			new RepairStep(RepairScope.ONE_TARGET_UNGROUPED, Severity.INFO, s -> calls.putBackOrdinalRepairs(s.injector(), s.target(), s.ctx()),
+					(s, call) -> s.named() + " picks the call " + call + " by ordinal 0, vanilla's one call there, which Fabricated puts back in each of "
+							+ s.ctx().loader() + "'s places making it through the block's extension (SEAM-3); the ordinal is dropped, so it picks the call in each"),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.vanillaPointRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
 					(s, moved) -> s.named() + " expects " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.movedCallRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),

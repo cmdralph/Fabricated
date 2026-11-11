@@ -200,7 +200,8 @@ final class VanillaCalls {
 			if (calls.isEmpty()) continue;
 			addHelpers(expanded, row, srg);
 			AnnotationNode marker = new AnnotationNode(VanillaSeams.MARKER);
-			marker.values = new ArrayList<>(List.of("calls", calls, "keeps", row.extension().blockInterface() + "." + row.extension().name()));
+			marker.values = new ArrayList<>(List.of("calls", calls, "keeps", row.extension().blockInterface() + "." + row.extension().name(),
+					"places", calls(method, row.platform()).size()));
 			if (method.invisibleAnnotations == null) method.invisibleAnnotations = new ArrayList<>();
 			method.invisibleAnnotations.add(marker);
 			rewritten.add(method.name + method.desc);
@@ -665,6 +666,15 @@ final class VanillaCalls {
 			}
 		}
 		return false;
+	}
+
+	/** In how many places of the method, as read, vanilla's calls are put back (each makes each call once); 0 for none. */
+	static int places(MethodNode method) {
+		if (method.invisibleAnnotations == null) return 0;
+		for (AnnotationNode ann : method.invisibleAnnotations) {
+			if (VanillaSeams.MARKER.equals(ann.desc) && value(ann, "places") instanceof Integer places) return places;
+		}
+		return 0;
 	}
 
 	/** The calls a class as read has had put back, as {@link #restore} marked its methods. */
