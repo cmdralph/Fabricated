@@ -61,6 +61,8 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	public static final String NEOFORGE_NAMESPACE = "fabricated_neoforge_test";
 	/** Set when a pack repository's sources were made immutable (PackRepositoryMixin), as FrozenLib leaves them (PACK-1). */
 	public static volatile boolean immutablePackSources;
+	/** Set once the dedicated server entrypoint has run, which a hook after Fabric Loader's server hook follows (HOOK-4). */
+	public static volatile boolean serverEntrypointRan;
 	private static Item testItem;
 
 	/** An id in the test mod's namespace, for its parts outside this package, which can't reach {@code TestCompat}. */
@@ -243,6 +245,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> LOGGER.info("FABRICATED-TEST lifecycle server stopping OK"));
 		ServerLifecycleEvents.SERVER_STARTED.register(TestMod::vanillaStatsRead);
+		ServerLifecycleEvents.SERVER_STARTED.register(StructureEntitiesTest::run);
 		// Damage types in the mod's data and in its built-in pack, under conditions only a NeoForge build would read
 		// (neoforge:false), which Fabric ignores (DATA-1, PACK-2).
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
@@ -319,6 +322,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	@Override
 	public void onInitializeServer() {
 		LOGGER.info("FABRICATED-TEST server entrypoint OK");
+		serverEntrypointRan = true;
 	}
 
 	/** Custom entrypoint, only run when the mod asks the loader for it. */
