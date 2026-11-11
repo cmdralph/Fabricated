@@ -284,7 +284,9 @@ Candidates, each waiting for a mod or a report that needs it:
 - STRUCT-1 and HOOK-4 on NeoForge 1.21.11, 26.x and Forge 61, 64 and 65 (checked on local NeoForge 1.21.1, Forge 47,
   52 and 66 servers, and NeoForge 1.21.1's and Forge 47's corpus servers), NeoForge 26.3's `StructureTemplate` among
   them (read in 26.2's alone); YUNG's and Friends and Foes' processors on a structure that carries their entities (the
-  hooks apply, and the test mod's own run).
+  hooks apply, and the test mod's own run); Carpet's hopper counters and FrozenLib's ejection guard on Forge 47's
+  `ejectItems` in play (they apply; no check moves items through a hopper), and Carpet's explosion event after Forge 61
+  to 66's `hurtEntities` call (read in its jar, not run).
 - INTERFACE-2 and ITEM-2 on the Forge 47 and 52 client corpora (the server corpora checked locally), and chained
   handlers on one call in a corpus mod (core's tests cover them; no corpus mod has one).
 - HUD-6 and HUD-7 with Apoli's own bars in a drawing of the HUD (no origin is chosen in the Forge 52 and NeoForge 1.21.1

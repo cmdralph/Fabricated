@@ -66,11 +66,14 @@ One entry per working session, newest first: what changed, and how it was verifi
   settings)` and Forge 61 to 66 with a `placeEntities` taking the settings in the pivot's place; pre-flight left the
   hooks out on every version, so the mods' structure entity processors never ran. Where vanilla's classes show a private
   method the platform replaced with a private one of its own, called once in the place of vanilla's one call, an
-  `@Inject` at that call moves to the platform's call, and one at the method's start or end to the platform's method,
-  its handler given vanilla's parameters as vanilla's call read them (from the settings, through their field getters).
-  Hooks sharing state move together or not at all. Other injectors there stay out, the report saying why: Porting
-  Lib's port of the platform's own entity processing, which the platform runs, and Friends and Foes' wrapper of a
-  structure mob's spawn in the method's lambda on NeoForge and Forge 47.
+  `@Inject` at that call moves to the platform's call, and one at the method's start to the platform's method, its
+  handler given vanilla's parameters as vanilla's call read them (from the settings, through their field getters); one
+  at its end only where the platform's method returns where vanilla's does. Hooks sharing state move together or not at
+  all. Other injectors there stay out, the report saying why: Porting Lib's port of the platform's own entity
+  processing, which the platform runs, and Friends and Foes' wrapper of a structure mob's spawn in the method's lambda
+  on NeoForge and Forge 47. The rule also serves methods a platform gave another parameter: Carpet's hopper counters and
+  FrozenLib's ejection guard at the start of Forge 47's `HopperBlockEntity.ejectItems` apply, where they were left out;
+  a hook at the end of `ejectItems`, which returns first where Forge's insert hook took the items, stays out.
 - **HOOK-4** (P2), fixed: Fabric Loader's `Hooks.startServer`, which owo-lib's registry freeze follows, was pointed at
   NeoForge's `ServerModLoader.load(boolean)` alone; it now maps to NeoForge 21.1's and Forge's `load()` too, so owo
   freezes after the entrypoints on every dedicated server.
@@ -80,7 +83,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   1.21.1, 1.21.11 and 26.1.2 and Forge 47, 52, 61, 64, 65 and 66 build. Locally the servers of NeoForge 1.21.1 and
   Forge 47, 52 and 66 pass both checks, their other checks as before; on the NeoForge 1.21.1 and Forge 47 advanced
   corpus servers YUNG's API's three hooks apply, and on Forge 47's corpus server Friends and Foes' three and owo-lib's
-  freeze, Porting Lib's four staying out with the reason, those runs' other checks as before.
+  freeze, Porting Lib's four staying out with the reason, those runs' other checks as before. For the end rule: core's
+  tests (a case with the hopper's early return), CI's script tests and the inventory; Forge 47 builds, and on its
+  advanced corpus server Carpet's and FrozenLib's `ejectItems` hooks apply, its other report lines and checks as before.
 
 ## 2026-11-11: More of Fabric mods' interface mixins applied on Forge 47 (INTERFACE-2), hooks sharing a ThreadLocal left out together (ITEM-2)
 
