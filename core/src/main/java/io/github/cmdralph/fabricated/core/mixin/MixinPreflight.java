@@ -44,6 +44,7 @@ import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LineNumberNode;
@@ -275,10 +276,13 @@ public final class MixinPreflight extends PreflightPart {
 		List<PreflightFinding> out = new ArrayList<>();
 		boolean hasPlugin = config.plugin() != null && !config.plugin().isBlank();
 		Map<String, Optional<ClassNode>> modClassCache = new HashMap<>();
-		Map<String, Map<String, Set<String>>> configShares = new LinkedHashMap<>();
+		List<Sharer> checked = new ArrayList<>(), skipped = new ArrayList<>();
 		for (String mixin : config.mixinsFor(clientSide)) {
-			if (skip.contains(mixin)) continue;
 			String internal = config.internalName(mixin);
+			if (skip.contains(mixin)) {
+				skipped.addAll(sharers(configName, internal, modClasses.readNode(internal, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES), refmap));
+				continue;
+			}
 			ClassNode node = modClasses.readNode(internal, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
 			boolean selfContained = node != null && selfContained(node);
 			boolean addsFields = selfContained && addsFields(node);
@@ -296,14 +300,14 @@ public final class MixinPreflight extends PreflightPart {
 			checkMixin(node, ctx);
 			ctx.leaveOutStateGroups(from);
 			leaveOutSharers(out, from, configName, ctx.mixinDotted(), shares(node));
-			configShares.put(ctx.mixinDotted(), shares(node));
+			checked.addAll(sharers(configName, internal, node, refmap));
 			ctx.leaveOutThreadLocalSharers(from, node, () -> threadLocalShares(code != null ? code : modClasses.readNode(internal, ClassReader.SKIP_FRAMES),
 					modClassCache));
 			// Last, so no grouping takes these readers' groups with them (SEAM-2).
 			ctx.leaveOutReadersOfSkippedCaptures(from, code, shares(node), () -> threadLocalShares(code != null ? code
 					: modClasses.readNode(internal, ClassReader.SKIP_FRAMES), modClassCache));
 		}
-		leaveOutNamespacedSharers(out, configName, configShares);
+		leaveOutNamespacedSharers(out, checked, skipped);
 		for (PreflightFinding f : out) {
 			if (f.severity() == Severity.LEFT_OUT && f.mixin() != null) leftOutHandlers.add(handlerKey(f.mixin(), f.handler()));
 		}
@@ -647,42 +651,162 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * SHARE-1 across the config's mixins (SHARE-2): a local MixinExtras' {@code @Share} names with a namespace is one for the
-	 * injectors of every mixin naming it there, so a left-out injector takes with it those of the config's other mixins
-	 * sharing such a local with it, and in turn their mixins' sharers (any local), until none is left. Apoli's
-	 * {@code ServerPlayerInteractionManagerMixin} reads the block a player breaks from {@code breakingBlock} (namespace
-	 * {@code apoli}), which its {@code ModifyHarvestPowerTypeMixin$HarvestabilityProxy} keeps with its harvest hook, left
-	 * out where the platform asks its own harvest check: once SEAM-3 let the first mixin's hook of the removal apply, its
-	 * block-break action would have read no block. A mixin left out whole takes its sharers with it too.
+	 * A handler sharing locals through MixinExtras' {@code @Share}, as SHARE-2 reads it across the mod's configs: where it
+	 * is (its config and mixin), the mixin's targets and the methods its injector selects there (MixinExtras keeps a
+	 * local for each target method), and, by local ({@code namespace:name}), whether its code may read it and may set it.
 	 */
-	static void leaveOutNamespacedSharers(List<PreflightFinding> out, String configName, Map<String, Map<String, Set<String>>> shares) {
-		if (shares.values().stream().noneMatch(m -> m.values().stream().anyMatch(keys -> keys.stream().anyMatch(k -> !k.startsWith(":"))))) return;
-		Map<String, Set<String>> leftOut = new HashMap<>();
-		ArrayDeque<String[]> next = new ArrayDeque<>();
-		for (PreflightFinding f : out) {
-			if (f.severity() != Severity.LEFT_OUT || f.mixin() == null || !shares.containsKey(f.mixin())) continue;
-			Set<String> handlers = f.handler() == null ? shares.get(f.mixin()).keySet() : Set.of(f.handler());
-			for (String handler : handlers) {
-				if (leftOut.computeIfAbsent(f.mixin(), m -> new HashSet<>()).add(handler)) next.add(new String[] {f.mixin(), handler});
+	private record Sharer(String config, String mixin, String handler, List<String> targets, List<MemberRef> methods, Map<String, Use> keys) {
+		/** Whether the two inject into a method in common, or it can't be told. */
+		boolean meets(Sharer other) {
+			if (!targets.isEmpty() && !other.targets.isEmpty() && Collections.disjoint(targets, other.targets)) return false;
+			if (methods.isEmpty() || other.methods.isEmpty()) return true;
+			for (MemberRef a : methods) {
+				for (MemberRef b : other.methods) {
+					if (a.fuzzy() || b.fuzzy() || a.name() == null || b.name() == null
+							|| a.name().equals(b.name()) && (a.desc() == null || b.desc() == null || a.desc().equals(b.desc()))) return true;
+				}
+			}
+			return false;
+		}
+	}
+
+	/** How a handler's code uses a shared local: whether it may read it and may set it (both where it can't tell). */
+	private record Use(boolean reads, boolean sets) {
+		static final Use BOTH = new Use(true, true);
+
+		Use or(Use other) {
+			return new Use(reads || other.reads, sets || other.sets);
+		}
+	}
+
+	/** The handlers of the mod's configs checked so far that share locals, those left out, and those of mixins skipped (SHARE-2). */
+	private final List<Sharer> sharers = new ArrayList<>();
+	private final Set<Sharer> goneSharers = new HashSet<>();
+	private final Set<Sharer> skippedSharers = new HashSet<>();
+
+	/** The mixin's handlers sharing locals ({@link #shares}), as {@link Sharer}s; none for a mixin not read. */
+	private List<Sharer> sharers(String configName, String internal, ClassNode node, Refmap refmap) {
+		Map<String, Set<String>> shares = shares(node);
+		if (shares.isEmpty()) return List.of();
+		ClassNode code = modClasses.readNode(internal, ClassReader.SKIP_FRAMES);
+		List<String> targets = InstalledClasses.mixinTargets(node);
+		List<Sharer> found = new ArrayList<>();
+		for (MethodNode handler : node.methods) {
+			if (!shares.containsKey(handler.name + handler.desc)) continue;
+			List<MemberRef> methods = new ArrayList<>();
+			for (AnnotationNode ann : Annotations.all(handler)) {
+				if (!PreflightAsm.isInjector(ann.desc)) continue;
+				Object selectors = Annotations.value(ann, "method");
+				for (Object o : selectors instanceof List<?> list ? list : selectors == null ? List.of() : List.of(selectors)) {
+					methods.add(o instanceof String selector ? MemberRef.parse(refmap.resolve(internal, selector)) : new MemberRef(null, null, null, true));
+				}
+				if (Annotations.value(ann, "target") instanceof List<?> descs && !descs.isEmpty()) methods.add(new MemberRef(null, null, null, true));
+			}
+			MethodNode body = code == null ? null : PreflightAsm.declared(code, handler.name, handler.desc);
+			Map<String, Use> keys = new TreeMap<>();
+			Type[] params = Type.getArgumentTypes(handler.desc);
+			int slot = (handler.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+			for (int i = 0; i < params.length; slot += params[i].getSize(), i++) {
+				for (AnnotationNode ann : Annotations.ofParameter(handler, i)) {
+					if (!ann.desc.equals(MixinNames.SHARE) || !(Annotations.value(ann, "value") instanceof String name)) continue;
+					String key = (Annotations.value(ann, "namespace") instanceof String namespace ? namespace : "") + ":" + name;
+					keys.merge(key, use(body, slot), Use::or);
+				}
+			}
+			found.add(new Sharer(configName, internal.replace('/', '.'), handler.name + handler.desc, targets, methods, keys));
+		}
+		return found;
+	}
+
+	/**
+	 * How the code uses the local reference in {@code slot}: it reads it where it calls the reference's {@code get}, and sets
+	 * it where its straight code next calls the reference's {@code set}, only the value worked out between; anything else
+	 * (passing it on, keeping it, a lambda taking it), or no code to read, may do both.
+	 */
+	private static Use use(MethodNode body, int slot) {
+		if (body == null || body.instructions == null || body.instructions.size() == 0) return Use.BOTH;
+		boolean reads = false, sets = false;
+		for (AbstractInsnNode insn : body.instructions) {
+			if (!(insn instanceof VarInsnNode local) || local.var != slot) continue;
+			if (local.getOpcode() != Opcodes.ALOAD) return Use.BOTH;
+			AbstractInsnNode next = local.getNext();
+			while (next != null && next.getOpcode() < 0) next = next.getNext();
+			if (next instanceof MethodInsnNode call && localRef(call.owner) && call.name.equals("get")) {
+				reads = true;
+			} else if (setAfter(local)) {
+				sets = true;
+			} else {
+				return Use.BOTH;
 			}
 		}
+		return new Use(reads, sets);
+	}
+
+	/** Whether the straight code after loading a reference calls its {@code set}, first doing nothing else with references. */
+	private static boolean setAfter(VarInsnNode load) {
+		for (AbstractInsnNode insn = load.getNext(); insn != null; insn = insn.getNext()) {
+			int op = insn.getOpcode();
+			if (insn instanceof MethodInsnNode call && localRef(call.owner)) return call.name.equals("set");
+			if (insn instanceof MethodInsnNode call && call.desc.contains("Lcom/llamalad7/mixinextras/sugar/ref/")
+					|| insn instanceof InvokeDynamicInsnNode indy && indy.desc.contains("Lcom/llamalad7/mixinextras/sugar/ref/")
+					|| insn instanceof VarInsnNode other && other.var == load.var || op >= Opcodes.ISTORE && op <= Opcodes.SASTORE || op == Opcodes.PUTFIELD
+					|| op == Opcodes.PUTSTATIC || insn instanceof JumpInsnNode || op >= Opcodes.TABLESWITCH && op <= Opcodes.RETURN || op == Opcodes.ATHROW) return false;
+		}
+		return false;
+	}
+
+	private static boolean localRef(String owner) {
+		return owner.startsWith("com/llamalad7/mixinextras/sugar/ref/Local");
+	}
+
+	/**
+	 * SHARE-1 across mixins (SHARE-2): a local MixinExtras' {@code @Share} names with a namespace is one for the injectors of
+	 * every mixin naming it there, in each target method. So an injector left out, or one of a mixin left out (skipped, or
+	 * by an earlier config of the mod), takes with it those of the mod's other mixins, in any of its configs, that inject
+	 * into the same method and may read a namespaced local it may set, and in turn the injectors of their mixins that may
+	 * read what they may set (any local), until none is left. One only reading a local takes nothing with it: the others
+	 * set it as before. Apoli's {@code ServerPlayerInteractionManagerMixin} reads the block a player breaks from
+	 * {@code breakingBlock}, and whether the harvest check was changed from {@code modifiedHarvest} (namespace
+	 * {@code apoli}), which its {@code ModifyHarvestPowerTypeMixin$HarvestabilityProxy} keeps with its harvest hook, left
+	 * out where the platform asks its own harvest check: once SEAM-3 let the first mixin's hook of the removal apply, its
+	 * block-break action would have read no block. The injectors taken from a config checked before are left out from
+	 * this config's findings (named with theirs).
+	 */
+	void leaveOutNamespacedSharers(List<PreflightFinding> out, List<Sharer> checked, List<Sharer> skipped) {
+		sharers.addAll(checked);
+		sharers.addAll(skipped);
+		skippedSharers.addAll(skipped);
+		if (sharers.stream().noneMatch(s -> s.keys().keySet().stream().anyMatch(k -> !k.startsWith(":")))) {
+			goneSharers.addAll(skipped);
+			return;
+		}
+		ArrayDeque<Sharer> next = new ArrayDeque<>();
+		// The mod's injectors left out so far, this config's among them: earlier configs' meet this one's anew.
+		Set<String> gone = new HashSet<>();
+		for (PreflightFinding f : out) {
+			if (f.severity() == Severity.LEFT_OUT && f.mixin() != null) gone.add(handlerKey(f.mixin(), f.handler()));
+		}
+		for (Sharer s : checked) {
+			if (leftOut(gone, s.mixin(), s.handler())) goneSharers.add(s);
+		}
+		goneSharers.addAll(skipped);
+		next.addAll(goneSharers);
 		while (!next.isEmpty()) {
-			String[] with = next.pop();
-			Set<String> keys = shares.get(with[0]).get(with[1]);
-			if (keys == null) continue;
-			shares.forEach((mixin, handlers) -> handlers.forEach((other, theirs) -> {
-				Set<String> left = leftOut.computeIfAbsent(mixin, m -> new HashSet<>());
-				if (left.contains(other)) return;
-				boolean same = mixin.equals(with[0]);
-				List<String> common = theirs.stream().filter(k -> keys.contains(k) && (same || !k.startsWith(":"))).toList();
-				if (common.isEmpty()) return;
-				left.add(other);
-				next.add(new String[] {mixin, other});
+			Sharer with = next.pop();
+			for (Sharer other : sharers) {
+				if (goneSharers.contains(other)) continue;
+				boolean same = other.mixin().equals(with.mixin());
+				List<String> common = with.keys().entrySet().stream().filter(e -> e.getValue().sets() && (same || !e.getKey().startsWith(":")))
+						.map(Map.Entry::getKey).filter(k -> other.keys().containsKey(k) && other.keys().get(k).reads()).toList();
+				if (common.isEmpty() || !with.meets(other)) continue;
+				goneSharers.add(other);
+				next.add(other);
 				List<String> names = common.stream().map(k -> k.substring(k.indexOf(':') + 1) + (k.startsWith(":") ? "" : " (namespace " + k.substring(0, k.indexOf(':')) + ")")).toList();
-				out.add(new PreflightFinding(Severity.LEFT_OUT, configName, mixin, "The injector of " + other + " goes with that of " + (same ? "" : with[0] + ".")
-						+ with[1] + ", which can't apply: they share the " + (names.size() == 1 ? "local " : "locals ") + String.join(", ", names)
-						+ " (@Share), which it would read without the other's value", "", other));
-			}));
+				out.add(new PreflightFinding(Severity.LEFT_OUT, other.config(), other.mixin(), "The injector of " + other.handler() + " goes with that of "
+						+ (same ? "" : with.mixin() + ".") + with.handler() + ", which " + (skippedSharers.contains(with) ? "is left out" : "can't apply") + ": they share the "
+						+ (names.size() == 1 ? "local " : "locals ") + String.join(", ", names) + " (@Share), which it would read without the other's value", "",
+						other.handler()));
+			}
 		}
 	}
 
