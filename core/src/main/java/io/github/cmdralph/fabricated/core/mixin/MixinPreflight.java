@@ -267,6 +267,7 @@ public final class MixinPreflight extends PreflightPart {
 		List<PreflightFinding> out = new ArrayList<>();
 		boolean hasPlugin = config.plugin() != null && !config.plugin().isBlank();
 		Map<String, Optional<ClassNode>> modClassCache = new HashMap<>();
+		Map<String, Map<String, Set<String>>> configShares = new LinkedHashMap<>();
 		for (String mixin : config.mixinsFor(clientSide)) {
 			if (skip.contains(mixin)) continue;
 			String internal = config.internalName(mixin);
@@ -287,12 +288,14 @@ public final class MixinPreflight extends PreflightPart {
 			checkMixin(node, ctx);
 			ctx.leaveOutStateGroups(from);
 			leaveOutSharers(out, from, configName, ctx.mixinDotted(), shares(node));
+			configShares.put(ctx.mixinDotted(), shares(node));
 			ctx.leaveOutThreadLocalSharers(from, node, () -> threadLocalShares(code != null ? code : modClasses.readNode(internal, ClassReader.SKIP_FRAMES),
 					modClassCache));
 			// Last, so no grouping takes these readers' groups with them (SEAM-2).
 			ctx.leaveOutReadersOfSkippedCaptures(from, code, shares(node), () -> threadLocalShares(code != null ? code
 					: modClasses.readNode(internal, ClassReader.SKIP_FRAMES), modClassCache));
 		}
+		leaveOutNamespacedSharers(out, configName, configShares);
 		if (hasPlugin && out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
 			out.add(new PreflightFinding(Severity.INFO, configName, null, "This config uses a mixin plugin (" + config.plugin()
 					+ ") that may disable mixins at runtime, so an injector that would crash the game is left out instead of disabling the mod.", ""));
@@ -587,6 +590,46 @@ public final class MixinPreflight extends PreflightPart {
 						+ ", which can't apply: they share the " + (names.size() == 1 ? "local " : "locals ") + String.join(", ", names)
 						+ " (@Share), which it would read without the other's value", "", other));
 			});
+		}
+	}
+
+	/**
+	 * SHARE-1 across the config's mixins (SHARE-2): a local MixinExtras' {@code @Share} names with a namespace is one for the
+	 * injectors of every mixin naming it there, so a left-out injector takes with it those of the config's other mixins
+	 * sharing such a local with it, and in turn their mixins' sharers (any local), until none is left. Apoli's
+	 * {@code ServerPlayerInteractionManagerMixin} reads the block a player breaks from {@code breakingBlock} (namespace
+	 * {@code apoli}), which its {@code ModifyHarvestPowerTypeMixin$HarvestabilityProxy} keeps with its harvest hook, left
+	 * out where the platform asks its own harvest check: once SEAM-3 let the first mixin's hook of the removal apply, its
+	 * block-break action would have read no block. A mixin left out whole takes its sharers with it too.
+	 */
+	static void leaveOutNamespacedSharers(List<PreflightFinding> out, String configName, Map<String, Map<String, Set<String>>> shares) {
+		if (shares.values().stream().noneMatch(m -> m.values().stream().anyMatch(keys -> keys.stream().anyMatch(k -> !k.startsWith(":"))))) return;
+		Map<String, Set<String>> leftOut = new HashMap<>();
+		ArrayDeque<String[]> next = new ArrayDeque<>();
+		for (PreflightFinding f : out) {
+			if (f.severity() != Severity.LEFT_OUT || f.mixin() == null || !shares.containsKey(f.mixin())) continue;
+			Set<String> handlers = f.handler() == null ? shares.get(f.mixin()).keySet() : Set.of(f.handler());
+			for (String handler : handlers) {
+				if (leftOut.computeIfAbsent(f.mixin(), m -> new HashSet<>()).add(handler)) next.add(new String[] {f.mixin(), handler});
+			}
+		}
+		while (!next.isEmpty()) {
+			String[] with = next.pop();
+			Set<String> keys = shares.get(with[0]).get(with[1]);
+			if (keys == null) continue;
+			shares.forEach((mixin, handlers) -> handlers.forEach((other, theirs) -> {
+				Set<String> left = leftOut.computeIfAbsent(mixin, m -> new HashSet<>());
+				if (left.contains(other)) return;
+				boolean same = mixin.equals(with[0]);
+				List<String> common = theirs.stream().filter(k -> keys.contains(k) && (same || !k.startsWith(":"))).toList();
+				if (common.isEmpty()) return;
+				left.add(other);
+				next.add(new String[] {mixin, other});
+				List<String> names = common.stream().map(k -> k.substring(k.indexOf(':') + 1) + (k.startsWith(":") ? "" : " (namespace " + k.substring(0, k.indexOf(':')) + ")")).toList();
+				out.add(new PreflightFinding(Severity.LEFT_OUT, configName, mixin, "The injector of " + other + " goes with that of " + (same ? "" : with[0] + ".")
+						+ with[1] + ", which can't apply: they share the " + (names.size() == 1 ? "local " : "locals ") + String.join(", ", names)
+						+ " (@Share), which it would read without the other's value", "", other));
+			}));
 		}
 	}
 

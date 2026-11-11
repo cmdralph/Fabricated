@@ -7058,6 +7058,53 @@ class MixinPreflightTest {
 		assertTrue(check.apply(GrowthBuild.VANILLA).isEmpty(), "all apply where the first does");
 	}
 
+	@Test
+	void anInjectorSharingANamespacedLocalWithOneOfAnotherMixinLeftOutGoesWithIt() throws Exception {
+		// SHARE-2, SHARE-1 across mixins: Apoli's break action reads the block from breakingBlock (namespace apoli), which another
+		// of its mixins keeps beside its harvest hook. Here the keeper, whose call this build lacks, is left out; the reader
+		// in the other mixin goes with it, and the reader's own sharer with it in turn; a local of the same name in no
+		// namespace stays the reader mixin's own.
+		String localRef = "Lcom/llamalad7/mixinextras/sugar/ref/LocalRef;";
+		String share = "Lcom/llamalad7/mixinextras/sugar/Share;";
+		String handler = "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;" + localRef + ")V";
+		java.util.function.BiFunction<String, String[][], byte[]> mixinOf = (name, members) -> mixin(name, false, cw -> {
+			for (String[] member : members) {
+				MethodVisitor m = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, member[0], handler, null, null);
+				AnnotationVisitor inject = m.visitAnnotation(INJECT, true);
+				AnnotationVisitor targets = inject.visitArray("method");
+				targets.visit(null, "getGrowthSpeed");
+				targets.visitEnd();
+				AnnotationVisitor ats = inject.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", member[1].isEmpty() ? "HEAD" : "INVOKE");
+				if (!member[1].isEmpty()) at.visit("target", member[1]);
+				at.visitEnd();
+				ats.visitEnd();
+				inject.visitEnd();
+				AnnotationVisitor shared = m.visitParameterAnnotation(1, share, false);
+				shared.visit("value", member[2]);
+				if (member.length > 3) shared.visit("namespace", member[3]);
+				shared.visitEnd();
+				m.visitCode();
+				m.visitInsn(Opcodes.RETURN);
+				m.visitMaxs(0, 2);
+				m.visitEnd();
+			}
+		});
+		byte[] keeper = mixinOf.apply("com/example/mixin/Keeper", new String[][] {{"keep", "L" + STATE + ";noSuchCall()Z", "breaking", "apoli"}});
+		byte[] reader = mixinOf.apply("com/example/mixin/Reader", new String[][] {{"read", "", "breaking", "apoli"}, {"removed", "", "removed"},
+				{"own", "", "breaking"}});
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Keeper", keeper, "com/example/mixin/Reader", reader);
+		List<PreflightFinding> found = preflight(new ClassIndex(Map.of(TARGET, growth(GrowthBuild.VANILLA))::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", MixinConfigFile.parse("{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Keeper\",\"Reader\"],"
+						+ "\"injectors\":{\"defaultRequire\":1}}"), Refmap.EMPTY, Set.of());
+		assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && ("read" + handler).equals(f.handler())
+				&& f.message().equals("The injector of read" + handler + " goes with that of com.example.mixin.Keeper.keep" + handler
+						+ ", which can't apply: they share the local breaking (namespace apoli) (@Share), which it would read without the other's value")),
+				found.toString());
+		assertTrue(found.stream().noneMatch(f -> ("own" + handler).equals(f.handler()) || ("removed" + handler).equals(f.handler())), found.toString());
+	}
+
 	/**
 	 * CORPUS-55's effect drawing methods: vanilla's, with the effect in slot 3 and the draw position in slot 6; Forge's,
 	 * recompiled, with the iterator in slot 3, the effect in slot 4, and two locals of its patch before the counter and
