@@ -83,7 +83,8 @@ final class ForgeMods {
 			if (!infos.isEmpty() && infos.stream().noneMatch(mod -> GAME.contains(mod.getModId()) || mod.getModId().equals(ModIds.FABRICATED))) {
 				SecureJar jar = file.getSecureJar();
 				jars.add(new InstalledClasses.Jar(infos.get(0).getDisplayName(), name -> contains(jar, name + ".class"), name -> read(jar, name + ".class"),
-						() -> NativeModMixins.manifestMixins(entry -> readText(jar, entry), clientSide)));
+						() -> NativeModMixins.manifestMixins(entry -> readText(jar, entry), clientSide), false,
+						InstalledClasses.fingerprint(file.getFilePath(), "")));
 				if (nested && !declared.isEmpty()) {
 					providers.add(new NativeModules.Provider(declared.get(0), file.getFileName(), PlatformMods.internal(jar.getPackages())));
 				}
@@ -106,7 +107,7 @@ final class ForgeMods {
 					jars.add(new InstalledClasses.Jar(declared.get(0).displayName(), classes::contains,
 							name -> NestedNeoForgeJars.readClass(path, toml.chain(), name, ArchiveLimits.DEFAULTS),
 							() -> NativeModMixins.manifestMixins(entry -> NestedNeoForgeJars.readFile(path, toml.chain(), entry, ArchiveLimits.DEFAULTS),
-									clientSide)));
+									clientSide), false, InstalledClasses.fingerprint(path, String.join("!", toml.chain()))));
 				}
 			} catch (IOException | JsonException | ParsingException e) {
 				// Forge reports a broken nested jar itself; Fabric mods just don't see its mods.

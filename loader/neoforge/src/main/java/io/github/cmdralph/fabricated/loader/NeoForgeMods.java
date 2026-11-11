@@ -78,7 +78,8 @@ final class NeoForgeMods {
 			if (!infos.isEmpty() && infos.stream().noneMatch(mod -> GAME.contains(mod.getModId()) || mod.getModId().equals(ModIds.FABRICATED))) {
 				jars.add(new InstalledClasses.Jar(infos.getFirst().getDisplayName(), name -> Fml.contains(file, name + ".class"),
 						name -> Fml.read(file, name + ".class"),
-						() -> NativeModMixins.declaredMixins(entry -> Fml.read(file, entry), mixinConfigs(readToml(file)), clientSide)));
+						() -> listedMixins(file, clientSide), false,
+						InstalledClasses.fingerprint(file.getFilePath(), "")));
 				if (nested && !declared.isEmpty()) {
 					providers.add(new NativeModules.Provider(declared.getFirst(), file.getFileName(), PlatformMods.internal(Fml.packages(file))));
 				}
@@ -101,7 +102,7 @@ final class NeoForgeMods {
 					jars.add(new InstalledClasses.Jar(declared.getFirst().displayName(), classes::contains,
 							name -> NestedNeoForgeJars.readClass(path, toml.chain(), name, ArchiveLimits.DEFAULTS),
 							() -> NativeModMixins.declaredMixins(entry -> NestedNeoForgeJars.readFile(path, toml.chain(), entry, ArchiveLimits.DEFAULTS),
-									mixinConfigs(toml.text()), clientSide)));
+									mixinConfigs(toml.text()), clientSide), false, InstalledClasses.fingerprint(path, String.join("!", toml.chain()))));
 				}
 			} catch (IOException | JsonException | ParsingException e) {
 				// NeoForge reports a broken nested jar itself; Fabric mods just don't see its mods.
@@ -111,14 +112,25 @@ final class NeoForgeMods {
 		return new Found(mods, new InstalledClasses(jars), providers, Set.copyOf(libraryPackages));
 	}
 
-	/** The mods.toml of a mod file, as text; null where it has none, too large a one, or it can't be read. */
-	private static String readToml(IModFile file) {
+	/**
+	 * The mixins a mod file lists for the side: those of the configs its mods.toml declares and its manifest names. Where
+	 * its mods.toml fails to read, the listing says so, and has its manifest's alone.
+	 */
+	private static InstalledClasses.Listing listedMixins(IModFile file, boolean clientSide) {
+		NativeModMixins.Files files = entry -> Fml.read(file, entry);
+		String toml;
 		try {
-			byte[] toml = Fml.read(file, NestedNeoForgeJars.MODS_TOML);
-			return toml == null || toml.length > NestedNeoForgeJars.MAX_TEXT_BYTES ? null : new String(toml, StandardCharsets.UTF_8);
-		} catch (IOException e) {
-			return null;
+			toml = readToml(file);
+		} catch (IOException | RuntimeException e) {
+			return NativeModMixins.declaredMixins(files, List.of(), clientSide).withUnread(NestedNeoForgeJars.MODS_TOML);
 		}
+		return NativeModMixins.declaredMixins(files, mixinConfigs(toml), clientSide);
+	}
+
+	/** The mods.toml of a mod file, as text; null where it has none, or too large a one. */
+	private static String readToml(IModFile file) throws IOException {
+		byte[] toml = Fml.read(file, NestedNeoForgeJars.MODS_TOML);
+		return toml == null || toml.length > NestedNeoForgeJars.MAX_TEXT_BYTES ? null : new String(toml, StandardCharsets.UTF_8);
 	}
 
 	/** The mixin configs a mods.toml declares ({@code [[mixins]] config = ...}), in order; none where it can't be parsed. */

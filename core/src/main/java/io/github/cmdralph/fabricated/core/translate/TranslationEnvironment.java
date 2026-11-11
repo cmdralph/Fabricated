@@ -7,6 +7,7 @@ import java.util.TreeMap;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
+import io.github.cmdralph.fabricated.core.bytecode.SeamConflicts;
 import io.github.cmdralph.fabricated.core.remap.LazyMappingTable;
 
 /**
@@ -39,9 +40,10 @@ import io.github.cmdralph.fabricated.core.remap.LazyMappingTable;
  * @param bridgedFields       the game fields Fabricated's in-game mod serves as vanilla's type through a getter it adds,
  *                            as {@code owner field} in runtime names to the getter's name, which a Fabric mod's reads of
  *                            the field call (CORPUS-107); empty where the platform keeps vanilla's types
- * @param seamsKept           the game classes whose vanilla methods aren't put back, a native mod's mixin hooking the
- *                            platform's code that would move ({@link io.github.cmdralph.fabricated.core.bytecode.SeamConflicts#key},
- *                            SEAM-1): part of cache keys, as a translation records the classes its hooks have rewritten
+ * @param seamsKept           the game classes whose vanilla methods aren't put back, with the native mod's mixin hooking
+ *                            the platform's code that would move in each ({@link io.github.cmdralph.fabricated.core.bytecode.SeamConflicts},
+ *                            SEAM-1): pre-flight's decision, and part of cache keys ({@link io.github.cmdralph.fabricated.core.bytecode.SeamConflicts#key}),
+ *                            as a translation records the classes its hooks have rewritten
  */
 public record TranslationEnvironment(
 		String minecraftVersion,
@@ -62,7 +64,7 @@ public record TranslationEnvironment(
 		Map<String, String> unsupportedPackages,
 		PlatformDescriptor descriptor,
 		Map<String, String> bridgedFields,
-		String seamsKept) {
+		Map<String, SeamConflicts.Conflict> seamsKept) {
 
 	/**
 	 * The format of cached translations. Builds of Fabricated differ in {@link #fabricatedBuild}, so a change to what
@@ -84,6 +86,7 @@ public record TranslationEnvironment(
 		}
 		unsupportedPackages = Collections.unmodifiableMap(new TreeMap<>(unsupportedPackages));
 		bridgedFields = Collections.unmodifiableMap(new TreeMap<>(bridgedFields));
+		seamsKept = Collections.unmodifiableMap(new TreeMap<>(seamsKept));
 	}
 
 	public String side() {

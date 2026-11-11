@@ -1,0 +1,8 @@
+{
+  "fabric:load_conditions": [
+    {
+      "condition": "fabricated_testmod:no_such_condition"
+    }
+  ],
+  "value": "unparsed"
+}
