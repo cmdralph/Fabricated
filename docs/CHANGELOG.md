@@ -3,6 +3,28 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-11: Vanilla's block-breaking calls put back for the blocks keeping the platform's default (SEAM-3), shares across mixins (SHARE-2)
+
+- **SEAM-3** (P1), fixed: NeoForge and Forge break a block in `destroyBlock`, the server's and the client's, through the
+  block state's `onDestroyedByPlayer`, where vanilla removes it itself (`removeBlock` and `destroy` on the server,
+  `setBlock` with the fluid's block on the client), so Wilder Wild's, FrozenLib's and Apoli's hooks of those calls were
+  left out and Carpet's warned about: snowlogged blocks didn't leave their snow, waterlike blocks their water. Where a
+  Fabric mod's mixin hooks one of those calls, `destroyBlock` now makes vanilla's calls there for a block whose classes
+  keep the platform's default, and the platform's call for one overriding it, which breaks exactly as before. The
+  platform's own steps vanilla doesn't make there stay out of hooks' sight (Forge's server's `playerWillDestroy`: a
+  wrapper of it is a known limit). A NeoForge or Forge mod's mixin of the platform's code there keeps the class as the
+  platform has it, as for SEAM-1. The platforms' block break events fire on both paths. The test mod wraps the server's
+  `removeBlock` and breaks calcite, stone and a block overriding `onDestroyedByPlayer` (`vanilla-break`: NeoForge, every
+  run; Forge, with Fabric API).
+- **SHARE-2** (P2), fixed: a hook sharing a local with another mixin's left-out hook through a namespaced `@Share` now
+  goes with it, as one of the same mixin did (SHARE-1): Apoli's break action, which reads the broken block its harvest
+  mixin keeps, stays left out with that mixin's harvest wrapper.
+- Verified: core's tests (629), CI's script tests and the inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2 and Forge 47,
+  52 and 66 build; local servers pass every check (NeoForge 1.21.1, 26.1.2; Forge 47, 52, 66); on the advanced corpus
+  servers of NeoForge 1.21.1 and Forge 47, against runs before the change, only the hooks above change, now applying,
+  and the checks are as before. The first check, by `Class.getMethod`, failed on Forge 66, whose extensions name client
+  classes: it now reads only the classes' own methods.
+
 ## 2026-11-11: The client parts' Mesa install past a package mirror that's down (CI-14); GitHub's actions on Node 24
 
 - **CI-14** (P3, CI only), fixed: every client and mods part failed before any test ran when one of the runner's package

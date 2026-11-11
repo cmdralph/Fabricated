@@ -39,8 +39,8 @@ import org.objectweb.asm.tree.VarInsnNode;
  * the state's {@code onDestroyedByPlayer} there (the server through a private {@code removeBlock} of theirs), whose default
  * makes those calls (NeoForge's) or {@code playerWillDestroy} and the {@code setBlock} (Forge's). Where the platform calls
  * it, the rewrite asks whether the block keeps the default ({@code fabricated$keepsDefault}: neither the state's class
- * nor the block's overrides either interface's method, {@link KeepsDefault}), and then makes vanilla's calls, which hooks find;
- * otherwise the platform's call, as before. Each operand of the platform's call is evaluated as before, once, in the
+ * nor the block's overrides either interface's method, {@link KeepsDefault}), and then makes vanilla's calls, which
+ * hooks find; otherwise the platform's call, as before. Each operand of the platform's call is evaluated as before, once, in the
  * branch the call is in; vanilla's branch loads again the plain ones it needs. What vanilla doesn't call there (the
  * block's {@code getBlock}, Forge's server reading the state and its {@code playerWillDestroy}, which vanilla makes before
  * the tool is damaged) is called through private helpers, out of hooks' sight, and a value kept goes in a local of type
