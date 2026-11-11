@@ -1065,7 +1065,8 @@ public final class MixinPreflight extends PreflightPart {
 			for (AnnotationNode ann : Annotations.all(method)) {
 				if (PreflightAsm.isInjector(ann.desc)) {
 					injector = true;
-					if (itf && !interfaceInjectors) {
+					// One Fabricated applies is checked as a class mixin's is (INTERFACE-1).
+					if (itf && !interfaceInjectors && !InterfaceInjects.marked(method)) {
 						ctx.injector(method, 1, "@" + PreflightAsm.simpleName(ann.desc) + " handler " + method.name + " is an injector in an interface mixin, which "
 										+ loader + "'s Mixin doesn't apply (Mixin does from 0.8.6), so it would drop the whole mixin",
 								"The feature this hook serves doesn't work on this " + loader + ".");

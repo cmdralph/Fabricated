@@ -239,15 +239,15 @@ final class MixinRepairs extends PreflightPart {
 			if ((node.access & Opcodes.ACC_INTERFACE) != 0 && !interfaceInjectors) {
 				// After the injector repairs, which may point the selectors elsewhere (INTERFACE-1).
 				for (MethodNode method : List.copyOf(node.methods)) {
-					AnnotationNode inject = Annotations.find(method, MixinNames.INJECT);
-					if (inject == null) continue;
-					String handler = "@Inject handler " + method.name + method.desc + " is an injector in an interface mixin, which " + loader
-							+ "'s Mixin doesn't apply (Mixin does from 0.8.6)";
-					String refused = InterfaceInjects.mark(node, method, inject, targets, ctx::resolve, config.defaultRequire());
+					AnnotationNode injector = Annotations.all(method).stream().filter(a -> PreflightAsm.isInjector(a.desc)).findFirst().orElse(null);
+					if (injector == null) continue;
+					String handler = "@" + PreflightAsm.simpleName(injector.desc) + " handler " + method.name + method.desc + " is an injector in an"
+							+ " interface mixin, which " + loader + "'s Mixin doesn't apply (Mixin does from 0.8.6)";
+					String refused = InterfaceInjects.mark(node, method, injector, targets, ctx::resolve, config.defaultRequire());
 					if (refused == null) changed = true;
 					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), refused == null
 							? handler + "; Fabricated applies it as the mixin applies, as Mixin would (INTERFACE-1)"
-							: handler + "; Fabricated applies one at HEAD, RETURN or TAIL itself, but not this one: " + refused + " (INTERFACE-1)", ""));
+							: handler + "; Fabricated applies " + InterfaceInjects.APPLIED + " itself, but not this one: " + refused + " (INTERFACE-1)", ""));
 				}
 			}
 			if (changed) repaired.put(internal + ".class", write(node));
