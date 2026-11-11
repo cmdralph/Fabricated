@@ -1146,7 +1146,8 @@ public final class Pipeline {
 			Candidate c = d.getValue().candidate();
 			report.mod(new ModRow(d.getKey(), c.version(), c.origin(), Status.DISABLED, d.getValue().reason(), d.getValue().suggestion()));
 			for (PreflightFinding f : rounds.failedFindings.getOrDefault(d.getKey(), List.of())) {
-				report.line("Mixin pre-flight failures", d.getKey() + ": " + f);
+				String limit = KnownLimits.ofFinding(in.descriptor().loaderName(), f);
+				report.line("Mixin pre-flight failures", d.getKey() + ": " + f + (limit == null ? "" : " - " + limit));
 			}
 		}
 		if (rounds.resolution != null) {
@@ -1288,7 +1289,7 @@ public final class Pipeline {
 	private TranslatedMod withKnownLimits(TranslatedMod t) {
 		String loader = in.descriptor().loaderName();
 		List<PreflightFinding> findings = t.findings().stream().map(f -> {
-			String limit = KnownLimits.ofFinding(loader, f.message());
+			String limit = KnownLimits.ofFinding(loader, f);
 			return limit == null ? f : new PreflightFinding(f.severity(), f.config(), f.mixin(), f.message(),
 					f.suggestion().isEmpty() ? limit : f.suggestion() + " " + limit, f.handler());
 		}).toList();

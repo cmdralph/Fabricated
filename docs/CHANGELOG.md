@@ -8,8 +8,9 @@ One entry per working session, newest first: what changed, and how it was verifi
 - Three failures no generic change can fix now say so where they show, with what to do and their finding, instead of
   "the mod needs an update" or the platform's exception alone. Core's `KnownLimits` is a short table of them: a
   pre-flight finding matches by the platform and its message, an entrypoint's failure by the class and message of its
-  root cause. The line is added after the hook's suggestion in the report, and after the failure's cause in the
-  report, the log and the loading warnings. Nothing loads or is left out differently.
+  root cause. The line is added after the suggestion of a finding that leaves its hook out or disables its mod, never a
+  warning (a `@Group`'s member that didn't apply while its group did), and after the failure's cause in the report,
+  the log and the loading warnings. Nothing loads or is left out differently.
 - **SPAWN-1** (P1, known limit): NeoForge and Forge make vanilla's `Mob.checkSpawnRules` and `checkSpawnObstruction`
   inside their own spawn position event's hook, so Architectury's spawner and world generation spawn hooks, and Friends
   and Foes' world generation one, are left out on every version: "Known limit: NeoForge and Forge run spawn checks
@@ -21,12 +22,15 @@ One entry per working session, newest first: what changed, and how it was verifi
   screens through its own layer code, so wrappers of a screen's render call can't apply; use NeoForge or the mod's
   Forge build (SCREEN-2)".
 - **REG-13** (P1, known limit): Forge's registries tell entries apart by equality, so Wover Story's two equal
-  point-of-interest types fail its main entrypoint on Forge 66: "Known limit: Forge's registries take two equal
-  entries for one, so the mod's second one can't be registered; use NeoForge or the mod's Forge build (REG-13)".
-- Verified: core's tests (`KnownLimitsTest`, a case per limit and lines that aren't one; `PipelineTest`, a left-out
-  spawn check hook's line), CI's script tests and the mixin inventory. On a local NeoForge 1.21.1 corpus server
-  Architectury's three spawn hook lines and Friends and Foes' one end with SPAWN-1's line, in the translating launch
-  and the cached one; the run's checks pass, and its mods loaded and disabled (140 and 1) are the release run's.
+  point-of-interest types fail its main entrypoint on Forge 66, two objects by the identity hashes Forge's message
+  gives (one object registered under two names, the same hash twice, gets no hint): "Known limit: Forge's registries
+  take two equal entries for one, so the mod's second one can't be registered; use NeoForge or the mod's Forge build
+  (REG-13)".
+- Verified: core's tests (`KnownLimitsTest`, a case per limit, a warning, one object registered twice and lines that
+  aren't one; `PipelineTest`, a left-out spawn check hook's line), CI's script tests and the mixin inventory. On a
+  local NeoForge 1.21.1 corpus server Architectury's three spawn hook lines and Friends and Foes' one end with
+  SPAWN-1's line, in the translating launch and the cached one; the run's checks pass, and its mods loaded and
+  disabled (140 and 1) are the release run's.
 
 ## 2026-11-11: Fabric HUD layers added in `Gui`'s constructor drawn on NeoForge 1.21.1 (HUD-7)
 
