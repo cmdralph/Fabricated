@@ -130,7 +130,7 @@ final class PreflightClasses {
 	/**
 	 * The game classes whose vanilla methods put back ({@link VanillaSeams}, SEAM-1) a mixin member hooks: only those are
 	 * rewritten as they load, so a native mod's mixin of the platform's calls there still finds them where no Fabric mod's
-	 * hooks a seam (Lithium's and Carpet's other mixins of the resolver hook none).
+	 * hooks a seam (Lithium's mixin of the resolver hooks none).
 	 */
 	final Set<String> restoredSeams = new TreeSet<>();
 

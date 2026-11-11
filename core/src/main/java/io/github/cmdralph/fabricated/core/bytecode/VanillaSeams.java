@@ -43,8 +43,8 @@ import org.objectweb.asm.tree.VarInsnNode;
  *
  * <p>The same rewrite gives pre-flight its view of the game ({@link #over}) and the game its classes at load (before
  * Mixin, {@link #restoreWhole}), so a hook pre-flight passes finds what it hooks; at load, only the classes in which a
- * Fabric mod's mixin member names or shadows a seam are rewritten (Lithium's and Carpet's other mixins of the resolver,
- * which hook none, leave it as the platform has it). A rewritten class no longer makes the platform's calls where vanilla
+ * Fabric mod's mixin member names or shadows a seam are rewritten (Lithium's mixin of the resolver, which hooks none,
+ * leaves it as the platform has it). A rewritten class no longer makes the platform's calls where vanilla
  * called the seam, so a native mod's mixin hooking them there finds none. Each change keeps
  * the stack as it was at every instruction: a call takes the operands of the platform's first call and leaves its
  * result, and the platform's later calls, which only loaded locals, go.

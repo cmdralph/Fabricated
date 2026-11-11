@@ -21,8 +21,8 @@ import io.github.cmdralph.fabricated.core.testutil.TestSources;
 
 /**
  * SEAM-1: a game class is rewritten as it loads, its vanilla methods put back, only where a Fabric mod's mixin member hooks
- * one of them (an injector naming it, a shadow of it). One that targets the class but hooks none, as Lithium's and Carpet's
- * other mixins of the resolver, leaves it as the platform has it, so a native mod's mixin of the platform's calls there
+ * one of them (an injector naming it, a shadow of it). One that targets the class but hooks none, as Lithium's mixin of
+ * the resolver, leaves it as the platform has it, so a native mod's mixin of the platform's calls there
  * still finds them.
  */
 class RestoredSeamsTest {
