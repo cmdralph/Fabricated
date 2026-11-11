@@ -57,7 +57,8 @@ import io.github.cmdralph.fabricated.core.mixin.InjectionPoints.Range;
  * <li>a {@code @ModifyConstant} of a number, string or class constant (its {@code ModifyConstantInjector}).</li>
  * </ul>
  * The last three take a prefix of the target's parameters after their own where the handler declares them, and each
- * MixinExtras' {@code @Local} parameters, found as Mixin's discriminator finds a local. Any other injector, slice,
+ * MixinExtras' {@code @Local} parameters, found as Mixin's discriminator finds a local. A {@code @WrapOperation} of a
+ * call another handler replaced wraps that handler's call, as MixinExtras chains them. Any other injector, slice,
  * {@code @Coerce} or sugar is left out, as before.
  */
 public final class InterfaceInjects {
@@ -155,12 +156,15 @@ public final class InterfaceInjects {
 	 * made private again and called where its injector would have Mixin call it. All the injection points are found
 	 * before any is injected, as Mixin finds every injector's before injecting any (so a handler's cancellation, which
 	 * returns, is no {@code RETURN} of another's), and a point a {@code @Redirect} or {@code @WrapOperation} replaced is
-	 * where the handler's call is, as Mixin follows it.
+	 * where the handler's call is, as Mixin follows it. The locals each handler is given are those Mixin works out
+	 * without the ones Fabricated's handlers' calls store.
 	 *
 	 * @param target the class, its mixins applied
 	 * @param locals the locals Mixin works out, for the handlers that capture them
 	 * @param warn   what Mixin would warn of: a handler skipped where it captures other locals than Mixin finds there
-	 *               ({@code CAPTURE_FAILSOFT}), or where another handler already replaced the call it replaces
+	 *               ({@code CAPTURE_FAILSOFT}); and a handler left out where it can't apply there, which then counts as
+	 *               injected for its {@code require}: a {@code @Redirect} of a call another handler already replaced, a
+	 *               {@code @Local} the locals there don't tell
 	 * @return the handlers applied
 	 * @throws IllegalStateException where a handler injects fewer times than its injector requires, or doesn't fit what
 	 *                               it finds, as Mixin then fails the class
@@ -185,19 +189,31 @@ public final class InterfaceInjects {
 				throw failed(handler, target, e.getMessage());
 			}
 		}
+		// The locals of each method, as Mixin leaves it: Fabricated's handlers' calls store into those past them.
+		Map<MethodNode, Integer> ownLocals = new HashMap<>();
+		planned.forEach(p -> p.sites().keySet().forEach(m -> ownLocals.putIfAbsent(m, m.maxLocals)));
+		LocalsAt mixins = (method, insn) -> {
+			String[] there = locals.at(method, insn);
+			return there == null ? null : Arrays.copyOf(there, Math.min(there.length, ownLocals.getOrDefault(method, there.length)));
+		};
 		Map<AbstractInsnNode, AbstractInsnNode> replaced = new HashMap<>();
 		for (Planned p : planned) {
 			int injected = 0;
+			int leftOut = 0;
 			for (Map.Entry<MethodNode, List<AbstractInsnNode>> e : p.sites().entrySet()) {
 				for (AbstractInsnNode at : e.getValue()) {
 					try {
-						if (inject(target, e.getKey(), p.handler(), p.injector(), at, replaced, locals, warn)) injected++;
+						if (inject(target, e.getKey(), p.handler(), p.injector(), at, replaced, mixins, warn)) injected++;
+					} catch (LeftOut l) {
+						warn.accept(p.injector().kind() + " handler " + p.handler().name + " of an interface mixin is left out in " + where(e.getKey(), target)
+								+ ": " + l.getMessage() + " (INTERFACE-2)");
+						leftOut++;
 					} catch (Refused r) {
 						throw failed(p.handler(), target, r.getMessage());
 					}
 				}
 			}
-			if (injected < p.require()) {
+			if (injected + leftOut < p.require()) {
 				throw failed(p.handler(), target, "it injects " + injected + " time(s), where its " + p.injector().kind() + " requires " + p.require());
 			}
 			if (p.allow() >= 0 && injected > p.allow()) {
@@ -251,24 +267,26 @@ public final class InterfaceInjects {
 
 	/**
 	 * Calls the handler where it injects at {@code found} (or where the call of another handler that replaced it is), as
-	 * its injector would have Mixin call it. Returns whether it did: not where it captures other locals than Mixin finds
-	 * there ({@code CAPTURE_FAILSOFT}) or replaces what another handler already replaced, as Mixin skips them.
+	 * its injector would have Mixin call it. A {@code @WrapOperation} of a call another handler's call replaced wraps that
+	 * call, as MixinExtras chains them: its {@code Operation} calls that handler, passing on what it takes after the call's
+	 * receiver and arguments. A second {@code @ModifyConstant} of a constant modifies it before the first, as Mixin wraps
+	 * the constant again. Returns whether it did: not where it captures other locals than Mixin finds there
+	 * ({@code CAPTURE_FAILSOFT}), as Mixin skips it.
+	 *
+	 * @throws LeftOut where it can't apply there: a {@code @Redirect} of a call another handler replaced, or a
+	 *                 {@code @Local} the locals there don't tell
 	 */
 	private static boolean inject(ClassNode owner, MethodNode method, MethodNode handler, Injector injector, AbstractInsnNode found,
 			Map<AbstractInsnNode, AbstractInsnNode> replaced, LocalsAt locals, Consumer<String> warn) throws Refused {
 		AbstractInsnNode at = replaced.getOrDefault(found, found);
 		String where = where(method, owner);
-		if (!injector.desc().equals(MixinNames.INJECT) && at != found) {
-			warn.accept(injector.kind() + " handler " + handler.name + " of an interface mixin is skipped in " + where + ": another interface mixin's"
-					+ " handler already replaced what it replaces there, which Fabricated doesn't chain (INTERFACE-1)");
-			return false;
-		}
+		if (injector.desc().equals(MixinNames.REDIRECT) && at != found) throw new LeftOut("another handler already replaces the call there");
 		Type[] args = Type.getArgumentTypes(handler.desc);
 		List<AnnotationNode> sugar = sugar(handler);
 		int own = args.length - sugar.size();
 		InsnList sugarLoads = new InsnList();
 		for (int i = own; i < args.length; i++) {
-			sugarLoads.add(new VarInsnNode(args[i].getOpcode(Opcodes.ILOAD), local(owner, method, at, args[i], sugar.get(i - own), locals, where)));
+			sugarLoads.add(new VarInsnNode(args[i].getOpcode(Opcodes.ILOAD), local(owner, method, at, args[i], sugar.get(i - own), locals)));
 		}
 		InsnList code = new InsnList();
 		boolean handlerStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
@@ -280,15 +298,17 @@ public final class InterfaceInjects {
 				if (!handlerStatic) method.instructions.insertBefore(at, new VarInsnNode(Opcodes.ALOAD, 0));
 				loadArguments(code, method, own - 1);
 				code.add(sugarLoads);
-				AbstractInsnNode call = invoke(owner, handler);
-				code.add(call);
+				code.add(invoke(owner, handler));
 				method.instructions.insert(at, code);
-				replaced.put(at, call);
 			}
 			default -> {
-				// A @Redirect or @WrapOperation of a call: its receiver and arguments stored, then given to the handler.
-				MethodInsnNode original = (MethodInsnNode) at;
-				Type[] stack = stack(original);
+				// A @Redirect or @WrapOperation of a call: what the call takes stored, then its receiver and arguments given to the
+				// handler. Another handler's call replacing it takes its receiver (this) before them, unless it is static, and
+				// arguments of its own after them, which the Operation passes on.
+				MethodInsnNode call = (MethodInsnNode) at;
+				Type[] stack = stack(call);
+				int leading = call == found || call.getOpcode() == Opcodes.INVOKESTATIC ? 0 : 1;
+				int given = stack((MethodInsnNode) found).length;
 				int[] slots = new int[stack.length];
 				for (int i = 0; i < stack.length; i++) {
 					slots[i] = method.maxLocals;
@@ -296,19 +316,23 @@ public final class InterfaceInjects {
 				}
 				for (int i = stack.length - 1; i >= 0; i--) code.add(new VarInsnNode(stack[i].getOpcode(Opcodes.ISTORE), slots[i]));
 				if (!handlerStatic) code.add(new VarInsnNode(Opcodes.ALOAD, 0));
-				for (int i = 0; i < stack.length; i++) code.add(new VarInsnNode(stack[i].getOpcode(Opcodes.ILOAD), slots[i]));
-				int extra = own - stack.length;
+				for (int i = leading; i < leading + given; i++) code.add(new VarInsnNode(stack[i].getOpcode(Opcodes.ILOAD), slots[i]));
+				int extra = own - given;
 				if (injector.desc().equals(MixinNames.WRAP_OPERATION)) {
-					code.add(operation(owner, handler, original, stack));
+					for (int i = 0; i < stack.length; i++) {
+						if (i < leading || i >= leading + given) code.add(new VarInsnNode(stack[i].getOpcode(Opcodes.ILOAD), slots[i]));
+					}
+					code.add(operation(owner, handler, call, leading, given));
 					extra--;
 				}
 				loadArguments(code, method, extra);
 				code.add(sugarLoads);
-				AbstractInsnNode call = invoke(owner, handler);
-				code.add(call);
-				method.instructions.insertBefore(original, code);
-				method.instructions.remove(original);
-				replaced.put(original, call);
+				AbstractInsnNode invoked = invoke(owner, handler);
+				code.add(invoked);
+				method.instructions.insertBefore(call, code);
+				method.instructions.remove(call);
+				replaced.put(found, invoked);
+				method.maxStack += Arrays.stream(stack).mapToInt(Type::getSize).sum();
 			}
 		}
 		method.maxStack += argumentSlots(handler.desc) + 2;
@@ -402,28 +426,41 @@ public final class InterfaceInjects {
 
 	/**
 	 * The {@code Operation} of a {@code @WrapOperation} of {@code call}, as MixinExtras makes one: a lambda of a bridge
-	 * the target declares, which checks it is given the call's receiver and arguments, unboxes them, does the call and
-	 * returns what it returns, boxed.
+	 * the target declares, which checks it is given the {@code given} values {@code call} takes from {@code leading} on
+	 * (the receiver and arguments of the call wrapped), unboxes them, does the call with the others, which the lambda
+	 * captures, and returns what it returns, boxed.
 	 */
-	private static AbstractInsnNode operation(ClassNode owner, MethodNode handler, MethodInsnNode call, Type[] stack) {
+	private static AbstractInsnNode operation(ClassNode owner, MethodNode handler, MethodInsnNode call, int leading, int given) {
+		Type[] stack = stack(call);
+		List<Type> captured = new ArrayList<>(List.of(stack).subList(0, leading));
+		captured.addAll(List.of(stack).subList(leading + given, stack.length));
 		Type returnType = Type.getReturnType(call.desc);
 		Type boxed = boxed(returnType);
 		String name = "fabricated$operation$" + handler.name;
 		Set<String> taken = owner.methods.stream().map(m -> m.name).collect(Collectors.toSet());
 		for (int n = 1; taken.contains(name); n++) name = "fabricated$operation$" + handler.name + "$" + n;
+		List<Type> parameters = new ArrayList<>(captured);
+		parameters.add(Type.getType(Object[].class));
 		MethodNode bridge = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, name,
-				"([Ljava/lang/Object;)" + boxed.getDescriptor(), null, null);
+				Type.getMethodDescriptor(boxed, parameters.toArray(Type[]::new)), null, null);
+		int array = captured.stream().mapToInt(Type::getSize).sum();
 		InsnList code = bridge.instructions;
-		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		code.add(new LdcInsnNode(stack.length));
-		code.add(new LdcInsnNode(Arrays.stream(stack).map(Type::getClassName).collect(Collectors.joining(", ", "[", "]"))));
+		code.add(new VarInsnNode(Opcodes.ALOAD, array));
+		code.add(new LdcInsnNode(given));
+		code.add(new LdcInsnNode(Arrays.stream(stack, leading, leading + given).map(Type::getClassName).collect(Collectors.joining(", ", "[", "]"))));
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "com/llamalad7/mixinextras/injector/wrapoperation/WrapOperationRuntime", "checkArgumentCount",
 				"([Ljava/lang/Object;ILjava/lang/String;)V", false));
+		int slot = 0;
 		for (int i = 0; i < stack.length; i++) {
-			code.add(new VarInsnNode(Opcodes.ALOAD, 0));
-			code.add(new LdcInsnNode(i));
-			code.add(new InsnNode(Opcodes.AALOAD));
 			Type type = stack[i];
+			if (i < leading || i >= leading + given) {
+				code.add(new VarInsnNode(type.getOpcode(Opcodes.ILOAD), slot));
+				slot += type.getSize();
+				continue;
+			}
+			code.add(new VarInsnNode(Opcodes.ALOAD, array));
+			code.add(new LdcInsnNode(i - leading));
+			code.add(new InsnNode(Opcodes.AALOAD));
 			if (type.getSort() < Type.ARRAY) {
 				code.add(new TypeInsnNode(Opcodes.CHECKCAST, boxed(type).getInternalName()));
 				code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, boxed(type).getInternalName(), type.getClassName() + "Value", "()" + type.getDescriptor(), false));
@@ -438,12 +475,13 @@ public final class InterfaceInjects {
 			code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, boxed.getInternalName(), "valueOf", "(" + returnType.getDescriptor() + ")" + boxed.getDescriptor(), false));
 		}
 		code.add(new InsnNode(Opcodes.ARETURN));
-		bridge.maxLocals = 1;
+		bridge.maxLocals = array + 1;
 		bridge.maxStack = Math.max(3, Arrays.stream(stack).mapToInt(Type::getSize).sum() + 2);
 		owner.methods.add(bridge);
 		boolean itf = (owner.access & Opcodes.ACC_INTERFACE) != 0;
-		return new InvokeDynamicInsnNode("call", "()L" + OPERATION + ";", METAFACTORY, Type.getMethodType("([Ljava/lang/Object;)Ljava/lang/Object;"),
-				new Handle(Opcodes.H_INVOKESTATIC, owner.name, name, bridge.desc, itf), Type.getMethodType(bridge.desc));
+		return new InvokeDynamicInsnNode("call", Type.getMethodDescriptor(Type.getObjectType(OPERATION), captured.toArray(Type[]::new)), METAFACTORY,
+				Type.getMethodType("([Ljava/lang/Object;)Ljava/lang/Object;"), new Handle(Opcodes.H_INVOKESTATIC, owner.name, name, bridge.desc, itf),
+				Type.getMethodType("([Ljava/lang/Object;)" + boxed.getDescriptor()));
 	}
 
 	/**
@@ -451,9 +489,11 @@ public final class InterfaceInjects {
 	 * the locals Mixin works out there (or in {@code this} and the target's parameters, {@code argsOnly}), past
 	 * {@code this}: the one of its type with its ordinal (counted from {@code this}, as Mixin counts) or at its index, or,
 	 * with neither, the only one of its type.
+	 *
+	 * @throws LeftOut where the locals there don't tell it, which Mixin would fail the class on
 	 */
-	private static int local(ClassNode owner, MethodNode method, AbstractInsnNode at, Type type, AnnotationNode local, LocalsAt locals, String where)
-			throws Refused {
+	private static int local(ClassNode owner, MethodNode method, AbstractInsnNode at, Type type, AnnotationNode local, LocalsAt locals)
+			throws LeftOut {
 		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
 		String[] slots;
 		if (Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))) {
@@ -466,7 +506,7 @@ public final class InterfaceInjects {
 			}
 		} else {
 			slots = locals.at(method, at);
-			if (slots == null) throw new Refused("its @Local " + type.getClassName() + " finds no locals Mixin can tell in " + where);
+			if (slots == null) throw new LeftOut("its @Local " + type.getClassName() + " finds no locals Mixin can tell there");
 		}
 		int ordinal = Annotations.value(local, "ordinal") instanceof Integer o ? o : -1;
 		int index = Annotations.value(local, "index") instanceof Integer i ? i : -1;
@@ -480,8 +520,8 @@ public final class InterfaceInjects {
 			seen++;
 		}
 		if (ordinal < 0 && index < base && ofType.size() == 1) return ofType.get(0);
-		throw new Refused("its @Local " + type.getClassName() + (ordinal >= 0 ? " with ordinal " + ordinal : index >= base ? " at " + index : "")
-				+ " finds " + (ofType.isEmpty() ? "no local" : ofType.size() + " locals") + " of that type in " + where);
+		throw new LeftOut("its @Local " + type.getClassName() + (ordinal >= 0 ? " with ordinal " + ordinal : index >= base ? " at " + index : "")
+				+ " finds " + (ofType.isEmpty() ? "no local" : ofType.size() + " locals") + " of that type there");
 	}
 
 	/** The handler's {@code @Local} parameters, which come last, each's annotation; refused where it has other sugar. */
@@ -583,7 +623,16 @@ public final class InterfaceInjects {
 						int seen = 0;
 						for (AbstractInsnNode insn : insns) {
 							if (!point.constant().equals(InjectionPoints.constantOf(insn))) continue;
-							if (point.ordinal() < 0 || seen == point.ordinal()) picked.add(insn);
+							if (point.ordinal() < 0 || seen == point.ordinal()) {
+								// The class a cast or an instanceof check names, which Mixin counts as the constant: it refuses to
+								// modify a cast's, and gives the handler of an instanceof's the object checked too.
+								if (insn instanceof TypeInsnNode check) {
+									throw new Refused("its @Constant " + ((Type) point.constant()).getClassName() + " is the class "
+											+ (check.getOpcode() == Opcodes.CHECKCAST ? "a cast" : "an instanceof check") + " names in " + method.name + method.desc
+											+ ", which Fabricated doesn't modify");
+								}
+								picked.add(insn);
+							}
 							seen++;
 						}
 					}
@@ -660,11 +709,20 @@ public final class InterfaceInjects {
 	}
 
 	/** Why Fabricated can't apply an injector, as the report gives it. */
-	private static final class Refused extends Exception {
+	private static class Refused extends Exception {
 		private static final long serialVersionUID = 1L;
 
 		Refused(String why) {
 			super(why, null, false, false);
+		}
+	}
+
+	/** Why Fabricated leaves a handler out where it would inject, applying the others: warned of, and not failing the class. */
+	private static final class LeftOut extends Refused {
+		private static final long serialVersionUID = 1L;
+
+		LeftOut(String why) {
+			super(why);
 		}
 	}
 

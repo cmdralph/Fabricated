@@ -20,9 +20,12 @@ import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
+import org.objectweb.asm.commons.AnalyzerAdapter;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.MethodNode;
 
@@ -55,7 +58,8 @@ class InterfaceInjectsTest {
 			Map.entry("org/spongepowered/asm/mixin/injection/ModifyVariable.java", "package org.spongepowered.asm.mixin.injection; import java.lang.annotation.*;"
 					+ " @Retention(RetentionPolicy.RUNTIME) public @interface ModifyVariable { String[] method(); At at(); }"),
 			Map.entry("org/spongepowered/asm/mixin/injection/Constant.java", "package org.spongepowered.asm.mixin.injection; public @interface Constant {"
-					+ " int intValue() default 0; double doubleValue() default 0; int ordinal() default -1; boolean expandZeroConditions() default false; }"),
+					+ " int intValue() default 0; double doubleValue() default 0; Class<?> classValue() default Object.class; int ordinal() default -1;"
+					+ " boolean expandZeroConditions() default false; }"),
 			Map.entry("org/spongepowered/asm/mixin/injection/Coerce.java", "package org.spongepowered.asm.mixin.injection; public @interface Coerce { }"),
 			Map.entry("org/spongepowered/asm/mixin/injection/callback/LocalCapture.java", "package org.spongepowered.asm.mixin.injection.callback;"
 					+ " public enum LocalCapture { NO_CAPTURE, PRINT, CAPTURE_FAILSOFT, CAPTURE_FAILHARD, CAPTURE_FAILEXCEPTION }"),
@@ -135,12 +139,77 @@ class InterfaceInjectsTest {
 						static double scale(double x) { return x * 8.0; }
 						static String label(String s) { return s.trim() + Seen.SUFFIX; }
 						static long wide(long a, int b) { return Math.addExact(a, b); }
+						static boolean isBasket(Object o) { return o instanceof Basket; }
+						static Basket asBasket(Object o) { return (Basket) o; }
+						static Class<?> kind() { return Basket.class; }
 					}
 					""",
 			"test/Basket.java", "package test; public record Basket(java.util.List<String> items) implements Box { }",
 			"test/Seen.java", "package test; public final class Seen { public static final java.util.List<Object> LOG = new java.util.ArrayList<>();"
 					+ " public static String SUFFIX = \"?\"; }");
 	private static final Map<String, String> MOD = Map.of(
+			"test/mixin/ChainMixin.java", """
+					package test.mixin;
+					import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+					import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+					import org.spongepowered.asm.mixin.Mixin;
+					import org.spongepowered.asm.mixin.injection.*;
+					import test.Box;
+					@Mixin(Box.class)
+					public interface ChainMixin {
+						@Redirect(method = "label", at = @At(value = "INVOKE", target = "Ljava/lang/String;trim()Ljava/lang/String;"))
+						private static String upper(String s) { return s.trim().toUpperCase(); }
+						@WrapOperation(method = "label", at = @At(value = "INVOKE", target = "Ljava/lang/String;trim()Ljava/lang/String;"))
+						private static String bracket(String s, Operation<String> trim) { return "[" + trim.call(s) + "]"; }
+						@WrapOperation(method = "label", at = @At(value = "INVOKE", target = "Ljava/lang/String;trim()Ljava/lang/String;"))
+						private static String star(String s, Operation<String> trim) { return "*" + trim.call(s) + "*"; }
+						@Redirect(method = "label", at = @At(value = "INVOKE", target = "Ljava/lang/String;trim()Ljava/lang/String;"))
+						private static String lost(String s) { return "lost"; }
+						@WrapOperation(method = "count", at = @At(value = "INVOKE", target = "Ljava/lang/String;length()I"))
+						private int tenfold(String s, Operation<Integer> length, String item) { return length.call(s) * 10; }
+						@WrapOperation(method = "count", at = @At(value = "INVOKE", target = "Ljava/lang/String;length()I"))
+						private int plusOne(String s, Operation<Integer> length) { return length.call(s) + 1; }
+						@ModifyConstant(method = "max", constant = @Constant(intValue = 64))
+						private int seven(int max) { return max / 8 - 1; }
+						@ModifyConstant(method = "max", constant = @Constant(intValue = 64))
+						private int halve(int max) { return max / 2; }
+					}
+					""",
+			"test/mixin/LocalMixin.java", """
+					package test.mixin;
+					import java.util.function.Predicate;
+					import com.llamalad7.mixinextras.sugar.Local;
+					import org.spongepowered.asm.mixin.Mixin;
+					import org.spongepowered.asm.mixin.injection.*;
+					import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+					import test.Box;
+					import test.Seen;
+					@Mixin(Box.class)
+					public interface LocalMixin {
+						@Redirect(method = "label", at = @At(value = "INVOKE", target = "Ljava/lang/String;trim()Ljava/lang/String;"))
+						private static String upper(String s) { return s.trim().toUpperCase(); }
+						@Inject(method = "label", at = @At(value = "FIELD", target = "Ltest/Seen;SUFFIX:Ljava/lang/String;", opcode = 178))
+						private static void seen(String s, CallbackInfoReturnable<String> cir, @Local String local) { Seen.LOG.add("local " + local); }
+						@Redirect(method = "any", at = @At(value = "INVOKE", target = "Ljava/util/function/Predicate;test(Ljava/lang/Object;)Z"))
+						private boolean noLong(Predicate<String> test, Object s, @Local long l) { return true; }
+					}
+					""",
+			"test/mixin/ClassConstantMixin.java", """
+					package test.mixin;
+					import org.spongepowered.asm.mixin.Mixin;
+					import org.spongepowered.asm.mixin.injection.*;
+					import test.Basket;
+					import test.Box;
+					@Mixin(Box.class)
+					public interface ClassConstantMixin {
+						@ModifyConstant(method = "isBasket", constant = @Constant(classValue = Basket.class))
+						private static Class<?> checked(Class<?> type) { return type; }
+						@ModifyConstant(method = "asBasket", constant = @Constant(classValue = Basket.class))
+						private static Class<?> cast(Class<?> type) { return type; }
+						@ModifyConstant(method = "kind", constant = @Constant(classValue = Basket.class))
+						private static Class<?> widened(Class<?> type) { return Object.class; }
+					}
+					""",
 			"test/mixin/CopperMixin.java", """
 					package test.mixin;
 					import java.util.List;
@@ -384,6 +453,92 @@ class InterfaceInjectsTest {
 				+ " mixin can't apply in test.Copper: it injects 0 time(s), where its @Inject requires 1 (INTERFACE-1)", failed.getMessage());
 	}
 
+	/**
+	 * Over another handler's call replacing a call, a {@code @WrapOperation} wraps that call, as MixinExtras chains them
+	 * (its {@code Operation} passing on what that handler takes after the call's receiver and arguments, static or not),
+	 * and a second {@code @Redirect} is left out there with a warning, not failing the class; a second
+	 * {@code @ModifyConstant} of a constant modifies it before the first, as Mixin wraps the constant again.
+	 */
+	@Test
+	void handlersOverAnotherHandlersCallChainAsMixinExtrasChainsThem(@TempDir Path dir) throws Exception {
+		Map<String, byte[]> classes = TestSources.compileWithLocals(dir, TestSources.MIXIN_ANNOTATIONS, MIXIN, GAME, MOD);
+		ClassNode mixin = node(classes.get("test/mixin/ChainMixin"));
+		ClassNode target = node(classes.get("test/Box"));
+		assertEquals(Map.of(), mark(mixin, target));
+
+		List<String> warnings = new ArrayList<>();
+		assertEquals(8, InterfaceInjects.apply(merged(mixin, target), InterfaceInjectsTest::localsAt, warnings::add));
+		assertEquals(List.of("@Redirect handler fabricated$ChainMixin$lost of an interface mixin is left out in label(Ljava/lang/String;)Ljava/lang/String;"
+				+ " in test.Box: another handler already replaces the call there (INTERFACE-2)"), warnings);
+
+		ClassLoader loader = load(classes, target);
+		Class<?> box = loader.loadClass("test.Box");
+		assertEquals("*[A]*?", call(box, "label", String.class, " a "), "the wrapper of the wrapper of the redirect");
+		Object basket = loader.loadClass("test.Basket").getConstructor(List.class).newInstance(List.of("ab", "c", "ab"));
+		assertEquals(42, box.getMethod("count", String.class).invoke(basket, "ab"), "the outer wrapper's operation given the inner's and its parameter");
+		assertEquals(3, box.getMethod("max").invoke(basket), "the second modifier first");
+	}
+
+	/**
+	 * A {@code @Local} the locals at a point don't tell, or a point Mixin can't work out the locals at, leaves the handler
+	 * out there with a warning, not failing the class; and the locals a handler is given are those Mixin works out
+	 * without the ones Fabricated's calls of other handlers store, so an implicit {@code @Local} doesn't find a redirected
+	 * call's receiver too.
+	 */
+	@Test
+	void aLocalTheLocalsDontTellLeavesItsHandlerOutThereAndFabricatedsOwnLocalsArentAmongThem(@TempDir Path dir) throws Exception {
+		Map<String, byte[]> classes = TestSources.compileWithLocals(dir, TestSources.MIXIN_ANNOTATIONS, MIXIN, GAME, MOD);
+		ClassNode mixin = node(classes.get("test/mixin/LocalMixin"));
+		ClassNode target = node(classes.get("test/Box"));
+		assertEquals(Map.of(), mark(mixin, target));
+		mixin.methods.removeIf(m -> m.name.equals("fabricated$LocalMixin$noLong"));
+
+		// A frame analysis sees the receiver the redirect stores, as Mixin's does where it generates a local variable table.
+		List<String> warnings = new ArrayList<>();
+		assertEquals(2, InterfaceInjects.apply(merged(mixin, target), InterfaceInjectsTest::analysedAt, warnings::add));
+		assertEquals(List.of(), warnings);
+		ClassLoader loader = load(classes, target);
+		assertEquals("A?", call(loader.loadClass("test.Box"), "label", String.class, " a "));
+		assertEquals(List.of("local  a "), seen(loader), "the parameter, the one String local Mixin finds");
+
+		ClassNode other = node(classes.get("test/mixin/LocalMixin"));
+		ClassNode box = node(classes.get("test/Box"));
+		mark(other, box);
+		other.methods.removeIf(m -> m.name.equals("fabricated$LocalMixin$upper"));
+		warnings.clear();
+		assertEquals(2, InterfaceInjects.apply(merged(other, box), (m, insn) -> m.name.equals("label") ? null : localsAt(m, insn), warnings::add));
+		assertEquals(List.of("@Inject handler fabricated$LocalMixin$seen of an interface mixin is left out in label(Ljava/lang/String;)Ljava/lang/String;"
+				+ " in test.Box: its @Local java.lang.String finds no locals Mixin can tell there (INTERFACE-2)",
+				"@Redirect handler fabricated$LocalMixin$noLong of an interface mixin is left out in any(Ljava/util/function/Predicate;)Z in test.Box:"
+						+ " its @Local long finds no local of that type there (INTERFACE-2)"), warnings);
+		loader = load(classes, box);
+		assertEquals("a?", call(loader.loadClass("test.Box"), "label", String.class, " a "));
+		Object basket = loader.loadClass("test.Basket").getConstructor(List.class).newInstance(List.of("ab"));
+		Predicate<String> never = s -> false;
+		assertEquals(false, loader.loadClass("test.Box").getMethod("any", Predicate.class).invoke(basket, never), "the call as it was");
+		assertEquals(List.of(), seen(loader));
+	}
+
+	/**
+	 * A {@code @ModifyConstant} of a class modifies the class a constant loads; one finding the class a cast or an
+	 * instanceof check names, which Mixin refuses or gives the object checked too, is left out with why.
+	 */
+	@Test
+	void anInterfaceMixinsClassConstantIsModifiedWhereLoadedOnly(@TempDir Path dir) throws Exception {
+		Map<String, byte[]> classes = TestSources.compileWithLocals(dir, TestSources.MIXIN_ANNOTATIONS, MIXIN, GAME, MOD);
+		ClassNode mixin = node(classes.get("test/mixin/ClassConstantMixin"));
+		ClassNode target = node(classes.get("test/Box"));
+		assertEquals(Map.of("checked", "its @Constant test.Basket is the class an instanceof check names in isBasket(Ljava/lang/Object;)Z, which Fabricated"
+						+ " doesn't modify",
+				"cast", "its @Constant test.Basket is the class a cast names in asBasket(Ljava/lang/Object;)Ltest/Basket;, which Fabricated doesn't modify"),
+				mark(mixin, target));
+		assertEquals(1, InterfaceInjects.apply(merged(mixin, target), InterfaceInjectsTest::localsAt, w -> { }));
+		ClassLoader loader = load(classes, target);
+		Class<?> box = loader.loadClass("test.Box");
+		assertEquals(Object.class, box.getMethod("kind").invoke(null));
+		assertEquals(true, call(box, "isBasket", Object.class, loader.loadClass("test.Basket").getConstructor(List.class).newInstance(List.of())));
+	}
+
 	/** Marks each of the mixin's handlers, returning those refused, by their name, with why. */
 	private static Map<String, String> mark(ClassNode mixin, ClassNode target) {
 		Map<String, String> refused = new TreeMap<>();
@@ -411,6 +566,22 @@ class InterfaceInjectsTest {
 		String[] slots = new String[method.maxLocals];
 		for (LocalVariableNode local : method.localVariables) {
 			if (method.instructions.indexOf(local.start) <= at && at < method.instructions.indexOf(local.end)) slots[local.index] = local.desc;
+		}
+		return slots;
+	}
+
+	/**
+	 * The locals a frame analysis finds at an instruction of straight-line code, as Mixin's does where it generates a
+	 * method's local variable table: every slot stored before it, temporaries too.
+	 */
+	private static String[] analysedAt(MethodNode method, AbstractInsnNode insn) {
+		AnalyzerAdapter frame = new AnalyzerAdapter("test/Box", method.access, method.name, method.desc, null);
+		for (AbstractInsnNode i = method.instructions.getFirst(); i != insn; i = i.getNext()) {
+			if (!(i instanceof FrameNode)) i.accept(frame);
+		}
+		String[] slots = new String[method.maxLocals];
+		for (int slot = 0; slot < frame.locals.size() && slot < slots.length; slot++) {
+			if (frame.locals.get(slot) instanceof String type) slots[slot] = Type.getObjectType(type).getDescriptor();
 		}
 		return slots;
 	}
