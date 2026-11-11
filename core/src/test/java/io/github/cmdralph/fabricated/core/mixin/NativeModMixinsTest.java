@@ -211,6 +211,24 @@ class NativeModMixinsTest {
 		assertEquals(List.of(), NativeModMixins.manifestMixins(path -> { throw new IOException("unreadable"); }, true));
 	}
 
+	/**
+	 * A NeoForge mod's jar lists the mixins of the configs its mods.toml declares, then of those its manifest names: what
+	 * pre-flight reads of them, and whether one keeps a class's vanilla methods from being put back (SEAM-1).
+	 */
+	@Test
+	void theConfigsANeoForgeModDeclaresListTheirMixinsForTheSide() throws Exception {
+		Map<String, String> files = Map.of(
+				"moonlight.mixins.json", "{\"package\": \"m.platform\", \"mixins\": [\"PistonStructureResolverMixin\"], \"client\": [\"ItemMixin\"]}",
+				"b.mixins.json", "{\"package\": \"b\", \"mixins\": [\"Manifested\"]}",
+				"META-INF/MANIFEST.MF", "Manifest-Version: 1.0\r\nMixinConfigs: b.mixins.json\r\n\r\n");
+		NativeModMixins.Files read = path -> files.containsKey(path) ? files.get(path).getBytes(StandardCharsets.UTF_8) : null;
+		assertEquals(List.of("m/platform/PistonStructureResolverMixin", "b/Manifested"),
+				NativeModMixins.declaredMixins(read, List.of("moonlight.mixins.json"), false));
+		assertEquals(List.of("m/platform/PistonStructureResolverMixin", "m/platform/ItemMixin", "b/Manifested"),
+				NativeModMixins.declaredMixins(read, List.of("moonlight.mixins.json", "b.mixins.json"), true), "each config once");
+		assertEquals(List.of(), NativeModMixins.declaredMixins(path -> { throw new IOException("unreadable"); }, List.of("moonlight.mixins.json"), false));
+	}
+
 	/** AppleSkin's Fabric build, and a jar of the other mod's classes, listing {@code mixins}. */
 	private InstalledClasses installed(Map<String, String> otherMod, String... mixins) throws Exception {
 		Map<String, byte[]> classes = TestSources.compile(dir, MIXIN, APPLESKIN, otherMod);

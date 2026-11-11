@@ -41,6 +41,7 @@ abstract class PreflightPart {
 	final Map<ClassNode, Set<String>> independent;
 	final Map<String, String> installedRead;
 	final Set<String> widened;
+	final Set<String> restoredSeams;
 
 	PreflightPart(PreflightClasses classes) {
 		this.classes = classes;
@@ -66,6 +67,7 @@ abstract class PreflightPart {
 		this.independent = classes.independent;
 		this.installedRead = classes.installedRead;
 		this.widened = classes.widened;
+		this.restoredSeams = classes.restoredSeams;
 	}
 
 	/** {@link PreflightClasses#isSubtype} */
@@ -116,6 +118,11 @@ abstract class PreflightPart {
 	/** {@link PreflightClasses#independentOf} */
 	Set<String> independentOf(ClassNode mixin) {
 		return classes.independentOf(mixin);
+	}
+
+	/** {@link PreflightClasses#stateGroupsOf} */
+	Map<String, MixinPreflight.StateGroup> stateGroupsOf(ClassNode mixin) {
+		return classes.stateGroupsOf(mixin);
 	}
 
 	/** {@link PreflightClasses#isUntransformable} */

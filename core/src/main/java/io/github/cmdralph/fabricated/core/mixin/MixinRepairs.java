@@ -64,6 +64,7 @@ final class MixinRepairs extends PreflightPart {
 	private final ConstructorRepairs constructors = new ConstructorRepairs(classes);
 	private final LocalRepairs locals = new LocalRepairs(classes);
 	private final SkippedCode skipped = new SkippedCode(classes);
+	private final ReplacedMethods replacedMethods = new ReplacedMethods(classes);
 
 	/** @param checker the run's checker, which judges whether a mixin fits a target */
 	MixinRepairs(PreflightClasses classes, MixinPreflight checker) {
@@ -103,6 +104,7 @@ final class MixinRepairs extends PreflightPart {
 						+ "where Mixin needs its target's; they name " + named.get(0).replace('/', '.') + ", as Fabric's Mixin does as it merges a mixin", ""));
 			}
 			independent.put(node, MixinPreflight.independentHandlers(node));
+			classes.stateGroups.put(node, MixinPreflight.stateGroups(node));
 			changed |= singleInjectionPoints(node);
 			Set<String> unfound = withoutUnfoundLocals(node);
 			if (!unfound.isEmpty()) {
@@ -406,12 +408,16 @@ final class MixinRepairs extends PreflightPart {
 					(s, moved) -> s.named() + " expects " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.movedCallRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, moved) -> s.named() + " expects " + moved),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> replacedMethods.callRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, moved) -> s.named() + " expects " + moved),
 			// Code the platform never runs (HUD-4): the injector's method or points move, so before what reads them.
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> skipped.endRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, end) -> s.named() + " injects at " + end),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> skipped.callRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, moved) -> s.named() + " expects " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> SkippedCode.seamRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, seam) -> s.named() + " injects at " + seam),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> SkippedCode.readSeamRepairs(s.mixin(), s.injector(), s.target(), s.ctx()),
 					(s, seam) -> s.named() + " injects at " + seam),
 			RepairStep.stopIfMoved(),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> locals.vanillaLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
@@ -427,6 +433,8 @@ final class MixinRepairs extends PreflightPart {
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.overloadRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
 					(s, moved) -> s.named() + " targets " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.inheritedOverloadRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(),
+					s.bridges()), (s, moved) -> s.named() + " targets " + moved),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> replacedMethods.methodRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(),
 					s.bridges()), (s, moved) -> s.named() + " targets " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> constructors.handoffRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
 					(s, moved) -> s.named() + " targets " + moved),

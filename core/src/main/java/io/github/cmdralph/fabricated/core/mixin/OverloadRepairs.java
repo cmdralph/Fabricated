@@ -956,7 +956,7 @@ final class OverloadRepairs extends PreflightPart {
 	 * in order. Null where {@code node} is another class's nest member, a nest member can't be read, or a method handle
 	 * names either method.
 	 */
-	private static java.util.Map<String, List<Integer>> callsByMethod(ClassNode node, MethodNode method, MethodNode overload,
+	static java.util.Map<String, List<Integer>> callsByMethod(ClassNode node, MethodNode method, MethodNode overload,
 			java.util.function.Function<String, ClassNode> classes) {
 		if (node.nestHostClass != null) return null;
 		List<ClassNode> nest = new ArrayList<>(List.of(node));

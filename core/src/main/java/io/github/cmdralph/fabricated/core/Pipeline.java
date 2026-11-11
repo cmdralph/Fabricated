@@ -32,6 +32,8 @@ import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
+import io.github.cmdralph.fabricated.core.bytecode.SeamConflicts;
+import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
@@ -51,6 +53,7 @@ import io.github.cmdralph.fabricated.core.remap.LazyMappingTable;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.remap.Supertypes;
+import io.github.cmdralph.fabricated.core.report.KnownLimits;
 import io.github.cmdralph.fabricated.core.report.LaunchPhases;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.report.Report.ModRow;
@@ -229,6 +232,8 @@ public final class Pipeline {
 	 *                           copies of these stand down
 	 * @param instanceHandlers   the static handlers of other mods' mixins into {@code mods}' classes to apply as instance
 	 *                           handlers, by mixin class ({@link NativeModMixins}, immutable)
+	 * @param restoredSeams      the game classes in which {@code mods}' mixins hook vanilla methods put back as they load
+	 *                           ({@link VanillaSeams}, SEAM-1; immutable)
 	 */
 	public record Result(
 			FabricatedConfig config,
@@ -242,12 +247,14 @@ public final class Pipeline {
 			Report report,
 			Set<String> dependencyFailures,
 			Set<String> providedElsewhere,
-			Map<String, Set<String>> instanceHandlers) {
+			Map<String, Set<String>> instanceHandlers,
+			Set<String> restoredSeams) {
 
 		Result(FabricatedConfig config, List<LoadedMod> mods, FabricLoaderRuntime runtime, Map<String, ModContainerImpl> containers,
 				Report report, Set<String> dependencyFailures, Set<String> providedElsewhere, Map<String, Set<String>> instanceHandlers) {
 			this(config, List.copyOf(mods), injectedInterfacesOf(mods), defaultBridgesOf(mods), environmentClassesOf(mods),
-					overridableMethodsOf(mods), runtime, containers, report, dependencyFailures, Set.copyOf(providedElsewhere), Map.copyOf(instanceHandlers));
+					overridableMethodsOf(mods), runtime, containers, report, dependencyFailures, Set.copyOf(providedElsewhere), Map.copyOf(instanceHandlers),
+					mods.stream().flatMap(m -> m.translated().restoredSeams().stream()).collect(Collectors.toUnmodifiableSet()));
 		}
 
 		/**
@@ -260,7 +267,7 @@ public final class Pipeline {
 			Set<String> all = new LinkedHashSet<>(providedElsewhere);
 			all.addAll(modules);
 			return new Result(config, mods, injectedInterfaces, defaultBridges, environmentClasses, overridableMethods, runtime, containers,
-					report, dependencyFailures, Set.copyOf(all), instanceHandlers);
+					report, dependencyFailures, Set.copyOf(all), instanceHandlers, restoredSeams);
 		}
 
 		/**
@@ -521,7 +528,13 @@ public final class Pipeline {
 					+ coremods.redirectedClasses() + " classes through " + in.descriptor().loaderName() + "'s event hook, fields read through its getters)");
 		}
 		RestoredFields restored = RestoredFields.of(in.fabricatedFiles());
-		ClassBytesSource gameClasses = restored.over(coremods.over(in.gameClasses()));
+		// With vanilla's methods the platform took out put back where Fabric mods' mixins hook them, as they then load (SEAM-1),
+		// but in the classes where a native mod's mixin hooks the platform's code that would move, left as the platform has them.
+		ClassBytesSource platformGame = coremods.over(in.gameClasses());
+		Map<String, SeamConflicts.Conflict> keptSeams = SeamConflicts.of(platformGame, in.installedClasses());
+		keptSeams.forEach((owner, conflict) -> report.environment("Vanilla's methods not put back in " + owner.substring(owner.lastIndexOf('/') + 1),
+				conflict.describe(in.descriptor().loaderName()) + "; Fabric mods' hooks of them find nothing there (SEAM-1)"));
+		ClassBytesSource gameClasses = restored.over(VanillaSeams.over(platformGame, keptSeams.keySet()));
 		ClassIndex game = new ClassIndex(gameClasses);
 		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11
 		// remapped from intermediary names, as translating each mod remaps it.
@@ -535,7 +548,7 @@ public final class Pipeline {
 				in.runtimeMixinVersion(), in.mixinExtrasVersion(), in.lowestMixinBehavior(), in.fabricatedVersion() + " " + in.fabricatedBuild(), mappingTable, mappingsHash, game, in.untransformableClasses(),
 				// In the game's names: on 1.21.11 the loader reads the obfuscated jar through Mojang's mappings.
 				in.vanillaGame().classes(), installed, installed.isEmpty() ? game : new ClassIndex(gameClasses.or(installed)), unsupportedPackages(scan.candidates()),
-				in.descriptor(), restored.bridgedFields());
+				in.descriptor(), restored.bridgedFields(), SeamConflicts.key(keptSeams));
 		phases.end("game classes");
 		Rounds rounds = new Rounds();
 		try {
@@ -1145,7 +1158,8 @@ public final class Pipeline {
 			Candidate c = d.getValue().candidate();
 			report.mod(new ModRow(d.getKey(), c.version(), c.origin(), Status.DISABLED, d.getValue().reason(), d.getValue().suggestion()));
 			for (PreflightFinding f : rounds.failedFindings.getOrDefault(d.getKey(), List.of())) {
-				report.line("Mixin pre-flight failures", d.getKey() + ": " + f);
+				String limit = KnownLimits.ofFinding(in.descriptor().loaderName(), f);
+				report.line("Mixin pre-flight failures", d.getKey() + ": " + f + (limit == null ? "" : " - " + limit));
 			}
 		}
 		if (rounds.resolution != null) {
@@ -1165,9 +1179,10 @@ public final class Pipeline {
 		Map<String, ModContainerImpl> containers = new LinkedHashMap<>();
 		Set<String> finalIds = rounds.translated.stream().map(t -> t.candidate().id()).filter(id -> !rounds.dropped.containsKey(id))
 				.collect(Collectors.toSet());
-		for (TranslatedMod t : rounds.translated) {
-			Candidate c = t.candidate();
+		for (TranslatedMod translated : rounds.translated) {
+			Candidate c = translated.candidate();
 			if (!finalIds.contains(c.id())) continue;
+			TranslatedMod t = withKnownLimits(translated);
 			PackageGuard.Decision decision = rounds.decisions.get(t.neoForgeId());
 			reportLoaded(t, rounds.translatedThisLaunch.get(c.id()), decision, rounds.linkage.get(t.neoForgeId()),
 					rounds.leftOutMixins.getOrDefault(c.id(), Map.of()));
@@ -1277,6 +1292,22 @@ public final class Pipeline {
 			String now = left == 0 ? "" : leftOutCount(left, section);
 			report.detail(id, detail -> detail.replaceFirst(counted, Matcher.quoteReplacement(now)));
 		}
+	}
+
+	/**
+	 * {@code t} with its pre-flight findings that are a known limit on this platform saying so after their suggestion
+	 * ({@link KnownLimits}), as the report and its count of what plugins leave out read them.
+	 */
+	private TranslatedMod withKnownLimits(TranslatedMod t) {
+		String loader = in.descriptor().loaderName();
+		List<PreflightFinding> findings = t.findings().stream().map(f -> {
+			String limit = KnownLimits.ofFinding(loader, f);
+			return limit == null ? f : new PreflightFinding(f.severity(), f.config(), f.mixin(), f.message(),
+					f.suggestion().isEmpty() ? limit : f.suggestion() + " " + limit, f.handler());
+		}).toList();
+		return findings.equals(t.findings()) ? t : new TranslatedMod(t.candidate(), t.neoForgeId(), t.jar(), t.overlay(), findings,
+				t.accessTransformers(), t.notes(), t.injectedInterfaces(), t.defaultBridges(), t.environmentClasses(), t.overridableMethods(),
+				t.restoredSeams(), t.cacheHit(), t.millis());
 	}
 
 	/** @param leftOutMixins the mixins the linkage analysis left out of the mod, each with why */

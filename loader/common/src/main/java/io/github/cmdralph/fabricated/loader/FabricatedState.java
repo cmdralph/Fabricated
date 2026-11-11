@@ -147,6 +147,14 @@ public final class FabricatedState {
 	}
 
 	/**
+	 * The game classes in which Fabric mods' mixins hook vanilla methods the platform took out, which get them put back as they load
+	 * (SEAM-1, {@link io.github.cmdralph.fabricated.core.bytecode.VanillaSeams}).
+	 */
+	public Set<String> restoredSeams() {
+		return result.restoredSeams();
+	}
+
+	/**
 	 * Records the mixin of a loaded Fabric mod that failed as Mixin applied it, which the next launch leaves out
 	 * (APPLY-1); a mixin of any other mod is not recorded. Returns what it recorded ({@code <mixin> of <mod>}), or null
 	 * where nothing new was. It runs as the game stops, so it never throws: what fails is logged.
