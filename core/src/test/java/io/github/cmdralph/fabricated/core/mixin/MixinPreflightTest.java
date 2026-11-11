@@ -3234,47 +3234,93 @@ class MixinPreflightTest {
 	}
 
 	@Test
-	void aHandlerTakingASupertypeOfWhatALambdaTakesGetsABridgeTakingIt() throws Exception {
+	void aHandlerTakingWhatVanillasLambdaTakesGetsABridgeTakingTheSubtypeThisBuildsTakes() throws Exception {
 		// LAMBDA-11: Forge's and NeoForge 21.1's KeyboardHandler.charTyped lambdas take the screen where vanilla's take a
-		// GuiEventListener, which JEI's and owo-lib's handlers take.
+		// GuiEventListener, which JEI's and owo-lib's handlers take, naming vanilla's lambda with its descriptor (JEI's
+		// selector, owo's refmap).
 		String screen = "net/minecraft/world/Screen";
 		String listener = "net/minecraft/world/Listener";
-		String other = "net/minecraft/world/Other";
+		String vanillaDesc = "(L" + listener + ";II)V";
 		String forgeDesc = "(L" + screen + ";II)V";
-		Map<String, byte[]> classes = Map.of(TARGET, lambdaClass("lambda$charTyped$6", forgeDesc, true, mv -> mv.visitInsn(Opcodes.RETURN)),
-				listener, plainClass(listener, Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT), screen, plainClass(screen, 0, listener), other, plainClass(other, 0));
+		Map<String, byte[]> classes = Map.of(TARGET, charTypedTarget(screen), listener, plainClass(listener, Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT),
+				screen, plainClass(screen, 0, listener));
 		ClassIndex game = new ClassIndex(classes::get);
+		Map<String, byte[]> vanilla = Map.of(TARGET, charTypedTarget(listener), listener, classes.get(listener));
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Captures"));
-		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Captures",
-				capturingMixin("lambda$charTyped$6", List.of(Type.getObjectType(listener), Type.INT_TYPE, Type.INT_TYPE), 0)));
-		List<PreflightFinding> before = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
-		assertTrue(before.stream().anyMatch(f -> f.message().contains("does not match the parameters of lambda$charTyped$6")), before.toString());
-
-		List<PreflightFinding> notes = new ArrayList<>();
-		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
-				.get("com/example/mixin/Captures.class");
-		assertNotNull(repaired, notes.toString());
-		assertTrue(notes.getFirst().message().contains("h targets lambda$charTyped$6" + forgeDesc + ", which this game build declares taking a subtype of what"
-				+ " the handler takes (net.minecraft.world.Screen for net.minecraft.world.Listener)"), notes.toString());
-		ClassNode node = new ClassNode();
-		new ClassReader(repaired).accept(node, 0);
-		MethodNode bridge = node.methods.stream().filter(mn -> mn.name.equals("h$fabricated")).findFirst().orElseThrow();
-		assertEquals(forgeDesc.replace(")V", CALLBACK_INFO + ")V"), bridge.desc);
-		List<Integer> loads = new ArrayList<>();
-		for (AbstractInsnNode insn : bridge.instructions) {
-			if (insn instanceof VarInsnNode v) loads.add(v.var);
+		Refmap refmap = Refmap.parse("{\"mappings\":{\"com/example/mixin/Captures\":{\"lambda$charTyped$6\":\"L" + TARGET + ";lambda$charTyped$6" + vanillaDesc + "\"}}}");
+		List<Type> listened = List.of(Type.getObjectType(listener), Type.INT_TYPE, Type.INT_TYPE);
+		// By vanilla's descriptor, inline or the refmap's, or by name with vanilla's code at hand, which tells what it takes.
+		for (Map.Entry<String, Refmap> named : List.of(Map.entry("lambda$charTyped$6" + vanillaDesc, Refmap.EMPTY), Map.entry("lambda$charTyped$6", refmap),
+				Map.entry("lambda$charTyped$6", Refmap.EMPTY))) {
+			Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Captures", capturingMixin(named.getKey(), listened, 0)));
+			List<PreflightFinding> notes = new ArrayList<>();
+			byte[] repaired = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+					.repairs("test.mixins.json", config, named.getValue(), Set.of(), notes).get("com/example/mixin/Captures.class");
+			assertNotNull(repaired, named + ": " + notes);
+			assertTrue(notes.getLast().message().contains("h targets lambda$charTyped$6" + forgeDesc + ", which this game build declares taking a subtype of"
+					+ " what the handler takes (net.minecraft.world.Screen for net.minecraft.world.Listener)"), named + ": " + notes);
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired).accept(node, 0);
+			MethodNode bridge = node.methods.stream().filter(mn -> mn.name.equals("h$fabricated")).findFirst().orElseThrow();
+			assertEquals(forgeDesc.replace(")V", CALLBACK_INFO + ")V"), bridge.desc);
+			List<Integer> loads = new ArrayList<>();
+			for (AbstractInsnNode insn : bridge.instructions) {
+				if (insn instanceof VarInsnNode v) loads.add(v.var);
+			}
+			assertEquals(List.of(0, 1, 2, 3), loads, "the screen goes where the handler takes the listener");
+			defineMixin("com.example.mixin.Captures", repaired, classes);
+			mod.put("com/example/mixin/Captures", repaired);
+			List<PreflightFinding> after = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+					.check("test.mixins.json", config, named.getValue(), Set.of());
+			assertTrue(after.isEmpty(), named + ": " + after);
 		}
-		assertEquals(List.of(0, 1, 2, 3), loads, "the screen goes where the handler takes the listener");
-		defineMixin("com.example.mixin.Captures", repaired, classes);
-		mod.put("com/example/mixin/Captures", repaired);
-		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
-		assertTrue(after.isEmpty(), after.toString());
 
-		// A type that isn't one of the handler's isn't passed for it.
-		Map<String, byte[]> unrelated = Map.of("com/example/mixin/Captures", capturingMixin("lambda$charTyped$6",
-				List.of(Type.getObjectType(other), Type.INT_TYPE, Type.INT_TYPE), 0));
-		assertTrue(preflight(game, unrelated::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>())
-				.isEmpty());
+		// Fabric's Mixin takes a handler with vanilla's exact types only: one taking a supertype of the listener isn't bridged,
+		// nor one by name where nothing tells what vanilla's takes.
+		Map<String, byte[]> wider = new HashMap<>(Map.of("com/example/mixin/Captures", capturingMixin("lambda$charTyped$6" + vanillaDesc,
+				List.of(Type.getType(Object.class), Type.INT_TYPE, Type.INT_TYPE), 0)));
+		List<PreflightFinding> pointed = new ArrayList<>();
+		wider.put("com/example/mixin/Captures", new MixinPreflight(game, InstalledClasses.NONE, wider::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), pointed).get("com/example/mixin/Captures.class"));
+		assertEquals(1, pointed.size(), "only pointed at this build's lambda: " + pointed);
+		List<PreflightFinding> refused = new MixinPreflight(game, InstalledClasses.NONE, wider::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(refused.stream().anyMatch(f -> f.message().contains("does not match the parameters of lambda$charTyped$6" + forgeDesc)), refused.toString());
+		Map<String, byte[]> byName = Map.of("com/example/mixin/Captures", capturingMixin("lambda$charTyped$6", listened, 0));
+		List<PreflightFinding> unknown = preflight(game, byName::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(unknown.stream().anyMatch(f -> f.message().contains("does not match the parameters of lambda$charTyped$6" + forgeDesc)), unknown.toString());
+	}
+
+	/**
+	 * {@link #TARGET} with a static {@code charTyped(II)V} that makes a {@code Runnable} of its lambda
+	 * {@code lambda$charTyped$6}, capturing a {@code listener} (by internal name) and the two values.
+	 */
+	private static byte[] charTypedTarget(String listener) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		String desc = "(L" + listener + ";II)V";
+		Handle metafactory = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+				"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
+		MethodVisitor typed = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "charTyped", "(II)V", null, null);
+		typed.visitCode();
+		typed.visitInsn(Opcodes.ACONST_NULL);
+		typed.visitTypeInsn(Opcodes.CHECKCAST, listener);
+		typed.visitVarInsn(Opcodes.ILOAD, 0);
+		typed.visitVarInsn(Opcodes.ILOAD, 1);
+		typed.visitInvokeDynamicInsn("run", "(L" + listener + ";II)Ljava/lang/Runnable;", metafactory, Type.getType("()V"),
+				new Handle(Opcodes.H_INVOKESTATIC, TARGET, "lambda$charTyped$6", desc, false), Type.getType("()V"));
+		typed.visitInsn(Opcodes.POP);
+		typed.visitInsn(Opcodes.RETURN);
+		typed.visitMaxs(0, 0);
+		typed.visitEnd();
+		MethodVisitor lambda = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "lambda$charTyped$6", desc, null, null);
+		lambda.visitCode();
+		lambda.visitInsn(Opcodes.RETURN);
+		lambda.visitMaxs(0, 3);
+		lambda.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
 	}
 
 	/** An empty class (or interface, by {@code access}) {@code name}, implementing {@code interfaces}. */

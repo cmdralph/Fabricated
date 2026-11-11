@@ -291,7 +291,8 @@ final class LambdaRepairs extends PreflightPart {
 	 * lambda's of its type: in order, when the handler's types occur in the lambda's that way only once; otherwise by
 	 * type, where a type the lambda has more than once is only passed to a parameter the handler never uses; otherwise by
 	 * how vanilla's lambda and this build's use them ({@link #byUse}); failing those, in order, a parameter of this build's
-	 * passed for one of the handler's that is a supertype of it (the screen Forge's and NeoForge 21.1's
+	 * passed for one of the handler's that is a supertype of it, where the handler takes exactly what vanilla's method
+	 * takes ({@link #vanillaParameters}), as Fabric's Mixin requires of it (the screen Forge's and NeoForge 21.1's
 	 * {@code KeyboardHandler.charTyped} lambdas pass where vanilla's pass a {@code GuiEventListener}: JEI's and owo-lib's
 	 * char typed hooks; LAMBDA-11). A method NeoForge gave more parameters gets the
 	 * same bridge, in order only (Ledger's hooks into {@code FireBlock.checkBurnOut}, which takes a face too; SIG-1), as
@@ -306,9 +307,11 @@ final class LambdaRepairs extends PreflightPart {
 	 * parameters or none, gets the same bridge, taking the {@code Args} first, where it is static exactly where the
 	 * method is: Ledger's anvil hook into {@code AnvilMenu.onTake}'s lambda, which NeoForge's build gives the break chance
 	 * too (CORPUS-58). Returns a description of the bridged method.
+	 *
+	 * @param declared the injector's selectors as the mod declares them
 	 */
 	List<String> capturedValueRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
-			List<MethodNode> bridges) {
+			List<MethodNode> bridges, List<?> declared) {
 		boolean modifyArgs = injector.desc.equals(MixinNames.MODIFY_ARGS);
 		if (!injector.desc.equals(MixinNames.INJECT) && !modifyArgs || Annotations.value(injector, "locals") != null || (mixin.access & Opcodes.ACC_INTERFACE) != 0
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
@@ -337,8 +340,10 @@ final class LambdaRepairs extends PreflightPart {
 		if (from == null && isLambda) from = byType(handler, first, wanted, captured);
 		if (from == null && isLambda) from = byUse(vanillaLambdaTaking(target.name, wanted, lambda), lambda, wanted, captured);
 		boolean upcast = from == null;
-		if (upcast) from = inOrder(wanted, captured, (type, value) -> type.equals(value)
-				|| type.getSort() == Type.OBJECT && value.getSort() == Type.OBJECT && isSubtype(value.getInternalName(), type.getInternalName()));
+		if (upcast && wanted.equals(vanillaParameters(declared, target, ctx))) {
+			from = inOrder(wanted, captured, (type, value) -> type.equals(value)
+					|| type.getSort() == Type.OBJECT && value.getSort() == Type.OBJECT && isSubtype(value.getInternalName(), type.getInternalName()));
+		}
 		if (from == null) return List.of();
 
 		// The bridge takes what the method takes, with the handler's Args before it or its callback info after it.
@@ -412,6 +417,21 @@ final class LambdaRepairs extends PreflightPart {
 		bridges.add(HandlerBridges.instanceBridge(mixin.name, handler, injector, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
 		return List.of(String.join(", ", methods) + ", which this game build declares taking this, where " + loader
 				+ "'s Mixin refuses a static handler; a bridge taking this calls the handler");
+	}
+
+	/**
+	 * The parameters of vanilla's method an injector's one selector names, as the mod declares it: by the descriptor it
+	 * gives, as the refmap resolves it (a mod compiled against vanilla names vanilla's), or else as vanilla's only method
+	 * of that name in {@code target} declares them; null where neither tells.
+	 */
+	private List<Type> vanillaParameters(List<?> declared, ClassNode target, Context ctx) {
+		if (declared.size() != 1 || !(declared.get(0) instanceof String raw)) return null;
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null) return null;
+		if (ref.desc() != null) return ref.desc().startsWith("(") ? List.of(Type.getArgumentTypes(ref.desc())) : null;
+		ClassNode original = vanillaClass(target.name);
+		List<MethodNode> named = original == null ? List.of() : original.methods.stream().filter(m -> m.name.equals(ref.name())).toList();
+		return named.size() == 1 ? List.of(Type.getArgumentTypes(named.get(0).desc)) : null;
 	}
 
 	/**

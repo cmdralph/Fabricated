@@ -303,10 +303,15 @@ final class MixinRepairs extends PreflightPart {
 
 	/**
 	 * One injector the repairs look at: the mixin, the injector's handler and annotation, the mixin's targets, the
-	 * mixin's context, and the bridges repairs make for it (added to the mixin once all its injectors are done).
+	 * mixin's context, the bridges repairs make for it (added to the mixin once all its injectors are done), and its
+	 * selectors as the mod declares them, before any repair points them elsewhere.
 	 */
 	record RepairSite(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx,
-			List<MethodNode> bridges) {
+			List<MethodNode> bridges, List<?> declared) {
+		RepairSite(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx, List<MethodNode> bridges) {
+			this(mixin, handler, injector, targets, ctx, bridges, Annotations.value(injector, "method") instanceof List<?> selectors ? new ArrayList<>(selectors) : List.of());
+		}
+
 		/** The mixin's one target, for the steps that only run where it has one. */
 		ClassNode target() {
 			return targets.get(0);
@@ -446,7 +451,7 @@ final class MixinRepairs extends PreflightPart {
 			RepairStep.stopIfMoved(),
 			// Where the parameters can't be matched by type (one the method has twice), in order, around one added.
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> {
-				List<String> captured = lambdas.capturedValueRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges());
+				List<String> captured = lambdas.capturedValueRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges(), s.declared());
 				return captured.isEmpty() ? LambdaRepairs.addedParameterRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()) : captured;
 			}, (s, lambda) -> s.named() + " targets " + lambda),
 			RepairStep.stopIfMoved(),
