@@ -38,8 +38,9 @@ final class PreflightAsm {
 	/**
 	 * The methods Mixin scans for the points of an injector whose every selector is a bare wildcard ({@code *}, alone or
 	 * with a method descriptor): each of the target's methods with code that matches, but a static one where the handler
-	 * isn't static, as Mixin's {@code TargetSelectors} takes them for a selector matching any number of methods. Null for
-	 * an injector with another selector, or a descriptor no method has (Mixin then tries without it) (WILD-1).
+	 * isn't static and one another mixin merged (a seam of Fabricated's, HUD-7), as Mixin's {@code TargetSelectors} takes
+	 * them for a selector matching any number of methods. Null for an injector with another selector, or a descriptor no
+	 * method has (Mixin then tries without it) (WILD-1).
 	 */
 	static List<MethodNode> wildcardMethods(AnnotationNode injector, MethodNode handler, ClassNode target, Context ctx) {
 		if (!(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.isEmpty()) return null;
@@ -53,7 +54,8 @@ final class PreflightAsm {
 			if (desc != null && target.methods.stream().noneMatch(m -> m.desc.equals(desc))) return null;
 			for (MethodNode m : target.methods) {
 				if (desc != null && !desc.equals(m.desc) || m.instructions == null || m.instructions.size() == 0
-						|| !handlerStatic && (m.access & Opcodes.ACC_STATIC) != 0 || methods.contains(m)) continue;
+						|| !handlerStatic && (m.access & Opcodes.ACC_STATIC) != 0 || Annotations.find(m, MixinNames.MIXIN_MERGED) != null
+						|| methods.contains(m)) continue;
 				methods.add(m);
 			}
 		}
@@ -155,6 +157,13 @@ final class PreflightAsm {
 
 	private static boolean hasField(ClassNode mixin, String name) {
 		return mixin.fields.stream().anyMatch(f -> f.name.equals(name));
+	}
+
+	/** A mixin's priority, as Mixin reads it: its {@code @Mixin}'s, else its config's {@code mixinPriority}, else Mixin's default. */
+	static int priority(ClassNode mixin, MixinConfigFile config) {
+		AnnotationNode ann = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
+		if (ann != null && Annotations.value(ann, "priority") instanceof Integer priority) return priority;
+		return config.tree().get("mixinPriority") instanceof Number priority ? priority.intValue() : MixinNames.DEFAULT_PRIORITY;
 	}
 
 	static boolean declares(ClassNode target, String name, String desc) {

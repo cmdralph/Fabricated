@@ -206,7 +206,9 @@ public final class ModTranslator {
 				// Not only the jar's: a config a containing mod declares may come with it.
 				candidate.metadata().mixins().toString(), env.unsupportedPackages().toString(),
 				// Pre-flight reads vanilla's code where it was found (VANILLA-1).
-				env.vanilla() == ClassBytesSource.EMPTY ? "no vanilla" : "vanilla"));
+				env.vanilla() == ClassBytesSource.EMPTY ? "no vanilla" : "vanilla",
+				// The classes whose seams native mods' mixins keep from being put back (SEAM-1).
+				env.seamsKept()));
 		String entryName = TranslationCache.entryName(neoId, key);
 
 		Optional<TranslationCache.Entry> hit = env.namespace() == Namespace.INTERMEDIARY
@@ -257,6 +259,8 @@ public final class ModTranslator {
 				Set<DefaultBridge> bridges = new LinkedHashSet<>();
 				Function<String, ClassNode> classes = classLookup(name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name));
 				Set<String> widened = new TreeSet<>();
+				// The game classes its mixins target that have vanilla methods put back as they load (SEAM-1).
+				Set<String> seams = new TreeSet<>();
 				// Fields the platform retyped, as the mod's classes and mixins reach them (CORPUS-33); before pre-flight,
 				// which then sees the mod's accessors of them as they will load.
 				if (!retyped.isEmpty()) {
@@ -275,7 +279,7 @@ public final class ModTranslator {
 				String newerEntrypoint = newerJavaEntrypoint(candidate.metadata(), files);
 				if (newerEntrypoint != null) throw newerJava("its entrypoint " + newerEntrypoint);
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files, classEntries, overlay, findings,
-						installedClasses, enumEntries, enumTargets, classes, bridges, notes, widened, generatedConfigs);
+						installedClasses, enumEntries, enumTargets, classes, bridges, notes, widened, seams, generatedConfigs);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
 
 				// The mod's own files translation rewrites (not the ones it adds).
@@ -424,11 +428,12 @@ public final class ModTranslator {
 				meta.put("defaultBridges", bridges.stream().map(ModTranslator::bridgeToJson).toList());
 				meta.put("environmentClasses", List.copyOf(environmentClasses));
 				meta.put("overridableMethods", List.copyOf(overridable));
+				meta.put("restoredSeams", List.copyOf(seams));
 				meta.put("installedClasses", installedClasses);
 				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
 				Path jar = ownJar != null ? entry.file(remapped(neoId)) : candidate.path();
 				return new TranslatedMod(candidate, neoId, jar, entry.file(overlay(neoId)), List.copyOf(findings), atLines,
-						List.copyOf(notes), injections, List.copyOf(bridges), environmentClasses, overridable, false, millis);
+						List.copyOf(notes), injections, List.copyOf(bridges), environmentClasses, overridable, Set.copyOf(seams), false, millis);
 			} catch (ArchiveException e) {
 				throw new TranslationException("The jar is unsafe or corrupt: " + e.getMessage(), "Re-download the mod from its official page.");
 			} catch (MappingException e) {
@@ -640,7 +645,7 @@ public final class ModTranslator {
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, Set<String> plannedSkips, FileView files,
 			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses,
 			List<EnumExtensions.Entry> enumEntries, Set<String> enumTargets, Function<String, ClassNode> classes, Set<DefaultBridge> bridges,
-			List<String> notes, Set<String> widened, List<MixinEntry> generatedConfigs)
+			List<String> notes, Set<String> widened, Set<String> seams, List<MixinEntry> generatedConfigs)
 			throws ArchiveException, TranslationException {
 		FabricModMetadata md = candidate.metadata();
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
@@ -841,6 +846,7 @@ public final class ModTranslator {
 		}
 		installedClasses.putAll(preflight.installedClasses());
 		widened.addAll(preflight.accessTransformers());
+		seams.addAll(preflight.restoredSeams());
 		Set<String> written = new TreeSet<>(override.skipMixins());
 		written.removeAll(plannedSkips);
 		unmatchedSkips(written, matchedSkips, md.compatHints().mixinsOr(md.mixins()), configs.keySet(), findings);
@@ -1931,10 +1937,12 @@ public final class ModTranslator {
 		if (meta.get("environmentClasses") instanceof List<?> list) list.forEach(o -> environmentClasses.add(String.valueOf(o)));
 		Set<String> overridable = new TreeSet<>();
 		if (meta.get("overridableMethods") instanceof List<?> list) list.forEach(o -> overridable.add(String.valueOf(o)));
+		Set<String> seams = new TreeSet<>();
+		if (meta.get("restoredSeams") instanceof List<?> list) list.forEach(o -> seams.add(String.valueOf(o)));
 		int at = meta.get("accessTransformers") instanceof Number n ? n.intValue() : 0;
 		Path jar = entry.has(remapped(neoId)) ? entry.file(remapped(neoId)) : candidate.path();
 		return new TranslatedMod(candidate, neoId, jar, entry.file(overlay(neoId)), List.copyOf(findings), at, List.copyOf(notes),
-				List.copyOf(injections), List.copyOf(bridges), Set.copyOf(environmentClasses), Set.copyOf(overridable), true, 0);
+				List.copyOf(injections), List.copyOf(bridges), Set.copyOf(environmentClasses), Set.copyOf(overridable), Set.copyOf(seams), true, 0);
 	}
 
 	private static Map<String, Object> findingToJson(PreflightFinding f) {

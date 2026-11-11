@@ -16,6 +16,7 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LookupSwitchInsnNode;
@@ -40,6 +41,10 @@ import org.objectweb.asm.tree.VarInsnNode;
  * start either. Fabricated's own mixins add a seam for the start and one for the end of such a method to its class
  * ({@link MixinNames#SEAM_START}, {@link MixinNames#SEAM_END}), which they call where the platform's override starts and
  * ends; {@link #seamRepairs} points hooks at the method's start and end at them.
+ *
+ * <p>NeoForge 21.1's GUI constructor never reads vanilla's root layer stack, where Fabric mods add layers to the stacks
+ * they capture there. Fabricated's own mixins add a seam for that read ({@link MixinNames#SEAM_READ}), which holds
+ * vanilla's stacks as locals; {@link #readSeamRepairs} points hooks at the read at it (HUD-7).
  */
 final class SkippedCode extends PreflightPart {
 	private static final String BOOLEAN = "java/lang/Boolean";
@@ -156,6 +161,54 @@ final class SkippedCode extends PreflightPart {
 		return List.of("the " + (start ? "start" : "end") + " of " + method.name + method.desc + ", which " + ctx.loader() + " never calls (a"
 				+ " subclass of its overrides it); the injection point is pointed at Fabricated's seam " + seam.name + ", which runs where that"
 				+ " override " + (start ? "starts" : "ends"));
+	}
+
+	/**
+	 * Points an {@code @Inject} at a constructor's read of one of its class's fields, which the platform's constructor
+	 * never makes, at the seam Fabricated's own mixins add for that read ({@link MixinNames#SEAM_READ}): it takes the
+	 * constructor's parameters, holds vanilla's locals there as vanilla's types and makes the read, and they call it where
+	 * the platform's constructor has built what vanilla's had there. NeoForge 21.1 builds the HUD from its own layer
+	 * managers and never reads vanilla's {@code Gui.layers}, where Apoli adds its resource bars to the layer stack it
+	 * captures (HUD-7). Only where every point of the injector is that read ({@code FIELD} with {@code GETFIELD}), and
+	 * from a mixin of a higher priority than the one that merged the seam, as Mixin requires of a point at a field access
+	 * in a merged method; a slice goes, as the seam has none of the constructor's code. Returns a description of the move.
+	 */
+	static List<String> readSeamRepairs(ClassNode mixin, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!injector.desc.equals(MixinNames.INJECT) || Annotations.value(injector, "target") != null
+				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1) return List.of();
+		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
+		if (methods.size() != 1 || !methods.get(0).name.equals("<init>")) return List.of();
+		MethodNode constructor = methods.get(0);
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		MemberRef read = null;
+		for (AnnotationNode at : ats) {
+			if (!"FIELD".equals(point(at)) || !(Annotations.value(at, "opcode") instanceof Integer opcode) || opcode != Opcodes.GETFIELD
+					|| !(Annotations.value(at, "target") instanceof String raw)) return List.of();
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || !target.name.equals(ref.owner()) || ref.name() == null || ref.desc() == null
+					|| read != null && !read.equals(ref)) return List.of();
+			read = ref;
+		}
+		if (read == null || reads(constructor, read)) return List.of();
+		MethodNode seam = PreflightAsm.declared(target, MixinNames.SEAM_READ + read.name(), constructor.desc);
+		if (seam == null || (seam.access & Opcodes.ACC_STATIC) != 0) return List.of();
+		AnnotationNode merged = Annotations.find(seam, MixinNames.MIXIN_MERGED);
+		if (merged != null && Annotations.value(merged, "priority") instanceof Integer mergedBy
+				&& PreflightAsm.priority(mixin, ctx.config()) <= mergedBy) return List.of();
+		Annotations.put(injector, "method", new ArrayList<>(List.of(seam.name + seam.desc)));
+		Annotations.remove(injector, "slice");
+		return List.of("the read of " + read.name() + " in " + constructor.name + constructor.desc + ", which " + ctx.loader() + "'s constructor never"
+				+ " makes; the injection point is pointed at Fabricated's seam " + seam.name + ", which makes it with vanilla's locals there,"
+				+ " where " + ctx.loader() + "'s constructor has built what vanilla's had");
+	}
+
+	/** Whether {@code method} reads the field {@code ref} names. */
+	private static boolean reads(MethodNode method, MemberRef ref) {
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof FieldInsnNode f && f.getOpcode() == Opcodes.GETFIELD && f.owner.equals(ref.owner()) && f.name.equals(ref.name())
+					&& f.desc.equals(ref.desc())) return true;
+		}
+		return false;
 	}
 
 	/**
