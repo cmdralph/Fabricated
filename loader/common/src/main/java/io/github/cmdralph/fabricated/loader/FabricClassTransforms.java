@@ -15,9 +15,12 @@ import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.bytecode.EnvironmentStripper;
+import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.NativeModMixins;
 import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
 
@@ -32,6 +35,8 @@ import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
  *   <li>the static handlers of other mods' mixins into Fabric mods' classes that the running Mixin would refuse for
  *       their instance targets are made instance handlers, as Mixin reads the mixin through the platform's transformers
  *       ({@link NativeModMixins}, CORPUS-87).</li>
+ *   <li>vanilla's methods the platform took out of a game class Fabric mods' mixins target are put back, and its code
+ *       calls them where vanilla does, so the mods' hooks of them apply ({@link VanillaSeams}, SEAM-1).</li>
  * </ul>
  * After Mixin, {@link DefaultBridge}s are declared ({@link #declareDefaultBridges}). A platform where nothing of
  * Fabricated's runs after Mixin on every class (NeoForge 21.1's ModLauncher) declares them before Mixin too, for the
@@ -40,13 +45,16 @@ import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
  * detail.
  */
 public final class FabricClassTransforms {
+	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
+
 	private FabricClassTransforms() {
 	}
 
 	/** Whether {@link #beforeMixin} may change the class (internal name). */
 	public static boolean transformsBeforeMixin(FabricatedState state, String internalName) {
 		return state.environmentClasses().contains(internalName) || state.injectedInterfaces().containsKey(internalName)
-				|| state.overridableMethods().containsKey(internalName) || state.instanceHandlers().containsKey(internalName);
+				|| state.overridableMethods().containsKey(internalName) || state.instanceHandlers().containsKey(internalName)
+				|| state.restoredSeams().contains(internalName);
 	}
 
 	/** Every class {@link #beforeMixin} may change, for a platform that names its targets up front. */
@@ -55,6 +63,7 @@ public final class FabricClassTransforms {
 		classes.addAll(state.injectedInterfaces().keySet());
 		classes.addAll(state.overridableMethods().keySet());
 		classes.addAll(state.instanceHandlers().keySet());
+		classes.addAll(state.restoredSeams());
 		return classes;
 	}
 
@@ -66,7 +75,8 @@ public final class FabricClassTransforms {
 	/**
 	 * Strips the other side's members, adds injected interfaces, removes {@code final} from the methods Fabric mods
 	 * override where only the platform's build declares it (FINAL-2; the platform's own access transformers have run by
-	 * then) and makes instance handlers of another mod's mixin's static handlers (CORPUS-87); whether the class changed.
+	 * then), makes instance handlers of another mod's mixin's static handlers (CORPUS-87) and puts back vanilla's methods
+	 * the platform took out (SEAM-1); whether the class changed.
 	 */
 	public static boolean beforeMixin(FabricatedState state, ClassNode node, BiConsumer<String, String> audit) {
 		boolean changed = false;
@@ -98,6 +108,17 @@ public final class FabricClassTransforms {
 		if (!handlers.isEmpty() && NativeModMixins.applyInstanceHandlers(node, handlers)) {
 			audit.accept("fabricated:instance_handler", String.join(", ", handlers));
 			changed = true;
+		}
+		if (state.restoredSeams().contains(node.name)) {
+			// All or nothing, never failing the class's loading: the class keeps its own code where the rewrite fails.
+			VanillaSeams.Restoring seams = VanillaSeams.restoreWhole(node);
+			if (seams.failure() != null) {
+				LOGGER.error("Fabricated couldn't put vanilla's methods back in {} (SEAM-1): the class loads as the platform has it, so Fabric"
+						+ " mods' hooks of them find nothing there", node.name.replace('/', '.'), seams.failure());
+			} else if (!seams.restored().isEmpty()) {
+				audit.accept("fabricated:vanilla_seam", String.join(", ", seams.restored()));
+				changed = true;
+			}
 		}
 		return changed;
 	}

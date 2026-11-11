@@ -38,8 +38,9 @@ final class CallRepairs extends PreflightPart {
 
 	/**
 	 * Points an {@code @Inject}'s {@code INVOKE} points at one of Fabric Loader's hooks ({@link MixinNames#LOADER_HOOKS}) at the call
-	 * this game build makes at that step, when the methods it targets make that call once and not the hook's. Shifted as
-	 * the mod shifts it: after the hook is after every mod's entrypoints, on both. Returns a description of each move.
+	 * this game build makes at that step, when the methods it targets make one of those calls once, and not the hook's.
+	 * Shifted as the mod shifts it: after the hook is after every mod's entrypoints, on both. Returns a description of each
+	 * move.
 	 */
 	static List<String> loaderHookRepairs(AnnotationNode injector, ClassNode target, Context ctx) {
 		if (!injector.desc.equals(MixinNames.INJECT) || Annotations.value(injector, "slice") != null) return List.of();
@@ -50,11 +51,13 @@ final class CallRepairs extends PreflightPart {
 			if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw)
 					|| Annotations.value(at, "ordinal") instanceof Integer ordinal && ordinal > 0) continue;
 			String resolved = ctx.resolve(raw);
-			String step = MixinNames.LOADER_HOOKS.get(resolved);
-			if (step == null) continue;
 			MemberRef hook = MemberRef.parse(resolved);
+			String step = null;
+			for (String candidate : MixinNames.LOADER_HOOKS.getOrDefault(resolved, List.of())) {
+				if (calls(methods, MemberRef.parse(candidate)) == 1) step = candidate;
+			}
+			if (step == null || calls(methods, hook) != 0) continue;
 			MemberRef call = MemberRef.parse(step);
-			if (calls(methods, hook) != 0 || calls(methods, call) != 1) continue;
 			for (int i = 0; i + 1 < at.values.size(); i += 2) {
 				if ("target".equals(at.values.get(i))) at.values.set(i + 1, step);
 			}

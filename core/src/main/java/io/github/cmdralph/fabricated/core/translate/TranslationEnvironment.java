@@ -39,6 +39,9 @@ import io.github.cmdralph.fabricated.core.remap.LazyMappingTable;
  * @param bridgedFields       the game fields Fabricated's in-game mod serves as vanilla's type through a getter it adds,
  *                            as {@code owner field} in runtime names to the getter's name, which a Fabric mod's reads of
  *                            the field call (CORPUS-107); empty where the platform keeps vanilla's types
+ * @param seamsKept           the game classes whose vanilla methods aren't put back, a native mod's mixin hooking the
+ *                            platform's code that would move ({@link io.github.cmdralph.fabricated.core.bytecode.SeamConflicts#key},
+ *                            SEAM-1): part of cache keys, as a translation records the classes its hooks have rewritten
  */
 public record TranslationEnvironment(
 		String minecraftVersion,
@@ -58,13 +61,14 @@ public record TranslationEnvironment(
 		ClassIndex installedIndex,
 		Map<String, String> unsupportedPackages,
 		PlatformDescriptor descriptor,
-		Map<String, String> bridgedFields) {
+		Map<String, String> bridgedFields,
+		String seamsKept) {
 
 	/**
 	 * The format of cached translations. Builds of Fabricated differ in {@link #fabricatedBuild}, so a change to what
 	 * translating produces needs no bump; one to how an entry is read back (the overlay's layout, its metadata) does.
 	 */
-	public static final int TRANSLATION_SCHEMA = 41;
+	public static final int TRANSLATION_SCHEMA = 42;
 
 	/** Namespace Fabric mods are distributed in. */
 	public enum Namespace {

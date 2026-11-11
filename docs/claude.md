@@ -210,10 +210,12 @@ vendored modules in `mc/neoforge/<version>/src/fabricapi` and the bridges in `mc
 ### Mixins
 
 All Fabricated-owned mixin configs use `"required": true` and `"defaultRequire": 1`, so a missing target or injection
-point fails at startup, in CI. Three injections set `require = 0` on purpose, each with a fallback:
+point fails at startup, in CI. Four injections set `require = 0` on purpose, each with a fallback:
 `MinecraftEntrypointsMixin` (client entrypoints before `Thread.currentThread()`, with a `TAIL` fallback),
-`MinecraftStartedMixin` (`CLIENT_STARTED` as `run()` starts, else on the first client tick), and
-`ChunkGeneratorFeaturesMixin` (only needed while NeoForge's `refreshFeaturesPerStep` exists). The full inventory (target, injector, point and versions of every mixin) is in [`MIXINS.md`](MIXINS.md).
+`MinecraftStartedMixin` (`CLIENT_STARTED` as `run()` starts, else on the first client tick),
+`ChunkGeneratorFeaturesMixin` (only needed while NeoForge's `refreshFeaturesPerStep` exists), and 1.21.1's
+`GuiVanillaStacksMixin` (Fabric mods' HUD layer hooks run as NeoForge adds vanilla's first stack to its HUD, else as
+`Gui`'s constructor ends, the report naming the layers they added, which aren't drawn then). The full inventory (target, injector, point and versions of every mixin) is in [`MIXINS.md`](MIXINS.md).
 
 ### Threading model
 

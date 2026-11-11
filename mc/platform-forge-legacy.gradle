@@ -50,8 +50,10 @@ def namedToIntermediaryMappings = tasks.register('namedToIntermediaryMappings') 
     }
 }
 // Each source set with mixins gets its refmap, and the mappings of the members its mixins shadow, which the remapping
-// renames in the mixins too.
-def mixinMappings = [testmod: 'fabricated-testmod.refmap.json', testmodbroken: 'fabricated-testmod-badmixin.refmap.json'].collectEntries { name, refmap ->
+// renames in the mixins too. The test mod's hooks of vanilla's methods Forge took out (testmodvanilla, SEAM-1) are mapped
+// from the stand-ins its sources have of them, in a refmap of their own config's.
+def mixinMappings = [testmod: 'fabricated-testmod.refmap.json', testmodbroken: 'fabricated-testmod-badmixin.refmap.json',
+        testmodvanilla: 'fabricated-testmod-vanilla.refmap.json'].collectEntries { name, refmap ->
     def dir = layout.buildDirectory.dir("mixin/${name}")
     dependencies {
         add("${name}AnnotationProcessor", "org.spongepowered:mixin:${project.mixin_processor_version}:processor")
@@ -265,13 +267,15 @@ afterEvaluate {
     def remapJarType = obfuscation.getClass().classLoader.loadClass('net.neoforged.moddevgradle.legacyforge.tasks.RemapJar')
     tasks.named('processTestmodResources', ProcessResources) {
         inputs.files(namedToIntermediaryMappings).withPropertyName('namedToIntermediary')
-        filesMatching('*.mixins.json') { filter(namingRefmap(mixinMappings.testmod.refmap)) }
+        filesMatching('*.mixins.json') {
+            filter(namingRefmap(mixinMappings[it.name == 'fabricated-testmod-vanilla.mixins.json' ? 'testmodvanilla' : 'testmod'].refmap))
+        }
         doLast {
             def accessWidener = new File(destinationDir, 'fabricated-testmod.accesswidener')
             if (accessWidener.isFile()) remapAccessWidener(accessWidener, mappingFile(namedToIntermediary.get().asFile))
         }
     }
-    tasks.named('testmodJar', Jar) { from(mixinMappings.testmod.file) }
+    tasks.named('testmodJar', Jar) { from(mixinMappings.testmod.file, mixinMappings.testmodvanilla.file) }
     tasks.named('testmodBadmixinJar', Jar) {
         from(mixinMappings.testmodbroken.file)
         filesMatching('*.mixins.json') { filter(namingRefmap(mixinMappings.testmodbroken.refmap)) }
@@ -288,7 +292,8 @@ afterEvaluate {
             // theirs are renamed with them.
             libraries.from(sourceSets[sourceSet].compileClasspath)
             obfuscation.configureNamedToSrgOperation(remapOperation)
-            remapOperation.mappings.setFrom(namedToIntermediaryMappings, mixinMappings[sourceSet]?.shadows ?: [])
+            remapOperation.mappings.setFrom(namedToIntermediaryMappings, mixinMappings[sourceSet]?.shadows ?: [],
+                    sourceSet == 'testmod' ? mixinMappings.testmodvanilla.shadows : [])
             // The task doesn't track the mappings' contents itself.
             inputs.files(remapOperation.mappings).withPropertyName('remapMappings')
         }
