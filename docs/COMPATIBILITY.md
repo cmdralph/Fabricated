@@ -115,9 +115,10 @@ Notes:
 20. NeoForge builds the HUD from layers of its own: a layer a Fabric mod adds to one of vanilla's stacks there (as Apoli
     adds its resource bars) is a layer of NeoForge's, drawn where vanilla draws it among vanilla's layers and under its
     stack's condition (the GUI shown), and NeoForge mods' layers order against NeoForge's as before. A vanilla layer a
-    mod takes out of a stack there, moves or replaces is still drawn as NeoForge draws it. Vanilla has had no such stacks
-    since 1.21.6, which the other versions are past (their mods add HUD elements through Fabric API, above), and 1.20.1
-    has none yet.
+    mod takes out of a stack there, or replaces, isn't drawn: NeoForge's layers for it stay, under their names, drawing
+    nothing, and a replacement is drawn where it was. One a mod moves stays where NeoForge draws it. Vanilla has had no
+    such stacks since 1.21.6, which the other versions are past (their mods add HUD elements through Fabric API, above),
+    and 1.20.1 has none yet.
 
 ## How CI tests it
 
@@ -262,7 +263,9 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
   a layer manager of its own and never makes that read. Pre-flight points such a hook at Fabricated's seam for the
   read, which holds vanilla's stacks as the constructor does there, and each layer the hook adds becomes one of
   NeoForge's, drawn where vanilla draws it under its stack's condition (HUD-7, note 20 above). A hook elsewhere in the
-  constructor that captures the stacks stays left out, with the report's reason.
+  constructor that captures the stacks stays left out, with the report's reason. Where NeoForge's constructor doesn't
+  add its stacks as Fabricated knows them (another 21.1 build), the hooks still run, and the report names the layers
+  they added, which aren't drawn then.
 - **Particles** (native): NeoForge 21.1 keys the particle engine's providers by id, as Forge 47 does, so Fabricated
   ships the module (PART-3): factories and their sprite sets are registered through the engine's own methods, and
   the block dust tint event is asked where NeoForge decides the tint.

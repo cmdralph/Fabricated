@@ -37,18 +37,27 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **HUD-7** (P2), fixed: vanilla's `Gui` constructor builds its two HUD layer stacks, then reads its root stack, where
   Fabric mods add their layers to a stack they capture (Apoli's resource bars, Origins 1.13). NeoForge 21.1 builds each
   stack as a layer manager of its own and never makes that read, so pre-flight left such hooks out. NeoForge 1.21.1's
-  in-game mod adds a seam for the read, holding vanilla's stacks as the constructor holds them there, and calls it where
-  NeoForge's constructor has built its stacks; pre-flight points the hooks at it. Each layer a hook adds becomes a layer
-  of NeoForge's stack, before NeoForge's first layer of the vanilla layer after it, under the stack's condition, and
-  NeoForge's layers and its mods' keep NeoForge's order. Mixin injects at a field access in a method another mixin merged
-  only from a mixin of higher priority, so the seam's mixin has the lowest and pre-flight checks it. NeoForge 1.21.11 and
-  26.x have no such stacks: vanilla dropped them in 1.21.6. NeoForge 1.21.1's test mod adds a layer as Apoli does
+  in-game mod adds a seam for the read, holding vanilla's stacks as the constructor holds them there, and calls it as
+  NeoForge's constructor adds vanilla's first stack to its HUD, telling NeoForge's stacks by the layers they hold;
+  pre-flight points the hooks at it. Each layer a hook adds becomes a layer of NeoForge's stack, before NeoForge's first
+  layer of the vanilla layer after it, under the stack's condition, and NeoForge's layers and its mods' keep NeoForge's
+  order. A vanilla layer a hook takes out or replaces isn't drawn: NeoForge's layers for it draw nothing, under their
+  names, and a replacement is drawn where it was. Where NeoForge's constructor doesn't add its stacks as Fabricated
+  knows them, the hooks run as the constructor ends and the report names the layers they added, which aren't drawn;
+  nothing fails.
+  Mixin injects at a field access in a method another mixin merged only from a mixin of higher priority, so the seam's
+  mixin has the lowest and pre-flight checks it. Pre-flight makes the seam anew on each read of `Gui`, as mods are
+  translated in parallel, and marks every method Fabricated's mixins add as merged, so a selector matching any number
+  of methods leaves them out, as Mixin does. NeoForge 1.21.11 and 26.x have no such stacks: vanilla dropped them in
+  1.21.6. NeoForge 1.21.1's test mod adds a layer as Apoli does and replaces vanilla's demo overlay layer
   (`neoforge-client-hud-vanilla-layer`).
 - Verified: the core tests, CI's script tests and the mixin inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2 build (26.2
   and 26.3 don't build locally, as before). Locally on NeoForge 1.21.1 the client passes every check, the new one among
   them, with and without Fabric API; the advanced corpus client applies Apoli's hook at the seam, builds its HUD and
   passes the check, then waits on Origins' screen, as before (CORPUS-66); the server passes. A NeoForge 26.1.2 client
-  passes, the check skipped there.
+  passes, the check skipped there; after the fixes the NeoForge 1.21.1 client and server pass again, the replacement's
+  check included. With the stacks never found (a scratch build), the client runs, the test mod's check fails as it
+  should, and the report names the layer each stack lost.
 
 ## 2026-11-11: Hooks at a method the platform replaced moved to its own (STRUCT-1), Fabric Loader's server hook on every platform (HOOK-4)
 
