@@ -79,6 +79,21 @@ public final class NativeModMixins {
 		}
 	}
 
+	/**
+	 * The mixin classes a NeoForge mod's jar lists for this side, by internal name, in order: those of the configs its
+	 * mods.toml declares ({@code [[mixins]] config = ...}, {@code configs}), then those its manifest names, which NeoForge's
+	 * FML reads too. None where the jar's files can't be read.
+	 */
+	public static List<String> declaredMixins(Files files, Collection<String> configs, boolean clientSide) {
+		try {
+			Set<String> all = new LinkedHashSet<>(configs);
+			all.addAll(manifestConfigs(files.read(MANIFEST)));
+			return listed(files, all, clientSide);
+		} catch (IOException e) {
+			return List.of();
+		}
+	}
+
 	/** The mixin configs a jar's manifest names ({@code MixinConfigs}, which Forge's Mixin reads), in order. */
 	static List<String> manifestConfigs(byte[] manifest) {
 		if (manifest == null) return List.of();

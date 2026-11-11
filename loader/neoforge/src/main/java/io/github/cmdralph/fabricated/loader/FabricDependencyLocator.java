@@ -210,7 +210,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			}
 
 			// Fabric mixins may target the classes of Fabricated's Fabric API and of the NeoForge mods (an addon's mod).
-			NeoForgeMods.Found neoForgeMods = NeoForgeMods.of(loadedMods, !fabricJars.isEmpty(), fabricApi);
+			NeoForgeMods.Found neoForgeMods = NeoForgeMods.of(loadedMods, !fabricJars.isEmpty(), fabricApi, client);
 			phases.end("NeoForge mods");
 
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");

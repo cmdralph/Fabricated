@@ -1,5 +1,7 @@
 package io.github.cmdralph.fabricated.core.bytecode;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -65,10 +67,26 @@ public final class SeamConflicts {
 	public static Conflict find(ClassNode platformClass, InstalledClasses installed) {
 		VanillaSeams.Rewrite rewrite = VanillaSeams.rewriteOf(platformClass);
 		if (rewrite.isEmpty()) return null;
+		String internal = platformClass.name;
+		String dotted = internal.replace('/', '.');
 		for (InstalledClasses.ListedMixin listed : installed.nativeMixins()) {
-			ClassNode mixin = listed.classes().readNode(listed.mixin(), ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
-			if (mixin == null) return new Conflict(listed.owner(), listed.mixin(), false);
-			if (InstalledClasses.mixinTargets(mixin).contains(platformClass.name) && hooks(mixin, platformClass, rewrite)) {
+			byte[] data;
+			try {
+				data = listed.classes().read(listed.mixin());
+			} catch (IOException e) {
+				data = null;
+			}
+			if (data == null) return new Conflict(listed.owner(), listed.mixin(), false);
+			// Only a mixin naming the class can target it (its @Mixin's class or string): the others aren't parsed.
+			String text = new String(data, StandardCharsets.ISO_8859_1);
+			if (!text.contains(internal) && !text.contains(dotted)) continue;
+			ClassNode mixin = new ClassNode();
+			try {
+				new ClassReader(data).accept(mixin, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
+			} catch (RuntimeException e) {
+				return new Conflict(listed.owner(), listed.mixin(), false);
+			}
+			if (InstalledClasses.mixinTargets(mixin).contains(internal) && hooks(mixin, platformClass, rewrite)) {
 				return new Conflict(listed.owner(), listed.mixin(), true);
 			}
 		}
