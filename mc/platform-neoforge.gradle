@@ -18,6 +18,11 @@ neoForge {
 
 ext.gameDependencies = { SourceSet sourceSet -> neoForge.addModdingDependenciesTo(sourceSet) }
 
+// The mixins of the platform's half of the test mod, where the version has checks of its own hooks that need them (mc.gradle).
+if (file('src/testmod/resources/fabricated-testmod-neoforge.mixins.json').isFile()) {
+    testmodDescriptor.testmod << [mixins: ['fabricated-testmod-neoforge.mixins.json']]
+}
+
 // Mixin configs only this version ships (from its own src/main/resources), declared in the in-game mod's mods.toml.
 def versionMixins = (project.findProperty('version_mixin_configs') ?: '').split(',')*.trim().findAll { it }
         .collect { "[[mixins]]\nconfig=\"${it}\"\n" }.join('\n')
