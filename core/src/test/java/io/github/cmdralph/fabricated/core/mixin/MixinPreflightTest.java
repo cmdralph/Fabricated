@@ -11079,6 +11079,105 @@ class MixinPreflightTest {
 		}
 	}
 
+	/**
+	 * ITEM-2: injectors handing state to each other through a static {@code ThreadLocal} of the mod's own classes go
+	 * together, whether a handler uses it itself, through the mixin's own method or through the mod's static method, and
+	 * the mixin's other injectors stay: Fabric API's {@code RecipeMixin} on Forge 47 and 52, two of whose four hooks into
+	 * {@code Recipe.getRemainingItems} have no call to hook there, and whose other two pass a stack's remainder through
+	 * {@code RecipeRemainderHandler.REMAINDER_STACK}.
+	 */
+	@Test
+	void aFailingInjectorTakesTheInjectorsSharingAThreadLocalOfTheModWithIt() throws Exception {
+		String name = "com/example/mixin/Remainders";
+		byte[] mixin = mixin(name, false, cw -> {
+			injectWith(cw, "lost", "INVOKE", "Lnet/minecraft/world/Thing;removed()V", mv -> readState(mv, "HOLDER", "Ljava/lang/ThreadLocal;")); // fails
+			injectWith(cw, "capture", "HEAD", null, mv -> mv.visitMethodInsn(Opcodes.INVOKESTATIC, STATE_CLASS, "remember", "()V", false));
+			injectWith(cw, "store", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", mv -> {
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitMethodInsn(Opcodes.INVOKESPECIAL, name, "read", "()V", false);
+			});
+			injectWith(cw, "plain", "HEAD", null, mv -> readState(mv, "enabled", "Z")); // shares only a config's field
+			MethodVisitor read = cw.visitMethod(Opcodes.ACC_PRIVATE, "read", "()V", null, null);
+			read.visitCode();
+			readState(read, "HOLDER", "Ljava/lang/ThreadLocal;");
+			read.visitInsn(Opcodes.RETURN);
+			read.visitMaxs(1, 1);
+			read.visitEnd();
+		});
+		List<PreflightFinding> findings = run(config(true, "Remainders"), null, Map.of(name, mixin, STATE_CLASS, stateClass()), false);
+		assertTrue(findings.stream().allMatch(f -> f.severity() == Severity.LEFT_OUT && f.handler() != null), findings.toString());
+		assertEquals(Set.of("lost()V", "capture()V", "store()V"), findings.stream().map(PreflightFinding::handler).collect(Collectors.toSet()),
+				"the hook reading only a config's field stays: " + findings);
+		assertEquals("The injector of capture()V goes with that of lost()V: it shares the ThreadLocal com.example.State.HOLDER with lost()V, which"
+				+ " can't apply (ITEM-2)", findings.stream().filter(f -> f.handler().equals("capture()V")).findFirst().orElseThrow().message());
+	}
+
+	/**
+	 * ITEM-2: injectors sharing only a plain static field of the mod (a config's) don't go together, nor do injectors that
+	 * only read a {@code ThreadLocal} of the mod, a context its other code sets (Fabric API 0.116's fluid render hooks).
+	 */
+	@Test
+	void injectorsSharingAModsPlainStaticFieldOrOnlyReadingAThreadLocalStayApart() throws Exception {
+		for (String[] shared : List.of(new String[] {"enabled", "Z"}, new String[] {"HOLDER", "Ljava/lang/ThreadLocal;"})) {
+			String name = "com/example/mixin/Configured";
+			byte[] mixin = mixin(name, false, cw -> {
+				injectWith(cw, "lost", "INVOKE", "Lnet/minecraft/world/Thing;removed()V", mv -> readState(mv, shared[0], shared[1])); // fails
+				injectWith(cw, "kept", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", mv -> readState(mv, shared[0], shared[1]));
+			});
+			List<PreflightFinding> findings = run(config(true, "Configured"), null, Map.of(name, mixin, STATE_CLASS, stateClass()), false);
+			assertEquals(List.of("lost()V"), findings.stream().map(PreflightFinding::handler).toList(), shared[0] + ": " + findings);
+			assertEquals(Severity.LEFT_OUT, findings.getFirst().severity());
+		}
+	}
+
+	private static final String STATE_CLASS = "com/example/State";
+
+	/** A class of the mod: a static {@code ThreadLocal} HOLDER, a config's static {@code enabled}, and remember(), which sets HOLDER. */
+	private static byte[] stateClass() {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, STATE_CLASS, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "HOLDER", "Ljava/lang/ThreadLocal;", null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "enabled", "Z", null, null).visitEnd();
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "remember", "()V", null, null);
+		mv.visitCode();
+		mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, "HOLDER", "Ljava/lang/ThreadLocal;");
+		mv.visitInsn(Opcodes.ACONST_NULL);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/ThreadLocal", "set", "(Ljava/lang/Object;)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(2, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** Reads a static field of {@link #STATE_CLASS} and drops it. */
+	private static void readState(MethodVisitor mv, String field, String desc) {
+		mv.visitFieldInsn(Opcodes.GETSTATIC, STATE_CLASS, field, desc);
+		mv.visitInsn(Opcodes.POP);
+	}
+
+	/** A required {@code @Inject} into {@code tick} whose handler's code is {@code body}, then a return. */
+	private static void injectWith(ClassWriter cw, String handler, String atValue, String atTarget, Consumer<MethodVisitor> body) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, handler, "()V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "tick");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", atValue);
+		if (atTarget != null) at.visit("target", atTarget);
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visit("require", 1);
+		ann.visitEnd();
+		mv.visitCode();
+		body.accept(mv);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(2, 1);
+		mv.visitEnd();
+	}
+
 	/** An {@code @Inject} handler with code, using the mixin's {@code neighbor} field where {@code keepsState}. */
 	private static void handlerWithCode(ClassWriter cw, String mixin, String handler, String atValue, String atTarget, boolean keepsState) {
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, handler, "()V", null, null);

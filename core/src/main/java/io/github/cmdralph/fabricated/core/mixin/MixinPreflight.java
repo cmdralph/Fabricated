@@ -12,10 +12,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
@@ -259,6 +261,7 @@ public final class MixinPreflight extends PreflightPart {
 	public List<PreflightFinding> check(String configName, MixinConfigFile config, Refmap refmap, Set<String> skip) {
 		List<PreflightFinding> out = new ArrayList<>();
 		boolean hasPlugin = config.plugin() != null && !config.plugin().isBlank();
+		Map<String, Optional<ClassNode>> modClassCache = new HashMap<>();
 		for (String mixin : config.mixinsFor(clientSide)) {
 			if (skip.contains(mixin)) continue;
 			String internal = config.internalName(mixin);
@@ -279,6 +282,8 @@ public final class MixinPreflight extends PreflightPart {
 			checkMixin(node, ctx);
 			ctx.leaveOutStateGroups(from);
 			leaveOutSharers(out, from, configName, ctx.mixinDotted(), shares(node));
+			ctx.leaveOutThreadLocalSharers(from, () -> threadLocalShares(code != null ? code : modClasses.readNode(internal, ClassReader.SKIP_FRAMES),
+					modClassCache));
 		}
 		if (hasPlugin && out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
 			out.add(new PreflightFinding(Severity.INFO, configName, null, "This config uses a mixin plugin (" + config.plugin()
@@ -570,6 +575,92 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
+	 * The static {@code ThreadLocal} fields of the mod's other classes through which the injector handlers of a mixin hand
+	 * state to each other (ITEM-2): by handler (name and descriptor), the fields (owner and name, dotted) it uses, itself,
+	 * through the mixin's own methods or through the mod's static methods (two calls deep), that another handler uses too
+	 * and one of them stores ({@code set}, {@code remove}, or the field replaced). Fabric API's {@code RecipeMixin} stores
+	 * each stack's remainder, captured before one call of {@code Recipe.getRemainingItems}, in
+	 * {@code RecipeRemainderHandler.REMAINDER_STACK}, which its redirects of the method's other calls read. Handlers that
+	 * only read one, a context the mod's other code sets, hand each other nothing (Fabric API 0.116's
+	 * {@code FluidRendererMixin}, whose hooks read the fluid render handler {@code FluidRenderingImpl} sets; Carpet's fill
+	 * flag), nor do a static field of another type (a config's, a logger) or one only a handler uses.
+	 */
+	Map<String, Set<String>> threadLocalShares(ClassNode mixin, Map<String, Optional<ClassNode>> modClassCache) {
+		Map<String, Set<String>> shares = new TreeMap<>();
+		if (mixin == null) return shares;
+		Map<String, MethodNode> own = new HashMap<>();
+		for (MethodNode method : mixin.methods) own.put(method.name + method.desc, method);
+		Map<String, Map<String, Boolean>> uses = new TreeMap<>();
+		for (MethodNode method : mixin.methods) {
+			if (Annotations.all(method).stream().noneMatch(a -> PreflightAsm.isInjector(a.desc))) continue;
+			Map<String, Boolean> found = new TreeMap<>();
+			threadLocalsUsed(mixin.name, own, method, 0, found, new HashSet<>(), modClassCache);
+			if (!found.isEmpty()) uses.put(method.name + method.desc, found);
+		}
+		Map<String, Integer> users = new HashMap<>();
+		Set<String> stored = new HashSet<>();
+		uses.values().forEach(fields -> fields.forEach((f, written) -> {
+			users.merge(f, 1, Integer::sum);
+			if (written) stored.add(f);
+		}));
+		uses.forEach((handler, fields) -> {
+			Set<String> shared = new TreeSet<>(fields.keySet());
+			shared.removeIf(f -> users.get(f) < 2 || !stored.contains(f));
+			if (!shared.isEmpty()) shares.put(handler, shared);
+		});
+		return shares;
+	}
+
+	/** {@link #threadLocalShares}' walk: each field the method uses, and whether it stores it. */
+	private void threadLocalsUsed(String mixin, Map<String, MethodNode> own, MethodNode method, int depth, Map<String, Boolean> found,
+			Set<MethodNode> seen, Map<String, Optional<ClassNode>> modClassCache) {
+		if (!seen.add(method) || method.instructions == null) return;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof FieldInsnNode field && (field.getOpcode() == Opcodes.GETSTATIC || field.getOpcode() == Opcodes.PUTSTATIC)
+					&& !field.owner.equals(mixin) && threadLocal(Type.getType(field.desc), modClassCache) && modClass(field.owner, modClassCache) != null) {
+				// Stored where the field is replaced, or where the first call of a ThreadLocal's method after reading it sets
+				// or removes its value.
+				boolean stores = field.getOpcode() == Opcodes.PUTSTATIC;
+				for (AbstractInsnNode next = insn.getNext(); !stores && next != null; next = next.getNext()) {
+					if (!(next instanceof MethodInsnNode call) || !threadLocal(Type.getObjectType(call.owner), modClassCache)) continue;
+					stores = call.name.equals("set") || call.name.equals("remove");
+					break;
+				}
+				found.merge(field.owner.replace('/', '.') + "." + field.name, stores, Boolean::logicalOr);
+			} else if (insn instanceof MethodInsnNode call && call.owner.equals(mixin)) {
+				MethodNode callee = own.get(call.name + call.desc);
+				if (callee != null) threadLocalsUsed(mixin, own, callee, depth, found, seen, modClassCache);
+			} else if (insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESTATIC && depth < 2) {
+				ClassNode owner = modClass(call.owner, modClassCache);
+				MethodNode callee = owner == null ? null : PreflightAsm.declared(owner, call.name, call.desc);
+				if (callee != null) threadLocalsUsed(mixin, own, callee, depth + 1, found, seen, modClassCache);
+			} else if (insn instanceof InvokeDynamicInsnNode indy) {
+				for (Object arg : indy.bsmArgs) {
+					MethodNode lambda = arg instanceof Handle handle && handle.getOwner().equals(mixin) ? own.get(handle.getName() + handle.getDesc()) : null;
+					if (lambda != null) threadLocalsUsed(mixin, own, lambda, depth, found, seen, modClassCache);
+				}
+			}
+		}
+	}
+
+	/** Whether a type is {@code ThreadLocal}, {@code InheritableThreadLocal} or a class of the mod extending one. */
+	private boolean threadLocal(Type type, Map<String, Optional<ClassNode>> modClassCache) {
+		String name = type.getSort() == Type.OBJECT ? type.getInternalName() : null;
+		for (int i = 0; name != null && i < 5; i++) {
+			if (name.equals("java/lang/ThreadLocal") || name.equals("java/lang/InheritableThreadLocal")) return true;
+			if (name.startsWith("java/")) return false;
+			ClassNode node = modClass(name, modClassCache);
+			name = node == null ? null : node.superName;
+		}
+		return false;
+	}
+
+	/** A class of the mod, with its code (parsed once per config), or null. */
+	private ClassNode modClass(String name, Map<String, Optional<ClassNode>> modClassCache) {
+		return modClassCache.computeIfAbsent(name, n -> Optional.ofNullable(modClasses.readNode(n, ClassReader.SKIP_FRAMES))).orElse(null);
+	}
+
+	/**
 	 * Injectors of one mixin that keep state together: the handlers (name and descriptor) and the mixin's own fields
 	 * (name and descriptor) they share.
 	 */
@@ -772,6 +863,41 @@ public final class MixinPreflight extends PreflightPart {
 						+ ", which can't apply: they keep state together in this mixin's " + (fields.size() == 1 ? "field " : "fields ")
 						+ String.join(", ", fields), "", other));
 			});
+		}
+
+		/**
+		 * The injectors sharing a {@code ThreadLocal} of the mod's ({@link #threadLocalShares}) with those of this mixin left
+		 * out by the findings from {@code from} on, left out with them (ITEM-2), unless the whole mixin is: one left alone
+		 * would read a value the other never stored, or store one nothing reads. Each goes as it would failing itself
+		 * ({@link #injector}): alone, or with the whole mixin where STATE-1 can't leave it out alone. The mixin's code is
+		 * only read where one of its injectors was left out alone.
+		 */
+		void leaveOutThreadLocalSharers(int from, Supplier<Map<String, Set<String>>> shares) {
+			Set<String> leftOut = new LinkedHashSet<>();
+			for (PreflightFinding f : out.subList(from, out.size())) {
+				if (f.severity() != Severity.LEFT_OUT || !mixinDotted.equals(f.mixin())) continue;
+				if (f.handler() == null) return;
+				leftOut.add(f.handler());
+			}
+			if (leftOut.isEmpty()) return;
+			Map<String, Set<String>> shared = shares.get();
+			ArrayDeque<String> next = new ArrayDeque<>(leftOut);
+			while (!next.isEmpty()) {
+				String with = next.pop();
+				Set<String> fields = shared.get(with);
+				if (fields == null) continue;
+				for (Map.Entry<String, Set<String>> other : shared.entrySet()) {
+					if (leftOut.contains(other.getKey()) || Collections.disjoint(fields, other.getValue())) continue;
+					String field = other.getValue().stream().filter(fields::contains).findFirst().orElseThrow();
+					Severity severity = stateless.contains(other.getKey()) ? Severity.LEFT_OUT : fatal();
+					boolean wholeMixin = severity == Severity.LEFT_OUT && !hasPlugin && addsFields && !stateGroups.containsKey(other.getKey());
+					out.add(new PreflightFinding(severity, configName, mixinDotted, "The injector of " + other.getKey() + " goes with that of " + with
+							+ ": it shares the ThreadLocal " + field + " with " + with + ", which can't apply (ITEM-2)", "", wholeMixin ? null : other.getKey()));
+					if (wholeMixin) return;
+					leftOut.add(other.getKey());
+					next.add(other.getKey());
+				}
+			}
 		}
 
 		/**
