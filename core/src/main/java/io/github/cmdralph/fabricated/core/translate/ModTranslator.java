@@ -66,6 +66,7 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.EnvironmentStripper;
+import io.github.cmdralph.fabricated.core.bytecode.SeamConflicts;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig.ModOverride;
 import io.github.cmdralph.fabricated.core.json.Json;
@@ -208,7 +209,7 @@ public final class ModTranslator {
 				// Pre-flight reads vanilla's code where it was found (VANILLA-1).
 				env.vanilla() == ClassBytesSource.EMPTY ? "no vanilla" : "vanilla",
 				// The classes whose seams native mods' mixins keep from being put back (SEAM-1).
-				env.seamsKept()));
+				SeamConflicts.key(env.seamsKept())));
 		String entryName = TranslationCache.entryName(neoId, key);
 
 		Optional<TranslationCache.Entry> hit = env.namespace() == Namespace.INTERMEDIARY
@@ -663,7 +664,7 @@ public final class ModTranslator {
 				MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion()), MixinCompat.readsLocalTypes(env.runtimeMixinVersion()),
 				MixinCompat.seesMixinFields(env.runtimeMixinVersion()), env.descriptor().handsOffConstructorArguments(),
 				MixinCompat.overlapsWideArguments(env.runtimeMixinVersion()), MixinCompat.keepsLocalsPastScope(env.runtimeMixinVersion()),
-				MixinCompat.restrictsInitialisers(env.runtimeMixinVersion()));
+				MixinCompat.restrictsInitialisers(env.runtimeMixinVersion())).keptSeams(env.seamsKept());
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();

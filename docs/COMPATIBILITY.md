@@ -314,7 +314,12 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
 - The plan's other skips (tag files' `fabric:remove`, the dimensions module's DataFixerUpper mixins, resource
   conditions' registry loader) are 1.21.11's. NeoForge 21.1 leaves vanilla's JSON data loaders as they are, so
   upstream's load conditions hook applies there, and a data file whose `fabric:load_conditions` fail isn't loaded, as
-  on Fabric (CORPUS-49).
+  on Fabric (CORPUS-49). Fabricated decides them there before other mods' hooks and takes them off the files that load,
+  so a NeoForge mod reading them again as NeoForge's own conditions finds none: Moonlight's NeoForge build (3.8.3) does,
+  asking NeoForge's mod list, which names a Fabric mod by its id with underscores and has none of the Fabric API modules
+  Fabricated provides, so with it installed a Fabric mod's recipe, advancement or other JSON data whose
+  `fabric:all_mods_loaded` named such a mod wasn't loaded (COND-1). A file whose conditions Fabric API can't parse is
+  left as it is, as Fabric API keeps it without deciding, so a mod that can read them still decides.
 
 ### Why modules are disabled
 
