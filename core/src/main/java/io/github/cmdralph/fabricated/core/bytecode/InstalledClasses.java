@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.core.bytecode;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -18,6 +20,7 @@ import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import io.github.cmdralph.fabricated.core.archive.Hashing;
+import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 
 /**
  * The classes of the jars installed next to a Fabric mod (NeoForge mods, Fabricated's own Fabric API, and on 26.x the
@@ -35,10 +38,18 @@ public final class InstalledClasses implements ClassBytesSource {
 	 * @param owner    the name of the mod it belongs to, for messages
 	 * @param contains whether it has a class, by internal name (without reading it)
 	 * @param mixins   the mixin classes its configs list for this side, by internal name
-	 * @param fabric   whether it is a Fabric mod's own jar, whose classes are the ones Fabric Loader would load (not a
-	 *                 NeoForge mod's, nor Fabricated's Fabric API)
+	 * @param fabric      whether it is a Fabric mod's own jar, whose classes are the ones Fabric Loader would load (not a
+	 *                    NeoForge mod's, nor Fabricated's Fabric API)
+	 * @param fingerprint what changes when the jar does ({@link InstalledClasses#fingerprint(Path, String)}), for what is cached
+	 *                    from its mixins ({@link InstalledClasses#nativeFingerprint}); null where unknown
 	 */
-	public record Jar(String owner, Predicate<String> contains, ClassBytesSource classes, Supplier<List<String>> mixins, boolean fabric) {
+	public record Jar(String owner, Predicate<String> contains, ClassBytesSource classes, Supplier<List<String>> mixins, boolean fabric,
+			String fingerprint) {
+		/** Without a fingerprint. */
+		public Jar(String owner, Predicate<String> contains, ClassBytesSource classes, Supplier<List<String>> mixins, boolean fabric) {
+			this(owner, contains, classes, mixins, fabric, null);
+		}
+
 		/** Not a Fabric mod's jar. */
 		public Jar(String owner, Predicate<String> contains, ClassBytesSource classes, Supplier<List<String>> mixins) {
 			this(owner, contains, classes, mixins, false);
@@ -120,6 +131,35 @@ public final class InstalledClasses implements ClassBytesSource {
 	public String fingerprint(String internalName) throws IOException {
 		byte[] data = read(internalName);
 		return data == null ? "" : Hashing.sha256(data);
+	}
+
+	/**
+	 * What changes when a jar that isn't a Fabric mod's own changes, in their order, for what is cached from their mixins
+	 * (SEAM-1's decision, {@link SeamConflicts}): their fingerprints, hashed; null where one listing mixins has none, which
+	 * then can't be cached. A jar listing none needs none.
+	 */
+	public String nativeFingerprint() {
+		StringBuilder all = new StringBuilder();
+		for (Jar jar : jars) {
+			if (jar.fabric()) continue;
+			if (jar.fingerprint() != null) all.append(jar.owner()).append('=').append(jar.fingerprint()).append('\n');
+			else if (!jar.mixins().get().isEmpty()) return null;
+		}
+		return Hashing.sha256(all.toString());
+	}
+
+	/**
+	 * A mod file's {@link Jar#fingerprint}: its path and the jar nested in it ({@code inner}, the chain of nested jars),
+	 * with what the cache tells a changed file by ({@link TranslationCache#stamp}: its size, times and file key); null
+	 * where its file can't be read so (a mod in development is a folder).
+	 */
+	public static String fingerprint(Path path, String inner) {
+		try {
+			if (!Files.isRegularFile(path)) return null;
+			return path.toAbsolutePath().normalize() + "!" + inner + " " + TranslationCache.stamp(path);
+		} catch (IOException | RuntimeException e) {
+			return null;
+		}
 	}
 
 	/** The mixins the jars that aren't Fabric mods' own ({@link Jar#fabric}) list for this side, jar by jar. */

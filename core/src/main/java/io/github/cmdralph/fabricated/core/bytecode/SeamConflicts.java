@@ -5,14 +5,21 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
+
+import io.github.cmdralph.fabricated.core.archive.Hashing;
+import io.github.cmdralph.fabricated.core.cache.TranslationCache;
+import io.github.cmdralph.fabricated.core.json.Json;
+import io.github.cmdralph.fabricated.core.json.JsonException;
 
 /**
  * The native mods' mixins that keep a class's seams from being put back (SEAM-1, {@link VanillaSeams}): putting vanilla's
@@ -102,6 +109,61 @@ public final class SeamConflicts {
 			if (conflict != null) kept.put(name, conflict);
 		}
 		return kept;
+	}
+
+	/**
+	 * {@link #of(ClassBytesSource, InstalledClasses)}, kept in {@code cache} from one launch to the next: reading every
+	 * listed native mixin takes about 140 ms for 5,000 of them, at each launch with Fabric mods. Keyed by what the decision
+	 * reads: the native jars ({@link InstalledClasses#nativeFingerprint}: their files' paths, sizes and times),
+	 * the seam classes as the platform has them, and {@code environment} (Fabricated's build, the game's versions, the
+	 * side). Decided afresh where a native jar listing mixins has no fingerprint, and where the cached file can't be read
+	 * or is damaged (then rewritten); stored as the cache stores its blobs, atomically, its content's hash checked on read.
+	 */
+	public static Map<String, Conflict> of(ClassBytesSource game, InstalledClasses installed, TranslationCache cache, String environment) {
+		String jars = installed.nativeFingerprint();
+		if (cache == null || jars == null) return of(game, installed);
+		StringBuilder classes = new StringBuilder();
+		for (String name : new TreeSet<>(VanillaSeams.CLASSES)) {
+			byte[] data;
+			try {
+				data = game.read(name);
+			} catch (IOException e) {
+				return of(game, installed);
+			}
+			classes.append(name).append('=').append(data == null ? "none" : Hashing.sha256(data)).append('\n');
+		}
+		String blob = "seams-" + Hashing.sha256(environment + "|" + jars + "|" + classes) + ".json";
+		Map<String, Conflict> cached = cached(cache, blob);
+		if (cached != null) return cached;
+		Map<String, Conflict> kept = of(game, installed);
+		Map<String, Object> json = new TreeMap<>();
+		kept.forEach((owner, c) -> json.put(owner, Map.of("owner", c.owner(), "mixin", c.mixin(), "readable", c.readable())));
+		try {
+			cache.storeBlob(blob, Json.write(Map.of("kept", json), false).getBytes(StandardCharsets.UTF_8));
+		} catch (IOException e) {
+			// Not cached: decided again next launch (caching is an optimisation only).
+		}
+		return kept;
+	}
+
+	/** The decision a blob holds; null where it is absent, damaged or not one. */
+	private static Map<String, Conflict> cached(TranslationCache cache, String blob) {
+		try {
+			Optional<byte[]> data = cache.readBlob(blob);
+			if (data.isEmpty() || !(Json.parse(new String(data.get(), StandardCharsets.UTF_8)) instanceof Map<?, ?> root)
+					|| !(root.get("kept") instanceof Map<?, ?> kept)) return null;
+			Map<String, Conflict> found = new TreeMap<>();
+			for (Map.Entry<?, ?> e : kept.entrySet()) {
+				if (!(e.getKey() instanceof String owner) || !VanillaSeams.names(owner) || !(e.getValue() instanceof Map<?, ?> c)
+						|| !(c.get("owner") instanceof String mod) || !(c.get("mixin") instanceof String mixin) || !(c.get("readable") instanceof Boolean readable)) {
+					return null;
+				}
+				found.put(owner, new Conflict(mod, mixin, readable));
+			}
+			return found;
+		} catch (IOException | JsonException | RuntimeException e) {
+			return null;
+		}
 	}
 
 	/** The decision as a cache key's part: a translation recorded where seams were put back is reused only while it holds. */

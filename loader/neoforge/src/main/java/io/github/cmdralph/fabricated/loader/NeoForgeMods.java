@@ -78,7 +78,8 @@ final class NeoForgeMods {
 			if (!infos.isEmpty() && infos.stream().noneMatch(mod -> GAME.contains(mod.getModId()) || mod.getModId().equals(ModIds.FABRICATED))) {
 				jars.add(new InstalledClasses.Jar(infos.getFirst().getDisplayName(), name -> Fml.contains(file, name + ".class"),
 						name -> Fml.read(file, name + ".class"),
-						() -> NativeModMixins.declaredMixins(entry -> Fml.read(file, entry), mixinConfigs(readToml(file)), clientSide)));
+						() -> NativeModMixins.declaredMixins(entry -> Fml.read(file, entry), mixinConfigs(readToml(file)), clientSide), false,
+						InstalledClasses.fingerprint(file.getFilePath(), "")));
 				if (nested && !declared.isEmpty()) {
 					providers.add(new NativeModules.Provider(declared.getFirst(), file.getFileName(), PlatformMods.internal(Fml.packages(file))));
 				}
@@ -101,7 +102,7 @@ final class NeoForgeMods {
 					jars.add(new InstalledClasses.Jar(declared.getFirst().displayName(), classes::contains,
 							name -> NestedNeoForgeJars.readClass(path, toml.chain(), name, ArchiveLimits.DEFAULTS),
 							() -> NativeModMixins.declaredMixins(entry -> NestedNeoForgeJars.readFile(path, toml.chain(), entry, ArchiveLimits.DEFAULTS),
-									mixinConfigs(toml.text()), clientSide)));
+									mixinConfigs(toml.text()), clientSide), false, InstalledClasses.fingerprint(path, String.join("!", toml.chain()))));
 				}
 			} catch (IOException | JsonException | ParsingException e) {
 				// NeoForge reports a broken nested jar itself; Fabric mods just don't see its mods.

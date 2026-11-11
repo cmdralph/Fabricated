@@ -3,15 +3,22 @@ package io.github.cmdralph.fabricated.core.bytecode;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.testutil.TestSources;
 
 /**
@@ -102,6 +109,79 @@ class SeamConflictsTest {
 		ClassBytesSource game = classes::get;
 		assertEquals(new SeamConflicts.Conflict("moonlight", "com/moon/Gone", false),
 				SeamConflicts.find(game.readNode(RESOLVER, 0), nativeJar(classes, List.of("com/moon/Gone"))));
+	}
+
+	/**
+	 * The decision is kept from one launch to the next, keyed by the native jars' fingerprints (path, size, modification
+	 * time): reused while they hold, made again when one changes or the cached file is damaged, never cached for a jar
+	 * listing mixins without one.
+	 */
+	@Test
+	void theDecisionIsCachedByTheNativeJarsFingerprints(@TempDir Path dir, @TempDir Path game, @TempDir Path mods) throws Exception {
+		Map<String, byte[]> classes = new HashMap<>(classes(dir, wrap("\"resolve\"", STATE.substring(0, STATE.length() - 1) + ";isStickyBlock()Z"),
+				"net.minecraft.world.level.block.piston.PistonStructureResolver"));
+		ClassBytesSource gameClasses = classes::get;
+		int[] reads = {0};
+		ClassBytesSource counted = name -> {
+			if (name.startsWith("com/moon/")) reads[0]++;
+			return classes.get(name);
+		};
+		// The mod's file, whose path, size and modification time the decision is cached by.
+		Path file = mods.resolve("moonlight.jar");
+		Files.write(file, new byte[] {1});
+		Files.setLastModifiedTime(file, FileTime.fromMillis(1_000_000));
+		Function<String, InstalledClasses> installed = fingerprint -> new InstalledClasses(List.of(new InstalledClasses.Jar("moonlight",
+				classes::containsKey, counted, () -> List.of("com/moon/NativeSticky"), false, fingerprint)));
+		Supplier<InstalledClasses> current = () -> installed.apply(InstalledClasses.fingerprint(file, ""));
+		TranslationCache cache = new TranslationCache(game, true, true);
+		Map<String, SeamConflicts.Conflict> decided = Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "com/moon/NativeSticky", true));
+
+		// A miss: decided, and stored.
+		assertEquals(decided, SeamConflicts.of(gameClasses, current.get(), cache, "env"));
+		assertEquals(1, reads[0]);
+		// A hit: the same jars, the mixins not read again.
+		assertEquals(decided, SeamConflicts.of(gameClasses, current.get(), cache, "env"));
+		assertEquals(1, reads[0], "a hit reads no mixin");
+		// The jar changed: decided again (and so in another environment).
+		Files.write(file, new byte[] {1, 2});
+		Files.setLastModifiedTime(file, FileTime.fromMillis(2_000_000));
+		assertEquals(decided, SeamConflicts.of(gameClasses, current.get(), cache, "env"));
+		assertEquals(2, reads[0], "a changed jar is read again");
+		assertEquals(decided, SeamConflicts.of(gameClasses, current.get(), cache, "env"));
+		assertEquals(2, reads[0]);
+		assertEquals(decided, SeamConflicts.of(gameClasses, current.get(), cache, "another build"));
+		assertEquals(3, reads[0]);
+
+		// A damaged or unreadable file: decided again and rewritten, never an error.
+		for (byte[] damaged : List.of("not a decision".getBytes(StandardCharsets.UTF_8), new byte[0])) {
+			try (Stream<Path> blobs = Files.list(cache.root().resolve("blobs"))) {
+				for (Path blob : blobs.filter(p -> p.getFileName().toString().startsWith("seams-")).toList()) Files.write(blob, damaged);
+			}
+			int before = reads[0];
+			assertEquals(decided, SeamConflicts.of(gameClasses, current.get(), cache, "env"));
+			assertEquals(before + 1, reads[0], "a damaged file is decided again");
+			assertEquals(decided, SeamConflicts.of(gameClasses, current.get(), cache, "env"));
+			assertEquals(before + 1, reads[0], "and rewritten");
+		}
+		// A blob whose hash holds but which isn't a decision (another version's): decided again.
+		try (Stream<Path> blobs = Files.list(cache.root().resolve("blobs"))) {
+			for (Path blob : blobs.filter(p -> p.getFileName().toString().startsWith("seams-")).toList()) {
+				cache.storeBlob(blob.getFileName().toString(), "{\"kept\": {\"a/B\": 1}}".getBytes(StandardCharsets.UTF_8));
+			}
+		}
+		int before = reads[0];
+		assertEquals(decided, SeamConflicts.of(gameClasses, current.get(), cache, "env"));
+		assertEquals(before + 1, reads[0]);
+
+		// A jar listing mixins without a fingerprint (a mod in development is a folder): never cached.
+		assertNull(InstalledClasses.fingerprint(mods, ""));
+		before = reads[0];
+		assertEquals(decided, SeamConflicts.of(gameClasses, installed.apply(null), cache, "env"));
+		assertEquals(decided, SeamConflicts.of(gameClasses, installed.apply(null), cache, "env"));
+		assertEquals(before + 2, reads[0]);
+		// A jar listing none needs none.
+		assertEquals(Map.of(), SeamConflicts.of(gameClasses, new InstalledClasses(List.of(new InstalledClasses.Jar("api", classes::containsKey, counted))),
+				cache, "env"));
 	}
 
 	@Test
