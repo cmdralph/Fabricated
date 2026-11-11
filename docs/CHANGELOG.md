@@ -3,6 +3,34 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-11: Pre-flight's bridges for a supertype and a static handler, instanceof constants, a plugin's own choices
+
+- **LAMBDA-11** (P1), fixed: JEI's and owo-lib's char typed hooks take the `GuiEventListener` vanilla's
+  `KeyboardHandler.charTyped` lambdas take, which NeoForge 21.1's, Forge 47's and Forge 52's pass as a `Screen`; they
+  were left out. Pre-flight's bridge passes a parameter of the platform's method to a handler taking a supertype of it.
+- **LAMBDA-12** (P1), fixed: Forge 47's Mixin refuses a static `@Inject` handler on a method that takes `this`, which
+  Fabric's Mixin calls without it; Architectury's screen click and release hooks, which name their lambda twice, were
+  left out. Such a handler gets a bridge taking `this`.
+- **PRE-29** (P2), fixed: pre-flight refused a `@ModifyConstant` of an `instanceof`, whose handler takes the object and
+  the class, and left Lithium's collision context mixin out on every platform. It takes the two shapes Mixin takes, and
+  counts a cast and an `instanceof` among a class's constants, as Mixin does.
+- **LEAVE-4** (P3), fixed: the mixins a config's own plugin turns down, as Mixin asks it which to apply, are listed
+  apart from those pre-flight left out and not counted in the mod's row: Pehkui's version-specific mixins, most of its
+  164 to 220 lines a run on 1.20.1 and 1.21.1. Nothing asks a plugin anything: translation makes it hand Fabricated the
+  answers it gives Mixin, and turn down, whatever it answers, a mixin pre-flight left out whole, which stays listed for
+  Mixin to ask about.
+- Forge's in-game mod writes the report once the Fabric entrypoints have run, failures or not, as NeoForge's does as
+  loading completes: a client whose mods all started kept discovery's report, from before the plugins answered.
+- The shared test mod checks each on every platform's server runs: a handler taking a supertype, a static handler, an
+  `instanceof` constant, and two mixins pre-flight leaves out in its plugin's config, one the plugin turns down.
+- Verified: core's tests, CI's script tests and the mixin inventory; NeoForge 1.21.1, NeoForge 26.1.2, Forge 47 and
+  Forge 66 build. Locally the new checks pass on the NeoForge 1.21.1, Forge 47 and Forge 66 servers. Against the release
+  run (42805036593), the left-out sections change only as these findings say: the NeoForge 1.21.1 corpus client lists
+  74 lines instead of 82 (JEI's and owo's char typed hooks, Lithium's, and ImmediatelyFast's `MixinGL11`, which its
+  plugin turns down, gone; the test mod's one added), the Forge 47 corpus client 173 instead of 184 (Architectury's four
+  mouse hooks gone too), and Pehkui's lines on the advanced server fall from 188 to 3 on NeoForge 1.21.1 and from 132 to
+  9 on Forge 47, each left one its plugin applies there.
+
 ## 2026-11-11: Fabric's conditional overlays on the packs of mods built for both loaders (PACK-12)
 
 - **PACK-12** (P0), fixed: with Fabric API, a NeoForge mod's built-in pack declaring both loaders' conditional overlays

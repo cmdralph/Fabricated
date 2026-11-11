@@ -1355,7 +1355,9 @@ code can do without that mixin:
 - **Any other mixin**: the mod's own code casts its target to the interface the mixin adds, or calls its accessors,
   so leaving the mixin out would only move the crash into the mod. The mod is disabled with the reason, as are the
   enum mixins NeoForge's extensible enums don't allow.
-- In a config with a plugin, which may disable mixins itself, only the failing injector is left out.
+- In a config with a plugin, which may disable mixins itself, only the failing injector is left out. A mixin the
+  plugin turns down itself, as Mixin asks it which to apply, as on Fabric, is listed apart under "Mixins their configs'
+  plugins leave out (as on Fabric)" and not counted in the mod's row (LEAVE-4: Pehkui's version-specific mixins).
 
 A mod disabled this way can still be loaded without the mixin, by naming it in `skipMixins` in
 `config/fabricated.json` (the report's suggestion gives the exact entry).
@@ -1907,6 +1909,10 @@ What else differs on Forge, for Fabric mods in general:
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't
   repair so (PRE-28: Cobblemon's item renderer and model loader hooks, which had stopped a Forge 52 client; checked on a
   Forge 52 client).
+- **Static handlers on methods that take `this`:** Forge 47's Mixin (SpongePowered's 0.8.5) refuses a static `@Inject`
+  handler on a method that takes `this`, which Fabric's Mixin calls without it. Pre-flight gives such a handler a bridge
+  taking `this`, which calls it (LAMBDA-12: Architectury's screen click and release hooks into the `MouseHandler`
+  lambdas Forge 47's patch made take `this`; the test mod's static handler, server run).
 - **Pack sources a mod leaves immutable:** a Fabric mod adding a pack source the vanilla way, with a new immutable set,
   keeps it on every Forge version, as on NeoForge (PACK-1): the set is made mutable again before Forge adds its pack
   finders (PACK-11: FrozenLib's resource pack API, which had stopped a Forge 61 client; checked on a Forge 61 client
