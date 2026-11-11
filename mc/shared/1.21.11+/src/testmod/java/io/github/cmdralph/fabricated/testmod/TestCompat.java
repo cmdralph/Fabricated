@@ -58,6 +58,14 @@ public final class TestCompat {
 	 */
 	public static final int EMPTY_SLOT = 1;
 
+	/**
+	 * Vanilla's lambda in {@code ChiseledBookShelfBlock.createBlockStateDefinition} that adds each slot's property, by its
+	 * name and descriptor in Minecraft 1.21.11 and later: it takes a {@code Property}, where NeoForge's recompiled game takes
+	 * the {@code BooleanProperty} each is (LAMBDA-11).
+	 */
+	public static final String PROPERTY_LAMBDA = "lambda$createBlockStateDefinition$0(Lnet/minecraft/world/level/block/state/StateDefinition$Builder;"
+			+ "Lnet/minecraft/world/level/block/state/properties/Property;)V";
+
 	private TestCompat() {
 	}
 

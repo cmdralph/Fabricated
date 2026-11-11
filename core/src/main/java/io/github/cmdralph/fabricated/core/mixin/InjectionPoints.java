@@ -52,21 +52,27 @@ final class InjectionPoints {
 
 	/** Whether a {@code @Constant} (with its ordinal) occurs in {@code method}, as Mixin matches constants. */
 	static Verdict constantVerdict(AnnotationNode constant, MethodNode method) {
+		int count = constantInsns(constant, method).size();
+		int ordinal = Annotations.value(constant, "ordinal") instanceof Integer n ? n : -1;
+		if (count == 0) return Verdict.MISSING;
+		if (Annotations.value(constant, "slice") != null) return Verdict.UNKNOWN;
+		return ordinal >= count ? Verdict.MISSING : Verdict.FOUND;
+	}
+
+	/** The instructions of {@code method} that are a {@code @Constant}'s value, in order, as Mixin matches constants (whatever its ordinal). */
+	static List<AbstractInsnNode> constantInsns(AnnotationNode constant, MethodNode method) {
 		Object wanted = null;
 		for (String key : List.of("intValue", "floatValue", "longValue", "doubleValue", "stringValue", "classValue")) {
 			Object value = Annotations.value(constant, key);
 			if (value != null) wanted = value;
 		}
 		boolean nullValue = Boolean.TRUE.equals(Annotations.value(constant, "nullValue"));
-		int count = 0;
+		List<AbstractInsnNode> found = new ArrayList<>();
 		for (AbstractInsnNode insn : method.instructions) {
 			Object value = constantOf(insn);
-			if (nullValue ? insn.getOpcode() == Opcodes.ACONST_NULL : value != null && value.equals(wanted)) count++;
+			if (nullValue ? insn.getOpcode() == Opcodes.ACONST_NULL : value != null && value.equals(wanted)) found.add(insn);
 		}
-		int ordinal = Annotations.value(constant, "ordinal") instanceof Integer n ? n : -1;
-		if (count == 0) return Verdict.MISSING;
-		if (Annotations.value(constant, "slice") != null) return Verdict.UNKNOWN;
-		return ordinal >= count ? Verdict.MISSING : Verdict.FOUND;
+		return found;
 	}
 
 	/**
@@ -129,9 +135,13 @@ final class InjectionPoints {
 		return value.matches("[+-]?(\\d+\\.?\\d*|\\.\\d+)([eE][+-]?\\d+)?[fFdD]?");
 	}
 
-	/** The constant an instruction pushes (boxed as {@code @Constant} stores it), or null. */
+	/**
+	 * The constant an instruction pushes (boxed as {@code @Constant} stores it), or null. A cast or an {@code instanceof}
+	 * is its class's constant, as Mixin's {@code Bytecode.getConstant} reads it (PRE-29).
+	 */
 	static Object constantOf(AbstractInsnNode insn) {
 		int op = insn.getOpcode();
+		if (insn instanceof TypeInsnNode type && (op == Opcodes.CHECKCAST || op == Opcodes.INSTANCEOF)) return Type.getObjectType(type.desc);
 		if (op >= Opcodes.ICONST_M1 && op <= Opcodes.ICONST_5) return op - Opcodes.ICONST_0;
 		if (op == Opcodes.LCONST_0 || op == Opcodes.LCONST_1) return (long) (op - Opcodes.LCONST_0);
 		if (op >= Opcodes.FCONST_0 && op <= Opcodes.FCONST_2) return (float) (op - Opcodes.FCONST_0);

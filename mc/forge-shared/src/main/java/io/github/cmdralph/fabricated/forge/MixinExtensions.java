@@ -4,7 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeSet;
 
+import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.LocalVariableNode;
+import org.objectweb.asm.tree.MethodNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.spongepowered.asm.mixin.MixinEnvironment;
@@ -12,6 +15,8 @@ import org.spongepowered.asm.mixin.transformer.IMixinTransformer;
 import org.spongepowered.asm.mixin.transformer.ext.Extensions;
 import org.spongepowered.asm.mixin.transformer.ext.IExtension;
 import org.spongepowered.asm.mixin.transformer.ext.ITargetClassContext;
+import org.spongepowered.asm.util.Locals;
+import org.spongepowered.asm.util.throwables.LVTGeneratorError;
 
 import io.github.cmdralph.fabricated.core.mixin.ConstructorHandoffs;
 import io.github.cmdralph.fabricated.core.mixin.InterfaceInjects;
@@ -22,8 +27,8 @@ import io.github.cmdralph.fabricated.loader.FabricatedState;
  * Fabricated's Mixin extensions on Forge 61 to 66 and Forge 47: one declares default bridges after a class's mixins apply
  * (CORPUS-63, as on NeoForge 21.1), one records again, expanded, the frames of the methods whose locals Mixin would count
  * wrong in a class a Fabric mod's mixin targets, before they apply ({@link RecordedFrameRepair}, CORPUS-79, where Mixin
- * needs it: Forge 61 to 66), and one, after they apply, calls the interface mixins' {@code @Inject} handlers Mixin merged
- * as methods ({@link InterfaceInjects}, INTERFACE-1, where translation made them so: Forge 47) and hands a constructor's
+ * needs it: Forge 61 to 66), and one, after they apply, calls the interface mixins' injector handlers Mixin merged as
+ * methods ({@link InterfaceInjects}, INTERFACE-1, where translation made them so: Forge 47) and hands a constructor's
  * arguments to the one it calls, for the handlers pre-flight moved there ({@link ConstructorHandoffs}, IRIS-1). Forge runs on
  * ModLauncher, where Mixin is a launch plugin and no transformer from the mods folder runs after it; a Mixin extension
  * runs as Mixin applies mixins to a class, before and after they apply, and nowhere else: the loader's transformer
@@ -68,7 +73,7 @@ final class MixinExtensions {
 					String.join(", ", new TreeSet<>(state.defaultBridges().keySet())));
 		}
 		if (handlers) {
-			LOGGER.error("Fabricated could not register its Mixin extension with Mixin's transformer ({}): the @Inject handlers of Fabric mods'"
+			LOGGER.error("Fabricated could not register its Mixin extension with Mixin's transformer ({}): the injector handlers of Fabric mods'"
 					+ " interface mixins, which Forge 47's Mixin doesn't apply, are never called (INTERFACE-1), nor are those of their hooks into"
 					+ " a constructor that Forge moved into another (IRIS-1)", transformer);
 		}
@@ -79,8 +84,9 @@ final class MixinExtensions {
 	}
 
 	/**
-	 * Once a class's mixins have applied, calls the {@code @Inject} handlers of interface mixins that Mixin merged into it
-	 * as methods, where their injectors would have Mixin call them ({@link InterfaceInjects#apply}), and has each
+	 * Once a class's mixins have applied, calls the injector handlers of interface mixins that Mixin merged into it as
+	 * methods, where their injectors would have Mixin call them, with the locals Mixin works out where they capture them
+	 * ({@link InterfaceInjects#apply}), and has each
 	 * constructor whose arguments a merged field holds store them for the handlers pre-flight moved into the constructor
 	 * it calls ({@link ConstructorHandoffs#apply}). Translation makes such handlers only where Mixin applies no injector in
 	 * an interface mixin (Forge 47), and pre-flight such fields only where Forge moved a constructor's code into another
@@ -99,8 +105,8 @@ final class MixinExtensions {
 		@Override
 		public void postApply(ITargetClassContext context) {
 			ClassNode node = context.getClassNode();
-			int applied = InterfaceInjects.apply(node);
-			if (applied > 0) LOGGER.debug("Fabricated applied {} @Inject handler(s) of interface mixins in {}, which Forge's Mixin doesn't apply (INTERFACE-1)",
+			int applied = InterfaceInjects.apply(node, (method, insn) -> locals(node, method, insn), LOGGER::warn);
+			if (applied > 0) LOGGER.debug("Fabricated applied {} injector handler(s) of interface mixins in {}, which Forge's Mixin doesn't apply (INTERFACE-1)",
 					applied, node.name);
 			int handedOff = ConstructorHandoffs.apply(node);
 			if (handedOff > 0) LOGGER.debug("Fabricated had {} constructor(s) of {} hand their arguments to the one they call, for Fabric mods' hooks"
@@ -109,6 +115,21 @@ final class MixinExtensions {
 
 		@Override
 		public void export(MixinEnvironment env, String name, boolean force, ClassNode classNode) {
+		}
+
+		/** The locals Mixin works out at an instruction, as its injectors capture them: each slot's descriptor, or null. */
+		private static String[] locals(ClassNode owner, MethodNode method, AbstractInsnNode insn) {
+			LocalVariableNode[] locals;
+			try {
+				locals = Locals.getLocalsAt(owner, method, insn);
+			} catch (RuntimeException | LVTGeneratorError e) {
+				LOGGER.debug("Mixin can't work out the locals of {}{} in {}", method.name, method.desc, owner.name, e);
+				return null;
+			}
+			if (locals == null) return null;
+			String[] descriptors = new String[locals.length];
+			for (int i = 0; i < locals.length; i++) descriptors[i] = locals[i] == null ? null : locals[i].desc;
+			return descriptors;
 		}
 	}
 
