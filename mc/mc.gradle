@@ -430,6 +430,8 @@ def brokenMods = [
         'badmixin': ['io/github/cmdralph/fabricated/testmod/broken/mixin/ImpossibleMixin.class',
                      'io/github/cmdralph/fabricated/testmod/broken/mixin/UnmatchedCallMixin.class'],
         'shade'   : ['com/google/gson/internal/FabricatedShadedCopy.class'],
+        'badplugin': ['io/github/cmdralph/fabricated/testmod/broken/plugin/FailingPlugin.class',
+                      'io/github/cmdralph/fabricated/testmod/broken/plugin/LeftOutMixin.class'],
 ]
 def brokenJars = brokenMods.collect { name, classes ->
     tasks.register("testmod${name.capitalize()}Jar", Jar) {

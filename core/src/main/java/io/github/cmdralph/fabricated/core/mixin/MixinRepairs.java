@@ -239,15 +239,15 @@ final class MixinRepairs extends PreflightPart {
 			if ((node.access & Opcodes.ACC_INTERFACE) != 0 && !interfaceInjectors) {
 				// After the injector repairs, which may point the selectors elsewhere (INTERFACE-1).
 				for (MethodNode method : List.copyOf(node.methods)) {
-					AnnotationNode inject = Annotations.find(method, MixinNames.INJECT);
-					if (inject == null) continue;
-					String handler = "@Inject handler " + method.name + method.desc + " is an injector in an interface mixin, which " + loader
-							+ "'s Mixin doesn't apply (Mixin does from 0.8.6)";
-					String refused = InterfaceInjects.mark(node, method, inject, targets, ctx::resolve, config.defaultRequire());
+					AnnotationNode injector = Annotations.all(method).stream().filter(a -> PreflightAsm.isInjector(a.desc)).findFirst().orElse(null);
+					if (injector == null) continue;
+					String handler = "@" + PreflightAsm.simpleName(injector.desc) + " handler " + method.name + method.desc + " is an injector in an"
+							+ " interface mixin, which " + loader + "'s Mixin doesn't apply (Mixin does from 0.8.6)";
+					String refused = InterfaceInjects.mark(node, method, injector, targets, ctx::resolve, config.defaultRequire());
 					if (refused == null) changed = true;
 					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), refused == null
 							? handler + "; Fabricated applies it as the mixin applies, as Mixin would (INTERFACE-1)"
-							: handler + "; Fabricated applies one at HEAD, RETURN or TAIL itself, but not this one: " + refused + " (INTERFACE-1)", ""));
+							: handler + "; Fabricated applies " + InterfaceInjects.APPLIED + " itself, but not this one: " + refused + " (INTERFACE-1)", ""));
 				}
 			}
 			if (changed) repaired.put(internal + ".class", write(node));
@@ -303,10 +303,15 @@ final class MixinRepairs extends PreflightPart {
 
 	/**
 	 * One injector the repairs look at: the mixin, the injector's handler and annotation, the mixin's targets, the
-	 * mixin's context, and the bridges repairs make for it (added to the mixin once all its injectors are done).
+	 * mixin's context, the bridges repairs make for it (added to the mixin once all its injectors are done), and its
+	 * selectors as the mod declares them, before any repair points them elsewhere.
 	 */
 	record RepairSite(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx,
-			List<MethodNode> bridges) {
+			List<MethodNode> bridges, List<?> declared) {
+		RepairSite(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx, List<MethodNode> bridges) {
+			this(mixin, handler, injector, targets, ctx, bridges, Annotations.value(injector, "method") instanceof List<?> selectors ? new ArrayList<>(selectors) : List.of());
+		}
+
 		/** The mixin's one target, for the steps that only run where it has one. */
 		ClassNode target() {
 			return targets.get(0);
@@ -446,9 +451,13 @@ final class MixinRepairs extends PreflightPart {
 			RepairStep.stopIfMoved(),
 			// Where the parameters can't be matched by type (one the method has twice), in order, around one added.
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> {
-				List<String> captured = lambdas.capturedValueRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges());
+				List<String> captured = lambdas.capturedValueRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges(), s.declared());
 				return captured.isEmpty() ? LambdaRepairs.addedParameterRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()) : captured;
-			}, (s, lambda) -> s.named() + " targets " + lambda));
+			}, (s, lambda) -> s.named() + " targets " + lambda),
+			RepairStep.stopIfMoved(),
+			// A static handler the running Mixin refuses on what takes this, once nothing else needs bridging (LAMBDA-12).
+			RepairStep.warn(RepairScope.UNGROUPED, s -> lambdas.staticHandlerRepairs(s.mixin(), s.handler(), s.injector(), s.targets(), s.ctx(), s.bridges()),
+					(s, methods) -> s.named() + " targets " + methods));
 
 	/** The registry class the platform freezes before Fabric mods' main entrypoints (REG-8). */
 	static final String MAPPED_REGISTRY = "net/minecraft/core/MappedRegistry";

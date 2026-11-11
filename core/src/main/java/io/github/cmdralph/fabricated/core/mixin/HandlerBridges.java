@@ -415,6 +415,32 @@ final class HandlerBridges {
 	}
 
 	/**
+	 * A handler taking {@code this} for the static {@code handler}: it takes what {@code handler} takes and calls it with
+	 * that, as Fabric's Mixin calls a static handler on a method that takes {@code this}. The injector annotation and the
+	 * parameters' annotations (MixinExtras sugar) move to it; {@code handler} stays a plain method of the mixin.
+	 */
+	static MethodNode instanceBridge(String mixin, MethodNode handler, AnnotationNode injector, String name) {
+		List<Type> params = List.of(Type.getArgumentTypes(handler.desc));
+		MethodNode bridge = bridgeMethod(false, name, params, Type.getReturnType(handler.desc));
+		int stack = 0;
+		for (int i = 0; i < params.size(); i++) {
+			bridge.instructions.add(new VarInsnNode(params.get(i).getOpcode(Opcodes.ILOAD), slotOf(false, params, i)));
+			stack += params.get(i).getSize();
+		}
+		bridge.visibleParameterAnnotations = handler.visibleParameterAnnotations;
+		bridge.visibleAnnotableParameterCount = handler.visibleAnnotableParameterCount;
+		bridge.invisibleParameterAnnotations = handler.invisibleParameterAnnotations;
+		bridge.invisibleAnnotableParameterCount = handler.invisibleAnnotableParameterCount;
+		handler.visibleParameterAnnotations = null;
+		handler.invisibleParameterAnnotations = null;
+		handler.visibleAnnotableParameterCount = 0;
+		handler.invisibleAnnotableParameterCount = 0;
+		callHandler(bridge, mixin, handler, stack);
+		moveInjector(handler, injector, bridge);
+		return bridge;
+	}
+
+	/**
 	 * A handler for {@code injector} at {@code overload} instead of the method that only calls it with one value inserted
 	 * among its own parameters (at {@code inserted}): it takes what {@code handler} takes, with the {@code count}
 	 * parameters it takes from {@code from} on (that method's) replaced by the overload's, and calls {@code handler} with
