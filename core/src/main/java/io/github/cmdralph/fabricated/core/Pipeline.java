@@ -528,12 +528,17 @@ public final class Pipeline {
 					+ coremods.redirectedClasses() + " classes through " + in.descriptor().loaderName() + "'s event hook, fields read through its getters)");
 		}
 		RestoredFields restored = RestoredFields.of(in.fabricatedFiles());
-		// With vanilla's methods the platform took out put back where Fabric mods' mixins hook them, as they then load (SEAM-1),
-		// but in the classes where a native mod's mixin hooks the platform's code that would move, left as the platform has them.
+		// With vanilla's methods the platform took out (SEAM-1), and its calls the platform makes through its extensions
+		// (SEAM-3), put back where Fabric mods' mixins hook them, as they then load, but in the classes where a native mod's
+		// mixin hooks the platform's code that would move, left as the platform has them.
 		ClassBytesSource platformGame = coremods.over(in.gameClasses());
 		Map<String, SeamConflicts.Conflict> keptSeams = SeamConflicts.of(platformGame, in.installedClasses());
-		keptSeams.forEach((owner, conflict) -> report.environment("Vanilla's methods not put back in " + owner.substring(owner.lastIndexOf('/') + 1),
-				conflict.describe(in.descriptor().loaderName()) + "; Fabric mods' hooks of them find nothing there (SEAM-1)"));
+		keptSeams.forEach((owner, conflict) -> {
+			boolean calls = VanillaSeams.putsBackCalls(owner);
+			report.environment("Vanilla's " + (calls ? "calls" : "methods") + " not put back in " + owner.substring(owner.lastIndexOf('/') + 1),
+					conflict.describe(in.descriptor().loaderName(), calls ? "vanilla's calls" : "vanilla's method") + "; Fabric mods' hooks of them find nothing there"
+							+ (calls ? " (SEAM-3)" : " (SEAM-1)"));
+		});
 		ClassBytesSource gameClasses = restored.over(VanillaSeams.over(platformGame, keptSeams.keySet()));
 		ClassIndex game = new ClassIndex(gameClasses);
 		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11

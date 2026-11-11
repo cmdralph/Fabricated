@@ -1112,7 +1112,8 @@ public final class MixinPreflight extends PreflightPart {
 	/**
 	 * Notes each of the mixin's members that hooks a vanilla method the platform took out of the target and Fabricated
 	 * puts back ({@link VanillaSeams}, SEAM-1): an injector or invoker naming it, through the refmap, or a shadow of it;
-	 * the target is then recorded among the classes rewritten as they load ({@link #restoredSeams}), and only then.
+	 * or an injector of a method of the target naming vanilla's call Fabricated puts back there (SEAM-3). The target is
+	 * then recorded among the classes rewritten as they load ({@link #restoredSeams}), and only then.
 	 */
 	private void noteRestoredSeams(ClassNode mixin, ClassNode target, Context ctx) {
 		List<VanillaSeams.Restored> seams = VanillaSeams.restoredIn(target);
@@ -1126,6 +1127,24 @@ public final class MixinPreflight extends PreflightPart {
 			for (AnnotationNode ann : Annotations.all(method)) {
 				boolean shadow = ann.desc.equals(MixinNames.SHADOW);
 				for (VanillaSeams.Restored seam : seams) {
+					if (seam.in() != null) {
+						if (shadow || !namesSeam(ann, seam, seam.owner(), ctx) || !selects(ann, seam.in(), ctx)) continue;
+						String call = seam.owner().substring(seam.owner().lastIndexOf('/') + 1) + "." + seam.name() + seam.desc();
+						String in = seam.in().substring(0, seam.in().indexOf('('));
+						String keeps = seam.answer().substring(seam.answer().lastIndexOf('/') + 1);
+						if (kept != null) {
+							ctx.info("@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + call + " in " + in + ", vanilla's call " + ctx.loader()
+									+ "'s " + simple + " makes through the block's " + keeps + " instead, which Fabricated doesn't put back there, so it finds"
+									+ " nothing to hook, as before SEAM-3: " + kept.describe(ctx.loader(), "vanilla's calls") + " (SEAM-3)");
+							continue;
+						}
+						restoredSeams.add(target.name);
+						ctx.info("@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + call + " in " + in + ", vanilla's call " + ctx.loader()
+								+ "'s " + simple + " makes through the block's " + keeps + " instead; Fabricated puts it back there for the blocks keeping"
+								+ " that method's default, so the hook applies to their breaking, and a block overriding it breaks as " + ctx.loader()
+								+ " has it, without the hook (SEAM-3)");
+						continue;
+					}
 					if (shadow ? !method.desc.equals(seam.desc()) || !method.name.equals(seam.name()) && !method.name.equals("shadow$" + seam.name())
 							: !namesSeam(ann, seam, target.name, ctx)) continue;
 					if (kept != null) {
@@ -1141,6 +1160,22 @@ public final class MixinPreflight extends PreflightPart {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Whether the injector's {@code method} selects the method {@code in} ({@code name(desc)}), through the refmap: by its
+	 * name, with its descriptor where it gives one.
+	 */
+	private static boolean selects(AnnotationNode ann, String in, Context ctx) {
+		Object methods = Annotations.value(ann, "method");
+		List<?> selectors = methods instanceof List<?> list ? list : methods instanceof String one ? List.of(one) : List.of();
+		int paren = in.indexOf('(');
+		for (Object o : selectors) {
+			if (!(o instanceof String selector)) continue;
+			MemberRef ref = MemberRef.parse(ctx.resolve(selector));
+			if (!ref.fuzzy() && in.substring(0, paren).equals(ref.name()) && (ref.desc() == null || ref.desc().equals(in.substring(paren)))) return true;
+		}
+		return false;
 	}
 
 	/** Whether a selector among the annotation's values (its own, its {@code @At}'s), through the refmap, names the seam. */

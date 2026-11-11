@@ -55,6 +55,47 @@ class RestoredSeamsTest {
 		return preflight.restoredSeams();
 	}
 
+	/** Pre-flight's findings and the classes recorded for a Fabric mixin of NeoForge's server game mode (SEAM-3). */
+	private static MixinPreflight breaking(Path dir, String members, List<PreflightFinding> findings) throws Exception {
+		Map<String, String> sources = new HashMap<>(io.github.cmdralph.fabricated.core.bytecode.VanillaCallsTest.neoForgeSources());
+		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); String target() default \"\"; }");
+		sources.put("com/llamalad7/mixinextras/injector/wrapoperation/WrapOperation.java", "package com.llamalad7.mixinextras.injector.wrapoperation;"
+				+ " public @interface WrapOperation { String[] method(); org.spongepowered.asm.mixin.injection.At[] at(); }");
+		sources.put("com/llamalad7/mixinextras/injector/wrapoperation/Operation.java", "package com.llamalad7.mixinextras.injector.wrapoperation;"
+				+ " public interface Operation<R> { R call(Object... args); }");
+		sources.put("com/example/mixin/Breaking.java", "package com.example.mixin; import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.injection.*;"
+				+ " import com.llamalad7.mixinextras.injector.wrapoperation.*; import net.minecraft.core.BlockPos; import net.minecraft.server.level.*;"
+				+ " @Mixin(ServerPlayerGameMode.class) public abstract class Breaking {" + members + " }");
+		Map<String, byte[]> classes = new HashMap<>(TestSources.compileWithLocals(dir, TestSources.MIXIN_ANNOTATIONS, sources));
+		ClassBytesSource game = VanillaSeams.over(classes::get);
+		MixinPreflight preflight = new MixinPreflight(new ClassIndex(game), InstalledClasses.NONE, classes::get, ClassBytesSource.EMPTY, false, true,
+				ClassBytesSource.EMPTY);
+		findings.addAll(preflight.check("test.mixins.json",
+				MixinConfigFile.parse("{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Breaking\"]}"), Refmap.EMPTY, Set.of()));
+		return preflight;
+	}
+
+	@Test
+	void aWrapperOfVanillasCallPutBackHasTheClassRewritten(@TempDir Path dir) throws Exception {
+		// As Wilder Wild's and FrozenLib's: a wrapper of the server's removeBlock call in destroyBlock.
+		String wrap = " @WrapOperation(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/server/level/ServerLevel;"
+				+ "removeBlock(Lnet/minecraft/core/BlockPos;Z)Z\")) private boolean removed(ServerLevel level, BlockPos pos, boolean moving,"
+				+ " Operation<Boolean> original) { return original.call(level, pos, moving); }";
+		List<PreflightFinding> findings = new java.util.ArrayList<>();
+		MixinPreflight preflight = breaking(dir.resolve("wrap"), wrap, findings);
+		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), findings.toString());
+		assertEquals(Set.of("net/minecraft/server/level/ServerPlayerGameMode"), preflight.restoredSeams());
+		assertTrue(findings.stream().anyMatch(f -> f.message().equals("@WrapOperation removed hooks ServerLevel.removeBlock(Lnet/minecraft/core/BlockPos;Z)Z"
+				+ " in destroyBlock, vanilla's call NeoForge's ServerPlayerGameMode makes through the block's IBlockExtension.onDestroyedByPlayer instead;"
+				+ " Fabricated puts it back there for the blocks keeping that method's default, so the hook applies to their breaking, and a block"
+				+ " overriding it breaks as NeoForge has it, without the hook (SEAM-3)")), findings.toString());
+
+		// The same call wrapped in a method it isn't put back in finds nothing there, and the class isn't rewritten for it.
+		List<PreflightFinding> elsewhere = new java.util.ArrayList<>();
+		assertEquals(Set.of(), breaking(dir.resolve("elsewhere"), wrap.replace("method = \"destroyBlock\"", "method = \"harvest\""), elsewhere).restoredSeams());
+		assertTrue(elsewhere.stream().anyMatch(f -> f.message().contains("which does not occur in that method")), elsewhere.toString());
+	}
+
 	@Test
 	void aMixinHookingNoSeamLeavesTheClassAsThePlatformHasIt(@TempDir Path dir) throws Exception {
 		// As Lithium's: a redirect of another call of the resolver's.
