@@ -111,11 +111,6 @@ final class NeoForgeMods {
 		return new Found(mods, new InstalledClasses(jars), providers, Set.copyOf(libraryPackages));
 	}
 
-	/**
-	 * The ids each mod of a mod file says it provides ({@code provides} in its mods.toml entry). NeoForge itself ignores
-	 * the key; Forgified Fabric API lists its modules' Fabric ids and the umbrella's {@code fabric} and {@code fabric-api}
-	 * there, which Fabric mods depend on.
-	 */
 	/** The mods.toml of a mod file, as text; null where it has none, too large a one, or it can't be read. */
 	private static String readToml(IModFile file) {
 		try {
@@ -141,6 +136,11 @@ final class NeoForgeMods {
 		return configs;
 	}
 
+	/**
+	 * The ids each mod of a mod file says it provides ({@code provides} in its mods.toml entry). NeoForge itself ignores
+	 * the key; Forgified Fabric API lists its modules' Fabric ids and the umbrella's {@code fabric} and {@code fabric-api}
+	 * there, which Fabric mods depend on.
+	 */
 	private static Map<String, List<String>> provides(IModFile file, TomlParser parser) {
 		Map<String, List<String>> provides = new LinkedHashMap<>();
 		try {
