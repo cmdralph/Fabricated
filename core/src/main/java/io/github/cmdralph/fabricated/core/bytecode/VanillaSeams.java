@@ -212,10 +212,12 @@ public final class VanillaSeams {
 	 * @param others     the game's other methods whose calls change where vanilla's calls are made instead, by class, as
 	 *                   names (Mojang's and SRG's): the extensions' defaults, no longer called, and on Forge's server
 	 *                   {@code Level.removeBlock}, called where Forge's default sets the block itself
+	 * @param constants  whether the holders get constants they didn't have (vanilla's calls' {@code false} and {@code 11},
+	 *                   SEAM-3), which a hook of a constant there may count
 	 */
 	public record Rewrite(List<Restored> seams, Set<String> movedCalls, Set<String> holders, Set<String> bypassed, Set<String> added,
-			Map<String, Set<String>> others) {
-		static final Rewrite NONE = new Rewrite(List.of(), Set.of(), Set.of(), Set.of(), Set.of(), Map.of());
+			Map<String, Set<String>> others, boolean constants) {
+		static final Rewrite NONE = new Rewrite(List.of(), Set.of(), Set.of(), Set.of(), Set.of(), Map.of(), false);
 
 		public boolean isEmpty() {
 			return seams.isEmpty();
@@ -257,7 +259,8 @@ public final class VanillaSeams {
 		Map<String, Set<String>> others = new TreeMap<>();
 		VanillaCalls.changes(platformClass, copy, moved, holders, bypassed, others);
 		return new Rewrite(List.copyOf(seams), Collections.unmodifiableSet(moved), Collections.unmodifiableSet(holders), Collections.unmodifiableSet(bypassed),
-				Collections.unmodifiableSet(VanillaCalls.added(platformClass, copy)), Collections.unmodifiableMap(others));
+				Collections.unmodifiableSet(VanillaCalls.added(platformClass, copy)), Collections.unmodifiableMap(others),
+				VanillaCalls.addsConstants(platformClass, copy));
 	}
 
 	/** The game's classes with their seams put back ({@link #restore}): pre-flight's view, as they will load. */

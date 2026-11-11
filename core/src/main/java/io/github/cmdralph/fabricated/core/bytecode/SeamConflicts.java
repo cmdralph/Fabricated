@@ -49,6 +49,7 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
 public final class SeamConflicts {
 	private static final String AT = "Lorg/spongepowered/asm/mixin/injection/At;";
 	private static final String OVERWRITE = "Lorg/spongepowered/asm/mixin/Overwrite;";
+	private static final String MODIFY_CONSTANT = "Lorg/spongepowered/asm/mixin/injection/ModifyConstant;";
 	private static final List<String> INJECTORS = List.of("Lorg/spongepowered/asm/mixin/injection/", "Lcom/llamalad7/mixinextras/");
 	/** The points a moved call can't shift: they pick by what an instruction is, not by its place. */
 	private static final Set<String> FIXED_POINTS = Set.of("HEAD", "RETURN", "TAIL", "INVOKE", "INVOKE_ASSIGN", "INVOKE_STRING", "FIELD", "NEW", "CONSTANT");
@@ -275,6 +276,7 @@ public final class SeamConflicts {
 				Selected selected = selected(ann, target, rewrite);
 				if (selected == Selected.UNKNOWN || selected == Selected.BYPASSED || selected == Selected.HOLDER && shiftable(ann)) return true;
 				if (selected == Selected.HOLDER && names(ann, rewrite.added())) return true;
+				if (selected == Selected.HOLDER && rewrite.constants() && (ann.desc.equals(MODIFY_CONSTANT) || points(ann, "CONSTANT"))) return true;
 			}
 		}
 		return false;
@@ -393,6 +395,18 @@ public final class SeamConflicts {
 			return false;
 		}
 		return value instanceof List<?> list && list.stream().anyMatch(SeamConflicts::shiftable);
+	}
+
+	/** Whether one of the annotation's points (its own, its slices') is of the kind. */
+	private static boolean points(Object value, String kind) {
+		if (value instanceof AnnotationNode ann) {
+			if (ann.desc.equals(AT) && value(ann, "value") instanceof String point && point.equalsIgnoreCase(kind)) return true;
+			for (int i = 0; ann.values != null && i + 1 < ann.values.size(); i += 2) {
+				if (points(ann.values.get(i + 1), kind)) return true;
+			}
+			return false;
+		}
+		return value instanceof List<?> list && list.stream().anyMatch(v -> points(v, kind));
 	}
 
 	/** Whether a selector or target picks members by a pattern: Mixin's {@code *} quantifier, a {@code {n}} one, a regex. */

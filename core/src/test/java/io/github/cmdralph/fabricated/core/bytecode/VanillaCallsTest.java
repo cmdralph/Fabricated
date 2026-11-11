@@ -330,7 +330,10 @@ public class VanillaCallsTest {
 		VanillaSeams.Rewrite forge = VanillaSeams.rewriteOf(node(platform(dir.resolve("forge"), Form.FORGE).get(SERVER)));
 		assertEquals(Set.of("removeBlock", "m_7471_"), forge.others().get("net/minecraft/world/level/Level"));
 		assertEquals(Set.of("removeBlock", "m_7471_"), forge.others().get("net/minecraft/server/level/ServerLevel"));
+		// Vanilla's false and 11 are constants destroyBlock didn't have as many of.
+		assertTrue(server.constants());
 		VanillaSeams.Rewrite client = VanillaSeams.rewriteOf(node(platform.get(CLIENT)));
+		assertTrue(client.constants());
 		assertEquals(Set.of(), client.bypassed());
 		assertTrue(client.added().contains("net/minecraft/world/level/Level;setBlock(" + pos + state + "I)Z"), client.added().toString());
 	}

@@ -161,6 +161,9 @@ class SeamConflictsTest {
 				"net.minecraft.server.level.ServerLevel"));
 		assertNull(breaking(dir.resolve("forge-level-other"), VanillaCallsTest.forgeSources(), level.replace("removeBlock", "setBlock"),
 				"net.minecraft.world.level.Level"));
+		// A constant there, which vanilla's calls bring more of (their false, their 11).
+		assertEquals(expected, breaking(dir.resolve("constant"), " @Inject(method = \"destroyBlock\", at = @At(value = \"CONSTANT\")) private void constant(CallbackInfo ci) { }",
+				gameMode));
 		// What stays: destroyBlock's start, and a call NeoForge makes there.
 		assertNull(breaking(dir.resolve("head"), " @Inject(method = \"destroyBlock\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }", gameMode));
 		assertNull(breaking(dir.resolve("kept-call"), " @Inject(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target ="

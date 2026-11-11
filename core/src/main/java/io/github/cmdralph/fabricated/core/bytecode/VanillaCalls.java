@@ -767,6 +767,25 @@ final class VanillaCalls {
 		return added;
 	}
 
+	/** Whether a method of the class has more constant pushes once {@code restored} (its helpers apart). */
+	static boolean addsConstants(ClassNode original, ClassNode restored) {
+		for (MethodNode method : restored.methods) {
+			int at = indexOf(original, method.name, method.desc);
+			if (at >= 0 && !method.name.startsWith("fabricated$") && constants(method) > constants(original.methods.get(at))) return true;
+		}
+		return false;
+	}
+
+	private static int constants(MethodNode method) {
+		int n = 0;
+		if (method.instructions == null) return n;
+		for (AbstractInsnNode insn : method.instructions) {
+			int op = insn.getOpcode();
+			if (op >= Opcodes.ACONST_NULL && op <= Opcodes.SIPUSH || insn instanceof LdcInsnNode) n++;
+		}
+		return n;
+	}
+
 	/** Whether the member is one of the class's methods (SEAM-1's, the helpers) or the field the helpers keep answers in. */
 	private static boolean own(String key, ClassNode node) {
 		return key.startsWith(node.name + ";") && (key.contains("(") || key.startsWith(node.name + ";" + KNOWN + ":"));
