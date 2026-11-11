@@ -3,16 +3,24 @@ package io.github.cmdralph.fabricated.core.bytecode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
+
+import io.github.cmdralph.fabricated.core.archive.Hashing;
+import io.github.cmdralph.fabricated.core.cache.TranslationCache;
+import io.github.cmdralph.fabricated.core.json.Json;
+import io.github.cmdralph.fabricated.core.json.JsonException;
 
 /**
  * The native mods' mixins that keep a class's seams from being put back (SEAM-1, {@link VanillaSeams}): putting vanilla's
@@ -49,13 +57,19 @@ public final class SeamConflicts {
 	}
 
 	/**
-	 * A native mod's mixin keeping a class's seams from being put back.
+	 * What keeps a class's seams from being put back: a native mod's mixin, or what pre-flight couldn't read to tell.
 	 *
-	 * @param owner    the mod, as the installed jar names it
-	 * @param mixin    the mixin class, by internal name
-	 * @param readable whether pre-flight could read it (it conflicts unread otherwise)
+	 * @param owner    the mod, as the installed jar names it; empty where the class itself failed to read
+	 * @param mixin    the mixin class, by internal name; or the path of the file listing the mod's mixins that failed to
+	 *                 read (it has a dot, a class's internal name none); or the class, where it failed to read
+	 * @param readable whether pre-flight could read the mixin (it conflicts unread otherwise)
 	 */
 	public record Conflict(String owner, String mixin, boolean readable) {
+		/** Where the class failed to read as the platform has it: what the native mods' mixins hook there can't be told. */
+		static Conflict unreadClass(String name) {
+			return new Conflict("", name, false);
+		}
+
 		/** As a report says it: {@code NeoForge mod moonlight's mixin PistonStructureResolverMixin hooks ...}. */
 		public String describe(String loader) {
 			return describe(loader, "vanilla's method");
@@ -63,6 +77,14 @@ public final class SeamConflicts {
 
 		/** As {@link #describe(String)}, of what goes back: {@code vanilla's method} (SEAM-1) or {@code vanilla's calls} (SEAM-3). */
 		public String describe(String loader, String what) {
+			if (owner.isEmpty()) {
+				return "the class failed to read as " + loader + " has it, so whether a native mod's mixin hooks the platform's code that putting"
+						+ " " + what + " back would move can't be told";
+			}
+			if (mixin.contains(".")) {
+				return loader + " mod " + owner + "'s " + mixin + ", which lists its mixins, failed to read, so its mixins may hook the platform's code"
+						+ " that putting " + what + " back would move";
+			}
 			String simple = mixin.substring(mixin.lastIndexOf('/') + 1);
 			return loader + " mod " + owner + "'s mixin " + simple + (readable ? " hooks the platform's code that putting " + what + " back would move"
 					: " can't be read, so it may hook the platform's code that putting " + what + " back would move");
@@ -70,24 +92,46 @@ public final class SeamConflicts {
 	}
 
 	/**
+	 * The classes whose seams aren't put back, with what keeps each, and whether every read the decision took succeeded:
+	 * one that didn't is as conservative (a class is kept where a read it needed failed) but may differ at the next
+	 * launch, so it isn't cached.
+	 */
+	public record Decision(Map<String, Conflict> kept, boolean clean) {
+		public Decision {
+			kept = Collections.unmodifiableMap(new TreeMap<>(kept));
+		}
+	}
+
+	/** {@link #find(ClassNode, InstalledClasses)}'s answer, and whether every read it took succeeded. */
+	private record Found(Conflict conflict, boolean clean) {
+	}
+
+	/**
 	 * The native mixin keeping {@code platformClass}'s seams from being put back, or null where none does (or nothing would
-	 * be put back): the first, in the order the jars list their mixins.
+	 * be put back): the first, in the order the jars list their mixins. A mixin that fails to read keeps them, and so does a
+	 * file listing mixins that failed to read, where no mixin read does.
 	 *
 	 * @param platformClass the class as the platform has it, before any seam is put back
 	 */
 	public static Conflict find(ClassNode platformClass, InstalledClasses installed) {
+		return find(platformClass, installed.nativeListing()).conflict();
+	}
+
+	private static Found find(ClassNode platformClass, InstalledClasses.NativeListing listing) {
 		VanillaSeams.Rewrite rewrite = VanillaSeams.rewriteOf(platformClass);
-		if (rewrite.isEmpty()) return null;
+		if (rewrite.isEmpty()) return new Found(null, true);
 		String internal = platformClass.name;
 		String dotted = internal.replace('/', '.');
-		for (InstalledClasses.ListedMixin listed : installed.nativeMixins()) {
+		for (InstalledClasses.ListedMixin listed : listing.mixins()) {
 			byte[] data;
 			try {
 				data = listed.classes().read(listed.mixin());
-			} catch (IOException e) {
-				data = null;
+			} catch (IOException | RuntimeException e) {
+				// A read error, which the next launch may not have.
+				return new Found(new Conflict(listed.owner(), listed.mixin(), false), false);
 			}
-			if (data == null) return new Conflict(listed.owner(), listed.mixin(), false);
+			// A class the config lists and the jar hasn't, or one that doesn't parse, is so at every launch.
+			if (data == null) return new Found(new Conflict(listed.owner(), listed.mixin(), false), true);
 			// Only a mixin naming the class, or an extension whose default is bypassed, can target it (its @Mixin's class or
 			// string): the others aren't parsed.
 			String text = new String(data, StandardCharsets.ISO_8859_1);
@@ -97,26 +141,122 @@ public final class SeamConflicts {
 			try {
 				new ClassReader(data).accept(mixin, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
 			} catch (RuntimeException e) {
-				return new Conflict(listed.owner(), listed.mixin(), false);
+				return new Found(new Conflict(listed.owner(), listed.mixin(), false), true);
 			}
 			List<String> targets = InstalledClasses.mixinTargets(mixin);
 			if (targets.contains(internal) && hooks(mixin, platformClass, rewrite)
 					|| rewrite.defaults().entrySet().stream().anyMatch(d -> targets.contains(d.getKey()) && hooksDefault(mixin, d.getValue()))) {
-				return new Conflict(listed.owner(), listed.mixin(), true);
+				return new Found(new Conflict(listed.owner(), listed.mixin(), true), true);
 			}
 		}
-		return null;
+		if (!listing.complete()) {
+			InstalledClasses.UnreadList unread = listing.unread().get(0);
+			return new Found(new Conflict(unread.owner(), unread.path(), false), false);
+		}
+		return new Found(null, true);
 	}
 
 	/** The classes of the game whose seams native mixins keep from being put back, with the mixin keeping each. */
 	public static Map<String, Conflict> of(ClassBytesSource game, InstalledClasses installed) {
+		return decide(game, installed).kept();
+	}
+
+	/**
+	 * {@link #of(ClassBytesSource, InstalledClasses)}, and whether every read it took succeeded: the native jars' lists of
+	 * their mixins, the mixins, and the seam classes as the platform has them. A seam class that fails to read is kept
+	 * (an error from the platform's transformers among them), as is one where a mixin or a list failed to read.
+	 */
+	public static Decision decide(ClassBytesSource game, InstalledClasses installed) {
+		InstalledClasses.NativeListing listing = installed.nativeListing();
+		boolean clean = listing.complete();
 		Map<String, Conflict> kept = new TreeMap<>();
 		for (String name : VanillaSeams.CLASSES) {
-			ClassNode node = game.readNode(name, 0);
-			Conflict conflict = node == null ? null : find(node, installed);
-			if (conflict != null) kept.put(name, conflict);
+			byte[] data;
+			try {
+				data = game.read(name);
+			} catch (IOException | RuntimeException e) {
+				kept.put(name, Conflict.unreadClass(name));
+				clean = false;
+				continue;
+			}
+			ClassNode node = parse(data);
+			if (node == null) continue;
+			Found found = find(node, listing);
+			clean &= found.clean();
+			if (found.conflict() != null) kept.put(name, found.conflict());
 		}
-		return kept;
+		return new Decision(kept, clean);
+	}
+
+	/** A class as a tree; null where absent, or where it doesn't parse (its rewrite as it loads fails the same way). */
+	private static ClassNode parse(byte[] data) {
+		if (data == null) return null;
+		try {
+			ClassNode node = new ClassNode();
+			new ClassReader(data).accept(node, 0);
+			return node;
+		} catch (RuntimeException | StackOverflowError e) {
+			return null;
+		}
+	}
+
+	/**
+	 * {@link #of(ClassBytesSource, InstalledClasses)}, kept in {@code cache} from one launch to the next: reading every
+	 * listed native mixin takes about 140 ms for 5,000 of them, at each launch with Fabric mods. Keyed by what the decision
+	 * reads: the native jars ({@link InstalledClasses#nativeFingerprint}: their files' paths, sizes and times),
+	 * the seam classes as the platform has them, and {@code environment} (Fabricated's build, the game's versions, the
+	 * side). Decided afresh where a native jar listing mixins has no fingerprint, where a seam class fails to read, and
+	 * where the cached file can't be read or is damaged (then rewritten); stored as the cache stores its blobs,
+	 * atomically, its content's hash checked on read. Only a decision whose every read succeeded is stored
+	 * ({@link Decision#clean}): one a read error made would hold for every later launch, the jars' stamps unchanged.
+	 */
+	public static Map<String, Conflict> of(ClassBytesSource game, InstalledClasses installed, TranslationCache cache, String environment) {
+		String jars = installed.nativeFingerprint();
+		if (cache == null || jars == null) return of(game, installed);
+		StringBuilder classes = new StringBuilder();
+		for (String name : new TreeSet<>(VanillaSeams.CLASSES)) {
+			byte[] data;
+			try {
+				data = game.read(name);
+			} catch (IOException | RuntimeException e) {
+				// Not cached: the decision reads it again, and keeps the class where it fails again.
+				return of(game, installed);
+			}
+			classes.append(name).append('=').append(data == null ? "none" : Hashing.sha256(data)).append('\n');
+		}
+		String blob = "seams-" + Hashing.sha256(environment + "|" + jars + "|" + classes) + ".json";
+		Map<String, Conflict> cached = cached(cache, blob);
+		if (cached != null) return cached;
+		Decision decision = decide(game, installed);
+		if (!decision.clean()) return decision.kept();
+		Map<String, Object> json = new TreeMap<>();
+		decision.kept().forEach((owner, c) -> json.put(owner, Map.of("owner", c.owner(), "mixin", c.mixin(), "readable", c.readable())));
+		try {
+			cache.storeBlob(blob, Json.write(Map.of("kept", json), false).getBytes(StandardCharsets.UTF_8));
+		} catch (IOException e) {
+			// Not cached: decided again next launch (caching is an optimisation only).
+		}
+		return decision.kept();
+	}
+
+	/** The decision a blob holds; null where it is absent, damaged or not one. */
+	private static Map<String, Conflict> cached(TranslationCache cache, String blob) {
+		try {
+			Optional<byte[]> data = cache.readBlob(blob);
+			if (data.isEmpty() || !(Json.parse(new String(data.get(), StandardCharsets.UTF_8)) instanceof Map<?, ?> root)
+					|| !(root.get("kept") instanceof Map<?, ?> kept)) return null;
+			Map<String, Conflict> found = new TreeMap<>();
+			for (Map.Entry<?, ?> e : kept.entrySet()) {
+				if (!(e.getKey() instanceof String owner) || !VanillaSeams.names(owner) || !(e.getValue() instanceof Map<?, ?> c)
+						|| !(c.get("owner") instanceof String mod) || !(c.get("mixin") instanceof String mixin) || !(c.get("readable") instanceof Boolean readable)) {
+					return null;
+				}
+				found.put(owner, new Conflict(mod, mixin, readable));
+			}
+			return found;
+		} catch (IOException | JsonException | RuntimeException e) {
+			return null;
+		}
 	}
 
 	/** The decision as a cache key's part: a translation recorded where seams were put back is reused only while it holds. */

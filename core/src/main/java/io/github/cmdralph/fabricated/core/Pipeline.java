@@ -532,7 +532,8 @@ public final class Pipeline {
 		// (SEAM-3), put back where Fabric mods' mixins hook them, as they then load, but in the classes where a native mod's
 		// mixin hooks the platform's code that would move, left as the platform has them.
 		ClassBytesSource platformGame = coremods.over(in.gameClasses());
-		Map<String, SeamConflicts.Conflict> keptSeams = SeamConflicts.of(platformGame, in.installedClasses());
+		Map<String, SeamConflicts.Conflict> keptSeams = SeamConflicts.of(platformGame, in.installedClasses(), in.cache(), String.join("|",
+				in.fabricatedVersion(), in.fabricatedBuild(), in.minecraftVersion(), in.neoForgeVersion(), in.clientSide() ? "client" : "server"));
 		keptSeams.forEach((owner, conflict) -> {
 			boolean calls = VanillaSeams.putsBackCalls(owner);
 			report.environment("Vanilla's " + (calls ? "calls" : "methods") + " not put back in " + owner.substring(owner.lastIndexOf('/') + 1),
@@ -553,7 +554,7 @@ public final class Pipeline {
 				in.runtimeMixinVersion(), in.mixinExtrasVersion(), in.lowestMixinBehavior(), in.fabricatedVersion() + " " + in.fabricatedBuild(), mappingTable, mappingsHash, game, in.untransformableClasses(),
 				// In the game's names: on 1.21.11 the loader reads the obfuscated jar through Mojang's mappings.
 				in.vanillaGame().classes(), installed, installed.isEmpty() ? game : new ClassIndex(gameClasses.or(installed)), unsupportedPackages(scan.candidates()),
-				in.descriptor(), restored.bridgedFields(), SeamConflicts.key(keptSeams));
+				in.descriptor(), restored.bridgedFields(), keptSeams);
 		phases.end("game classes");
 		Rounds rounds = new Rounds();
 		try {

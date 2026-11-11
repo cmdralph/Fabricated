@@ -204,11 +204,20 @@ class NativeModMixinsTest {
 				"a.mixins.json", "{\"package\": \"a.mixin\", \"mixins\": [\"Common\"], \"client\": [\"hud.Client\"], \"server\": [\"Server\"]}",
 				"b.mixins.json", "{\"package\": \"b\", \"mixins\": [\"Common\"");
 		NativeModMixins.Files read = path -> files.containsKey(path) ? files.get(path).getBytes(StandardCharsets.UTF_8) : null;
-		assertEquals(List.of("a/mixin/Common", "a/mixin/hud/Client"), NativeModMixins.listed(read, configs, true), "a config that doesn't parse lists none");
-		assertEquals(List.of("a/mixin/Common", "a/mixin/Server"), NativeModMixins.listed(read, configs, false));
+		assertEquals(new InstalledClasses.Listing(List.of("a/mixin/Common", "a/mixin/hud/Client"), List.of()), NativeModMixins.listed(read, configs, true),
+				"a config that doesn't parse lists none, and one the jar hasn't, both as at every launch");
+		assertEquals(List.of("a/mixin/Common", "a/mixin/Server"), NativeModMixins.listed(read, configs, false).mixins());
 		NativeModMixins.Files jar = path -> path.equals("META-INF/MANIFEST.MF") ? manifest : read.read(path);
-		assertEquals(List.of("a/mixin/Common", "a/mixin/hud/Client"), NativeModMixins.manifestMixins(jar, true));
-		assertEquals(List.of(), NativeModMixins.manifestMixins(path -> { throw new IOException("unreadable"); }, true));
+		assertEquals(new InstalledClasses.Listing(List.of("a/mixin/Common", "a/mixin/hud/Client"), List.of()), NativeModMixins.manifestMixins(jar, true));
+		// A read error: what the file lists is unknown, which the listing says (SEAM-1 doesn't cache a decision made from it).
+		assertEquals(new InstalledClasses.Listing(List.of(), List.of("META-INF/MANIFEST.MF")),
+				NativeModMixins.manifestMixins(path -> { throw new IOException("unreadable"); }, true));
+		NativeModMixins.Files failingConfig = path -> {
+			if (path.equals("b.mixins.json")) throw new java.io.UncheckedIOException(new IOException("EIO"));
+			return jar.read(path);
+		};
+		assertEquals(new InstalledClasses.Listing(List.of("a/mixin/Common", "a/mixin/hud/Client"), List.of("b.mixins.json")),
+				NativeModMixins.manifestMixins(failingConfig, true));
 	}
 
 	/**
@@ -222,11 +231,19 @@ class NativeModMixinsTest {
 				"b.mixins.json", "{\"package\": \"b\", \"mixins\": [\"Manifested\"]}",
 				"META-INF/MANIFEST.MF", "Manifest-Version: 1.0\r\nMixinConfigs: b.mixins.json\r\n\r\n");
 		NativeModMixins.Files read = path -> files.containsKey(path) ? files.get(path).getBytes(StandardCharsets.UTF_8) : null;
-		assertEquals(List.of("m/platform/PistonStructureResolverMixin", "b/Manifested"),
+		assertEquals(new InstalledClasses.Listing(List.of("m/platform/PistonStructureResolverMixin", "b/Manifested"), List.of()),
 				NativeModMixins.declaredMixins(read, List.of("moonlight.mixins.json"), false));
 		assertEquals(List.of("m/platform/PistonStructureResolverMixin", "m/platform/ItemMixin", "b/Manifested"),
-				NativeModMixins.declaredMixins(read, List.of("moonlight.mixins.json", "b.mixins.json"), true), "each config once");
-		assertEquals(List.of(), NativeModMixins.declaredMixins(path -> { throw new IOException("unreadable"); }, List.of("moonlight.mixins.json"), false));
+				NativeModMixins.declaredMixins(read, List.of("moonlight.mixins.json", "b.mixins.json"), true).mixins(), "each config once");
+		assertEquals(new InstalledClasses.Listing(List.of(), List.of("moonlight.mixins.json", "META-INF/MANIFEST.MF")),
+				NativeModMixins.declaredMixins(path -> { throw new IOException("unreadable"); }, List.of("moonlight.mixins.json"), false));
+		// The manifest failing to read leaves the mods.toml's configs listed.
+		NativeModMixins.Files noManifest = path -> {
+			if (path.equals("META-INF/MANIFEST.MF")) throw new IOException("EIO");
+			return read.read(path);
+		};
+		assertEquals(new InstalledClasses.Listing(List.of("m/platform/PistonStructureResolverMixin"), List.of("META-INF/MANIFEST.MF")),
+				NativeModMixins.declaredMixins(noManifest, List.of("moonlight.mixins.json"), false));
 	}
 
 	/** AppleSkin's Fabric build, and a jar of the other mod's classes, listing {@code mixins}. */
