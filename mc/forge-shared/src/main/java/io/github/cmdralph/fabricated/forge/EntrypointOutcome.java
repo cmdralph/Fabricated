@@ -44,8 +44,9 @@ final class EntrypointOutcome {
 			LOGGER.error("{}", text, e);
 			warning.accept(text);
 		});
-		// Written now, as nothing on Forge writes it once loading completes; a holder dropped at the freeze after the
-		// entrypoints writes it again (MainEntrypoints).
-		if (!failures.isEmpty()) state.writeReport();
+		// Written now, as nothing on Forge writes it once loading completes: with the failures, and the mixins Fabric mods'
+		// plugins turned down as Mixin selected them (LEAVE-4); a holder dropped at the freeze after the entrypoints writes
+		// it again (MainEntrypoints).
+		state.writeReport();
 	}
 }
