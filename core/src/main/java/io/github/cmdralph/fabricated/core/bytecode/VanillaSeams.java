@@ -161,9 +161,9 @@ public final class VanillaSeams {
 	}
 
 	/**
-	 * {@link #restore}, all or nothing, as a class loads: on a copy of the class, whose methods then replace the class's.
-	 * Where it throws, the class stays exactly as it was, and the failure is returned for the caller to log, never thrown:
-	 * the class loads as the platform has it, its Fabric mods' hooks of the seams finding nothing, as before SEAM-1.
+	 * {@link #restore}, all or nothing, as a class loads: on a copy of the class, whose methods and fields then replace the
+	 * class's. Where it throws, the class stays exactly as it was, and the failure is returned for the caller to log, never
+	 * thrown: the class loads as the platform has it, its Fabric mods' hooks of the seams finding nothing, as before SEAM-1.
 	 */
 	public static Restoring restoreWhole(ClassNode node) {
 		try {
@@ -173,6 +173,8 @@ public final class VanillaSeams {
 			if (!restored.isEmpty()) {
 				node.methods.clear();
 				node.methods.addAll(copy.methods);
+				node.fields.clear();
+				node.fields.addAll(copy.fields);
 			}
 			return new Restoring(restored, null);
 		} catch (RuntimeException | LinkageError | StackOverflowError e) {

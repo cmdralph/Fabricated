@@ -151,6 +151,9 @@ public class VanillaCallsTest {
 				+ " return level.$setBlock$(pos, new BlockState(new Block(\"stump\")), 3); } }");
 		sources.put("com/example/ViaInterface.java", "package com.example;" + imports + " public class ViaInterface extends Block implements OverridingExtension {"
 				+ " public ViaInterface() { super(\"via\"); } }");
+		// One whose own methods name a class the game lacks as it runs: whether it overrides the default can't be told.
+		sources.put("com/example/Unreadable.java", "package com.example;" + imports + " public class Unreadable extends Block { public Unreadable() {"
+				+ " super(\"unreadable\"); } public void drawn(ClientOnly client) { } }");
 		sources.put("com/example/Calling.java", "package com.example;" + imports + " public class Calling extends Block { public Calling() { super(\"calling\"); }"
 				+ override + " level.log.add(\"calling\"); return super.onDestroyedByPlayer(state, level, pos, player," + form.args() + "); } }");
 		sources.put(SERVER + ".java", "package net.minecraft.server.level;" + imports + " public class ServerPlayerGameMode {"
@@ -254,6 +257,30 @@ public class VanillaCallsTest {
 			assertEquals(form.forge ? List.of(names.get("$playerWillDestroy$"), names.get("$createLegacyBlock$"), names.get("$setBlock$"))
 					: List.of(names.get("$createLegacyBlock$"), names.get("$setBlock$")), client, form.name());
 		}
+	}
+
+	/**
+	 * Whether a block keeps the default is asked once for each class, the answers kept in the class's field: a block
+	 * whose classes can't be read is taken to override it, once, and breaks as the platform has it.
+	 */
+	@Test
+	void theAnswerIsKeptForEachClass(@TempDir Path dir) throws Exception {
+		ClassLoader loader = loader(hooked(restored(platform(dir, Form.NEOFORGE)), SERVER, "net/minecraft/server/level/ServerLevel"));
+		Class<?> gameMode = loader.loadClass(SERVER.replace('/', '.'));
+		String block = "net.minecraft.world.level.block.Block";
+		for (String broken : List.of(block, "com.example.Overriding", "com.example.Unreadable", block, "com.example.Unreadable")) {
+			Object level = loader.loadClass("net.minecraft.server.level.ServerLevel").getConstructor().newInstance();
+			place(loader, level, broken);
+			Object player = loader.loadClass("net.minecraft.server.level.ServerPlayer").getConstructor().newInstance();
+			destroy(loader, gameMode, gameMode.getConstructors()[0].newInstance(level, player, false));
+		}
+		java.lang.reflect.Field field = gameMode.getDeclaredField("fabricated$overriding");
+		field.setAccessible(true);
+		Map<String, Boolean> known = new HashMap<>();
+		((Map<?, ?>) field.get(null)).forEach((type, overrides) -> known.put(((Class<?>) type).getName(), (Boolean) overrides));
+		assertEquals(Map.of("net.minecraft.world.level.block.state.BlockState", false, block, false, "com.example.Overriding", true,
+				"com.example.Unreadable", true), known);
+		assertEquals(List.of("hooked", "hooked"), loader.loadClass("com.example.Hook").getField("LOG").get(null));
 	}
 
 	/** Translation reads classes in parallel: every class put back at once is the same, the helpers copied whole. */

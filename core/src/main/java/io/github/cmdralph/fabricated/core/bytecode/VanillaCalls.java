@@ -18,6 +18,7 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
@@ -213,6 +214,9 @@ final class VanillaCalls {
 			int at = indexOf(node, method.name, method.desc);
 			if (at < 0) node.methods.add(method);
 			else if (rewritten.contains(method.name + method.desc)) node.methods.set(at, method);
+		}
+		for (FieldNode field : compressed.fields) {
+			if (field.name.equals(KNOWN)) node.fields.add(field);
 		}
 		return restored;
 	}
@@ -427,7 +431,8 @@ final class VanillaCalls {
 
 	/** The private helpers vanilla's branch calls: the check, the block's {@code getBlock}, and Forge's server's reads. */
 	private static void addHelpers(ClassNode node, PutBack row, boolean srg) {
-		if (indexOf(node, KEEPS_DEFAULT, "(L" + STATE + ";)Z") >= 0) return;
+		if (indexOf(node, KEEPS_DEFAULT, "(L" + STATE + ";)Z") >= 0 || node.fields.stream().anyMatch(f -> f.name.equals(KNOWN))) return;
+		node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KNOWN, "Ljava/util/Map;", null, null));
 		node.methods.add(keepsDefault(row.extension(), node.name));
 		node.methods.addAll(keepsHelpers(node.name));
 		node.methods.add(helper("fabricated$block", "(L" + STATE + ";)L" + BLOCK + ";", Opcodes.ARETURN,
@@ -446,11 +451,22 @@ final class VanillaCalls {
 
 	/**
 	 * {@code private static boolean fabricated$keepsDefault(BlockState state)}: {@link KeepsDefault#keepsDefault} of the state
-	 * and its block, for the extension's methods, whose code is copied into the class beside it ({@link #keepsHelpers}).
+	 * and its block, for the extension's methods, whose code is copied into the class beside it ({@link #keepsHelpers}),
+	 * with the answers the class keeps in {@link #KNOWN}, made the first time it asks (its initialiser stays as it is).
 	 */
 	private static MethodNode keepsDefault(Extension extension, String owner) {
 		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KEEPS_DEFAULT, "(L" + STATE + ";)Z", null, null);
 		InsnList code = method.instructions;
+		LabelNode known = new LabelNode();
+		code.add(new FieldInsnNode(Opcodes.GETSTATIC, owner, KNOWN, "Ljava/util/Map;"));
+		code.add(new InsnNode(Opcodes.DUP));
+		code.add(new JumpInsnNode(Opcodes.IFNONNULL, known));
+		code.add(new InsnNode(Opcodes.POP));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$known", "()Ljava/util/Map;", false));
+		code.add(new InsnNode(Opcodes.DUP));
+		code.add(new FieldInsnNode(Opcodes.PUTSTATIC, owner, KNOWN, "Ljava/util/Map;"));
+		code.add(known);
+		code.add(new FrameNode(Opcodes.F_NEW, 1, new Object[] {STATE}, 1, new Object[] {"java/util/Map"}));
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$block", "(L" + STATE + ";)L" + BLOCK + ";", false));
@@ -461,7 +477,7 @@ final class VanillaCalls {
 		classes(code, Type.getArgumentTypes(extension.blockDesc()));
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$keeps", KEEPS, false));
 		code.add(new InsnNode(Opcodes.IRETURN));
-		method.maxStack = 11;
+		method.maxStack = 12;
 		method.maxLocals = 1;
 		return method;
 	}
@@ -479,8 +495,10 @@ final class VanillaCalls {
 		}
 	}
 
-	private static final String KEEPS = "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/Class;"
-			+ "[Ljava/lang/Class;)Z";
+	private static final String KEEPS = "(Ljava/util/Map;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/String;"
+			+ "[Ljava/lang/Class;[Ljava/lang/Class;)Z";
+	/** The class's field keeping {@link KeepsDefault#known}'s answers. */
+	private static final String KNOWN = "fabricated$overriding";
 	private static final String KEEPS_OWNER = Type.getInternalName(KeepsDefault.class);
 	private static volatile byte[] keepsClass;
 
@@ -699,7 +717,7 @@ final class VanillaCalls {
 			if (method.name.startsWith("fabricated$")) {
 				for (AbstractInsnNode insn : method.instructions) {
 					String key = key(insn);
-					if (key != null && !(key.startsWith(restored.name + ";") && key.contains("("))) added.add(key);
+					if (key != null && !own(key, restored)) added.add(key);
 					if (insn instanceof LdcInsnNode ldc && ldc.cst instanceof Type type && type.getSort() == Type.OBJECT) added.add(type.getInternalName());
 				}
 				continue;
@@ -709,10 +727,15 @@ final class VanillaCalls {
 			Map<String, Integer> before = counts(original.methods.get(at)), after = counts(method);
 			// The class's own methods it calls more often are those it declares again or adds (SEAM-1's, its helpers).
 			after.forEach((key, n) -> {
-				if (n > before.getOrDefault(key, 0) && !(key.startsWith(restored.name + ";") && key.contains("("))) added.add(key);
+				if (n > before.getOrDefault(key, 0) && !own(key, restored)) added.add(key);
 			});
 		}
 		return added;
+	}
+
+	/** Whether the member is one of the class's methods (SEAM-1's, the helpers) or the field the helpers keep answers in. */
+	private static boolean own(String key, ClassNode node) {
+		return key.startsWith(node.name + ";") && (key.contains("(") || key.startsWith(node.name + ";" + KNOWN + ":"));
 	}
 
 	private static Map<String, Integer> counts(MethodNode method) {
