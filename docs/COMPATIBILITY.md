@@ -381,7 +381,15 @@ failures fall into a few groups:
   point inside the code is missing there. When the points all occur in the one overload that method calls, and the
   handler doesn't depend on the method's parameters (an `@Inject` taking only the callback info, a `@WrapOperation`,
   `@ModifyExpressionValue`, `@Redirect` and so on), Fabricated points the injector at the overload (for any mod,
-  reported as a warning).
+  reported as a warning). A method NeoForge deprecated for one of its class taking one more parameter, which it calls,
+  counts as moved there (DEPRECATED-1: `BoneMealItem.growCrop`, whose code is in `applyBonemeal`, taking the player).
+  A MixinExtras `@Local` the handler takes follows it there by name; by type alone where one local of that type is in
+  scope at the points there; and by its ordinal (read first, as Mixin reads it) where the method passes its own
+  parameters on to the other with the one it inserts, each pushed by a plain load of it, and the local is a parameter,
+  or vanilla's one other local of the type at the point where the other method has one too, made by the store
+  vanilla's code aligned with the other's places with certainty (two locals made alike aren't told apart): the
+  `@Local` takes the ordinal that local has there; otherwise the hook stays out (OVERLOAD-3: FrozenLib's bone meal API
+  on 1.21.1, NeoForge's and Forge 52's bone meal event fired first, as for vanilla's growth).
 - **A mixin uses an unsupported module**: Mixin fails on a class it can't find as it applies a mixin, so a mod
   whose mixin uses a class only an unsupported Fabric API module has (Continuity's used the renderer API while that
   was unsupported on 1.21.11; today only the game test modules are) is disabled before launch with the reason.
@@ -465,7 +473,7 @@ sorted reload-listener events. Fabricated ships the module's unchanged public AP
 | `fabric:before_vanilla`, `fabric:after_vanilla` phases | empty listeners before the first and after the last vanilla listener |
 | Shared reload state: registries, feature flags, data store (and on 1.21.11, 26.1.2 and 26.2 the recipe and advancement managers) | a setup listener that runs before all others |
 | `MinecraftServer` as `DataResourceStore`, `Resource#getFabricPackSource` | interfaces added by mixins that only add methods |
-| `registerBuiltinPack` | `AddPackFindersEvent` |
+| `registerBuiltinPack`, upstream's pack finder (`ModResourcePackCreator`) | `AddPackFindersEvent`: each pack repository gets a `ModResourcePackCreator` of upstream's shape, which offers the built-in packs |
 
 A listener registered the vanilla way (`ReloadableResourceManager.registerReloadListener`, as OneConfig does from a
 mixin into `Minecraft`'s constructor) after NeoForge has sorted the client's listeners is added last, as vanilla adds
@@ -480,7 +488,16 @@ DATA-1); the Fabric build's `fabric:load_conditions` still decide. A built-in pa
 registry entries it adds are stable and a world with them opens without an experimental-settings warning (PACK-3).
 A mod that adds a pack source the vanilla way, replacing the repository's sources with a new immutable set
 (FrozenLib's resource pack API), keeps it: the set is made mutable again before NeoForge adds its own pack finders
-(PACK-1).
+(PACK-1). The pack finder Fabricated gives each pack repository is a `ModResourcePackCreator` (1.21.1's in
+`impl.resource.loader`, later versions' in `impl.resource.pack`) with the part of upstream's instance shape mods' mixins
+hook: the pack type, the constructor taking it and whether the repository is the client's of a server's known packs
+(NeoForge's trusted one), and `loadPacks`, which offers the built-in packs. A mixin of those applies to it as on Fabric
+(PROVIDER-22): YUNG's API offers its locate replacer's data pack at the end of `loadPacks` where the pack type is server
+data, which adds the vanilla structures YUNG's mods replace or remove to the `c:hidden_from_locator_selection` tag that
+other mods' structure locators read. Upstream's constructor taking the pack type alone, its `activationInfo` and flag
+fields (`forClientDataPackManager`, from 1.21.11 `forKnownPacksManager`), `CLIENT_RESOURCE_PACK_PROVIDER` and
+`registerModPack` aren't there, so a mixin of those is still left out. Upstream's creator also offers Fabric's mod
+packs, which NeoForge builds itself, so Fabricated's doesn't.
 
 With Fabric API, a pack's conditional overlays (`fabric:overlays`) apply where vanilla reads a pack's metadata, as
 upstream applies them, but not to a pack that declares NeoForge's own (`neoforge:overlays`): such a pack is built for
@@ -511,7 +528,9 @@ Differences from upstream:
 CI checks, on every version: listener ordering (including an ordering against a vanilla listener), the
 shared reload state, a listener factory, the data store read back through `MinecraftServer`, a `DEFAULT_ENABLED`
 built-in data pack being enabled and loaded, a `DEFAULT_ENABLED` built-in resource pack being switched on in a new
-game directory and its resources loaded, and the listener running again after `/reload`. Core's
+game directory and its resources loaded, and the listener running again after `/reload`; a test mixin of upstream's
+`ModResourcePackCreator` of YUNG's shape, whose data pack must be among the server's packs on 1.21.1, and whose hook at
+the end of `loadPacks` must run for the server's creator from 1.21.11. Core's
 `DefaultPackTrackerTest` checks upstream's rule and file format. Client listeners
 are checked by the client CI run (a client resource listener runs while the client starts).
 

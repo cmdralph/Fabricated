@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import net.fabricmc.fabric.api.resource.IdentifiableResourceReloadListener;
 import net.fabricmc.fabric.api.resource.ResourcePackActivationType;
 import net.fabricmc.fabric.impl.resource.loader.BuiltinModResourcePackSource;
+import net.fabricmc.fabric.impl.resource.loader.ModResourcePackCreator;
 import net.fabricmc.fabric.impl.resource.loader.ResourceManagerHelperImpl;
 import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackSelectionConfig;
@@ -29,9 +30,10 @@ import net.neoforged.neoforge.event.AddReloadListenerEvent;
  * Native {@code fabric-resource-loader-v0} on NeoForge 21.1: Fabric reload listeners join NeoForge's
  * {@code AddReloadListenerEvent} (every data reload, with that reload's registries) and
  * {@code RegisterClientReloadListenersEvent} (once, as the client starts), after vanilla's listeners and each after the
- * ones it depends on ({@link ResourceManagerHelperImpl#listeners}); built-in packs are offered through
- * {@code AddPackFindersEvent}. Mod resources themselves need nothing: NeoForge already loads the {@code assets/} and
- * {@code data/} of every mod, Fabric mods included.
+ * ones it depends on ({@link ResourceManagerHelperImpl#listeners}); built-in packs are offered by the
+ * {@link ModResourcePackCreator} each pack repository gets through {@code AddPackFindersEvent}. Mod resources
+ * themselves need nothing: NeoForge already loads the {@code assets/} and {@code data/} of every mod, Fabric mods
+ * included.
  *
  * <p>Runs at the lowest priority, after NeoForge mods' listeners, as upstream adds Fabric's after every other.
  */
@@ -55,7 +57,8 @@ public final class ResourceLoaderBridge {
 				event.addListener(listener);
 			}
 		});
-		modBus.addListener(AddPackFindersEvent.class, ResourceLoaderBridge::onAddPackFinders);
+		// Each pack repository gets upstream's pack finder, whose instance mods' mixins hook (PROVIDER-22).
+		modBus.addListener(AddPackFindersEvent.class, event -> event.addRepositorySource(new ModResourcePackCreator(event.getPackType(), event.isTrusted())));
 		if (dist.isClient()) {
 			modBus.addListener(EventPriority.LOWEST, RegisterClientReloadListenersEvent.class, event -> {
 				for (IdentifiableResourceReloadListener listener : ResourceManagerHelperImpl.get(PackType.CLIENT_RESOURCES).listeners(null, problems)) {
@@ -66,39 +69,37 @@ public final class ResourceLoaderBridge {
 	}
 
 	/**
-	 * Offers the built-in packs Fabric mods register to every pack repository NeoForge builds; the list is read when the
-	 * repository scans, so packs registered by initializers that run later are still found. {@code ALWAYS_ENABLED} packs are
-	 * required; {@code DEFAULT_ENABLED} data packs are added to new worlds automatically, and {@code DEFAULT_ENABLED}
-	 * resource packs are switched on the first time they are offered ({@code DefaultResourcePacks}).
+	 * Offers the built-in packs Fabric mods register for {@code type} to a pack repository NeoForge builds, as its
+	 * {@link ModResourcePackCreator} scans; the list is read then, so packs registered by initializers that run later are
+	 * still found. {@code ALWAYS_ENABLED} packs are required; {@code DEFAULT_ENABLED} data packs are added to new worlds
+	 * automatically, and {@code DEFAULT_ENABLED} resource packs are switched on the first time they are offered
+	 * ({@code DefaultResourcePacks}).
 	 */
-	private static void onAddPackFinders(AddPackFindersEvent event) {
-		PackType type = event.getPackType();
+	public static void offerBuiltinPacks(PackType type, Consumer<Pack> consumer) {
 		String directory = type == PackType.SERVER_DATA ? "data" : "assets";
-		event.addRepositorySource(consumer -> {
-			for (ResourceManagerHelperImpl.BuiltinPack pack : ResourceManagerHelperImpl.builtinPacks()) {
-				// Like upstream: only offer the pack for a type it has content for.
-				if (!Files.isDirectory(pack.root().resolve(directory))) continue;
-				boolean required = pack.activationType() == ResourcePackActivationType.ALWAYS_ENABLED;
-				PackLocationInfo info = new PackLocationInfo(
-						pack.id().toString(),
-						pack.displayName(),
-						new BuiltinModResourcePackSource(pack.modName(), pack.activationType().isEnabledByDefault()),
-						// Upstream's known-pack identity (PACK-3): vanilla marks the registry entries of a pack without one
-						// experimental, and asks to confirm creating or loading a world with them.
-						Optional.of(new KnownPack(KNOWN_PACK_NAMESPACE, pack.id().toString(), pack.modVersion())));
-				Pack.ResourcesSupplier files = new PathPackResources.PathResourcesSupplier(pack.root());
-				if (pack.overlayRoot() != null) {
-					// Translation changes a built-in pack's pack.mcmeta only to leave out its NeoForge build's sections (PACK-4).
-					files = LayeredPackResources.of(files, new PathPackResources.PathResourcesSupplier(pack.overlayRoot()),
-							Files.isRegularFile(pack.overlayRoot().resolve("pack.mcmeta")));
-				}
-				Pack created = Pack.readMetaAndCreate(info, files, type, new PackSelectionConfig(required, Pack.Position.TOP, false));
-				if (created == null) {
-					LOGGER.warn("Built-in pack {} has no valid pack.mcmeta for {}, skipped", pack.id(), type);
-				} else {
-					consumer.accept(created);
-				}
+		for (ResourceManagerHelperImpl.BuiltinPack pack : ResourceManagerHelperImpl.builtinPacks()) {
+			// Like upstream: only offer the pack for a type it has content for.
+			if (!Files.isDirectory(pack.root().resolve(directory))) continue;
+			boolean required = pack.activationType() == ResourcePackActivationType.ALWAYS_ENABLED;
+			PackLocationInfo info = new PackLocationInfo(
+					pack.id().toString(),
+					pack.displayName(),
+					new BuiltinModResourcePackSource(pack.modName(), pack.activationType().isEnabledByDefault()),
+					// Upstream's known-pack identity (PACK-3): vanilla marks the registry entries of a pack without one
+					// experimental, and asks to confirm creating or loading a world with them.
+					Optional.of(new KnownPack(KNOWN_PACK_NAMESPACE, pack.id().toString(), pack.modVersion())));
+			Pack.ResourcesSupplier files = new PathPackResources.PathResourcesSupplier(pack.root());
+			if (pack.overlayRoot() != null) {
+				// Translation changes a built-in pack's pack.mcmeta only to leave out its NeoForge build's sections (PACK-4).
+				files = LayeredPackResources.of(files, new PathPackResources.PathResourcesSupplier(pack.overlayRoot()),
+						Files.isRegularFile(pack.overlayRoot().resolve("pack.mcmeta")));
 			}
-		});
+			Pack created = Pack.readMetaAndCreate(info, files, type, new PackSelectionConfig(required, Pack.Position.TOP, false));
+			if (created == null) {
+				LOGGER.warn("Built-in pack {} has no valid pack.mcmeta for {}, skipped", pack.id(), type);
+			} else {
+				consumer.accept(created);
+			}
+		}
 	}
 }
