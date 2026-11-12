@@ -1498,6 +1498,28 @@ a `MapItem` or a `CrossbowItem`, and the 1.21.1 item frame renderer whether it i
 are too, where vanilla asks for its own map and crossbow: hooks of those checks are left out, a known limit the report
 names (Apoli's held item transforms).
 
+Where vanilla asks a block state or a stack itself, NeoForge 21.1 to 26.3 ask an extension of it taking more, whose
+default leads back to vanilla's code; vanilla's call is put back where a Fabric mod's mixin hooks it, for the objects
+whose classes keep NeoForge's defaults (SEAM-8): the block's `getFriction()` in the movement of living entities, items,
+experience orbs, boats and (1.21.1) flying mobs (FrozenLib's friction API, which Wilder Wild's blocks use, Spell
+Engine's and Artifacts' friction hooks), the state's `getSoundType()` in a block's placing (Wilder Wild's snowlogged
+blocks), a horse's steps, a sniffer's digging and, on the client, a block's hit and break sounds (on 1.21.1 an entity's
+step and fall sounds too: from 1.21.11 NeoForge makes the fall sound through the state's `playFallSound(level, pos,
+entity)`, and the step sound keeps vanilla's call), the piglin's check of gold armour (1.21.1, BetterNether's
+piglin-neutral armour) or of the safe armour tag (`makesPiglinsNeutral`), the sweep attack's box on 1.21.1
+(`getSweepHitBox`, Pehkui's scaled sweep) and an item's enchantment level (`getEnchantmentLevel`, Apoli's enchantment
+level power), after which NeoForge's level event is posted as its default does. A block or item overriding the extension
+(a NeoForge mod's) is asked as NeoForge has it, without the hook. On 1.21.1 NeoForge compares a material with gold's by
+identity where vanilla asks `Holder.is`, so the piglin's check goes back only where the two agree. A NeoForge mod's
+mixin of the extension's call or its defaults there keeps the class as NeoForge has it; so does one selecting a method
+the class doesn't have, which can't be told from what moves, even beside one it has: Forgified Fabric API's entity
+events mixin of `LivingEntity` names `lambda$stopSleeping$9` beside `startSleeping`, and NeoForge 21.1.265's class has
+no such lambda, so beside it `LivingEntity` keeps NeoForge's calls and the report says so (`ItemEntity` and the other
+classes are put back). From 1.21.11 `Leashable.angularFriction`, an interface's method, asks the state's friction too: a
+hook of vanilla's call there is left out, a known limit the report names. From 1.21.11 NeoForge's `attack` makes the
+sweep's box for an overload of its own, which isn't put back: a hook of vanilla's box in `doSweepAttack` applies there,
+but vanilla's method isn't called, which pre-flight notes, a known limit the report names.
+
 Putting the methods back moves the resolver's `isStickyBlock` and `canStickTo` calls into them, so where a NeoForge
 mod's mixin hooks those calls, or a place the move shifts in the methods holding them, they aren't put back: the
 resolver stays as NeoForge has it, so the NeoForge mod's mixin applies, and the Fabric mods' hooks of the stickiness
@@ -2134,6 +2156,24 @@ What else differs on Forge, for Fabric mods in general:
   it goes back for the layers keeping it (Apoli's elytra power; unit tests only). The held item renderer asks whether
   the item is a `CrossbowItem`, and the item frame renderer whether it is a `MapItem`, where vanilla asks for its own
   crossbow and map: hooks of those checks are left out, a known limit (Porting Lib's custom maps in item frames).
+- **Extensions' calls of a state or a stack:** where vanilla asks a block state or a stack itself, Forge 47 to 66 ask an
+  extension taking more, whose default leads back to vanilla's code: the state's `getFriction(level, pos, entity)` (the
+  movement of living entities, items, experience orbs, boats and, on Forge 47 and 52, flying mobs) and
+  `getSoundType(level, pos, entity)` (a block's placing, an entity's step and fall sounds, a horse's steps, a sniffer's
+  digging, the client's hit and break sounds), the stack's `makesPiglinsNeutral` and `getSweepHitBox`. Where a Fabric
+  mod's mixin hooks vanilla's call, it is put back for the objects whose classes keep Forge's defaults (SEAM-8: Porting
+  Lib's friction hooks in Create on Forge 47, FrozenLib's and Spell Engine's friction, Artifacts' snowshoes, Wilder
+  Wild's snowlogged placing sound, BetterNether's piglin-neutral armour and Pehkui's scaled sweep on Forge 52), under its
+  SRG names on Forge 47; a block or item overriding the extension (a Forge mod's) is asked as Forge has it, without the
+  hook. Forge's Mixin keeps a local past its scope through same frames, so Porting Lib's `@ModifyVariable` of the
+  friction `travel` stores, by its type, would find two floats there: it takes the stored one by its slot (PRE-33).
+  Forge's sound type default asks the block where vanilla asks the state, so a state class declaring vanilla's
+  `getSoundType` again keeps Forge's call, and on Forge 52 the piglin's check goes back only where Forge's comparison
+  with gold's material by identity and vanilla's `Holder.is` agree. Forge keeps vanilla's enchantment level lookup (Forge
+  47 moves its loop into a method of its own, which isn't put back). From Forge 61 a hook of vanilla's friction in
+  `Leashable.angularFriction`, an interface's method, is left out, a known limit the report names. Beside Forgified
+  Fabric API on Forge 47 `LivingEntity` keeps Forge's calls, as the report says: its entity events mixin names
+  `m_260785_` beside `lambda$stopSleeping$11`, and a method the class doesn't have can't be told from what moves.
 - **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
   into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't

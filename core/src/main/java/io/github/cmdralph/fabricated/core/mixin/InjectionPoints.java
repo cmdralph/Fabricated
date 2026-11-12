@@ -231,10 +231,29 @@ final class InjectionPoints {
 			AbstractInsnNode insn = method.instructions.get(i);
 			if (!hasOpcode(point, opcode, insn)) continue;
 			if (!matchesInsn(point, ref, insn)) continue;
-			if (ordinal < 0 || seen == ordinal) return i;
+			if (ordinal < 0 || seen == ordinal) {
+				if (!point.equals("INVOKE_ASSIGN")) return i;
+				// Mixin's slice bound is the instruction AfterInvoke takes for the call, none for a call returning nothing.
+				int node = afterInvoke(method, i, method.instructions.size() - 1);
+				if (node >= 0) return node;
+				if (ordinal >= 0) return failValue;
+			}
 			seen++;
 		}
 		return failValue;
+	}
+
+	/**
+	 * The instruction Mixin's {@code AfterInvoke} ({@code INVOKE_ASSIGN}) takes for the call at {@code call}, in a list
+	 * ending at {@code last} (the method's, or its slice's): the one after it, or the one after the store just after it,
+	 * where the list ends at the call or the store that one itself, as Mixin's {@code nextNode} has it (read in 0.8.5 and
+	 * 0.8.7); -1 for a call returning nothing, which it takes none for.
+	 */
+	static int afterInvoke(MethodNode method, int call, int last) {
+		if (!(method.instructions.get(call) instanceof MethodInsnNode invoke) || Type.getReturnType(invoke.desc).getSort() == Type.VOID) return -1;
+		int node = call < last ? call + 1 : call;
+		if (method.instructions.get(node) instanceof VarInsnNode var && var.getOpcode() >= Opcodes.ISTORE) node = node < last ? node + 1 : node;
+		return node;
 	}
 
 	static Verdict evaluate(String point, String target, int ordinal, int opcode, Range range, MethodNode method) {
