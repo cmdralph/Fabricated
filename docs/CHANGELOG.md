@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-12: Vanilla's item checks put back where the platform asks the stack's actions (SEAM-6)
+## 2026-11-12: Vanilla's item checks put back where the platform asks the stack's actions (SEAM-6), a default bridge no longer taken for an override (SEAM-7)
 
 - **SEAM-6** (P1), fixed: NeoForge and Forge ask the stack's `canPerformAction` of an action where vanilla asks
   whether the item is its shears (the beehive's harvest, the pumpkin's carving, the tripwire's disarming; on Forge 65
@@ -22,6 +22,16 @@ One entry per working session, newest first: what changed, and how it was verifi
   map and crossbow checks in the held item and item frame renderers, which the platforms ask of the item's class, stay
   left out: known limits the report names. The test mod wraps the tripwire's check and disarms a tripwire with a stick
   (through the hook), dirt and shears (`vanilla-items`: NeoForge, every run; Forge, with Fabric API).
+- **SEAM-7** (P1), fixed: in Forge 47's corpus server run the test mod's hook of vanilla's removal in `destroyBlock`
+  never ran (`calcite broke to Block{minecraft:air}, not the hook's tuff; the hook of vanilla's removeBlock ran 0 times
+  for 2 breaks`). Porting Lib's `BlockStateExtensions` (in Create and Farmer's Delight Refabricated) brings a second
+  default of `onDestroyedByPlayer` to `BlockState`, beside `IForgeBlockState`'s, so Fabricated declares the method
+  there, calling Forge's default (CORPUS-11). SEAM-3's check, whether the state's class or the block's declares the
+  method, counted that bridge as an override, and every block broke the platform's way, out of the hooks' sight. The
+  class was put back and the wrapper applied, as pre-flight said; on Fabric vanilla calls `removeBlock` itself and the
+  hook runs. The bridges are now synthetic, as a method no source declares, and the check doesn't count such a
+  method, a compiler's bridge still counting; the bridge's code moved from the loader to `DefaultBridge`, as it was.
+  The same holds for SEAM-4's `canHarvestBlock` check and on every platform.
 - The seam conflict check reads each NeoForge or Forge mod's mixin once for all the classes Fabricated puts code back
   in, where it read them all again for each class, and works out a class's rewrite only where a mixin may hook it.
   The checks the put-backs add read the answers kept for the classes first and make nothing, where they made the

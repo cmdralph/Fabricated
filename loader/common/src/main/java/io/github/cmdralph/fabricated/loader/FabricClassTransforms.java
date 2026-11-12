@@ -1,20 +1,13 @@
 package io.github.cmdralph.fabricated.loader;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.BiConsumer;
 
 import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.Type;
-import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.InsnList;
-import org.objectweb.asm.tree.InsnNode;
-import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
-import org.objectweb.asm.tree.VarInsnNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -135,7 +128,7 @@ public final class FabricClassTransforms {
 		boolean changed = false;
 		for (DefaultBridge bridge : state.defaultBridges().getOrDefault(node.name, List.of())) {
 			if (node.methods.stream().anyMatch(m -> m.name.equals(bridge.name()) && m.desc.equals(bridge.descriptor()))) continue;
-			node.methods.add(bridgeMethod(bridge, !bridge.owner().equals(node.superName)));
+			node.methods.add(bridge.method(!bridge.owner().equals(node.superName)));
 			audit.accept("fabricated:default_bridge", bridge.owner() + "." + bridge.name());
 			changed = true;
 		}
@@ -146,44 +139,11 @@ public final class FabricClassTransforms {
 	 * Takes out the class's {@link DefaultBridge} methods declared before Mixin, so its mixins apply to the class without
 	 * them, as where bridges are declared only after Mixin: a mixin declaring such a method adds its own, which Mixin
 	 * would otherwise refuse where the mixin's config requires {@code @Overwrite} to replace a method. Only the methods
-	 * Fabricated made go, by their {@link #BRIDGE_MARKER}. Whether the class changed.
+	 * Fabricated made go, by their {@link DefaultBridge#MARKER}. Whether the class changed.
 	 */
 	public static boolean removeDefaultBridges(FabricatedState state, ClassNode node) {
 		List<DefaultBridge> bridges = state.defaultBridges().getOrDefault(node.name, List.of());
 		if (bridges.isEmpty()) return false;
-		return node.methods.removeIf(m -> isBridge(m) && bridges.stream().anyMatch(b -> b.name().equals(m.name) && b.descriptor().equals(m.desc)));
-	}
-
-	/**
-	 * The invisible annotation on the bridge methods Fabricated makes. The JVM and reflection never read invisible
-	 * annotations, and no class of that name exists: it only marks the method for {@link #removeDefaultBridges}.
-	 */
-	static final String BRIDGE_MARKER = "Lio/github/cmdralph/fabricated/loader/DefaultBridgeMethod;";
-
-	private static boolean isBridge(MethodNode method) {
-		return method.invisibleAnnotations != null && method.invisibleAnnotations.stream().anyMatch(a -> BRIDGE_MARKER.equals(a.desc));
-	}
-
-	/**
-	 * {@code public R name(args) { return Owner.super.name(args); }}, or {@code super.name(args)} where the owner is the
-	 * class's superclass (not {@code ownerIsInterface}, DEFAULT-1), with its maxs (it has no branches, so no frames), and its
-	 * {@link #BRIDGE_MARKER}.
-	 */
-	private static MethodNode bridgeMethod(DefaultBridge bridge, boolean ownerIsInterface) {
-		MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC, bridge.name(), bridge.descriptor(), null, null);
-		method.invisibleAnnotations = new ArrayList<>(List.of(new AnnotationNode(BRIDGE_MARKER)));
-		InsnList code = method.instructions;
-		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		int slot = 1;
-		for (Type argument : Type.getArgumentTypes(bridge.descriptor())) {
-			code.add(new VarInsnNode(argument.getOpcode(Opcodes.ILOAD), slot));
-			slot += argument.getSize();
-		}
-		code.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, bridge.owner(), bridge.name(), bridge.descriptor(), ownerIsInterface));
-		Type result = Type.getReturnType(bridge.descriptor());
-		code.add(new InsnNode(result.getOpcode(Opcodes.IRETURN)));
-		method.maxLocals = slot;
-		method.maxStack = Math.max(slot, result.getSize());
-		return method;
+		return node.methods.removeIf(m -> DefaultBridge.isBridge(m) && bridges.stream().anyMatch(b -> b.name().equals(m.name) && b.descriptor().equals(m.desc)));
 	}
 }

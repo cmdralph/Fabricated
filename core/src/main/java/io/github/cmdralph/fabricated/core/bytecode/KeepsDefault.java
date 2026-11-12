@@ -12,10 +12,12 @@ import java.util.WeakHashMap;
  * the interfaces they implement that extend the extension's interface are asked whether they declare the method
  * ({@code getDeclaredMethod}), so only their own methods' types are loaded: {@code Class.getMethod} loads the types of
  * every public method of the classes and interfaces, and Forge 66's extensions name client classes, absent on a
- * dedicated server. Where it can't tell (a class it can't load), the object is taken to override it, and the platform's
- * call is made. The answer is asked once for each class: the game class keeps the answers ({@link #known}), one store
- * for each method it asks of, as a lookup that fails throws. Once the classes were asked of, the game class reads their
- * answers first ({@link #asked}), so a check makes nothing: the lookup's arrays only where a class is new.
+ * dedicated server. Fabricated's default bridges, declared where a Fabric mod's interface brings a second default of the
+ * method, don't count (SEAM-7, {@link #declares}). Where it can't tell (a class it can't load), the object is taken to
+ * override it, and the platform's call is made. The answer is asked once for each class: the game class keeps the
+ * answers ({@link #known}), one store for each method it asks of, as a lookup that fails throws. Once the classes were
+ * asked of, the game class reads their answers first ({@link #asked}), so a check makes nothing: the lookup's arrays
+ * only where a class is new.
  */
 final class KeepsDefault {
 	private KeepsDefault() {
@@ -91,10 +93,16 @@ final class KeepsDefault {
 		return false;
 	}
 
+	/**
+	 * Whether the class declares the method. A synthetic method that isn't a compiler's bridge is Fabricated's default
+	 * bridge ({@code DefaultBridge}), which only calls the default the class had where a Fabric mod's interface brings
+	 * another (SEAM-7: Porting Lib's {@code BlockStateExtensions} on Forge 47's {@code BlockState}): it overrides nothing,
+	 * and the class's interfaces are asked as they would be without it.
+	 */
 	static boolean declares(Class<?> c, String name, Class<?>[] params) {
 		try {
-			c.getDeclaredMethod(name, params);
-			return true;
+			java.lang.reflect.Method method = c.getDeclaredMethod(name, params);
+			return !method.isSynthetic() || method.isBridge();
 		} catch (NoSuchMethodException e) {
 			return false;
 		}

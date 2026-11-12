@@ -1433,7 +1433,8 @@ Vanilla's block-breaking calls, which NeoForge's `destroyBlock` makes through th
 fluid's block), are put back there where a Fabric mod's mixin hooks one of them, for the blocks whose classes keep
 NeoForge's default (SEAM-3: Wilder Wild's snowlogged and echo glass blocks, FrozenLib's waterlike blocks, Carpet's
 scarpet event, Apoli's removal hook). A block overriding `onDestroyedByPlayer` breaks as NeoForge has it, without those
-hooks. A NeoForge mod's mixin of NeoForge's `removeBlock`, of the `onDestroyedByPlayer` call or default, of what the
+hooks; the method Fabricated declares where a Fabric mod's interface brings a second default of it, calling NeoForge's,
+overrides nothing (SEAM-7), nor does one of `canHarvestBlock` for SEAM-4's check. A NeoForge mod's mixin of NeoForge's `removeBlock`, of the `onDestroyedByPlayer` call or default, of what the
 rewrite adds to `destroyBlock` (vanilla's calls, `this.level`) or of a constant there (vanilla's calls bring their
 `false` and `11`) keeps the class as NeoForge has it, as for the stickiness methods below. A Fabric mod's hook picking
 vanilla's one removal by ordinal 0 (at the call or after it) picks it in both the creative and the survival branch,
@@ -2053,7 +2054,9 @@ What else differs on Forge, for Fabric mods in general:
   calls `removeBlock` and `destroy` (server) or `playerWillDestroy` and `setBlock` (client) itself. Where a Fabric mod's
   mixin hooks one of those calls, they are put back for the blocks whose classes keep Forge's default (SEAM-3: Wilder
   Wild's snowlogged and echo glass blocks, FrozenLib's waterlike blocks), under their SRG names on Forge 47; a block
-  overriding it breaks as Forge has it. On the server Forge calls `playerWillDestroy` after the tool is damaged, where
+  overriding it breaks as Forge has it. The method Fabricated declares where a Fabric mod's interface brings a second
+  default of it (Porting Lib's `BlockStateExtensions` on `BlockState`, in Create and Farmer's Delight Refabricated),
+  which calls Forge's default, overrides nothing (SEAM-7). On the server Forge calls `playerWillDestroy` after the tool is damaged, where
   vanilla calls it before the creative check: it stays out of hooks' sight, so an `@Inject` at it keeps its place
   (CORPUS-72), and a wrapper of it is left out, a known limit. There, vanilla's removal put back reads the fluid left
   after `playerWillDestroy`, as vanilla does, where Forge's default reads it before, and runs `Level.removeBlock`,
