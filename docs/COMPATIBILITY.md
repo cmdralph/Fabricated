@@ -1457,6 +1457,26 @@ asks it there too) is left out, a known limit the report names (SEAM-4). NeoForg
 NeoForge's own overload, `hasCorrectToolForDrops(state, level, pos)`, which isn't put back: a hook of vanilla's call
 there is left out with pre-flight's usual reason (no Fabric mod in the corpora hooks it).
 
+Vanilla's item checks, which NeoForge 21.1 to 26.3 ask through the stack's `canPerformAction` of an item ability, are
+put back where a Fabric mod's mixin hooks one of them, for the stacks whose classes keep NeoForge's default (SEAM-6):
+`stack.is(Items.SHEARS)` in the beehive's harvest, the pumpkin's carving and the tripwire's disarming (BCLib's shears
+hooks, which let the items of the common shears tag act as shears there), `stack.is(Items.FISHING_ROD)` in the fishing
+hook's check of the player's hands (and on the 1.21.1 client in the line's hand), and on 1.21.1 `stack.is(Items.SHIELD)`
+in a player's shield damage and a piglin's shield. NeoForge's default answers no for those abilities, as vanilla's check
+does for every item but vanilla's shears, rod and shield, which override it: an item overriding `canPerformAction`
+(vanilla's tools, BCLib's own shears, which are `ShearsItem`s, and NeoForge mods' tools) is asked as NeoForge has it,
+without the hook. On 26.x vanilla's check is `TypedInstance.is(T)`, which the hooks name as `is(Object)`. A NeoForge
+mod's mixin of the `canPerformAction` call, of its defaults or of `ItemStack.is` keeps the class as NeoForge has it.
+NeoForge shears a sheep, a snow golem, a bogged and (1.21.1) a mooshroom from the shears item, through `IShearable`,
+where vanilla's `mobInteract` checks for shears: a Fabric mod's hook of that check is left out, a known limit the report
+names (BCLib's sheep and snow golem hooks; its mooshroom hook wraps the bowl check alone on 1.21.1, and from 1.21.11,
+whose `mobInteract` keeps vanilla's shears check, applies as on Fabric). On the 1.21.1 client the elytra layer asks its
+own `shouldRender`, whose default is vanilla's `is(Items.ELYTRA)` check: it goes back for the layers whose class keeps
+that method (Apoli's elytra power; checked by unit tests, not in game). The held item renderer asks whether the item is
+a `MapItem` or a `CrossbowItem`, and the 1.21.1 item frame renderer whether it is a `MapItem`, which other mods' items
+are too, where vanilla asks for its own map and crossbow: hooks of those checks are left out, a known limit the report
+names (Apoli's held item transforms).
+
 Putting the methods back moves the resolver's `isStickyBlock` and `canStickTo` calls into them, so where a NeoForge
 mod's mixin hooks those calls, or a place the move shifts in the methods holding them, they aren't put back: the
 resolver stays as NeoForge has it, so the NeoForge mod's mixin applies, and the Fabric mods' hooks of the stickiness
@@ -2053,6 +2073,23 @@ What else differs on Forge, for Fabric mods in general:
   (`canDestroyBlock` from Forge 61) inside its block break event (`ForgeHooks.onBlockBreakEvent`), which a listener may
   overrule: a hook of vanilla's check in the server's `destroyBlock` is left out, a known limit the report names
   (Porting Lib's break event hook, and its experience hook with it).
+- **Item checks:** Forge 47 to 66 ask the stack's `canPerformAction` of a tool action where vanilla asks
+  `stack.is(Items.SHEARS)` (the beehive's harvest, the pumpkin's carving, the tripwire's disarming; on Forge 65 and 66
+  a sheep's, a snow golem's and a mooshroom's shearing too), `stack.is(Items.FISHING_ROD)` (the fishing hook's check of
+  the player's hands, and on Forge 47 and 52 the client's line) or, on Forge 47 and 52, `stack.is(Items.SHIELD)` (a
+  player's shield damage, a piglin's shield). Where a Fabric mod's mixin hooks one, vanilla's check is put back for the
+  stacks whose classes keep Forge's default (SEAM-6: Porting Lib's tool action hooks in Create, BCLib's shears hooks,
+  and on Forge 66 Fabric API 0.164's hook counting any `FishingRodItem` as the rod in the fishing hook's check), under
+  its SRG names on Forge 47; an item overriding `canPerformAction` (vanilla's tools, Forge mods' tools) is asked as
+  Forge has it, without the hook. Forge 61 to 66's default answers yes only for a sword's and a pickaxe's own actions.
+  Forge 47 to 64 shear a mob from the shears item, through `IForgeShearable`, where vanilla's `mobInteract` checks for
+  shears: a hook of that check is left out there, a known limit the report names. BCLib 3.0's own hooks for 1.20.1, at
+  the start of those methods and in `ItemStack.is` itself, apply, but Forge 47's code asks `canPerformAction` there, not
+  `is`, unless another Fabric mod's hook has the class rewritten. On the Forge 47 and 52 client the elytra layer asks
+  `shouldRender` (Forge 52's from `IForgeElytraLayer`), whose default is vanilla's `is(Items.ELYTRA)` check: it goes back
+  for the layers keeping it (Apoli's elytra power; unit tests only). The held item renderer asks whether the item is a
+  `CrossbowItem`, and the item frame renderer whether it is a `MapItem`, where vanilla asks for its own crossbow and map:
+  hooks of those checks are left out, a known limit (Porting Lib's custom maps in item frames).
 - **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
   into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't
