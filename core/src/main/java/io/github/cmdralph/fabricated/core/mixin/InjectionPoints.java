@@ -34,6 +34,8 @@ final class InjectionPoints {
 	static final String DEFINITIONS = "Lcom/llamalad7/mixinextras/expression/Definitions;";
 	/** A slice bound that can't be evaluated. */
 	private static final int UNEVALUATED_INDEX = Integer.MIN_VALUE;
+	/** The opcodes a field access's {@code opcode} is taken as: Mixin's {@code BeforeFieldAccess} reads any other as none. */
+	private static final Set<Integer> FIELD_OPCODES = Set.of(Opcodes.GETFIELD, Opcodes.PUTFIELD, Opcodes.GETSTATIC, Opcodes.PUTSTATIC);
 
 	private InjectionPoints() {
 	}
@@ -228,7 +230,7 @@ final class InjectionPoints {
 		int seen = 0;
 		for (int i = 0; i < method.instructions.size(); i++) {
 			AbstractInsnNode insn = method.instructions.get(i);
-			if (opcode >= 0 && insn.getOpcode() != opcode) continue;
+			if (!hasOpcode(point, opcode, insn)) continue;
 			if (!matchesInsn(point, ref, insn)) continue;
 			if (ordinal < 0 || seen == ordinal) return i;
 			seen++;
@@ -274,12 +276,13 @@ final class InjectionPoints {
 	/**
 	 * Whether a {@code LOAD} or {@code STORE} point of a local of {@code type} whose slot isn't known can pick an
 	 * instruction in the slice: Mixin's {@code BeforeLoadLocal} and {@code AfterStoreLocal} match only the loads or stores
-	 * with that type's opcode (or the point's {@code opcode}), so a slice with no more of them than the point's ordinal
+	 * with that type's opcode (or the point's {@code opcode} where it is above 0, as Mixin's
+	 * {@code InjectionPointData.getOpcode} reads it, PRE-30), so a slice with no more of them than the point's ordinal
 	 * can't match (PRE-17: Puzzles Lib's break speed hook modifies a float where {@code Player.getDestroySpeed} loads it,
 	 * a method Forge 47 reduced to a call of {@code getDigSpeed}, which has no float). An int's increment counts as a store.
 	 */
 	static boolean accessesAnyLocal(boolean load, Type type, int opcode, int ordinal, Range range, MethodNode method) {
-		int wanted = opcode >= 0 ? opcode : type.getOpcode(load ? Opcodes.ILOAD : Opcodes.ISTORE);
+		int wanted = opcode > 0 ? opcode : type.getOpcode(load ? Opcodes.ILOAD : Opcodes.ISTORE);
 		int seen = 0;
 		int last = Math.min(range.end(), method.instructions.size() - 1);
 		for (int i = Math.max(range.start(), 0); i <= last; i++) {
@@ -326,7 +329,7 @@ final class InjectionPoints {
 				int countInRange = 0;
 				for (int i = 0; i < method.instructions.size(); i++) {
 					AbstractInsnNode insn = method.instructions.get(i);
-					if (opcode >= 0 && insn.getOpcode() != opcode) continue;
+					if (!hasOpcode(point, opcode, insn)) continue;
 					if (!matchesInsn(point, ref, insn)) continue;
 					countInMethod++;
 					if (i >= range.start() && i <= range.end()) countInRange++;
@@ -359,7 +362,7 @@ final class InjectionPoints {
 		int seen = 0;
 		for (int i = Math.max(range.start(), 0); i <= Math.min(range.end(), method.instructions.size() - 1); i++) {
 			AbstractInsnNode insn = method.instructions.get(i);
-			if (opcode >= 0 && insn.getOpcode() != opcode) continue;
+			if (!hasOpcode(point, opcode, insn)) continue;
 			if (!matchesInsn(point, ref, insn)) continue;
 			if (ordinal < 0 || seen == ordinal) picked.add(i);
 			seen++;
@@ -509,6 +512,17 @@ final class InjectionPoints {
 		if (insn instanceof InvokeDynamicInsnNode d) return d.desc.contains(desc);
 		if (insn instanceof LdcInsnNode l) return type.equals(l.cst);
 		return false;
+	}
+
+	/**
+	 * Whether an instruction a point matches has the opcode its {@code @At}'s {@code opcode} asks for (-1: none), as Mixin
+	 * reads it for the point: a field access ({@code BeforeFieldAccess}) keeps those of that opcode where it is one of the
+	 * four field opcodes, and any where it is another; a call ({@code BeforeInvoke}, {@code AfterInvoke},
+	 * {@code BeforeStringInvoke}) or a construction ({@code BeforeNew}) ignores it (PRE-30: Apoli's slipperiness hook names
+	 * a call with {@code opcode = 180}, Wilder Wild's sculk vein hook one with {@code opcode = 0}).
+	 */
+	static boolean hasOpcode(String point, int opcode, AbstractInsnNode insn) {
+		return !point.equals("FIELD") || !FIELD_OPCODES.contains(opcode) || insn.getOpcode() == opcode;
 	}
 
 	static boolean matchesInsn(String point, MemberRef ref, AbstractInsnNode insn) {

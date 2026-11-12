@@ -62,12 +62,15 @@ final class PreflightAsm {
 		return methods;
 	}
 
-	/** The indices of {@code method}'s instructions a point ({@code INVOKE}, {@code FIELD} or {@code NEW}) matches, in order. */
+	/**
+	 * The indices of {@code method}'s instructions a point ({@code INVOKE}, {@code FIELD} or {@code NEW}) matches, in order,
+	 * its {@code @At}'s {@code opcode} read as Mixin reads it for the point ({@link InjectionPoints#hasOpcode}).
+	 */
 	static List<Integer> matching(MethodNode method, String point, MemberRef ref, int opcode) {
 		List<Integer> found = new ArrayList<>();
 		for (int i = 0; i < method.instructions.size(); i++) {
 			AbstractInsnNode insn = method.instructions.get(i);
-			if ((opcode < 0 || insn.getOpcode() == opcode) && InjectionPoints.matchesInsn(point, ref, insn)) found.add(i);
+			if (InjectionPoints.hasOpcode(point, opcode, insn) && InjectionPoints.matchesInsn(point, ref, insn)) found.add(i);
 		}
 		return found;
 	}

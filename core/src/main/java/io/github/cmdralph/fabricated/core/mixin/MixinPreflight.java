@@ -3106,7 +3106,7 @@ public final class MixinPreflight extends PreflightPart {
 					int seen = 0;
 					for (int i = 0; i < m.instructions.size(); i++) {
 						AbstractInsnNode insn = m.instructions.get(i);
-						if (opcode >= 0 && insn.getOpcode() != opcode || !InjectionPoints.matchesInsn(point, ref, insn)) continue;
+						if (!InjectionPoints.hasOpcode(point, opcode, insn) || !InjectionPoints.matchesInsn(point, ref, insn)) continue;
 						if (ordinal >= 0 && seen++ != ordinal) continue;
 						judged = true;
 						int inScope = 0;
