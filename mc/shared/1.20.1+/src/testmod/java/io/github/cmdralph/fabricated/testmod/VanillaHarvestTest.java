@@ -2,6 +2,9 @@ package io.github.cmdralph.fabricated.testmod;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -44,7 +47,9 @@ import net.minecraft.world.phys.AABB;
  * harvest check event lets the player harvest (a listener of the platform's half), so it must drop: the event still fires
  * where vanilla's call is made, and decides; and, where the platform's half provides one, the block overriding the
  * platform's extension ({@code fabricated_testmod:break_override}), whose own check must answer without the hook. Then
- * stone's destroy progress must be the right tool's with the hook's yes (30, not 100, apart). With Fabric API's fake
+ * stone's destroy progress must be the right tool's with the hook's yes (30, not 100, apart). A drop is what the block is
+ * asked to drop ({@code mixin.BlockDropsMixin}), not the item entities found there: the check runs as the server starts,
+ * in a chunk its own block placing loads, whose entities may not show yet. With Fabric API's fake
  * player, so on Forge only with Fabric API. Where a native mod's mixin hooks the platform's code there, Fabricated keeps
  * the class as the platform has it, as its report says and the class shows (no helper of Fabricated's in it): the check
  * is then SKIPPED, naming the mixin.
@@ -60,6 +65,14 @@ public final class VanillaHarvestTest implements ModInitializer {
 	private static volatile boolean answering;
 	/** Whether the platform's harvest check event lets the player harvest andesite: only while the check asks it to. */
 	private static volatile boolean granting;
+	/** What blocks were asked to drop, by position, while the check records. */
+	private static final Map<BlockPos, List<Item>> POPPED = new ConcurrentHashMap<>();
+	private static volatile boolean recording;
+
+	/** A block asked to drop a stack at the position ({@code mixin.BlockDropsMixin}): recorded while the check runs. */
+	public static void popped(BlockPos pos, ItemStack stack) {
+		if (recording) POPPED.computeIfAbsent(pos.immutable(), k -> new CopyOnWriteArrayList<>()).add(stack.getItem());
+	}
 
 	/** The harvest hook of destroyBlock: counts it, and lets a bare hand harvest stone. */
 	public static boolean harvesting(BlockState state, boolean vanilla) {
@@ -123,6 +136,8 @@ public final class VanillaHarvestTest implements ModInitializer {
 			ServerLevel level = server.overworld();
 			BlockPos stone = new BlockPos(-96, 250, -76), deepslate = stone.east(2), andesite = stone.east(4), overriding = stone.east(6);
 			List<BlockPos> placed = List.of(stone, deepslate, andesite, overriding);
+			POPPED.clear();
+			recording = true;
 			try {
 				List<String> failures = new ArrayList<>();
 				FakePlayer player = FakePlayer.get(level);
@@ -183,17 +198,19 @@ public final class VanillaHarvestTest implements ModInitializer {
 					level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
 					dropped(level, pos, Items.AIR);
 				}
+				recording = false;
+				POPPED.clear();
 			}
 		}
 
-		/** Whether an item of the kind lies at the position; every item there is taken away. */
+		/**
+		 * Whether the block at the position was asked to drop an item of the kind; the record of it is cleared, and every
+		 * item entity found there taken away.
+		 */
 		private static boolean dropped(ServerLevel level, BlockPos pos, Item item) {
-			boolean found = false;
-			for (ItemEntity entity : level.getEntitiesOfClass(ItemEntity.class, new AABB(pos).inflate(1.5))) {
-				found |= entity.getItem().is(item);
-				entity.discard();
-			}
-			return found;
+			List<Item> popped = POPPED.remove(pos);
+			for (ItemEntity entity : level.getEntitiesOfClass(ItemEntity.class, new AABB(pos).inflate(1.5))) entity.discard();
+			return popped != null && popped.contains(item);
 		}
 	}
 }
