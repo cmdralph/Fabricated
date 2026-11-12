@@ -3,6 +3,76 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-11: Vanilla's block-breaking calls put back for the blocks keeping the platform's default (SEAM-3), shares across mixins (SHARE-2)
+
+- **SEAM-3** (P1), fixed: NeoForge and Forge break a block in `destroyBlock`, the server's and the client's, through the
+  block state's `onDestroyedByPlayer`, where vanilla removes it itself (`removeBlock` and `destroy` on the server,
+  `setBlock` with the fluid's block on the client), so Wilder Wild's, FrozenLib's and Apoli's hooks of those calls were
+  left out and Carpet's warned about: snowlogged blocks didn't leave their snow, waterlike blocks their water. Where a
+  Fabric mod's mixin hooks one of those calls, `destroyBlock` now makes vanilla's calls there for a block whose classes
+  keep the platform's default, and the platform's call for one overriding it, which breaks exactly as before. The
+  platform's own steps vanilla doesn't make there stay out of hooks' sight (Forge's server's `playerWillDestroy`: a
+  wrapper of it is a known limit). A NeoForge or Forge mod's mixin of the platform's code there keeps the class as the
+  platform has it, as for SEAM-1. The platforms' block break events fire on both paths. The test mod wraps the server's
+  `removeBlock` and breaks calcite, stone and a block overriding `onDestroyedByPlayer` (`vanilla-break`: NeoForge, every
+  run; Forge, with Fabric API).
+- **SHARE-2** (P2), fixed: a hook sharing a local with another mixin's left-out hook through a namespaced `@Share` now
+  goes with it, as one of the same mixin did (SHARE-1): Apoli's break action, which reads the broken block its harvest
+  mixin keeps, stays left out with that mixin's harvest wrapper.
+- Verified: core's tests (632), CI's script tests and the inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2 and Forge 47,
+  52 and 66 build; local servers pass every check (NeoForge 1.21.1, 26.1.2; Forge 47, 52, 66); on the advanced corpus
+  servers of NeoForge 1.21.1 and Forge 47, against runs before the change, only the hooks above change, now applying,
+  and the checks are as before. The first check, by `Class.getMethod`, failed on Forge 66, whose extensions name client
+  classes: it now reads only the classes' own methods.
+- Review fixes: the block check's helpers, copied from one tree shared between threads with ASM's `MethodNode.accept`,
+  which changes its labels, came out swapped, throwing or unverifiable where classes were put back in parallel (on
+  NeoForge 1.21.1's class, 8 threads, 3,200 copies: 107 differing, 30 throwing); each class now reads them afresh, a
+  copy still naming `KeepsDefault` fails, and pre-flight's view reads a class whose rewrite throws as the platform has
+  it (3,200 copies the same). Each break of a block keeping the default asked every class of its hierarchy, each miss
+  an exception (about 21 µs a break); the class keeps the answers by class (48 ns), a class that can't be read taken to
+  override, once. On Forge's server, vanilla's removal put back runs `Level.removeBlock`, which Forge's default doesn't
+  call: a native mixin of it keeps the class, as does one of a constant in `destroyBlock`, where vanilla's calls bring
+  their `false` and `11`. A hook picking vanilla's one removal by ordinal 0, put back in the creative and the survival
+  branch, now picks both. Pre-flight recorded a class for rewriting, and noted its hook applying, before the config's
+  groupings could leave the hook out; it records only the hooks they leave in. SHARE-2 follows only an injector that may
+  set a local, to those that may read it in the same target method, from skipped mixins and across the mod's configs.
+  The known limit of Forge's `playerWillDestroy` hooks matched the client's `destroyBlock` too: pre-flight's hint names
+  the server's class, which it now matches. Fabricated's own `AFTER` on vanilla's path stays two `@Inject`s, as upstream fires it, which a
+  `@Redirect` of the calls doesn't take away; a wrapper of the removal in their place loses the event where an outer
+  wrapper doesn't make the call.
+- Verified (review fixes): core's tests (637), CI's script tests and the inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2
+  and Forge 47, 52 and 66 build; local servers pass every check (NeoForge 1.21.1 server and server-fapi: 174; 26.1.2:
+  85; Forge 47: 234; 52: 231; 66: 212), the `vanilla-break` check now also asking `AFTER` once for each break on both
+  paths. A wrapper in place of the `@Inject`s failed it on NeoForge 1.21.1 (no `AFTER` for the calcite the test mod's
+  wrapper keeps as tuff); the `@Inject`s pass it with a `@Redirect` of the removal added to the test mod. On the
+  advanced corpus servers (NeoForge 1.21.1: 83 passing; Forge 47: 111, as before), Apoli's removal hook applies, its
+  break action still left out, and Carpet's piston hook left out by SEAM-2 is no longer also noted as applying.
+- Fixes after those: a mixin left out whole besides pre-flight's own leaving out still had its class recorded for
+  rewriting, and the readers of a namespaced local it sets applying with nothing set. One using a class of an
+  unsupported Fabric API module is now left out before the check, which takes it as skipped; one Mixin rejects whole
+  as it applies (a problem of the whole mixin in a config that isn't required) is taken as left out; and translation
+  tells pre-flight of those it leaves out after the check (those using an interface only a mixin left out adds), and
+  leaves out the readers SHARE-2 then names, until no more go. The ordinal repair covers `@At("INVOKE_ASSIGN")` too.
+  SHARE-2 follows a shared reference on the stack: only a `get` or a `set` with it as the receiver tells its use, and
+  one handed on, or set as another reference's value, may be read and set. A rewrite failing as pre-flight reads the
+  class is named in the report's environment, with what it threw.
+- Verified (those): core's tests (640) and CI's script tests on the three branches, and their inventories; NeoForge
+  1.21.1, 1.21.11 and 26.1.2 and Forge 47, 52 and 66 build; local servers pass every check (NeoForge 1.21.1 server and
+  server-fapi: 174; Forge 47 server-fapi: 123); the NeoForge 1.21.1 advanced corpus server's report and checks are
+  those of the run before (83 passing).
+- Then: discovery allocated 14 MB more than before SEAM-3 on NeoForge 26.1.2's server-fapi run (384 MB, median of 3,
+  against 370), which took 26.x over its baseline. Pre-flight's view now rewrites a seam class once, at its first read,
+  where it did at each, and checks what the rewrite names by the classes' members' names; the native mixins' decision
+  reads a seam class and works out its rewrite only once a mixin may concern it; the ordinal repair and SHARE-2 skip
+  what can't concern them. Discovery allocates 375 MB there (median of 3); of the 5 MB over 370, the test mod's new
+  hook of `destroyBlock` and its check's class take 4. The `vanilla-break` check is skipped, naming the mixin, where a
+  native mod's mixin keeps the game mode as the platform has it (Forgified Fabric API's, in NeoForge's
+  `server-coexist` and Forge 47's `server-ffapi`), as the report says and the class shows; elsewhere a skip
+  fails it. Verified: core's tests (640), CI's script tests and the inventory; NeoForge 26.1.2 `server`,
+  `server-fapi` and `server-coexist` (252 passing, the check skipped in the last), 1.21.1 `server-fapi` (91), Forge
+  47 `server-fapi` and `server-ffapi` (230, the check skipped in the last) and Forge 52 `server-fapi` (123) pass;
+  ci/bench.py passes on the 26.1.2 run against ci/bench.tsv.
+
 ## 2026-11-11: SEAM-1's decision kept in the cache; Fabric's load conditions decided before other mods' hooks on NeoForge 1.21.1 (COND-1)
 
 - SEAM-1's decision (which classes a native mod's mixin keeps as the platform has them) read every mixin the native

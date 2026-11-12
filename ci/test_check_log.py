@@ -88,6 +88,14 @@ class EvaluatorTest(unittest.TestCase):
         self.assertEqual(results, {"loot": "skip", "other": "fail"})
         self.assertIn("SKIP: loot (FABRICATED-TEST loot SKIPPED: fabric-loot-api-v3 is another mod's)", out)
 
+    def test_a_check_whose_ok_line_says_more_takes_no_skipped_line(self):
+        # A check logging more than "<check> OK" can't be skipped: its SKIPPED line fails it (vanilla-break, which only
+        # its row for the run where another mod may keep the class takes as a skip).
+        (self.dir / "server.out").write_text("FABRICATED-TEST vanilla block breaking SKIPPED: kept\n")
+        _, results, _ = self.run_checks(row("more", r"FABRICATED-TEST vanilla block breaking OK \(with a block\)"),
+                                        row("plain", "FABRICATED-TEST vanilla block breaking OK"))
+        self.assertEqual(results, {"more": "fail", "plain": "skip"})
+
     def test_where_and_when_a_row_applies(self):
         _, results, out = self.run_checks(
             row("other-version", "nothing", n="1.21.1", why="neoforge: 1.21.1's alone"),

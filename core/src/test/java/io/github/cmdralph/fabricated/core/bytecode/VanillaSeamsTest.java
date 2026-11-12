@@ -76,8 +76,8 @@ class VanillaSeamsTest {
 		assertEquals(List.of("same", "canStickTo", "canStickTo"), calls(node, "computed"));
 		assertEquals(List.of("isStickyBlock"), calls(node, "isSticky"));
 		assertEquals(List.of("canStickTo", "canStickTo"), calls(node, "canStickToEachOther"));
-		assertEquals(List.of(new VanillaSeams.Restored("isSticky", "(L" + STATE + ";)Z", "a.isStickyBlock()"),
-				new VanillaSeams.Restored("canStickToEachOther", "(L" + STATE + ";L" + STATE + ";)Z", "a.canStickTo(b) && b.canStickTo(a)")),
+		assertEquals(List.of(new VanillaSeams.Restored(RESOLVER, "isSticky", "(L" + STATE + ";)Z", null, "a.isStickyBlock()"),
+				new VanillaSeams.Restored(RESOLVER, "canStickToEachOther", "(L" + STATE + ";L" + STATE + ";)Z", null, "a.canStickTo(b) && b.canStickTo(a)")),
 				VanillaSeams.restoredIn(node(write(node))));
 
 		// Every check answers as the platform's code did; NeoForge 26.1.2's line check asks both ways, as its branching check does.

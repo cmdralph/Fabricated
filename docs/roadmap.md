@@ -253,12 +253,13 @@ Candidates, each waiting for a mod or a report that needs it:
   whose lambda in `addEntitiesToWorld` captures the settings where vanilla's captures their rotation, mirror and flag.
   Its handler would take vanilla's captured values worked out from the platform's two levels down (the lambda's, then
   the method's).
-- Block breaking wrappers: Forge's `destroyBlock` (server and client) removes the block through the block state's
-  `onDestroyedByPlayer` extension, which calls `playerWillDestroy` and sets the fluid's block, where vanilla calls
-  `removeBlock`, `playerWillDestroy` and `setBlock` itself (read in Forge 47's and 66's classes). FrozenLib's, Wilder Wild's and Porting Lib's
-  `@WrapOperation`s and `@ModifyExpressionValue`s of those calls would have to wrap the platform's extension method;
-  `@Inject`s at them move to vanilla's place (CORPUS-72). Vanilla's calls there could be put back as rows of the table
-  that puts piston stickiness back (`VanillaSeams`, SEAM-1), with a form for code that calls through an extension.
+- Block breaking, what SEAM-3 leaves: vanilla's removal calls in `destroyBlock` are put back for the blocks keeping the
+  platform's `onDestroyedByPlayer`; a block overriding it breaks as the platform has it, without Fabric mods' hooks of
+  vanilla's calls. On Forge, wrappers of the server's `playerWillDestroy` call stay left out (a known limit: Forge makes
+  it after the tool is damaged; `@Inject`s at it move to vanilla's place, CORPUS-72). The tool checks in the same
+  methods are the next family: vanilla's `hasCorrectToolForDrops`, where both platforms ask `canHarvestBlock` (Porting
+  Lib's and Apoli's harvest wrappers; Apoli's break action goes with them, SHARE-2), and Forge's dropping vanilla's
+  `canAttackBlock` (Porting Lib's). The client rows are checked by unit tests only, not in game.
 - Item checks the platform asks its extensions instead: Forge asks the stack's tool actions (`canPerformAction`) where
   vanilla asks `stack.is(Items.SHEARS)`, so BCLib's and Porting Lib's wrappers of that check
   have nothing to wrap (a shears item that is a `ShearsItem` gets the actions from the platform's, UNVERIFIED for these

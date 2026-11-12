@@ -21,6 +21,7 @@
       "io.github.cmdralph.fabricated.testmod.LootTest",
       "io.github.cmdralph.fabricated.testmod.VanillaLootPoolTest",
       "io.github.cmdralph.fabricated.testmod.VanillaPistonTest",
+      "io.github.cmdralph.fabricated.testmod.VanillaBreakTest",
       "io.github.cmdralph.fabricated.testmod.TagRemovalTest",
       "io.github.cmdralph.fabricated.testmod.ContentRegistriesTest",
       "io.github.cmdralph.fabricated.testmod.HiddenDefaultTest",

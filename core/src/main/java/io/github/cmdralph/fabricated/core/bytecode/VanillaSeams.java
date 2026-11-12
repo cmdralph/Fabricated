@@ -5,10 +5,15 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
@@ -29,7 +34,9 @@ import org.objectweb.asm.tree.VarInsnNode;
 
 /**
  * Vanilla's methods a platform took out of a game class, asking its own extension methods where vanilla called them, put
- * back so that Fabric mods' hooks of them apply (SEAM-1). Each {@link Seam} is a row: the vanilla method, and the
+ * back so that Fabric mods' hooks of them apply (SEAM-1); and vanilla's calls a platform makes through its block state's
+ * extension, put back for the blocks keeping the extension's default (SEAM-3, {@link VanillaCalls}, the table's second
+ * shape). Each {@link Seam} is a row: the vanilla method, and the
  * platform's code at the places vanilla calls it, calls of the method's parameters joined by {@code &&}. Where a class
  * lacks the method and has that code, the method is declared again with the platform's code as its body, and each place
  * calls it instead, so every check answers as the platform's code did. A method the class still declares is left alone
@@ -101,9 +108,41 @@ public final class VanillaSeams {
 					List.of(blockState("canStickTo", "(" + STATE + ")Z", 0, 1), blockState("canStickTo", "(" + STATE + ")Z", 0, 0)))));
 
 	/** The classes the table names, by internal name. */
-	public static final Set<String> CLASSES = SEAMS.stream().map(Seam::owner).collect(Collectors.toUnmodifiableSet());
+	public static final Set<String> CLASSES = Stream.concat(SEAMS.stream().map(Seam::owner), VanillaCalls.CLASSES.stream())
+			.collect(Collectors.toUnmodifiableSet());
 
 	private VanillaSeams() {
+	}
+
+	/** Whether what the table puts back in the class (internal name) is vanilla's calls (SEAM-3), not its methods. */
+	public static boolean putsBackCalls(String internalName) {
+		return VanillaCalls.CLASSES.contains(internalName);
+	}
+
+	/**
+	 * How the class's platform makes vanilla's call {@code owner;name} in its method, through its extension, where
+	 * Fabricated doesn't put the call back (SEAM-3: Forge's server's {@code playerWillDestroy}); null for any other.
+	 */
+	public static String callNotPutBack(ClassNode target, String method, String desc, String owner, String name) {
+		return VanillaCalls.notPutBack(target, method, desc, owner, name);
+	}
+
+	/**
+	 * In how many places of the method, as read, vanilla's calls are put back (SEAM-3): each of the platform's calls of its
+	 * extension, where vanilla's code makes its calls once; 0 where none are.
+	 */
+	public static int putBackPlaces(MethodNode method) {
+		return VanillaCalls.places(method);
+	}
+
+	/**
+	 * The classes whose methods' calls putting the class's seams back may change ({@link Rewrite#others}, of any form the
+	 * table reads), and the class itself: only a mixin naming one of them can hook what the rewrite moves.
+	 */
+	static Set<String> concerned(String internalName) {
+		Set<String> concerned = new HashSet<>(Set.of(internalName));
+		if (putsBackCalls(internalName)) concerned.addAll(VanillaCalls.OTHER_CLASSES);
+		return concerned;
 	}
 
 	/** Whether the table names the class (internal name): a class whose seams {@link #restore} may put back. */
@@ -118,7 +157,7 @@ public final class VanillaSeams {
 	public static List<String> restore(ClassNode node) {
 		List<String> restored = new ArrayList<>();
 		if (!names(node.name)) return restored;
-		boolean srg = node.methods.stream().anyMatch(m -> SRG_METHOD.matcher(m.name).matches());
+		boolean srg = srg(node);
 		// The class's own methods: a seam's body makes the platform's calls.
 		List<MethodNode> own = List.copyOf(node.methods);
 		for (Seam seam : SEAMS) {
@@ -131,7 +170,13 @@ public final class VanillaSeams {
 			node.methods.add(body(seam, name));
 			restored.add(name + seam.desc());
 		}
+		restored.addAll(VanillaCalls.restore(node));
 		return restored;
+	}
+
+	/** Whether the class's methods have SRG's names, as where the game runs with them (Forge 47): {@code m_<number>_}. */
+	static boolean srg(ClassNode node) {
+		return node.methods.stream().anyMatch(m -> SRG_METHOD.matcher(m.name).matches());
 	}
 
 	/**
@@ -144,9 +189,9 @@ public final class VanillaSeams {
 	}
 
 	/**
-	 * {@link #restore}, all or nothing, as a class loads: on a copy of the class, whose methods then replace the class's.
-	 * Where it throws, the class stays exactly as it was, and the failure is returned for the caller to log, never thrown:
-	 * the class loads as the platform has it, its Fabric mods' hooks of the seams finding nothing, as before SEAM-1.
+	 * {@link #restore}, all or nothing, as a class loads: on a copy of the class, whose methods and fields then replace the
+	 * class's. Where it throws, the class stays exactly as it was, and the failure is returned for the caller to log, never
+	 * thrown: the class loads as the platform has it, its Fabric mods' hooks of the seams finding nothing, as before SEAM-1.
 	 */
 	public static Restoring restoreWhole(ClassNode node) {
 		try {
@@ -156,6 +201,8 @@ public final class VanillaSeams {
 			if (!restored.isEmpty()) {
 				node.methods.clear();
 				node.methods.addAll(copy.methods);
+				node.fields.clear();
+				node.fields.addAll(copy.fields);
 			}
 			return new Restoring(restored, null);
 		} catch (RuntimeException | LinkageError | StackOverflowError e) {
@@ -167,11 +214,22 @@ public final class VanillaSeams {
 	 * What putting a class's seams back would change, read on a copy of the class as the platform has it.
 	 *
 	 * @param seams      the seams put back, as {@link #restoredIn} names them
-	 * @param movedCalls the platform's calls that move into them, as {@code owner;name(desc)}
+	 * @param movedCalls the platform's calls that move into them, or that vanilla's calls put back stand in for, as
+	 *                   {@code owner;name(desc)}
 	 * @param holders    the class's methods holding those calls, as {@code name(desc)}
+	 * @param bypassed   the class's methods no longer reached where vanilla's calls are made instead (SEAM-3), as
+	 *                   {@code name(desc)}
+	 * @param added      the members the rewrite names anew in the class's methods ({@code owner;name(desc)},
+	 *                   {@code owner;name:desc})
+	 * @param others     the game's other methods whose calls change where vanilla's calls are made instead, by class, as
+	 *                   names (Mojang's and SRG's): the extensions' defaults, no longer called, and on Forge's server
+	 *                   {@code Level.removeBlock}, called where Forge's default sets the block itself
+	 * @param constants  whether the holders get constants they didn't have (vanilla's calls' {@code false} and {@code 11},
+	 *                   SEAM-3), which a hook of a constant there may count
 	 */
-	public record Rewrite(List<Restored> seams, Set<String> movedCalls, Set<String> holders) {
-		static final Rewrite NONE = new Rewrite(List.of(), Set.of(), Set.of());
+	public record Rewrite(List<Restored> seams, Set<String> movedCalls, Set<String> holders, Set<String> bypassed, Set<String> added,
+			Map<String, Set<String>> others, boolean constants) {
+		static final Rewrite NONE = new Rewrite(List.of(), Set.of(), Set.of(), Set.of(), Set.of(), Map.of(), false);
 
 		public boolean isEmpty() {
 			return seams.isEmpty();
@@ -185,12 +243,12 @@ public final class VanillaSeams {
 		platformClass.accept(copy);
 		try {
 			if (restore(copy).isEmpty()) return Rewrite.NONE;
-		} catch (RuntimeException | LinkageError e) {
+		} catch (RuntimeException | LinkageError | StackOverflowError e) {
 			return Rewrite.NONE; // nothing would be put back as it loads (restoreWhole)
 		}
 		List<Restored> seams = restoredIn(copy);
 		Set<String> put = new HashSet<>();
-		for (Restored seam : seams) put.add(seam.name() + seam.desc());
+		for (Restored seam : seams) if (seam.in() == null) put.add(seam.name() + seam.desc());
 		Set<String> holders = new TreeSet<>();
 		for (MethodNode method : copy.methods) {
 			if (put.contains(method.name + method.desc) || method.instructions == null) continue;
@@ -203,13 +261,18 @@ public final class VanillaSeams {
 		}
 		Set<String> moved = new TreeSet<>();
 		for (Seam seam : SEAMS) {
-			if (!seam.owner().equals(copy.name) || seams.stream().noneMatch(r -> r.desc().equals(seam.desc())
+			if (!seam.owner().equals(copy.name) || seams.stream().noneMatch(r -> r.in() == null && r.desc().equals(seam.desc())
 					&& (r.name().equals(seam.name()) || r.name().equals(seam.srgName())))) continue;
 			for (List<Call> form : seam.forms()) {
 				for (Call call : form) moved.add(call.owner() + ";" + call.name() + call.desc());
 			}
 		}
-		return new Rewrite(List.copyOf(seams), Collections.unmodifiableSet(moved), Collections.unmodifiableSet(holders));
+		Set<String> bypassed = new TreeSet<>();
+		Map<String, Set<String>> others = new TreeMap<>();
+		VanillaCalls.changes(platformClass, copy, moved, holders, bypassed, others);
+		return new Rewrite(List.copyOf(seams), Collections.unmodifiableSet(moved), Collections.unmodifiableSet(holders), Collections.unmodifiableSet(bypassed),
+				Collections.unmodifiableSet(VanillaCalls.added(platformClass, copy)), Collections.unmodifiableMap(others),
+				VanillaCalls.addsConstants(platformClass, copy));
 	}
 
 	/** The game's classes with their seams put back ({@link #restore}): pre-flight's view, as they will load. */
@@ -220,23 +283,55 @@ public final class VanillaSeams {
 	/**
 	 * As {@link #over(ClassBytesSource)}, but for the classes {@code kept} (internal names), left as the platform has them,
 	 * as they then load: a native mod's mixin hooks the platform's code their rewrite would move ({@link SeamConflicts}).
+	 * Where the rewrite throws, the class is read as the platform has it, as {@link #restoreWhole} then loads it.
 	 */
 	public static ClassBytesSource over(ClassBytesSource game, Set<String> kept) {
-		return internalName -> {
-			byte[] data = game.read(internalName);
-			if (data == null || !names(internalName) || kept.contains(internalName)) return data;
-			ClassNode node = new ClassNode();
-			new ClassReader(data).accept(node, 0);
-			if (restore(node).isEmpty()) return data;
-			ClassWriter writer = new ClassWriter(0);
-			node.accept(writer);
-			return writer.toByteArray();
-		};
+		return over(game, kept, (internalName, failure) -> {
+		});
 	}
 
 	/**
-	 * The seams a class as read has had put back: name, descriptor and the platform's answer they give
-	 * ({@code isSticky(L…;)Z} to {@code a.isStickyBlock()}), as {@link #restore} marked them.
+	 * As {@link #over(ClassBytesSource, Set)}, telling {@code failed} of each class whose rewrite throws, and what it threw.
+	 * A class is rewritten once, at its first read, and read so after: pre-flight reads a class as often as the mods' mixins
+	 * target it, and the game's classes don't change. The bytes are what is kept, each read parsing its own tree.
+	 */
+	public static ClassBytesSource over(ClassBytesSource game, Set<String> kept, BiConsumer<String, Throwable> failed) {
+		Map<String, byte[]> read = new ConcurrentHashMap<>();
+		return internalName -> {
+			if (!names(internalName) || kept.contains(internalName)) return game.read(internalName);
+			byte[] done = read.get(internalName);
+			if (done != null) return done;
+			byte[] data = game.read(internalName);
+			if (data == null) return null;
+			done = rewritten(internalName, data, game, failed);
+			byte[] first = read.putIfAbsent(internalName, done);
+			return first != null ? first : done;
+		};
+	}
+
+	/** The class's bytes with its seams put back, or as they are where nothing is or the rewrite throws ({@link #over}). */
+	private static byte[] rewritten(String internalName, byte[] data, ClassBytesSource game, BiConsumer<String, Throwable> failed) {
+		try {
+			ClassNode node = new ClassNode();
+			new ClassReader(data).accept(node, 0);
+			if (restore(node).isEmpty()) return data;
+			// Nothing is put back that names what the game lacks: the class then loads, and pre-flight reads it, as it is.
+			ClassNode platform = new ClassNode();
+			new ClassReader(data).accept(platform, 0);
+			if (!VanillaCalls.resolves(VanillaCalls.added(platform, node), game)) return data;
+			ClassWriter writer = new ClassWriter(0);
+			node.accept(writer);
+			return writer.toByteArray();
+		} catch (RuntimeException | LinkageError | StackOverflowError e) {
+			failed.accept(internalName, e);
+			return data;
+		}
+	}
+
+	/**
+	 * The seams a class as read has had put back, as {@link #restore} marked them: its methods declared again, with the
+	 * platform's answer they give ({@code isSticky(L…;)Z} to {@code a.isStickyBlock()}), and vanilla's calls put back in
+	 * its methods (SEAM-3), with the extension's default they stand for.
 	 */
 	public static List<Restored> restoredIn(ClassNode node) {
 		List<Restored> found = new ArrayList<>();
@@ -244,15 +339,20 @@ public final class VanillaSeams {
 			if (method.invisibleAnnotations == null || method.invisibleAnnotations.stream().noneMatch(a -> MARKER.equals(a.desc))) continue;
 			for (Seam seam : SEAMS) {
 				if (seam.owner().equals(node.name) && seam.desc().equals(method.desc) && (seam.name().equals(method.name) || seam.srgName().equals(method.name))) {
-					found.add(new Restored(method.name, method.desc, seam.answer()));
+					found.add(new Restored(node.name, method.name, method.desc, null, seam.answer()));
 				}
 			}
 		}
+		found.addAll(VanillaCalls.restoredIn(node));
 		return found;
 	}
 
-	/** A seam a class has had put back: its name and descriptor as the game names it, and the platform's answer it gives. */
-	public record Restored(String name, String desc, String answer) {
+	/**
+	 * A seam a class has had put back, as the game names it: a method of its own ({@code in} null, SEAM-1), with the
+	 * platform's answer it gives; or vanilla's call put back in its method {@code in} ({@code name(desc)}, SEAM-3), with the
+	 * extension's default ({@code Interface.method}) the call stands for.
+	 */
+	public record Restored(String owner, String name, String desc, String in, String answer) {
 	}
 
 	/** Points the method's places with one of the seam's forms at the seam; how many. */
@@ -331,7 +431,7 @@ public final class VanillaSeams {
 	}
 
 	/** The labels a jump, a switch or an exception handler goes to. */
-	private static Set<LabelNode> jumpTargets(MethodNode method) {
+	static Set<LabelNode> jumpTargets(MethodNode method) {
 		Set<LabelNode> targets = new HashSet<>();
 		for (AbstractInsnNode insn : method.instructions) {
 			if (insn instanceof JumpInsnNode jump) targets.add(jump.label);

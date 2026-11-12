@@ -128,13 +128,6 @@ final class PreflightClasses {
 	/** Access transformer lines {@link MixinPreflight#repairs} needs, by the method they make public. */
 	final Set<String> widened = new TreeSet<>();
 
-	/**
-	 * The game classes whose vanilla methods put back ({@link VanillaSeams}, SEAM-1) a mixin member hooks: only those are
-	 * rewritten as they load, so a native mod's mixin of the platform's calls there still finds them where no Fabric mod's
-	 * hooks a seam (Lithium's mixin of the resolver hooks none).
-	 */
-	final Set<String> restoredSeams = new TreeSet<>();
-
 	/** The libraries' classes (the JDK, DataFixerUpper, ...), for the supertypes of the classes a game method calls. */
 	ClassIndex libraries;
 
