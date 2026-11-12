@@ -10,8 +10,14 @@ import java.util.Set;
 import java.util.function.Function;
 
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.VarInsnNode;
 
 /**
  * A method Fabricated declares on a game class when an interface a Fabric mod adds to it (with a mixin or a class
@@ -34,6 +40,43 @@ import org.objectweb.asm.tree.MethodNode;
  * @param descriptor the method's descriptor
  */
 public record DefaultBridge(String target, String owner, String name, String descriptor) {
+	/**
+	 * The invisible annotation on the bridge methods Fabricated declares. The JVM and reflection never read invisible
+	 * annotations, and no class of that name exists: it only marks the method, for the loader to take it out again where
+	 * it declared it before Mixin ({@code FabricClassTransforms.removeDefaultBridges}).
+	 */
+	public static final String MARKER = "Lio/github/cmdralph/fabricated/loader/DefaultBridgeMethod;";
+
+	/**
+	 * The method declaring the bridge on its target: {@code public R name(args) { return Owner.super.name(args); }}, or
+	 * {@code super.name(args)} where the owner is the class's superclass (not {@code ownerIsInterface}, DEFAULT-1), with
+	 * its maxs (it has no branches, so no frames), and its {@link #MARKER}. It is synthetic, as a method no source
+	 * declares, and not a compiler's bridge ({@code ACC_BRIDGE}): reflection tells it from a method the class or a mod's
+	 * mixin declares, which overrides the default the bridge only calls. SEAM-3 and SEAM-4's check of whether a block
+	 * keeps the platform's default reads it so ({@code KeepsDefault}, SEAM-7).
+	 */
+	public MethodNode method(boolean ownerIsInterface) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_SYNTHETIC, name, descriptor, null, null);
+		method.invisibleAnnotations = new ArrayList<>(List.of(new AnnotationNode(MARKER)));
+		InsnList code = method.instructions;
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		int slot = 1;
+		for (Type argument : Type.getArgumentTypes(descriptor)) {
+			code.add(new VarInsnNode(argument.getOpcode(Opcodes.ILOAD), slot));
+			slot += argument.getSize();
+		}
+		code.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, owner, name, descriptor, ownerIsInterface));
+		Type result = Type.getReturnType(descriptor);
+		code.add(new InsnNode(result.getOpcode(Opcodes.IRETURN)));
+		method.maxLocals = slot;
+		method.maxStack = Math.max(slot, result.getSize());
+		return method;
+	}
+
+	/** Whether the method is a bridge {@link #method} made, by its {@link #MARKER}. */
+	public static boolean isBridge(MethodNode method) {
+		return method.invisibleAnnotations != null && method.invisibleAnnotations.stream().anyMatch(a -> MARKER.equals(a.desc));
+	}
 
 	/**
 	 * The bridges {@code target} needs once it also has the {@code added} interfaces.
