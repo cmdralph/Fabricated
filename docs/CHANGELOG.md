@@ -3,6 +3,18 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-12: The report says what the platform changed of a method's parameters or a field's type (PRE-32)
+
+- **PRE-32** (P3), fixed: where NeoForge or Forge changed the parameters of a method a Fabric mod's mixin hooks, or the
+  type of a field it reads, the report said the method was renamed or removed, or that the platform changed the class.
+  It now names what the method takes or what the field is ("NeoForge or this Minecraft version changed its
+  parameters: ServerEntity.sendPairingData takes (ServerPlayer, PacketAndPayloadAcceptor)"). The hooks stay left out,
+  known limits now listed in the compatibility notes: Polymer's entity tracking hooks on NeoForge 1.21.1, Carpet's
+  payload codec hook on NeoForge, Debugify's MC-121706 fix on NeoForge and Forge.
+- Verified: core tests, CI's script tests and the mixin inventory; on a NeoForge 1.21.1 advanced corpus server the
+  report names the types for Polymer's, Cobblemon's, Carpet's, Debugify's and Ledger's left-out hooks, and its checks
+  and other lines are as before.
+
 ## 2026-11-12: CI's clients stay in their world until the integrated server has had as long there (CI-15)
 
 - **CI-15** (P3, CI only), fixed: mc-runtime-test quits once the client's player has ticked 100 times, whatever the
