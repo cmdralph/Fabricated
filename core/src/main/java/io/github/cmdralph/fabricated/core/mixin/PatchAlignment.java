@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -94,6 +96,15 @@ final class PatchAlignment {
 	 */
 	int placeOf(int vanillaIndex) {
 		return fromFront[vanillaIndex] == fromBack[vanillaIndex] ? fromFront[vanillaIndex] : UNCERTAIN;
+	}
+
+	/** The indices of the patched instructions that are vanilla's: each one an instruction of vanilla's is placed at. */
+	Set<Integer> vanillaPlaces() {
+		Set<Integer> places = new HashSet<>();
+		for (int i = 0; i < fromFront.length; i++) {
+			if (placeOf(i) >= 0) places.add(placeOf(i));
+		}
+		return places;
 	}
 
 	/**
