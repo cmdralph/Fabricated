@@ -222,6 +222,7 @@ apply-3-counted	server	apply-failure-3	yes	*			report	2 mixin\(s\) left out that
 client-exit	client	*	yes	*	*	*	status	^0$			client exited normally	
 world-joined	client	*	yes	*	*		log,out	Successfully finished\.		world-joined	client joined a singleplayer world (mc-runtime-test)	
 forge-world-joined	client	*	yes		*	*	log,out	Successfully finished\.|Running game tests\.\.\.		world-joined	the client joined a singleplayer world (mc-runtime-test: "Running game tests..." first where it runs them, as its 1.20.1 build does)	
+client-hold	client	*	yes	*	*	*	log,out	FABRICATED-TEST client hold (not needed|released|gave up)			the test mod's hold of mc-runtime-test's tick hook ran: the client stayed in its world until its integrated server had run as many ticks there as mc-runtime-test gives the client, or a minute at most (CI-15); the checks waiting on the server decide whether it had long enough	
 player-list	client	*	yes	*		*	log,out	player list was replaced after (Neo)?Forge made its view			getPlayers() follows a player list a mod replaced (the test mod replaces it, as the Polyfrost stack does)	
 client-main-entrypoint	client	*	yes	*	*	*	log,out	FABRICATED-TEST main entrypoint OK			main entrypoint ran on the client	
 main-entrypoint-game-instance	client	*	yes	*	*	*	log,out	FABRICATED-TEST main entrypoint game instance OK			main entrypoints run once the game instance exists, as on Fabric (CORPUS-16)	
