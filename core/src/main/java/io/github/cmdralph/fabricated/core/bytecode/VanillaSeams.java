@@ -35,8 +35,9 @@ import org.objectweb.asm.tree.VarInsnNode;
 /**
  * Vanilla's methods a platform took out of a game class, asking its own extension methods where vanilla called them, put
  * back so that Fabric mods' hooks of them apply (SEAM-1); and vanilla's calls a platform makes through its block state's
- * extension or a hook of its own, put back where the platform's code then does what vanilla's does (SEAM-3's block
- * breaking, SEAM-4's harvest checks, {@link VanillaCalls}, the table's second shape). Each {@link Seam} is a row: the
+ * or its item stack's extension or a hook of its own, put back where the platform's code then does what vanilla's does
+ * (SEAM-3's block breaking, SEAM-4's harvest checks, SEAM-6's item checks, {@link VanillaCalls}, the table's second
+ * shape). Each {@link Seam} is a row: the
  * vanilla method, and the
  * platform's code at the places vanilla calls it, calls of the method's parameters joined by {@code &&}. Where a class
  * lacks the method and has that code, the method is declared again with the platform's code as its body, and each place
@@ -115,7 +116,7 @@ public final class VanillaSeams {
 	private VanillaSeams() {
 	}
 
-	/** Whether what the table puts back in the class (internal name) is vanilla's calls (SEAM-3, SEAM-4), not its methods. */
+	/** Whether what the table puts back in the class (internal name) is vanilla's calls (SEAM-3, SEAM-4, SEAM-6), not its methods. */
 	public static boolean putsBackCalls(String internalName) {
 		return VanillaCalls.CLASSES.contains(internalName);
 	}
@@ -132,14 +133,15 @@ public final class VanillaSeams {
 	 * Why the class's platform makes vanilla's call {@code owner;name} in its method otherwise, where Fabricated doesn't put
 	 * the call back, as pre-flight's hint for a hook of it says it, its finding named (SEAM-3: Forge's server's
 	 * {@code playerWillDestroy}; SEAM-4: the held item's {@code canAttackBlock} or {@code canDestroyBlock}, which the
-	 * platforms ask inside their block break event); null for any other.
+	 * platforms ask inside their block break event; SEAM-6: a mob's shears check, which the platforms leave to the shears
+	 * item, and the client's map and crossbow checks, which they ask of the item's class); null for any other.
 	 */
 	public static String callNotPutBack(ClassNode target, String method, String desc, String owner, String name) {
 		return VanillaCalls.notPutBack(target, method, desc, owner, name);
 	}
 
 	/**
-	 * In how many places of the method, as read, vanilla's call {@code owner;name(desc)} is put back (SEAM-3, SEAM-4): each
+	 * In how many places of the method, as read, vanilla's call {@code owner;name(desc)} is put back (SEAM-3, SEAM-4, SEAM-6): each
 	 * of the platform's calls it stands in for, where vanilla's code makes it once; 0 where it isn't.
 	 */
 	public static int putBackPlaces(MethodNode method, String owner, String name, String desc) {
@@ -154,6 +156,14 @@ public final class VanillaSeams {
 		Set<String> concerned = new HashSet<>(Set.of(internalName));
 		if (putsBackCalls(internalName)) concerned.addAll(VanillaCalls.otherClasses(internalName));
 		return concerned;
+	}
+
+	/**
+	 * The methods of other classes whose calls putting the class's seams back may change, by class, as names, of any form
+	 * the table reads ({@link Rewrite#others} of each): what a rewrite of the class as it is changes is among them.
+	 */
+	static Map<String, Set<String>> mayChange(String internalName) {
+		return putsBackCalls(internalName) ? VanillaCalls.otherMethods(internalName) : Map.of();
 	}
 
 	/** Whether the table names the class (internal name): a class whose seams {@link #restore} may put back. */
@@ -325,6 +335,9 @@ public final class VanillaSeams {
 
 	/** The class's bytes with its seams put back, or as they are where nothing is or the rewrite throws ({@link #over}). */
 	private static byte[] rewritten(String internalName, byte[] data, ClassBytesSource game, ClassIndex members, BiConsumer<String, Throwable> failed) {
+		// A class whose bytes name none of the platform's calls its rows put back in (Player where no shield action is asked)
+		// isn't parsed: nothing goes back there.
+		if (!VanillaCalls.mayApply(internalName, data)) return data;
 		try {
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, 0);
