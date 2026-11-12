@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-12: CI's clients stay in their world until the integrated server has had as long there (CI-15)
+
+- **CI-15** (P3, CI only), fixed: mc-runtime-test quits once the client's player has ticked 100 times, whatever the
+  integrated server did meanwhile, and a server more than two seconds behind skips the ticks it missed. Forge 26.3's
+  client with Fabric API once missed `frapi-moving-block-outline` with its server 78 ticks behind: a falling block is
+  sent to the client as it spawns, its glowing flag only with the server's next tick. The test mod now holds
+  mc-runtime-test's tick hook, the extension point its controller class offers, from the tick its count is up until
+  the server has run 100 ticks with the player, 60 seconds at most, and logs what it did, which the new gating
+  `client-hold` check reads. A server that kept up is there first and nothing waits; a check that never logs still
+  fails.
+- Verified: CI's script tests and the mixin inventory; the test mods build for NeoForge 1.21.1, 1.21.11 and 26.1.2.
+  No client ran: none can start here (no display or GPU).
+
 ## 2026-11-12: Vanilla's item checks put back where the platform asks the stack's actions (SEAM-6), a default bridge no longer taken for an override (SEAM-7)
 
 - **SEAM-6** (P1), fixed: NeoForge and Forge ask the stack's `canPerformAction` of an action where vanilla asks

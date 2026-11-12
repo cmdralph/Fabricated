@@ -5,7 +5,7 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": ["BlockDropsMixin", "BlockRemovalMixin", "BuiltInRegistriesMixin", "ChiseledBookShelfBlockMixin", "DestroyProgressMixin", "HarvestCheckMixin", "LivingEntityMixin", "LivingEntitySelfMixin", "LootTableBuilderNamingMixin", "MappedRegistryMixin", "MinecraftServerMixin", "MobMultipartMixin", "PackRepositoryMixin", "PlayerListMixin", "PluginRejectedMixin", "PreflightLeftOutMixin", "PreflightShapesMixin", "RecordedFramesMixin", "RegistryDataLoaderMixin", "ShearsCheckMixin", "StructureEntitiesMixin", "Vec3iInstanceofMixin"],
   "server": ["LoaderHookMixin"],
-  "client": ["client.MinecraftStopMixin", "client.MinecraftEarlyReloadListenerMixin"],
+  "client": ["client.MinecraftStopMixin", "client.MinecraftEarlyReloadListenerMixin", "client.McRuntimeTestTickHookMixin"],
   "injectors": {
     "defaultRequire": 1
   },
