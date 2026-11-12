@@ -68,6 +68,27 @@ class KnownLimitsTest {
 	}
 
 	@Test
+	void aHookOfTheHeldItemsCheckInDestroyBlockIsSeam4WhereThePlatformAsksItInItsBreakEvent() {
+		// Porting Lib's, on Forge 47 under SRG's names.
+		String message = "@ModifyExpressionValue in m_9280_ expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/item/Item;m_6777_("
+				+ "Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;"
+				+ "Lnet/minecraft/world/entity/player/Player;)Z\"), which does not occur in that method";
+		PreflightFinding forge47 = new PreflightFinding(Severity.LEFT_OUT, "mod.mixins.json", "com.example.mixin.BreakMixin", message,
+				"Forge's ServerPlayerGameMode asks the held item's canAttackBlock inside its block break event (ForgeHooks.onBlockBreakEvent), which can"
+						+ " overrule the answer, so Fabricated doesn't put that check back there (SEAM-4).", "handler()V");
+		assertTrue(KnownLimits.ofFinding("Forge", forge47).endsWith("(SEAM-4)"), KnownLimits.ofFinding("Forge", forge47));
+		// NeoForge 26.1.2's client, the stack's check.
+		PreflightFinding client = new PreflightFinding(Severity.LEFT_OUT, "mod.mixins.json", "com.example.mixin.ClientBreakMixin", "@WrapOperation in destroyBlock"
+				+ " expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/item/ItemStack;canDestroyBlock(Lnet/minecraft/world/level/block/state/BlockState;"
+				+ "Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/entity/player/Player;)Z\"), which does not occur in that method",
+				"NeoForge's MultiPlayerGameMode asks the held item's canDestroyBlock inside its block break event (CommonHooks.fireBlockBreak), which can"
+						+ " overrule the answer, so Fabricated doesn't put that check back there (SEAM-4).", "handler()V");
+		assertTrue(KnownLimits.ofFinding("NeoForge", client).endsWith("(SEAM-4)"), KnownLimits.ofFinding("NeoForge", client));
+		// The same call left out for another reason, without the hint (NeoForge 21.1's client keeps it), is none.
+		assertNull(KnownLimits.ofFinding("NeoForge", finding(Severity.LEFT_OUT, message)));
+	}
+
+	@Test
 	void twoEqualEntriesRegisteredOnForgeAreReg13() {
 		IllegalArgumentException thrown = new IllegalArgumentException(registeredTwice("36b858fa", "4bef7d97"));
 		EntrypointRunner.Failure failure = new EntrypointRunner.Failure("wover_story", "main", "org.example.Story", new RuntimeException("wrapped", thrown));

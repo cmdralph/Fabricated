@@ -35,8 +35,9 @@ import org.objectweb.asm.tree.VarInsnNode;
 /**
  * Vanilla's methods a platform took out of a game class, asking its own extension methods where vanilla called them, put
  * back so that Fabric mods' hooks of them apply (SEAM-1); and vanilla's calls a platform makes through its block state's
- * extension, put back for the blocks keeping the extension's default (SEAM-3, {@link VanillaCalls}, the table's second
- * shape). Each {@link Seam} is a row: the vanilla method, and the
+ * extension or a hook of its own, put back where the platform's code then does what vanilla's does (SEAM-3's block
+ * breaking, SEAM-4's harvest checks, {@link VanillaCalls}, the table's second shape). Each {@link Seam} is a row: the
+ * vanilla method, and the
  * platform's code at the places vanilla calls it, calls of the method's parameters joined by {@code &&}. Where a class
  * lacks the method and has that code, the method is declared again with the platform's code as its body, and each place
  * calls it instead, so every check answers as the platform's code did. A method the class still declares is left alone
@@ -114,25 +115,35 @@ public final class VanillaSeams {
 	private VanillaSeams() {
 	}
 
-	/** Whether what the table puts back in the class (internal name) is vanilla's calls (SEAM-3), not its methods. */
+	/** Whether what the table puts back in the class (internal name) is vanilla's calls (SEAM-3, SEAM-4), not its methods. */
 	public static boolean putsBackCalls(String internalName) {
 		return VanillaCalls.CLASSES.contains(internalName);
 	}
 
 	/**
-	 * How the class's platform makes vanilla's call {@code owner;name} in its method, through its extension, where
-	 * Fabricated doesn't put the call back (SEAM-3: Forge's server's {@code playerWillDestroy}); null for any other.
+	 * The findings what the table puts back in the class answers, as reports name them: {@code SEAM-1} for vanilla's
+	 * methods, and for vanilla's calls those of its rows ({@code SEAM-3, SEAM-4} for the server's game mode).
+	 */
+	public static String findings(String internalName) {
+		return putsBackCalls(internalName) ? VanillaCalls.findings(internalName) : "SEAM-1";
+	}
+
+	/**
+	 * Why the class's platform makes vanilla's call {@code owner;name} in its method otherwise, where Fabricated doesn't put
+	 * the call back, as pre-flight's hint for a hook of it says it, its finding named (SEAM-3: Forge's server's
+	 * {@code playerWillDestroy}; SEAM-4: the held item's {@code canAttackBlock} or {@code canDestroyBlock}, which the
+	 * platforms ask inside their block break event); null for any other.
 	 */
 	public static String callNotPutBack(ClassNode target, String method, String desc, String owner, String name) {
 		return VanillaCalls.notPutBack(target, method, desc, owner, name);
 	}
 
 	/**
-	 * In how many places of the method, as read, vanilla's calls are put back (SEAM-3): each of the platform's calls of its
-	 * extension, where vanilla's code makes its calls once; 0 where none are.
+	 * In how many places of the method, as read, vanilla's call {@code owner;name(desc)} is put back (SEAM-3, SEAM-4): each
+	 * of the platform's calls it stands in for, where vanilla's code makes it once; 0 where it isn't.
 	 */
-	public static int putBackPlaces(MethodNode method) {
-		return VanillaCalls.places(method);
+	public static int putBackPlaces(MethodNode method, String owner, String name, String desc) {
+		return VanillaCalls.places(method, owner, name, desc);
 	}
 
 	/**
@@ -141,7 +152,7 @@ public final class VanillaSeams {
 	 */
 	static Set<String> concerned(String internalName) {
 		Set<String> concerned = new HashSet<>(Set.of(internalName));
-		if (putsBackCalls(internalName)) concerned.addAll(VanillaCalls.OTHER_CLASSES);
+		if (putsBackCalls(internalName)) concerned.addAll(VanillaCalls.otherClasses(internalName));
 		return concerned;
 	}
 
@@ -222,8 +233,9 @@ public final class VanillaSeams {
 	 * @param added      the members the rewrite names anew in the class's methods ({@code owner;name(desc)},
 	 *                   {@code owner;name:desc})
 	 * @param others     the game's other methods whose calls change where vanilla's calls are made instead, by class, as
-	 *                   names (Mojang's and SRG's): the extensions' defaults, no longer called, and on Forge's server
-	 *                   {@code Level.removeBlock}, called where Forge's default sets the block itself
+	 *                   names (Mojang's and SRG's): the extensions' defaults and the platform's hooks, no longer called, on
+	 *                   Forge's server {@code Level.removeBlock}, called where Forge's default sets the block itself, and on
+	 *                   Forge {@code Player.hasCorrectToolForDrops}, called where Forge's default only fires its event
 	 * @param constants  whether the holders get constants they didn't have (vanilla's calls' {@code false} and {@code 11},
 	 *                   SEAM-3), which a hook of a constant there may count
 	 */
@@ -293,24 +305,26 @@ public final class VanillaSeams {
 	/**
 	 * As {@link #over(ClassBytesSource, Set)}, telling {@code failed} of each class whose rewrite throws, and what it threw.
 	 * A class is rewritten once, at its first read, and read so after: pre-flight reads a class as often as the mods' mixins
-	 * target it, and the game's classes don't change. The bytes are what is kept, each read parsing its own tree.
+	 * target it, and the game's classes don't change. The bytes are what is kept, each read parsing its own tree. The
+	 * classes whose members the rewrites name are read once for the view, whichever class names them.
 	 */
 	public static ClassBytesSource over(ClassBytesSource game, Set<String> kept, BiConsumer<String, Throwable> failed) {
 		Map<String, byte[]> read = new ConcurrentHashMap<>();
+		ClassIndex members = new ClassIndex(game);
 		return internalName -> {
 			if (!names(internalName) || kept.contains(internalName)) return game.read(internalName);
 			byte[] done = read.get(internalName);
 			if (done != null) return done;
 			byte[] data = game.read(internalName);
 			if (data == null) return null;
-			done = rewritten(internalName, data, game, failed);
+			done = rewritten(internalName, data, game, members, failed);
 			byte[] first = read.putIfAbsent(internalName, done);
 			return first != null ? first : done;
 		};
 	}
 
 	/** The class's bytes with its seams put back, or as they are where nothing is or the rewrite throws ({@link #over}). */
-	private static byte[] rewritten(String internalName, byte[] data, ClassBytesSource game, BiConsumer<String, Throwable> failed) {
+	private static byte[] rewritten(String internalName, byte[] data, ClassBytesSource game, ClassIndex members, BiConsumer<String, Throwable> failed) {
 		try {
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, 0);
@@ -318,7 +332,7 @@ public final class VanillaSeams {
 			// Nothing is put back that names what the game lacks: the class then loads, and pre-flight reads it, as it is.
 			ClassNode platform = new ClassNode();
 			new ClassReader(data).accept(platform, 0);
-			if (!VanillaCalls.resolves(VanillaCalls.added(platform, node), game)) return data;
+			if (!VanillaCalls.resolves(VanillaCalls.added(platform, node), members, VanillaCalls.copied(platform, game))) return data;
 			ClassWriter writer = new ClassWriter(0);
 			node.accept(writer);
 			return writer.toByteArray();
@@ -349,10 +363,19 @@ public final class VanillaSeams {
 
 	/**
 	 * A seam a class has had put back, as the game names it: a method of its own ({@code in} null, SEAM-1), with the
-	 * platform's answer it gives; or vanilla's call put back in its method {@code in} ({@code name(desc)}, SEAM-3), with the
-	 * extension's default ({@code Interface.method}) the call stands for.
+	 * platform's answer it gives; or vanilla's call put back in its method {@code in} ({@code name(desc)}, SEAM-3, SEAM-4),
+	 * with the extension's default or the platform's hook ({@code Interface.method}) the call stands for.
+	 *
+	 * @param finding the finding it answers
+	 * @param through how the platform makes vanilla's call, as pre-flight's note says it ({@code the block's
+	 *                IBlockExtension.onDestroyedByPlayer}); null for a method
+	 * @param note    what putting it back does, as the note says it; null for a method
 	 */
-	public record Restored(String owner, String name, String desc, String in, String answer) {
+	public record Restored(String owner, String name, String desc, String in, String answer, String finding, String through, String note) {
+		/** A method put back (SEAM-1). */
+		public Restored(String owner, String name, String desc, String in, String answer) {
+			this(owner, name, desc, in, answer, "SEAM-1", null, null);
+		}
 	}
 
 	/** Points the method's places with one of the seam's forms at the seam; how many. */
