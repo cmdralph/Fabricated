@@ -5,6 +5,7 @@ import java.lang.reflect.Modifier;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 import com.mojang.brigadier.CommandDispatcher;
 
@@ -22,10 +23,12 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.common.CreativeModeTabRegistry;
 import net.minecraftforge.event.ForgeEventFactory;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.fml.ModContainer;
 import net.minecraftforge.fml.ModList;
 
@@ -108,8 +111,18 @@ final class TestPlatform {
 		}
 	}
 
-	/** A block overriding the platform's extension for a player's break (SEAM-3): it leaves amethyst ({@link BreakOverride}). */
+	/**
+	 * A block overriding the platform's extensions for a player's break (SEAM-3) and harvest check (SEAM-4): it leaves
+	 * amethyst, and answers its harvest check itself ({@link BreakOverride}).
+	 */
 	static Block breakOverride(BlockBehaviour.Properties properties) {
 		return new BreakOverride(properties);
+	}
+
+	/** Lets players harvest the blocks {@code granted} accepts, as a mod of the platform's does through its harvest check event. */
+	static void grantHarvest(Predicate<BlockState> granted) {
+		PlayerEvent.HarvestCheck.BUS.addListener(event -> {
+			if (granted.test(event.getTargetBlock())) event.setCanHarvest(true);
+		});
 	}
 }
