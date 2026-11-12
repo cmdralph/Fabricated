@@ -115,6 +115,64 @@ class SeamConflictsTest {
 	}
 
 	/**
+	 * SEAM-3: the conflict, if any, of a native mod's mixin with putting vanilla's calls back in NeoForge's server game
+	 * mode, the mixin targeting {@code nativeTarget}.
+	 */
+	private static SeamConflicts.Conflict breaking(Path dir, String nativeMembers, String nativeTarget) throws Exception {
+		return breaking(dir, VanillaCallsTest.neoForgeSources(), nativeMembers, nativeTarget);
+	}
+
+	private static SeamConflicts.Conflict breaking(Path dir, Map<String, String> gameSources, String nativeMembers, String nativeTarget) throws Exception {
+		Map<String, String> sources = new HashMap<>(gameSources);
+		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value();"
+				+ " String target() default \"\"; }");
+		sources.put("org/spongepowered/asm/mixin/injection/Inject.java", "package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); }");
+		sources.put("org/spongepowered/asm/mixin/injection/callback/CallbackInfo.java", "package org.spongepowered.asm.mixin.injection.callback; public class CallbackInfo { }");
+		sources.put("com/moon/NativeBreak.java", "package com.moon; import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.injection.*;"
+				+ " import org.spongepowered.asm.mixin.injection.callback.CallbackInfo; @Mixin(" + nativeTarget + ".class) public abstract class NativeBreak {"
+				+ nativeMembers + " }");
+		Map<String, byte[]> classes = new HashMap<>(TestSources.compile(dir, TestSources.MIXIN_ANNOTATIONS, sources));
+		ClassBytesSource game = classes::get;
+		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("breaker", classes::containsKey, classes::get,
+				() -> List.of("com/moon/NativeBreak"))));
+		return SeamConflicts.find(game.readNode("net/minecraft/server/level/ServerPlayerGameMode", 0), installed);
+	}
+
+	@Test
+	void aNativeMixinOfWhatPuttingVanillasCallsBackBypassesKeepsTheClass(@TempDir Path dir) throws Exception {
+		String gameMode = "net.minecraft.server.level.ServerPlayerGameMode";
+		SeamConflicts.Conflict expected = new SeamConflicts.Conflict("breaker", "com/moon/NativeBreak", true);
+		// The platform's removeBlock, which the blocks keeping the default no longer reach.
+		assertEquals(expected, breaking(dir.resolve("helper"), " @Inject(method = \"removeBlock\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }", gameMode));
+		// The extension's default, which they no longer call.
+		assertEquals(expected, breaking(dir.resolve("default"), " @Inject(method = \"onDestroyedByPlayer\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }",
+				"net.neoforged.neoforge.common.extensions.IBlockExtension"));
+		// Vanilla's call the rewrite adds to destroyBlock, which NeoForge's code doesn't make there.
+		assertEquals(expected, breaking(dir.resolve("added"), " @Inject(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target ="
+				+ " \"Lnet/minecraft/server/level/ServerLevel;removeBlock(Lnet/minecraft/core/BlockPos;Z)Z\")) private void call(CallbackInfo ci) { }", gameMode));
+		assertEquals("NeoForge mod breaker's mixin NativeBreak hooks the platform's code that putting vanilla's calls back would move",
+				expected.describe("NeoForge", "vanilla's calls"));
+		// Level's removeBlock, which NeoForge's default calls too, but Forge's doesn't: there, vanilla's call put back runs it
+		// for player breaks it never saw, so the class stays as Forge has it.
+		String level = " @Inject(method = \"removeBlock\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		assertNull(breaking(dir.resolve("level"), level, "net.minecraft.world.level.Level"));
+		assertEquals(expected, breaking(dir.resolve("forge-level"), VanillaCallsTest.forgeSources(), level, "net.minecraft.world.level.Level"));
+		assertEquals(expected, breaking(dir.resolve("forge-level-srg"), VanillaCallsTest.forgeSources(), level.replace("removeBlock", "m_7471_"),
+				"net.minecraft.server.level.ServerLevel"));
+		assertNull(breaking(dir.resolve("forge-level-other"), VanillaCallsTest.forgeSources(), level.replace("removeBlock", "setBlock"),
+				"net.minecraft.world.level.Level"));
+		// A constant there, which vanilla's calls bring more of (their false, their 11).
+		assertEquals(expected, breaking(dir.resolve("constant"), " @Inject(method = \"destroyBlock\", at = @At(value = \"CONSTANT\")) private void constant(CallbackInfo ci) { }",
+				gameMode));
+		// What stays: destroyBlock's start, and a call NeoForge makes there.
+		assertNull(breaking(dir.resolve("head"), " @Inject(method = \"destroyBlock\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }", gameMode));
+		assertNull(breaking(dir.resolve("kept-call"), " @Inject(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target ="
+				+ " \"Lnet/minecraft/world/level/block/Block;playerWillDestroy(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;"
+				+ "Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/entity/player/Player;)Lnet/minecraft/world/level/block/state/BlockState;\"))"
+				+ " private void call(CallbackInfo ci) { }", gameMode));
+	}
+
+	/**
 	 * The decision is kept from one launch to the next, keyed by the native jars' fingerprints (path, size, modification
 	 * time): reused while they hold, made again when one changes or the cached file is damaged, never cached for a jar
 	 * listing mixins without one.
