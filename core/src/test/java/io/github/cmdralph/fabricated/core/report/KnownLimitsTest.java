@@ -52,6 +52,41 @@ class KnownLimitsTest {
 		assertNull(KnownLimits.ofFinding("NeoForge", wrapper), "NeoForge's hook takes the screen: a wrapper left out there is left out for another reason");
 	}
 
+	/** A hook of vanilla's friction in Leashable's angularFriction, an interface's method, which pre-flight's hint says isn't put back. */
+	@Test
+	void aHookOfLeashablesFrictionIsSeam8() {
+		PreflightFinding hook = new PreflightFinding(Severity.LEFT_OUT, "mod.mixins.json", "com.example.mixin.LeashMixin", "@WrapOperation in angularFriction expects"
+				+ " @At(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;getFriction()F\"), which does not occur in that method - Leashable's"
+				+ " angularFriction asks the block state's getFriction(level, pos, entity) instead, and Leashable is an interface, which can't keep what"
+				+ " Fabricated's check of a block's class answers, so Fabricated doesn't put vanilla's call back there (SEAM-8).", "", "handler()V");
+		assertTrue(KnownLimits.ofFinding("NeoForge", hook).endsWith("(SEAM-8)"));
+		assertTrue(KnownLimits.ofFinding("Forge", hook).endsWith("(SEAM-8)"));
+		// A hook of vanilla's friction left out elsewhere is no such limit.
+		assertNull(KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.LEFT_OUT, "mod.mixins.json", "com.example.mixin.LeashMixin", "@WrapOperation in"
+				+ " travel expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;getFriction()F\"), which does not occur in that method", "",
+				"handler()V")));
+	}
+
+	@Test
+	void aHookInVanillasSweepAttackNeoForgeNeverCallsIsSeam8() {
+		String message = "@WrapOperation sweep applies in doSweepAttack(Lnet/minecraft/world/entity/Entity;FLnet/minecraft/world/damagesource/DamageSource;F)V,"
+				+ " vanilla's method, which NeoForge's Player never calls: it makes the sweep attack's box in attack through the stack's"
+				+ " getSweepHitBox(player, target) and hands it to an overload of doSweepAttack of its own, so the hook never runs; Fabricated doesn't put"
+				+ " vanilla's call back there (SEAM-8)";
+		PreflightFinding note = new PreflightFinding(Severity.INFO, "mod.mixins.json", "com.example.mixin.SweepMixin", message, "", "sweep()V");
+		assertTrue(KnownLimits.ofFinding("NeoForge", note).endsWith("apply there but never run (SEAM-8)"));
+		assertNull(KnownLimits.ofFinding("Forge", note));
+		// It is a note of a hook that applies: a finding leaving one out with that message is no such limit, nor is another note.
+		assertNull(KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.LEFT_OUT, "mod.mixins.json", "com.example.mixin.SweepMixin", message, "",
+				"sweep()V")));
+		assertNull(KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.INFO, "mod.mixins.json", "com.example.mixin.SweepMixin", "@WrapOperation"
+				+ " sweep hooks AABB.inflate(DDD)Lnet/minecraft/world/phys/AABB; in attack (SEAM-8)", "", "sweep()V")));
+		// Nor is a note a limit of a hook left out.
+		assertNull(KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.INFO, "mod.mixins.json", "com.example.mixin.LeashMixin", "@WrapOperation in"
+				+ " angularFriction expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;getFriction()F\") - Leashable is an interface",
+				"", "handler()V")));
+	}
+
 	@Test
 	void aHookOfTheServersPlayerWillDestroyCallIsSeam3OnForgeOnly() {
 		String message = "@ModifyExpressionValue in m_9280_ expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;"
