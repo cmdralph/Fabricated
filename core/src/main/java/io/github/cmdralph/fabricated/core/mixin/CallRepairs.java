@@ -194,19 +194,22 @@ final class CallRepairs extends PreflightPart {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 			if (point.equals("RETURN") && Annotations.value(at, "ordinal") instanceof Integer ordinal) {
 				List<Integer> inVanilla = PreflightAsm.returns(before), here = PreflightAsm.returns(patched);
-				if (ordinal >= inVanilla.size() || here.size() <= inVanilla.size()) continue;
+				// An ordinal below 0 picks every return, as Mixin reads it.
+				if (ordinal < 0 || ordinal >= inVanilla.size() || here.size() <= inVanilla.size()) continue;
 				if (alignment == null) alignment = PatchAlignment.of(before, patched);
 				if (alignment == null) return moved;
-				// Only where none of vanilla's returns is gone or shares one here: one the patch merges with another runs on its path too.
-				// A return the alignments disagree on (the same instructions as another's) tells nothing of that.
-				Set<Integer> taken = new HashSet<>();
+				int picked = inVanilla.get(ordinal);
+				int place = alignment.placeOf(picked);
+				int now = here.indexOf(place);
+				if (now < 0 || now == ordinal) continue;
+				// Only where no other return of vanilla's is gone or may share that one: a return the patch merges with
+				// another runs on its path too. Where the alignments disagree on a return (the same instructions as
+				// another's), either answer may be the patch's.
 				boolean merged = false;
-				for (int vanillaReturn : inVanilla) {
-					int place = alignment.placeOf(vanillaReturn);
-					merged |= place == -1 || place >= 0 && !taken.add(place);
+				for (int other : inVanilla) {
+					if (other != picked) merged |= alignment.placeOf(other) == -1 || alignment.mayPlace(other, place);
 				}
-				int now = here.indexOf(alignment.placeOf(inVanilla.get(ordinal)));
-				if (merged || now < 0 || now == ordinal) continue;
+				if (merged) continue;
 				Annotations.put(at, "ordinal", now);
 				moved.add("the return with ordinal " + ordinal + " in vanilla's code, which has ordinal " + now + " in this game build, as " + loader
 						+ "'s patches add returns before it; the injection point is pointed there");

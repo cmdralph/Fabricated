@@ -35,6 +35,13 @@ One entry per working session, newest first: what changed, and how it was verifi
   Forge 47 and Forge 52, against runs before the change, only the hooks above change, and the checks are as before.
   Discovery on NeoForge 26.1.2's server with Fabric API allocates 379 to 381 MB, from 376 to 378 MB, most of it the
   test mod's new hooks: with the test mod as before, 377 to 379 MB.
+- Review fixes: a hook at every return picked explicitly (`ordinal = -1`), in a method whose patch adds returns, threw
+  as pre-flight read it, so its mod failed to translate; it is left as it is. A return of vanilla's whose place the two
+  alignments disagree on now counts as sharing the picked return's place where either pairs it there (Forge 52's
+  `destroyBlock` is pointed as before). On Forge, a Forge mod's mixin of another of `Player`'s methods selected by a
+  name with a quantifier (`tick*`), an owner or a `@Desc` kept the server's game mode and `BlockBehaviour` as Forge has
+  them, SEAM-3's removal with them: native mixins' selectors are now read as Mixin reads them, for every seam. The
+  harvest check's place is documented: before the block is removed, as the platforms ask it.
 
 ## 2026-11-11: Vanilla's block-breaking calls put back for the blocks keeping the platform's default (SEAM-3), shares across mixins (SHARE-2)
 

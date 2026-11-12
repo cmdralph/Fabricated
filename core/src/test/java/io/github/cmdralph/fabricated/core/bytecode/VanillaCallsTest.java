@@ -200,6 +200,10 @@ public class VanillaCallsTest {
 		sources.put("com/example/Harvesting.java", "package com.example;" + imports + " public class Harvesting extends Block { public Harvesting() { super(\"harvesting\"); }"
 				+ " @Override public boolean canHarvestBlock(BlockState state, BlockGetter level, BlockPos pos, Player player) { Hook.LOG.add(\"harvest override\");"
 				+ " return true; } }");
+		// A state of a class of its own overriding the state's harvest extension.
+		sources.put("com/example/HarvestingState.java", "package com.example;" + imports + " public class HarvestingState extends BlockState {"
+				+ " public HarvestingState(Block block) { super(block); } @Override public boolean canHarvestBlock(BlockGetter level, BlockPos pos, Player player) {"
+				+ " Hook.LOG.add(\"state harvest override\"); return true; } }");
 		sources.put("com/example/Loose.java", "package com.example; public class Loose extends net.minecraft.world.level.block.Block { public Loose() { super(\"loose\"); } }");
 		// One overriding it through an interface of its own extending the platform's.
 		sources.put("com/example/OverridingExtension.java", "package com.example;" + imports + " public interface OverridingExtension extends "
@@ -504,7 +508,8 @@ public class VanillaCallsTest {
 			Map<String, byte[]> restored = restored(platform);
 			Map<String, String> names = form.srg ? SRG : MOJANG;
 			for (String player : List.of("net.minecraft.server.level.ServerPlayer", "com.example.OwnPlayer")) {
-				for (String block : List.of("net.minecraft.world.level.block.Block", "com.example.Loose", "com.example.Harvesting", "com.example.Overriding")) {
+				for (String block : List.of("net.minecraft.world.level.block.Block", "com.example.Loose", "com.example.Harvesting", "com.example.HarvestingState",
+						"com.example.Overriding")) {
 					for (boolean tool : List.of(false, true)) {
 						String what = form + " " + player + " " + block + " tool " + tool;
 						List<String> before = harvest(platform, block, player, tool, null), after = harvest(restored, block, player, tool, null);
@@ -514,7 +519,7 @@ public class VanillaCallsTest {
 						List<String> progressBefore = progress(platform, block, player, tool, null), progressAfter = progress(restored, block, player, tool, null);
 						assertEquals(progressBefore, progressAfter, what);
 						// The hook of the call put back, answering true.
-						boolean keeps = !block.endsWith("Harvesting") && (!form.forge || !player.endsWith("OwnPlayer"));
+						boolean keeps = !block.endsWith("Harvesting") && !block.endsWith("HarvestingState") && (!form.forge || !player.endsWith("OwnPlayer"));
 						List<String> hooked = harvest(restored, block, player, tool, "net/minecraft/server/level/ServerPlayer");
 						assertEquals(keeps, hooked.stream().anyMatch(l -> l.startsWith("answered")), what + " " + hooked);
 						if (keeps) assertTrue(hooked.contains("playerDestroy"), what + " " + hooked);

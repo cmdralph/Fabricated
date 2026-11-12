@@ -132,7 +132,9 @@ class SeamConflictsTest {
 		Map<String, String> sources = new HashMap<>(gameSources);
 		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value();"
 				+ " String target() default \"\"; }");
-		sources.put("org/spongepowered/asm/mixin/injection/Inject.java", "package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); }");
+		sources.put("org/spongepowered/asm/mixin/injection/Inject.java", "package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method()"
+				+ " default { }; At[] at(); Desc[] target() default { }; }");
+		sources.put("org/spongepowered/asm/mixin/injection/Desc.java", "package org.spongepowered.asm.mixin.injection; public @interface Desc { String value(); }");
 		sources.put("org/spongepowered/asm/mixin/injection/callback/CallbackInfo.java", "package org.spongepowered.asm.mixin.injection.callback; public class CallbackInfo { }");
 		sources.put("com/moon/NativeBreak.java", "package com.moon; import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.injection.*;"
 				+ " import org.spongepowered.asm.mixin.injection.callback.CallbackInfo; @Mixin("
@@ -183,6 +185,40 @@ class SeamConflictsTest {
 				behaviour));
 		assertEquals(expected, conflict(dir.resolve("progress-forge-player"), VanillaCallsTest.forgeSources(), head.formatted("hasCorrectToolForDrops"),
 				"net.minecraft.world.entity.player.Player", behaviour));
+	}
+
+	/**
+	 * A native mixin's selectors are read as Mixin reads them: a name with a quantifier, an owner or a descriptor
+	 * annotation selects that name's methods; a quantifier alone, a regex or an unknown name, what can't be told. A Forge
+	 * mod's mixin of another of Player's methods leaves the server's game mode and BlockBehaviour to be put back.
+	 */
+	@Test
+	void selectorsAreReadAsMixinReadsThem(@TempDir Path dir) throws Exception {
+		SeamConflicts.Conflict expected = new SeamConflicts.Conflict("breaker", "com/moon/NativeBreak", true);
+		String head = " @Inject(method = \"%s\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		String described = " @Inject(target = @Desc(\"%s\"), at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		String player = "net.minecraft.world.entity.player.Player";
+		String behaviour = "net/minecraft/world/level/block/state/BlockBehaviour";
+		Map<String, String> forge = VanillaCallsTest.forgeSources();
+		int n = 0;
+		for (String other : List.of("tick*", "tick+", "tick{2}", "<init>*", "Lnet/minecraft/world/entity/player/Player;tick*()V", "net.minecraft.world.entity.player.Player.tick")) {
+			assertNull(breaking(dir.resolve("other" + n++), forge, head.formatted(other), player), other);
+		}
+		assertNull(breaking(dir.resolve("other-desc"), forge, described.formatted("tick"), player));
+		assertNull(conflict(dir.resolve("other-behaviour"), forge, head.formatted("tick*"), player, behaviour));
+		for (String any : List.of("*", "/has.*/", "name=/has.*/", "hasCorrectToolForDrops*", "m_36298_{1}", "hasCorrectToolForDrops(*)Z",
+				"Lnet/minecraft/world/entity/player/Player;hasCorrectToolForDrops", "net.minecraft.world.entity.player.Player.hasCorrectToolForDrops")) {
+			assertEquals(expected, breaking(dir.resolve("any" + n++), forge, head.formatted(any), player), any);
+		}
+		assertEquals(expected, breaking(dir.resolve("any-desc"), forge, described.formatted("hasCorrectToolForDrops"), player));
+		assertEquals(expected, conflict(dir.resolve("any-behaviour"), forge, head.formatted("*"), player, behaviour));
+		// In the class holding the calls: a quantified name or a descriptor annotation selects the name's methods.
+		String gameMode = "net.minecraft.server.level.ServerPlayerGameMode";
+		assertNull(breaking(dir.resolve("start"), head.formatted("destroyBlock*"), gameMode));
+		assertNull(breaking(dir.resolve("start-desc"), described.formatted("destroyBlock"), gameMode));
+		assertEquals(expected, breaking(dir.resolve("bypassed"), head.formatted("removeBlock*"), gameMode));
+		assertEquals(expected, breaking(dir.resolve("bypassed-desc"), described.formatted("removeBlock"), gameMode));
+		assertEquals(expected, breaking(dir.resolve("unknown"), head.formatted("m_9280_*"), gameMode));
 	}
 
 	@Test

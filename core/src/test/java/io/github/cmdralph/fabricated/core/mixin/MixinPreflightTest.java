@@ -4214,8 +4214,8 @@ class MixinPreflightTest {
 		// returns added, and no vanilla code, leave them.
 		Map<String, byte[]> vanilla = Map.of(TARGET, returnsLikeDestroyBlock(false, false, false, false));
 		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Returns", mixin("com/example/mixin/Returns", false, cw -> {
-			for (int ordinal : new int[] {0, 3, 4}) {
-				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "atReturn" + ordinal, "(" + CIR + ")V", null, null);
+			for (int ordinal : new int[] {-1, 0, 3, 4}) {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, ordinal < 0 ? "atEveryReturn" : "atReturn" + ordinal, "(" + CIR + ")V", null, null);
 				AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
 				AnnotationVisitor methods = ann.visitArray("method");
 				methods.visit(null, "tick");
@@ -4249,12 +4249,13 @@ class MixinPreflightTest {
 				}
 				if (!shape[0] || shape[2] || !withVanilla) {
 					assertTrue(notes.stream().noneMatch(n -> n.message().contains("in vanilla's code")), what + ": " + notes);
-					assertEquals(Map.of("atReturn0", 0, "atReturn3", 3, "atReturn4", 4), ordinals, what);
+					assertEquals(Map.of("atEveryReturn", -1, "atReturn0", 0, "atReturn3", 3, "atReturn4", 4), ordinals, what);
 					continue;
 				}
 				assertEquals(2, notes.size(), what + ": " + notes);
 				assertTrue(notes.stream().allMatch(n -> n.message().contains("in vanilla's code")), notes.toString());
-				assertEquals(Map.of("atReturn0", 0, "atReturn3", 4, "atReturn4", 5), ordinals, "vanilla's creative and survival returns, after the patch's");
+				assertEquals(Map.of("atEveryReturn", -1, "atReturn0", 0, "atReturn3", 4, "atReturn4", 5), ordinals,
+						"vanilla's creative and survival returns, after the patch's; every return stays every return");
 			}
 		}
 	}

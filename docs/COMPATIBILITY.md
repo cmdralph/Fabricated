@@ -1446,7 +1446,9 @@ state's `canHarvestBlock` in the server's `destroyBlock` and through `EventHooks
 power, in both places, and with it its block-break action, SHARE-2): in `destroyBlock` for the blocks whose classes keep
 NeoForge's `canHarvestBlock`, in `getDestroyProgress` always. NeoForge's `PlayerEvent.HarvestCheck` follows it with its
 answer, as NeoForge's default posts it, so the event's listeners still decide. A block overriding `canHarvestBlock` is
-checked as NeoForge has it, without the hook. A NeoForge mod's mixin of the `canHarvestBlock` call or its defaults, of
+checked as NeoForge has it, without the hook. In `destroyBlock` the check runs where NeoForge asks it, before the
+block is removed, where vanilla asks it after: a hook reading the block at the position finds it there, not the air
+vanilla's code leaves. A NeoForge mod's mixin of the `canHarvestBlock` call or its defaults, of
 `EventHooks.doPlayerHarvestCheck` or of its call in `getDestroyProgress` keeps the class as NeoForge has it. NeoForge
 asks the held item's `canAttackBlock` (`canDestroyBlock` from 1.21.11) inside its block break event
 (`CommonHooks.fireBlockBreak`), whose listeners may overrule the answer, where vanilla's `destroyBlock` returns before
@@ -2043,9 +2045,11 @@ What else differs on Forge, for Fabric mods in general:
   whose class keeps `Player.hasCorrectToolForDrops` and, in `destroyBlock`, the blocks whose classes keep
   `canHarvestBlock`'s default (SEAM-4: Porting Lib's harvestable blocks hook in Create, Apoli's harvest power), under
   their SRG names on Forge 47. Forge's `Player.hasCorrectToolForDrops` fires Forge's `PlayerEvent.HarvestCheck`, as
-  Forge's default does, inside the call a hook wraps. Forge's default fires the event without asking that method for a
+  Forge's default does, inside the call a hook wraps. In `destroyBlock` the check runs where Forge asks it, before the
+  block is removed, as on NeoForge. Forge's default fires the event without asking that method for a
   block needing no tool, which vanilla's call put back asks: a Forge mod's mixin of `Player.hasCorrectToolForDrops`
-  keeps the class as Forge has it, as does one of Forge's code there. Forge asks the held item's `canAttackBlock`
+  keeps the class as Forge has it, as does one of Forge's code there; one of `Player`'s other methods, by name
+  (`tick`, `tick*`), doesn't. Forge asks the held item's `canAttackBlock`
   (`canDestroyBlock` from Forge 61) inside its block break event (`ForgeHooks.onBlockBreakEvent`), which a listener may
   overrule: a hook of vanilla's check in the server's `destroyBlock` is left out, a known limit the report names
   (Porting Lib's break event hook, and its experience hook with it).
