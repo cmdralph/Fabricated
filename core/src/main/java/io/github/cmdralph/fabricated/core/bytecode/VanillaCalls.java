@@ -1341,11 +1341,11 @@ final class VanillaCalls {
 	 * ask the held item's {@code canAttackBlock} (1.21.11 on: the stack's {@code canDestroyBlock}) inside their block break
 	 * event's hook, which pre-cancels the event where the item says no and lets a listener overrule it, where vanilla returns
 	 * before anything else; NeoForge 26.1.2 to 26.3's client too (SEAM-4). NeoForge and Forge 47 to 64 make a sheep's, a
-	 * snow golem's, a bogged's and (NeoForge 21.1, Forge) a mooshroom's {@code mobInteract} ask for no shears: the shears
-	 * item shears a mob through their shearable extension, which posts their events and drops what their loot says. The
-	 * client's held item renderer (NeoForge 21.1 to 26.1.2's, and Forge's crossbow) and item frame renderer ask whether
-	 * the item is a {@code MapItem} or a {@code CrossbowItem}, which other mods' items are too, where vanilla asks whether
-	 * it is the vanilla item (SEAM-6).
+	 * snow golem's, a bogged's and (NeoForge 21.1, Forge) a mooshroom's {@code mobInteract} ask for no shears, nor make the
+	 * mob's {@code shear} call there: the shears item shears a mob through their shearable extension, which posts their
+	 * events and drops what their loot says. The client's held item renderer (NeoForge 21.1 to 26.1.2's, and Forge's
+	 * crossbow) and item frame renderer ask whether the item is a {@code MapItem} or a {@code CrossbowItem}, which other
+	 * mods' items are too, where vanilla asks whether it is the vanilla item (SEAM-6).
 	 */
 	private static final List<NotPutBack> NOT_PUT_BACK = Stream.concat(Stream.of(
 			new NotPutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, WILL_DESTROY.owner(), Set.of(WILL_DESTROY.name(), WILL_DESTROY.srgName()),
@@ -1366,11 +1366,12 @@ final class VanillaCalls {
 					Set.of(IS, IS_ITEM.srgName()), asking(NEOFORGE, MAP_ITEM), mapItem("NeoForge")),
 			new NotPutBack("net/minecraft/client/renderer/entity/ItemFrameRenderer", "getFrameModelResourceLoc", "m_174212_", null, STACK_CLASS,
 					Set.of(IS, IS_ITEM.srgName()), asking(FORGE, MAP_ITEM), mapItem("Forge"))),
-			// Each mob's class, before and after 1.21.11 moved them.
+			// Each mob's class, before and after 1.21.11 moved them: its shears check, and the mob's shear call it guards
+			// (Shearable.shear, SRG's m_5851_).
 			Stream.of(ANIMALS + "Sheep", ANIMALS + "sheep/Sheep", ANIMALS + "SnowGolem", ANIMALS + "golem/SnowGolem", ANIMALS + "MushroomCow",
 					ANIMALS + "cow/MushroomCow", "net/minecraft/world/entity/monster/Bogged", "net/minecraft/world/entity/monster/skeleton/Bogged")
-					.map(mob -> new NotPutBack(mob, "mobInteract", "m_6071_", null, STACK_CLASS, Set.of(IS, IS_ITEM.srgName()),
-							(node, method) -> calls(method, STACK_CLASS, CAN_PERFORM.name()).isEmpty(), sheared(mob.substring(mob.lastIndexOf('/') + 1)))))
+					.flatMap(mob -> Stream.of(sheared(mob, STACK_CLASS, Set.of(IS, IS_ITEM.srgName()), "check"),
+							sheared(mob, mob, Set.of("shear", "m_5851_"), "check and its shear call"))))
 			.toList();
 
 	private static String breakEvent(String loader, String gameMode, String check, String hook) {
@@ -1378,10 +1379,12 @@ final class VanillaCalls {
 				+ " so Fabricated doesn't put that check back there (SEAM-4).";
 	}
 
-	private static String sheared(String mob) {
-		return mob + "'s mobInteract asks for no shears here: the platform shears it from the shears item, through its shearable extension (NeoForge's"
-				+ " IShearable, Forge's IForgeShearable), which posts its events and drops what its loot says, so Fabricated doesn't put vanilla's check back there"
-				+ " (SEAM-6).";
+	/** A mob's call in its {@code mobInteract} of vanilla's shearing, {@code what} the hint says isn't put back. */
+	private static NotPutBack sheared(String mob, String callOwner, Set<String> names, String what) {
+		return new NotPutBack(mob, "mobInteract", "m_6071_", null, callOwner, names, (node, method) -> calls(method, STACK_CLASS, CAN_PERFORM.name()).isEmpty(),
+				mob.substring(mob.lastIndexOf('/') + 1) + "'s mobInteract asks for no shears here: the platform shears it from the shears item, through its"
+						+ " shearable extension (NeoForge's IShearable, Forge's IForgeShearable), which posts its events and drops what its loot says, so"
+						+ " Fabricated doesn't put vanilla's " + what + " back there (SEAM-6).");
 	}
 
 	/** The held item renderer's checks, which the platform asks of the item's class: NeoForge the map's and the crossbow's, Forge the crossbow's. */
