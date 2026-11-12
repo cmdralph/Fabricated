@@ -360,11 +360,14 @@ final class LocalRepairs extends PreflightPart {
 	 * the one Fabric's Mixin takes on its own; it must be in the same slot at every instruction the point picks, kept there
 	 * as that type ({@link MixinPreflight#keptLocalTypes}), so Mixin's discriminator finds it by its slot ({@code index}),
 	 * whose type alone it asks, whatever the other slots hold. Not where the mixin overwrites the method, whose code it
-	 * replaces. Only for an injector with one {@code @At} naming a call, field access or construction, outside a slice.
-	 * Returns a description of it.
+	 * replaces. Only for an injector with one {@code @At} naming a call, field access or construction, or a call's
+	 * assignment ({@code INVOKE_ASSIGN}), in its slice where it has one, as Mixin picks them ({@link #mixinPoints}, PRE-33:
+	 * Porting Lib's friction hook modifies the float {@code LivingEntity.travel} stores from {@code Block.getFriction()},
+	 * in a slice from its {@code getBlockPosBelowThatAffectsMyMovement()} call; where Fabricated puts that call back on
+	 * Forge 47 (SEAM-8), Forge 47's Mixin also keeps the elytra branch's float there, and a Forge 47 server with Create
+	 * stopped, "Found 2 candidate variables"). Returns a description of it.
 	 */
 	List<String> keptVariableRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
-		if (Annotations.value(injector, "slice") != null) return List.of();
 		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
 		Type type = Type.getReturnType(handler.desc);
 		if (methods.isEmpty() || !modifiesByType(injector, methods) || type.getSort() == Type.VOID || PreflightAsm.overwrites(mixin, methods)) {
@@ -376,7 +379,7 @@ final class LocalRepairs extends PreflightPart {
 		for (MethodNode m : methods) {
 			MethodNode framed = classes.withFrames(target.name, m);
 			List<Integer> positions = framed == null || framed.localVariables == null || framed.localVariables.isEmpty() ? null
-					: pointPositions(injector, framed, ctx);
+					: mixinPoints(injector, framed, ctx);
 			if (positions == null || positions.isEmpty()) return List.of();
 			int base = (framed.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
 			for (int i : positions) {
@@ -665,6 +668,40 @@ final class LocalRepairs extends PreflightPart {
 		int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
 		if (ordinal >= 0) positions = ordinal < positions.size() ? List.of(positions.get(ordinal)) : List.of();
 		return positions;
+	}
+
+	/**
+	 * The instructions Mixin injects at for an injector's single {@code @At} in a method ({@link #pointPositions}), and for a
+	 * call's assignment ({@code INVOKE_ASSIGN}, unshifted): Mixin's {@code AfterInvoke} takes the instruction after each
+	 * call that returns a value, or the one after the store just after it (read in 0.8.5, 0.8.7 and Fabric's 0.17.4). In
+	 * the {@code @At}'s slice where it has one, its {@code ordinal} counting the calls there, as Mixin's slice of the method
+	 * reads them ({@link InjectionPoints#sliceRange}), the instruction after one at the slice's end being that one, as
+	 * Mixin's {@code nextNode} has it ({@link InjectionPoints#afterInvoke}, PRE-33). Null for any other point, several, a
+	 * fuzzy target or a slice that can't be worked out.
+	 */
+	static List<Integer> mixinPoints(AnnotationNode injector, MethodNode method, Context ctx) {
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.size() != 1) return null;
+		AnnotationNode at = ats.get(0);
+		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
+		if (!point.equals("INVOKE_ASSIGN") && slices.isEmpty()) return pointPositions(injector, method, ctx);
+		if (!List.of("INVOKE", "FIELD", "NEW", "INVOKE_ASSIGN").contains(point) || !(Annotations.value(at, "target") instanceof String raw)) return null;
+		boolean shifted = Annotations.value(at, "shift") instanceof String[] shift && shift.length == 2 && !shift[1].equals("NONE")
+				|| Annotations.value(at, "by") instanceof Integer by && by != 0;
+		if (point.equals("INVOKE_ASSIGN") && shifted) return null;
+		AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
+		InjectionPoints.Range range = slice == null ? InjectionPoints.Range.ALL : InjectionPoints.sliceRange(slice, method, ctx);
+		List<Integer> picked = InjectionPoints.indexes(point, ctx.resolve(raw), Annotations.value(at, "ordinal") instanceof Integer n ? n : -1,
+				Annotations.value(at, "opcode") instanceof Integer o ? o : -1, range, method);
+		if (picked == null || !point.equals("INVOKE_ASSIGN")) return picked;
+		int last = Math.min(range.end(), method.instructions.size() - 1);
+		List<Integer> after = new ArrayList<>();
+		for (int i : picked) {
+			int node = InjectionPoints.afterInvoke(method, i, last);
+			if (node >= 0) after.add(node);
+		}
+		return after;
 	}
 
 	/**

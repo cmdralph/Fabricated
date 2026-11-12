@@ -3067,6 +3067,169 @@ class MixinPreflightTest {
 		}
 	}
 
+	/**
+	 * {@link #TARGET} with {@code travel()V} storing a float in each branch, as vanilla's {@code LivingEntity.travel} stores
+	 * the block's friction after its elytra branch: the first's scope ends at the second branch (whose frame is of the type
+	 * given) unless {@code bothInScope}, and the second is stored from {@code friction()F}.
+	 */
+	private static byte[] assignedFloats(int frameType, boolean bothInScope) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "travel", "()V", null, null);
+		mv.visitCode();
+		Label start = new Label();
+		Label flying = new Label();
+		Label ground = new Label();
+		Label friction = new Label();
+		Label end = new Label();
+		mv.visitLabel(start);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "flying", "()Z", false);
+		mv.visitJumpInsn(Opcodes.IFEQ, ground);
+		mv.visitInsn(Opcodes.FCONST_1);
+		mv.visitVarInsn(Opcodes.FSTORE, 1);
+		mv.visitLabel(flying);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.FLOAD, 1);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "move", "(F)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitLabel(ground);
+		mv.visitFrame(frameType, frameType == Opcodes.F_SAME ? 0 : 1, frameType == Opcodes.F_SAME ? null : new Object[] {TARGET}, 0, null);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "friction", "()F", false);
+		mv.visitVarInsn(Opcodes.FSTORE, 2);
+		mv.visitLabel(friction);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.FLOAD, 2);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "move", "(F)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitLabel(end);
+		mv.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		mv.visitLocalVariable("f", "F", null, flying, bothInScope ? end : ground, 1);
+		mv.visitLocalVariable("friction", "F", null, friction, end, 2);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * Porting Lib's friction hook: a {@code @ModifyVariable} of the float {@code travel} stores from {@code friction()F}, at
+	 * its {@code INVOKE_ASSIGN}, by its type, in a slice {@code from} (or, where {@code to}, up to) the {@code flying()Z} call.
+	 */
+	private static byte[] assignmentModifier(boolean to) {
+		return mixin("com/example/mixin/Slippery", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "modify", "(F)F", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "travel");
+			methods.visitEnd();
+			AnnotationVisitor slice = ann.visitAnnotation("slice", "Lorg/spongepowered/asm/mixin/injection/Slice;");
+			AnnotationVisitor bound = slice.visitAnnotation(to ? "to" : "from", AT);
+			bound.visit("value", "INVOKE");
+			bound.visit("target", "L" + TARGET + ";flying()Z");
+			bound.visitEnd();
+			slice.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE_ASSIGN");
+			at.visit("target", "L" + TARGET + ";friction()F");
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.FLOAD, 1);
+			mv.visitInsn(Opcodes.FRETURN);
+			mv.visitMaxs(1, 2);
+			mv.visitEnd();
+		});
+	}
+
+	/**
+	 * A {@code @ModifyVariable} of a float in {@code travel} by its type, at {@code point} of {@code target}, in a slice from
+	 * the call {@code from} where it isn't null.
+	 */
+	private static byte[] floatModifier(String point, String target, String from) {
+		return mixin("com/example/mixin/Slippery", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "modify", "(F)F", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "travel");
+			methods.visitEnd();
+			if (from != null) {
+				AnnotationVisitor slice = ann.visitAnnotation("slice", "Lorg/spongepowered/asm/mixin/injection/Slice;");
+				AnnotationVisitor bound = slice.visitAnnotation("from", AT);
+				bound.visit("value", "INVOKE");
+				bound.visit("target", from);
+				bound.visitEnd();
+				slice.visitEnd();
+			}
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", point);
+			at.visit("target", target);
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.FLOAD, 1);
+			mv.visitInsn(Opcodes.FRETURN);
+			mv.visitMaxs(1, 2);
+			mv.visitEnd();
+		});
+	}
+
+	@Test
+	void aVariableModifiedByTypeInASliceOrAnAssignmentWithTwoOfItsTypeThereStaysOut() throws Exception {
+		// PRE-33: the check reads the instructions Mixin injects at, in the injector's slice and after a call's assignment,
+		// where it judged neither before: two floats in scope there, which the repair can't name one of, and Forge's Mixin
+		// would throw as it applied the injector ("Found 2 candidate variables but exactly 1 is required").
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Slippery"));
+		byte[] travel = assignedFloats(Opcodes.F_SAME, true);
+		Map<String, byte[]> sliced = Map.of("com/example/mixin/Slippery", floatModifier("INVOKE", "L" + TARGET + ";move(F)V", "L" + TARGET + ";friction()F"));
+		Map<String, byte[]> assigned = Map.of("com/example/mixin/Slippery", floatModifier("INVOKE_ASSIGN", "L" + TARGET + ";friction()F", null));
+		for (Map<String, byte[]> mod : List.of(sliced, assigned)) {
+			for (boolean keeps : new boolean[] {false, true}) {
+				assertNull(namedSlot(variablePreflight(travel, mod, keeps).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>())));
+				List<PreflightFinding> found = variablePreflight(travel, mod, keeps).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+				assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.message().equals("@ModifyVariable handler modify modifies the local"
+						+ " of type float by its type, which travel in net.minecraft.world.Thing has more than one of there")), found.toString());
+			}
+		}
+		// With one float in scope there, they apply.
+		byte[] one = assignedFloats(Opcodes.F_SAME, false);
+		for (Map<String, byte[]> mod : List.of(sliced, assigned)) {
+			assertTrue(variablePreflight(one, mod, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+					.noneMatch(f -> f.severity() != Severity.INFO));
+		}
+	}
+
+	@Test
+	void aVariableAnAssignmentStoresInItsSliceIsNamedByItsSlot() throws Exception {
+		// PRE-33: Porting Lib's friction hook modifies the float LivingEntity.travel stores from Block.getFriction(), by its
+		// type, at its INVOKE_ASSIGN in a slice. Where Fabricated puts that call back on Forge 47 (SEAM-8), Forge 47's Mixin
+		// keeps the elytra branch's float there too, and the Forge 47 server with Create stopped ("Found 2 candidate variables").
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Slippery"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Slippery", assignmentModifier(false));
+		// Mixin's point is the instruction after the store, where the stored float is the one in scope: through a same frame
+		// Forge's Mixin keeps the first float there, past a full one it may look it up again, and the method declares it
+		// either way, so on either Mixin the injector names the stored float by its slot.
+		for (int frame : new int[] {Opcodes.F_SAME, Opcodes.F_FULL}) {
+			for (boolean keeps : new boolean[] {false, true}) {
+				List<PreflightFinding> notes = new ArrayList<>();
+				Map<String, byte[]> repaired = variablePreflight(assignedFloats(frame, false), mod, keeps).repairs("test.mixins.json", config, Refmap.EMPTY,
+						Set.of(), notes);
+				assertTrue(notes.stream().anyMatch(n -> n.message().contains("@ModifyVariable modify modifies the local of type float by its type, of which"
+						+ " travel in net.minecraft.world.Thing declares more than one, so " + (keeps ? "Forge" : "NeoForge") + "'s Mixin may find others"
+						+ " there, their scope ended, once other injectors change the method; the one in scope there is in slot 2, and the injector names it"
+						+ " by its slot")), notes.toString());
+				assertEquals(2, namedSlot(repaired), frame + " " + keeps);
+			}
+		}
+		// Two floats in scope there: nothing is named. A slice ending before the call picks nothing there: nor then.
+		assertNull(namedSlot(variablePreflight(assignedFloats(Opcodes.F_SAME, true), mod, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(),
+				new ArrayList<>())));
+		Map<String, byte[]> before = Map.of("com/example/mixin/Slippery", assignmentModifier(true));
+		assertNull(namedSlot(variablePreflight(assignedFloats(Opcodes.F_SAME, false), before, true).repairs("test.mixins.json", config, Refmap.EMPTY,
+				Set.of(), new ArrayList<>())));
+	}
+
 	@Test
 	void aMixinWhoseFieldInitialisersBranchOrStoreArrayElementsHasTheirValuesComputedByMethodsWhereForgesMixinRefusesThem(@TempDir Path dir)
 			throws Exception {

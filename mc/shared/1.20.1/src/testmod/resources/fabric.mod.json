@@ -24,6 +24,7 @@
       "io.github.cmdralph.fabricated.testmod.VanillaBreakTest",
       "io.github.cmdralph.fabricated.testmod.VanillaHarvestTest",
       "io.github.cmdralph.fabricated.testmod.VanillaItemCheckTest",
+      "io.github.cmdralph.fabricated.testmod.VanillaFrictionTest",
       "io.github.cmdralph.fabricated.testmod.TagRemovalTest",
       "io.github.cmdralph.fabricated.testmod.ContentRegistriesTest",
       "io.github.cmdralph.fabricated.testmod.HiddenDefaultTest",
