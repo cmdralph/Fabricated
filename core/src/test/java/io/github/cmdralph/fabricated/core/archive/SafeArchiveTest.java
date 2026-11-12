@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -204,6 +205,54 @@ class SafeArchiveTest {
 			ArchiveException e = assertThrows(ArchiveException.class, () -> archive.read("big.bin"));
 			assertTrue(e.getMessage().contains("more bytes than its header declares"), e.getMessage());
 			assertEquals("hello", archive.readText("small.txt"));
+		}
+	}
+
+	/** An entry is read into one array of its size, not into buffers then copied: about its size is allocated, not twice it. */
+	@Test
+	void readsAnEntryIntoOneArray() throws Exception {
+		byte[] data = new byte[1 << 20];
+		new Random(3).nextBytes(data);
+		Path jar = TestJars.create().bytes("data.bin", data).write(tmp.resolve("data.jar"));
+		com.sun.management.ThreadMXBean threads = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			assertArrayEquals(data, archive.read("data.bin"));
+			long before = threads.getCurrentThreadAllocatedBytes();
+			byte[] again = archive.read("data.bin");
+			long allocated = threads.getCurrentThreadAllocatedBytes() - before;
+			assertArrayEquals(data, again);
+			assertTrue(allocated < data.length * 3L / 2, allocated + " bytes allocated reading " + data.length);
+		}
+	}
+
+	/** Copying an entry gives the bytes reading it does, with the same limits. */
+	@Test
+	void copiesAnEntryAsItReadsIt() throws Exception {
+		byte[] data = new byte[300_000];
+		new Random(5).nextBytes(data);
+		Path jar = TestJars.create().bytes("a/data.bin", data).text("b.txt", "hello").text("dir/", "").write(tmp.resolve("copy.jar"));
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			ByteArrayOutputStream out = new ByteArrayOutputStream();
+			assertTrue(archive.copy("a/data.bin", out));
+			assertArrayEquals(archive.read("a/data.bin"), out.toByteArray());
+			out.reset();
+			assertTrue(archive.copy("b.txt", out));
+			assertEquals("hello", out.toString(StandardCharsets.UTF_8));
+			out.reset();
+			assertFalse(archive.copy("missing", out));
+			assertFalse(archive.copy("dir/", out));
+			assertEquals(0, out.size());
+		}
+
+		byte[] bytes = TestJars.create().bytes("big.bin", new byte[200_000]).toBytes();
+		ByteBuffer zip = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+		for (int i = 0; i + 46 < bytes.length; i++) {
+			if (zip.getInt(i) == 0x02014b50) zip.putInt(i + 24, 1000); // the central directory's uncompressed size
+		}
+		Path lying = Files.write(tmp.resolve("lying.jar"), bytes);
+		try (SafeArchive archive = SafeArchive.open(lying, ArchiveLimits.DEFAULTS)) {
+			ArchiveException e = assertThrows(ArchiveException.class, () -> archive.copy("big.bin", OutputStream.nullOutputStream()));
+			assertTrue(e.getMessage().contains("more bytes than its header declares"), e.getMessage());
 		}
 	}
 

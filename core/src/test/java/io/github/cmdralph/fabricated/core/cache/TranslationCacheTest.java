@@ -92,6 +92,39 @@ class TranslationCacheTest {
 		assertTrue(next.nested("parent", "META-INF/jars/lib.jar").isEmpty(), "a damaged copy is not reused");
 	}
 
+	/** A jar written to the cache as it is read is stored, found and remembered as one handed over whole. */
+	@Test
+	void storesAStreamedNestedJarAsAWholeOne(@TempDir Path game) throws Exception {
+		byte[] data = new byte[200_000];
+		new java.util.Random(7).nextBytes(data);
+		TranslationCache first = new TranslationCache(game, true, true);
+		Path streamed = first.storeNested(out -> {
+			out.write(data, 0, 1000);
+			out.write(data, 1000, data.length - 1000);
+		}, "bundler", "META-INF/versions/x/server.jar");
+		assertEquals(first.storeNested(data), streamed, "content-addressed as the whole jar is");
+		assertArrayEquals(data, Files.readAllBytes(streamed));
+		assertEquals(first.sha256(streamed), TranslationCache.nestedSha(streamed));
+		try (var leftovers = Files.list(first.root().resolve("tmp"))) {
+			assertEquals(0, leftovers.count(), "no temporary file is left");
+		}
+		// Stored again: the copy there stays, and the temporary file goes.
+		assertEquals(streamed, first.storeNested(out -> out.write(data), "bundler", "META-INF/versions/x/server.jar"));
+		first.finish(5);
+		TranslationCache next = new TranslationCache(game, true, true);
+		assertEquals(streamed, next.nested("bundler", "META-INF/versions/x/server.jar").orElseThrow());
+
+		IOException failure = assertThrows(IOException.class, () -> next.storeNested(out -> {
+			out.write(data, 0, 10);
+			throw new IOException("cut off");
+		}, "bundler", "META-INF/versions/y/server.jar"));
+		assertEquals("cut off", failure.getMessage());
+		assertTrue(next.nested("bundler", "META-INF/versions/y/server.jar").isEmpty(), "a failed copy is not remembered");
+		try (var leftovers = Files.list(next.root().resolve("tmp"))) {
+			assertEquals(0, leftovers.count(), "nor left behind");
+		}
+	}
+
 	@Test
 	void findsANestedJarByItsHash(@TempDir Path game) throws Exception {
 		TranslationCache first = new TranslationCache(game, true, true);
