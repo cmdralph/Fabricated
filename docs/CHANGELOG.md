@@ -67,10 +67,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   what can't concern them. Discovery allocates 375 MB there (median of 3); of the 5 MB over 370, the test mod's new
   hook of `destroyBlock` and its check's class take 4. The `vanilla-break` check is skipped, naming the mixin, where a
   native mod's mixin keeps the game mode as the platform has it (Forgified Fabric API's, in NeoForge's
-  `server-coexist` and Forge 47's and 52's `server-ffapi`), as the report says and the class shows; elsewhere a skip
+  `server-coexist` and Forge 47's `server-ffapi`), as the report says and the class shows; elsewhere a skip
   fails it. Verified: core's tests (640), CI's script tests and the inventory; NeoForge 26.1.2 `server`,
-  `server-fapi` and `server-coexist` (252 passing, the check skipped in the last) and 1.21.1 `server-fapi` (91)
-  pass; ci/bench.py passes on the 26.1.2 run against ci/bench.tsv.
+  `server-fapi` and `server-coexist` (252 passing, the check skipped in the last), 1.21.1 `server-fapi` (91), Forge
+  47 `server-fapi` and `server-ffapi` (230, the check skipped in the last) and Forge 52 `server-fapi` (123) pass;
+  ci/bench.py passes on the 26.1.2 run against ci/bench.tsv.
 
 ## 2026-11-11: SEAM-1's decision kept in the cache; Fabric's load conditions decided before other mods' hooks on NeoForge 1.21.1 (COND-1)
 
