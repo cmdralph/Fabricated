@@ -79,6 +79,12 @@ final class PreflightAsm {
 		return GamePackages.isGame(internalName);
 	}
 
+	/** Whether the mixin overwrites one of {@code methods} ({@code @Overwrite}), replacing the code its injectors see there. */
+	static boolean overwrites(ClassNode mixin, List<MethodNode> methods) {
+		return mixin.methods.stream().anyMatch(m -> Annotations.find(m, MixinNames.OVERWRITE) != null
+				&& methods.stream().anyMatch(t -> t.name.equals(m.name) && t.desc.equals(m.desc)));
+	}
+
 	/** Whether {@code handler} is in a named injector group ({@code @Group}), whose members Mixin checks together. */
 	static boolean grouped(MethodNode handler) {
 		return Annotations.find(handler, MixinNames.GROUP) != null;

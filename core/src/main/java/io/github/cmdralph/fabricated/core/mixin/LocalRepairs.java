@@ -337,6 +337,63 @@ final class LocalRepairs extends PreflightPart {
 	}
 
 	/**
+	 * Whether a {@code @ModifyVariable} picks the local it modifies by its type alone, as the only local of that type
+	 * Mixin finds where it applies: no ordinal, slot or name, and not among the arguments only.
+	 */
+	static boolean modifiesByType(AnnotationNode injector) {
+		return injector.desc.equals(MixinNames.MODIFY_VARIABLE) && !(Annotations.value(injector, "ordinal") instanceof Integer o && o >= 0)
+				&& !(Annotations.value(injector, "index") instanceof Integer i && i >= 0) && Annotations.value(injector, "name") == null
+				&& !Boolean.TRUE.equals(Annotations.value(injector, "argsOnly"));
+	}
+
+	/**
+	 * Names by its slot the local a {@code @ModifyVariable} modifies by its type alone ({@link #modifiesByType}) where the
+	 * running Mixin may find others of that type at the injection point, keeping them once their scope has ended (PRE-26):
+	 * another slot it keeps as that type there ({@link MixinPreflight#keptLocalTypes}), or one the method's local variable
+	 * table has a local of the type in, out of scope there, which Mixin finds again wherever it looks the slot up: at a
+	 * frame it reads, or a load of it, other injectors' among them. Apoli's slipperiness hook modifies the float in scope at
+	 * the third {@code onGround()} call in {@code LivingEntity.travel}, of the seven the method declares, where Forge 52's
+	 * Mixin found four as it applied the hook after other injectors there, and a Forge 52 server with Origins stopped
+	 * ("Found 4 candidate variables but exactly 1 is required"; PRE-30 let the hook through). The local meant is the one of
+	 * the type in scope there, the one Fabric's Mixin takes; it must be in the same slot at every instruction the point
+	 * picks, kept there as that type, so Mixin's discriminator finds it by its slot ({@code index}) whatever the other
+	 * slots hold. Not where the mixin overwrites the method, whose code it replaces. Only for an injector with one
+	 * {@code @At} naming a call, field access or construction, outside a slice. Returns a description of it.
+	 */
+	List<String> keptVariableRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!keepsLocalsPastScope || !modifiesByType(injector) || Annotations.value(injector, "slice") != null) return List.of();
+		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
+		Type type = Type.getReturnType(handler.desc);
+		if (methods.isEmpty() || type.getSort() == Type.VOID || PreflightAsm.overwrites(mixin, methods)) return List.of();
+		String desc = type.getDescriptor();
+		int found = -1;
+		boolean others = false;
+		for (MethodNode m : methods) {
+			MethodNode framed = classes.withFrames(target.name, m);
+			List<Integer> positions = framed == null || framed.localVariables == null || framed.localVariables.isEmpty() ? null
+					: pointPositions(injector, framed, ctx);
+			if (positions == null || positions.isEmpty()) return List.of();
+			int base = (framed.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+			for (int i : positions) {
+				List<LocalVariableNode> inScope = inScope(framed, i, desc);
+				String[] kept = MixinPreflight.keptLocalTypes(framed, target.name, i);
+				int slot = inScope.size() == 1 ? inScope.get(0).index : -1;
+				if (slot < base || !desc.equals(kept[slot]) || found >= 0 && found != slot) return List.of();
+				found = slot;
+				for (int s = base; s < kept.length; s++) {
+					if (s != slot && desc.equals(kept[s])) others = true;
+				}
+				others |= framed.localVariables.stream().anyMatch(lv -> lv.index >= base && lv.index != slot && lv.desc.equals(desc));
+			}
+		}
+		if (!others) return List.of();
+		Annotations.put(injector, "index", found);
+		return List.of("the local of type " + type.getClassName() + " by its type, of which " + loader + "'s Mixin may find more than one in "
+				+ methods.get(0).name + " in " + target.name.replace('/', '.') + " there, keeping those whose scope ended before; the one in scope"
+				+ " there is in slot " + found + ", and the injector names it by its slot");
+	}
+
+	/**
 	 * Gives a {@code @ModifyVariable} picking its local by an ordinal among those of its type ({@code ordinal}, no name or
 	 * slot) the ordinal vanilla's local has in this game build's code, where the platform's patch declares one of the type
 	 * before or after it (PRE-25: Apoli's {@code modifyEffectiveTool} modifies vanilla's second boolean in scope at the
