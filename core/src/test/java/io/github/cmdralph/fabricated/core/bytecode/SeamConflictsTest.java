@@ -265,6 +265,25 @@ class SeamConflictsTest {
 				path -> "{\"mappings\": {".getBytes(StandardCharsets.UTF_8))));
 	}
 
+	/**
+	 * PRE-31: Mixin strips a string's whitespace before it looks it up in the refmap, whose keys are written without it, so
+	 * a native mixin's selector or {@code @At} target written with a space is read as its refmap maps it.
+	 */
+	@Test
+	void aNativeMixinsStringsWithWhitespaceAreLookedUpWithoutIt(@TempDir Path dir) throws Exception {
+		Map<String, String> forge47 = VanillaCallsTest.forge47Sources();
+		String gameMode = "net.minecraft.server.level.ServerPlayerGameMode";
+		String internal = "net/minecraft/server/level/ServerPlayerGameMode";
+		String destroy = "m_9280_(Lnet/minecraft/core/BlockPos;)Z";
+		String head = " @Inject(method = \"destroyBlock (Lnet/minecraft/core/BlockPos;)Z\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		assertNull(conflict(dir.resolve("head"), forge47, head, gameMode, internal, refmap(Map.of("destroyBlock(Lnet/minecraft/core/BlockPos;)Z", destroy))));
+		String target = "Lnet/minecraft/server/level/ServerPlayer;hasCorrectToolForDrops(Lnet/minecraft/world/level/block/state/BlockState;)Z";
+		String call = " @Inject(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target = \"" + target.replace("(", " (")
+				+ "\")) private void call(CallbackInfo ci) { }";
+		assertEquals(new SeamConflicts.Conflict("breaker", "com/moon/NativeBreak", true), conflict(dir.resolve("call"), forge47, call, gameMode, internal,
+				refmap(Map.of("destroyBlock", destroy, target, target.replace("hasCorrectToolForDrops", "m_36298_")))));
+	}
+
 	/** A refmap mapping NativeBreak's strings as {@code mappings} says. */
 	private static InstalledClasses.RefmapFile refmap(Map<String, String> mappings) {
 		StringBuilder json = new StringBuilder("{\"mappings\": {\"com.moon.NativeBreak\": {");
