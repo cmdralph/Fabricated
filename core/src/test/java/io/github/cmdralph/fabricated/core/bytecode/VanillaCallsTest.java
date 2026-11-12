@@ -30,6 +30,7 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import io.github.cmdralph.fabricated.core.testutil.TestSources;
+import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
 
 /**
  * SEAM-3: vanilla's block-breaking calls, which NeoForge and Forge make through the block state's
@@ -221,6 +222,16 @@ public class VanillaCallsTest {
 				+ " super(\"unreadable\"); } public void drawn(ClientOnly client) { } }");
 		sources.put("com/example/Calling.java", "package com.example;" + imports + " public class Calling extends Block { public Calling() { super(\"calling\"); }"
 				+ override + " level.log.add(\"calling\"); return super.onDestroyedByPlayer(state, level, pos, player," + form.args() + "); } }");
+		// A Fabric mod's interfaces bringing other defaults of the extensions' methods to the state and the block, as Porting
+		// Lib's BlockStateExtensions does to Forge 47's BlockState (SEAM-7, bridged()).
+		sources.put("com/example/ModStateExtension.java", "package com.example;" + imports + " public interface ModStateExtension {"
+				+ " default boolean onDestroyedByPlayer(Level level, BlockPos pos, Player player," + form.params() + ") { level.log.add(\"mod default\"); return false; }"
+				+ " default boolean canHarvestBlock(BlockGetter level, BlockPos pos, Player player) { Hook.LOG.add(\"mod harvest default\"); return true; } }");
+		sources.put("com/example/ModBlockExtension.java", "package com.example;" + imports + " public interface ModBlockExtension {"
+				+ " default boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player," + form.params() + ") {"
+				+ " level.log.add(\"mod default\"); return false; }"
+				+ " default boolean canHarvestBlock(BlockState state, BlockGetter level, BlockPos pos, Player player) { Hook.LOG.add(\"mod harvest default\");"
+				+ " return true; } }");
 		sources.put(SERVER + ".java", "package net.minecraft.server.level;" + imports + " public class ServerPlayerGameMode {"
 				+ " protected ServerLevel $level$; protected final ServerPlayer $player$; private final boolean creative;"
 				+ " public ServerPlayerGameMode(ServerLevel level, ServerPlayer player, boolean creative) { this.$level$ = level; this.$player$ = player; this.creative = creative; }"
@@ -336,6 +347,55 @@ public class VanillaCallsTest {
 			assertEquals(form.forge ? List.of(names.get("$playerWillDestroy$"), names.get("$createLegacyBlock$"), names.get("$setBlock$"))
 					: List.of(names.get("$createLegacyBlock$"), names.get("$setBlock$")), client, form.name());
 		}
+	}
+
+	/**
+	 * SEAM-7: where a Fabric mod's interface on the block state or the block brings another default of the extension's
+	 * method, Fabricated declares a bridge there calling the platform's default ({@link DefaultBridge}), as for Porting
+	 * Lib's {@code BlockStateExtensions} on Forge 47's {@code BlockState}. The state and the block still keep the
+	 * platform's default: vanilla's calls are made, the hooks of them run, and the break and the harvest check are as
+	 * before. A mod's own declaration of the method still overrides it.
+	 */
+	@Test
+	void aDefaultBridgeKeepsThePlatformsDefault(@TempDir Path dir) throws Exception {
+		for (Form form : Form.values()) {
+			Map<String, byte[]> platform = bridged(platform(dir.resolve(form.name()), form), form);
+			Map<String, byte[]> restored = restored(platform);
+			String block = "net.minecraft.world.level.block.Block";
+			for (boolean creative : List.of(false, true)) {
+				List<String> expected = server(platform, block, creative, false);
+				// Forge's default sets the fluid's block, where vanilla's removeBlock does.
+				if (form.forge) expected.add(expected.indexOf("setBlock air 3"), "removeBlock");
+				assertEquals(expected, server(restored, block, creative, false), form + " creative " + creative);
+			}
+			assertTrue(server(restored, block, false, true).contains("hooked"), form.name());
+			assertTrue(client(restored, block, true).contains("hooked"), form.name());
+			List<String> harvest = harvest(restored, block, "net.minecraft.server.level.ServerPlayer", false, "net/minecraft/server/level/ServerPlayer");
+			assertTrue(harvest.stream().anyMatch(l -> l.startsWith("answered")), form + " " + harvest);
+			assertTrue(harvest.stream().noneMatch(l -> l.startsWith("mod ")), form + " " + harvest);
+			for (String overriding : List.of("com.example.Overriding", "com.example.OverridingState")) {
+				assertTrue(!server(restored, overriding, false, true).contains("hooked"), form + " " + overriding);
+			}
+		}
+	}
+
+	/**
+	 * The classes with a Fabric mod's interfaces added to the block state and the block, each bringing another default of
+	 * both extensions' methods, and the bridges Fabricated declares for them, calling the platform's defaults.
+	 */
+	private static Map<String, byte[]> bridged(Map<String, byte[]> classes, Form form) {
+		Map<String, byte[]> bridged = new HashMap<>(classes);
+		String ext = form.ext().replace('.', '/') + "/";
+		for (String[] target : new String[][] {{"net/minecraft/world/level/block/state/BlockState", ext + form.stateExt(), "com/example/ModStateExtension"},
+				{"net/minecraft/world/level/block/Block", ext + form.blockExt(), "com/example/ModBlockExtension"}}) {
+			ClassNode node = node(classes.get(target[0]));
+			node.interfaces.add(target[2]);
+			for (MethodNode method : node(classes.get(target[2])).methods) {
+				node.methods.add(new DefaultBridge(target[0], target[1], method.name, method.desc).method(true));
+			}
+			bridged.put(target[0], write(node));
+		}
+		return bridged;
 	}
 
 	/**

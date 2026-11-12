@@ -271,11 +271,16 @@ Candidates, each waiting for a mod or a report that needs it:
   it at the shared return behind a check of the path taken would keep it to vanilla's path. Apoli 2.9.2's break
   action, at vanilla's survival return on Forge 47, is skipped by Mixin there for its captured locals, which Forge's
   `destroyBlock` declares otherwise.
-- Item checks the platform asks its extensions instead: Forge asks the stack's tool actions (`canPerformAction`) where
-  vanilla asks `stack.is(Items.SHEARS)`, so BCLib's and Porting Lib's wrappers of that check
-  have nothing to wrap (a shears item that is a `ShearsItem` gets the actions from the platform's, UNVERIFIED for these
-  mods' own); Apoli's `ItemStack.is(Item)` hooks in the elytra and held item renderers are left out likewise. Rows of
-  `VanillaSeams` too, once their forms are read in each platform's classes.
+- Item checks, what SEAM-6 leaves: vanilla's `stack.is(...)` of shears, a rod and a shield is put back where the
+  platform asks the stack's `canPerformAction` for the stacks keeping its default, and the elytra layer's for the layers
+  keeping `shouldRender`; an item overriding `canPerformAction` (vanilla's tools among them) is asked as the platform
+  has it, without Fabric mods' hooks. NeoForge and Forge 47 to 64 shear mobs from the shears item through their
+  shearable extension, which posts their events, where vanilla's `mobInteract` checks for shears: hooks of that check
+  stay left out (a known limit: BCLib's sheep and snow golem hooks), and BCLib's mooshroom hook wraps the bowl check
+  alone where the shears check is gone, with no report line. The held item and item frame renderers ask whether the
+  item is a `MapItem` or a `CrossbowItem`, which other mods' items are too: hooks of vanilla's check there stay left out
+  (a known limit: Apoli's held item transforms, Porting Lib's maps in item frames). The client rows (the fishing line's
+  hand, the elytra layer) are checked by unit tests only, not in game.
 - A locals capture Mixin skips at each of its points is left out with the injectors keeping state with it (SEAM-2);
   rewriting it into MixinExtras `@Local`s, each the local vanilla's order has there, would keep Carpet's chains and
   chests sticking along a push on NeoForge 21.1 to 26.1.2 and Forge 47. It needs the platform's locals matched to
