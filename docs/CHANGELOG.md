@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-12: A local taken by ordinal follows an injector into the method the code moved to (OVERLOAD-3), the native resource loader's pack finder of upstream's shape (PROVIDER-22)
+## 2026-11-12: A local taken by ordinal follows an injector into the method the code moved to (OVERLOAD-3), mixins of the native resource loader's pack finder (PROVIDER-22)
 
 - **OVERLOAD-3** (P1), fixed: FrozenLib 2.2.4's bone meal API was left out on NeoForge 1.21.1 and Forge 52. Its hook in
   `BoneMealItem.growCrop` takes `@Local(ordinal = 0) BlockState`; the platforms deprecate `growCrop` for
@@ -24,18 +24,23 @@ One entry per working session, newest first: what changed, and how it was verifi
   and the end of its `loadPacks`, where it offers its locate replacer's data pack. That pack adds the vanilla structures
   YUNG's mods replace or remove to the `c:hidden_from_locator_selection` tag other mods' structure locators read
   (`/locate`'s redirection is YUNG's other hooks, which applied). Fabricated's native resource loader had the class
-  for its pack source alone, so the three hooks were left out on 1.21.1. Every version's class now has upstream's
-  instance shape, and the pack finder each repository gets through NeoForge's `AddPackFindersEvent` is one, offering
-  the built-in packs as before (1.21.11 and 26.x, where YUNG's 26.1.2 build hooks the class there, had the same gap).
-  The 1.21.1 test mod hooks it as YUNG does, and its pack must be among the server's packs (`pack-creator-hooks`).
-- Verified: core's tests (672, OVERLOAD-3's failing before its change), CI's script tests and the inventory; NeoForge
+  for its pack source alone, so the three hooks were left out on 1.21.1. Every version's class now has the part of
+  upstream's instance shape those hooks use: the pack type, the constructor taking it and the known-packs flag, and
+  `loadPacks`, which offers the built-in packs as before; the pack finder each repository gets through NeoForge's
+  `AddPackFindersEvent` is one (1.21.11 and 26.x, where YUNG's 26.1.2 build hooks the class there, had the same gap).
+  Upstream's constructor taking the type alone, its `activationInfo` and flag fields (`forClientDataPackManager`,
+  from 1.21.11 `forKnownPacksManager`), `CLIENT_RESOURCE_PACK_PROVIDER` and `registerModPack` aren't there, so a
+  mixin of those is still left out. The test mod hooks the class as YUNG does (`pack-creator-hooks`): on 1.21.1 a data
+  pack it offers at the end of `loadPacks` must be among the server's packs; from 1.21.11 its hook there must run for
+  the server's creator, whose built-in pack the server has.
+- Verified: core's tests (675, OVERLOAD-3's failing before its change), CI's script tests and the inventory; NeoForge
   1.21.1, 1.21.11 and 26.1.2 build, and Forge 52 on a branch made from `forge-legacy` and synced with this one. Local
-  servers pass every check: NeoForge 1.21.1 (`pack-creator-hooks` with the test mods, with Fabric API, with stand-ins
-  and beside Forgified Fabric API) and 26.1.2, Forge 52, each as before but for the new check. On the advanced corpus
-  servers of NeoForge 1.21.1 and Forge 52, against runs before the change, FrozenLib's hook is pointed at
+  servers pass every check: NeoForge 1.21.1, 1.21.11 and 26.1.2 (`pack-creator-hooks` with the test mods, with Fabric
+  API, with stand-ins and beside Forgified Fabric API), Forge 52, each as before but for the new check. On the advanced
+  corpus servers of NeoForge 1.21.1 and Forge 52, against runs before the change, FrozenLib's hook is pointed at
   `applyBonemeal` and applies, and on NeoForge 1.21.1 YUNG's three hooks apply and the server loads its locate
   replacer's pack; nothing else changes, and the checks are as before. Pre-flight finds nothing in YUNG's 26.1.2
-  build's mixin against NeoForge 26.1.2's class.
+  build's mixin against NeoForge 26.1.2's class. NeoForge 26.2 and 26.3 don't build locally.
 
 ## 2026-11-12: Vanilla's item checks put back where the platform asks the stack's actions (SEAM-6), a default bridge no longer taken for an override (SEAM-7)
 

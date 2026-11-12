@@ -13,9 +13,11 @@ import net.minecraft.server.packs.repository.RepositorySource;
  * Fabricated's version of upstream's mod resource pack creator (1.21.1's package): the pack finder Fabricated gives each
  * pack repository NeoForge builds ({@link ResourceLoaderBridge}), which offers the built-in packs Fabric mods register.
  * NeoForge itself builds the packs of mod resources (ids {@code mod/<mod ids>}), which upstream's offers too, so this
- * doesn't. Its instance has upstream's shape (the pack type, the constructor taking it, {@link #loadPacks}), so mods'
- * mixins of upstream's class apply as on Fabric: YUNG's API keeps the pack type its constructor was given and offers its
- * locate replacer's data pack at the end of {@link #loadPacks} where that is server data (PROVIDER-22).
+ * doesn't. Its instance has the part of upstream's shape mods' mixins of upstream's class hook (PROVIDER-22): the pack
+ * type, the constructor taking it and the known-packs flag, and {@link #loadPacks}; YUNG's API keeps the pack type its
+ * constructor was given and offers its locate replacer's data pack at the end of {@link #loadPacks} where that is server
+ * data. Upstream's constructor taking the type alone, its fields of the flag and of the packs' selection, its client
+ * provider and its {@code registerModPack} aren't here, so a mixin of those is still left out.
  * {@link #RESOURCE_PACK_SOURCE} is the pack source other Fabric API modules compare against:
  * {@link FabricResource#getFabricPackSource} reports it for resources from NeoForge's mod packs.
  */
