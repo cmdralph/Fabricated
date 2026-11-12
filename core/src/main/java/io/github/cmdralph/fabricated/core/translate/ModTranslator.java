@@ -258,7 +258,8 @@ public final class ModTranslator {
 				List<EnumExtensions.Entry> enumEntries = new ArrayList<>();
 				Set<String> enumTargets = new HashSet<>();
 				Set<DefaultBridge> bridges = new LinkedHashSet<>();
-				Function<String, ClassNode> classes = classLookup(name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name));
+				ClassLookup lookup = new ClassLookup(name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name));
+				Function<String, ClassNode> classes = lookup::node;
 				Set<String> widened = new TreeSet<>();
 				// The game classes its mixins target that have vanilla methods put back as they load (SEAM-1).
 				Set<String> seams = new TreeSet<>();
@@ -280,7 +281,7 @@ public final class ModTranslator {
 				String newerEntrypoint = newerJavaEntrypoint(candidate.metadata(), files);
 				if (newerEntrypoint != null) throw newerJava("its entrypoint " + newerEntrypoint);
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files, classEntries, overlay, findings,
-						installedClasses, enumEntries, enumTargets, classes, bridges, notes, widened, seams, generatedConfigs);
+						installedClasses, enumEntries, enumTargets, lookup, bridges, notes, widened, seams, generatedConfigs);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
 
 				// The mod's own files translation rewrites (not the ones it adds).
@@ -378,7 +379,7 @@ public final class ModTranslator {
 						env.vanilla(), env.descriptor().loaderName(), notes);
 
 				for (InjectedInterface ii : injections) {
-					addBridges(DefaultBridge.of(ii.target(), List.of(ii.interfaceName()), classes), List.of(ii.interfaceName()), bridges, notes);
+					addBridges(DefaultBridge.of(ii.target(), List.of(ii.interfaceName()), lookup::outline), List.of(ii.interfaceName()), bridges, notes);
 				}
 
 				int renamed = remapped != null ? applyRenames(overlay, remapped, remapped.keySet(), files, notes)
@@ -645,9 +646,10 @@ public final class ModTranslator {
 	 */
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, Set<String> plannedSkips, FileView files,
 			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses,
-			List<EnumExtensions.Entry> enumEntries, Set<String> enumTargets, Function<String, ClassNode> classes, Set<DefaultBridge> bridges,
+			List<EnumExtensions.Entry> enumEntries, Set<String> enumTargets, ClassLookup lookup, Set<DefaultBridge> bridges,
 			List<String> notes, Set<String> widened, Set<String> seams, List<MixinEntry> generatedConfigs)
 			throws ArchiveException, TranslationException {
+		Function<String, ClassNode> classes = lookup::node;
 		FabricModMetadata md = candidate.metadata();
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
 				env.lowestMixinBehavior());
@@ -817,12 +819,12 @@ public final class ModTranslator {
 				ClassNode node = skip.contains(mixin) ? null : classes.apply(config.internalName(mixin));
 				if (node == null) continue;
 				List<String> targets = mixinTargets(node);
-				renameHidingMethods(node, targets, classes, entries, translated, overlay, notes);
+				renameHidingMethods(node, targets, lookup::outline, entries, translated, overlay, notes);
 				if (MixinCompat.looksUpArrayOwners(env.runtimeMixinVersion())) objectOwnedArrayCalls(node, translated, overlay, notes);
-				if (MixinCompat.rebindsInterfaceSuperCalls(env.runtimeMixinVersion())) alignDetachedSuper(node, targets, classes, translated, overlay, notes);
+				if (MixinCompat.rebindsInterfaceSuperCalls(env.runtimeMixinVersion())) alignDetachedSuper(node, targets, lookup::outline, translated, overlay, notes);
 				// The interfaces the kept mixins add to their targets.
 				if (node.interfaces.isEmpty()) continue;
-				for (String target : targets) addBridges(DefaultBridge.of(target, node.interfaces, classes), node.interfaces, bridges, notes);
+				for (String target : targets) addBridges(DefaultBridge.of(target, node.interfaces, lookup::outline), node.interfaces, bridges, notes);
 			}
 			if (!added.contains(entry)) specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
@@ -2039,14 +2041,35 @@ public final class ModTranslator {
 				"Install the mod's build for Java " + running + ", or run the game on the Java the mod needs.");
 	}
 
-	/** Reads classes as the mod will load: the game's and installed jars' first, then the mod's; memoised, null when absent. */
-	private Function<String, ClassNode> classLookup(FileView mod) {
-		Map<String, Optional<ClassNode>> read = new HashMap<>();
-		return name -> read.computeIfAbsent(name, n -> {
-			ClassNode node = env.installedIndex().readNode(n);
+	/**
+	 * Reads classes as the mod will load: the game's and installed jars' first, then the mod's; memoised, null when absent.
+	 * {@link #outline} serves what reads only a class's access, supertypes and members' names and access (default
+	 * bridges, hidden defaults, detached supers): the class without its code, a fraction of a large game class's tree.
+	 */
+	private final class ClassLookup {
+		private final FileView mod;
+		private final Map<String, Optional<ClassNode>> whole = new HashMap<>();
+		private final Map<String, Optional<ClassNode>> outlines = new HashMap<>();
+
+		ClassLookup(FileView mod) {
+			this.mod = mod;
+		}
+
+		ClassNode node(String name) {
+			return whole.computeIfAbsent(name, n -> read(n, ClassReader.SKIP_FRAMES)).orElse(null);
+		}
+
+		/** The class as {@link #node} read it, where it did; else read without its code. */
+		ClassNode outline(String name) {
+			Optional<ClassNode> read = whole.get(name);
+			return (read != null ? read : outlines.computeIfAbsent(name, n -> read(n, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES))).orElse(null);
+		}
+
+		private Optional<ClassNode> read(String name, int installedOptions) {
+			ClassNode node = env.installedIndex().readNode(name, installedOptions);
 			if (node != null) return Optional.of(node);
 			try {
-				byte[] data = mod.read(n + ".class");
+				byte[] data = mod.read(name + ".class");
 				if (data == null) return Optional.empty();
 				node = new ClassNode();
 				new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
@@ -2055,7 +2078,7 @@ public final class ModTranslator {
 				// An unreadable class only goes unchecked here; reading the jar reports it.
 				return Optional.empty();
 			}
-		}).orElse(null);
+		}
 	}
 
 	/**

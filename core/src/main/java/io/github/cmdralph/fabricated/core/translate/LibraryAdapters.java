@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.core.translate;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -34,6 +33,7 @@ import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
+import io.github.cmdralph.fabricated.core.bytecode.ClassFiles;
 
 /**
  * Mixins into library classes NeoForge loads without mixin support that give the class interfaces another library
@@ -159,8 +159,8 @@ final class LibraryAdapters {
 	 * none. Not for the adapters themselves, whose checks are what a check becomes.
 	 */
 	static byte[] rewrite(byte[] data, Map<String, Adapted> served) {
-		String text = new String(data, StandardCharsets.ISO_8859_1);
-		if (served.keySet().stream().noneMatch(text::contains) && served.values().stream().noneMatch(a -> text.contains(a.library()))) return null;
+		if (served.keySet().stream().noneMatch(name -> ClassFiles.contains(data, name))
+				&& served.values().stream().noneMatch(a -> ClassFiles.contains(data, a.library()))) return null;
 		Map<String, String> unwrapping = new LinkedHashMap<>();
 		served.values().forEach(a -> unwrapping.putIfAbsent(a.library(), a.adapter()));
 		ClassNode node = new ClassNode();

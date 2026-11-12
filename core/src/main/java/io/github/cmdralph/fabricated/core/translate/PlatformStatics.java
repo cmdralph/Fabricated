@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.core.translate;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -19,6 +18,7 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+import io.github.cmdralph.fabricated.core.bytecode.ClassFiles;
 
 /**
  * A mod loader class whose instance methods the platform made static, the class an interface and its static accessor
@@ -44,8 +44,7 @@ final class PlatformStatics {
 
 	/** {@code classFile} with such calls made static, or null when it makes none. */
 	byte[] apply(byte[] classFile) {
-		String text = new String(classFile, StandardCharsets.ISO_8859_1);
-		if (LOADER_PACKAGES.stream().noneMatch(text::contains)) return null;
+		if (LOADER_PACKAGES.stream().noneMatch(name -> ClassFiles.contains(classFile, name))) return null;
 		ClassNode node = new ClassNode();
 		new ClassReader(classFile).accept(node, 0);
 		boolean changed = false;
