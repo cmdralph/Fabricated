@@ -23,6 +23,7 @@ import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
+import io.github.cmdralph.fabricated.core.mixin.Refmap;
 
 /**
  * The native mods' mixins that keep a class's seams from being put back (SEAM-1, {@link VanillaSeams}): putting vanilla's
@@ -451,7 +452,9 @@ public final class SeamConflicts {
 			return false;
 		}
 		if (value instanceof List<?> list) return list.stream().anyMatch(v -> names(v, members, mapped));
-		if (!(value instanceof String text)) return false;
+		if (!(value instanceof String written)) return false;
+		// As Mixin reads it: without its whitespace, then through the refmap (PRE-31).
+		String text = Refmap.stripped(written);
 		String read = mapped.get(text);
 		return namesMember(text, members) || read != null && namesMember(read, members);
 	}
@@ -554,7 +557,7 @@ public final class SeamConflicts {
 		List<Selector> selectors = new ArrayList<>();
 		Object methods = value(ann, "method");
 		for (Object o : methods instanceof List<?> list ? list : methods instanceof String one ? List.of(one) : List.of()) {
-			selectors.add(o instanceof String selector ? selector(mapped.getOrDefault(selector, selector)) : null);
+			selectors.add(o instanceof String selector ? selector(mapped.getOrDefault(Refmap.stripped(selector), selector)) : null);
 		}
 		if (value(ann, "target") instanceof List<?> descs) {
 			// @Desc's value is the method's name; its arguments, which narrow it, are left aside: any method of the name.
