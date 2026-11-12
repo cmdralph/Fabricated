@@ -225,6 +225,31 @@ class SafeArchiveTest {
 		}
 	}
 
+	/**
+	 * A header declaring far more than an entry holds costs no more to read than what it holds: the compressed size beside
+	 * it is the archive author's too, so it bounds nothing. Here a 64 MiB entry, at a ratio the archive's check takes,
+	 * holds 16 bytes.
+	 */
+	@Test
+	void aLyingHeaderDoesntDecideWhatAReadAllocates() throws Exception {
+		byte[] bytes = TestJars.create().bytes("lie.bin", "sixteen bytes!!!".getBytes(StandardCharsets.UTF_8)).toBytes();
+		ByteBuffer zip = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+		for (int i = 0; i + 46 < bytes.length; i++) {
+			if (zip.getInt(i) != 0x02014b50) continue;
+			zip.putInt(i + 20, (64 << 20) / 100 + 1); // the central directory's compressed size
+			zip.putInt(i + 24, 64 << 20); // and its uncompressed size
+		}
+		Path lying = Files.write(tmp.resolve("lie.jar"), bytes);
+		com.sun.management.ThreadMXBean threads = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+		try (SafeArchive archive = SafeArchive.open(lying, ArchiveLimits.DEFAULTS)) {
+			long before = threads.getCurrentThreadAllocatedBytes();
+			byte[] read = archive.read("lie.bin");
+			long allocated = threads.getCurrentThreadAllocatedBytes() - before;
+			assertEquals("sixteen bytes!!!", new String(read, StandardCharsets.UTF_8));
+			assertTrue(allocated < 1 << 20, allocated + " bytes allocated reading 16 bytes under a 64 MiB header");
+		}
+	}
+
 	/** Copying an entry gives the bytes reading it does, with the same limits. */
 	@Test
 	void copiesAnEntryAsItReadsIt() throws Exception {

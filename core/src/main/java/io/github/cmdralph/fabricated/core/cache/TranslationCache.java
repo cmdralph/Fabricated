@@ -327,7 +327,7 @@ public final class TranslationCache {
 			nestedIndex.put(parentSha + "!/" + entry, new NestedRef(sha, launch));
 			return target;
 		} finally {
-			Files.deleteIfExists(tmp);
+			deleteQuietly(tmp);
 		}
 	}
 

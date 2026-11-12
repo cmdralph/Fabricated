@@ -266,12 +266,13 @@ public final class SafeArchive implements Closeable {
 	}
 
 	/**
-	 * Whether {@link #read} may make the array for an entry from the size it declares, before reading it: a small entry, or
-	 * one whose compressed size bounds it (the ratio checked as the archive opened), so a header declaring more than the
-	 * entry holds makes it cost no more than an honest entry of that compressed size.
+	 * Whether {@link #read} may make the array for an entry from the size it declares, before reading it: only a small
+	 * one ({@link ArchiveLimits#RATIO_CHECK_THRESHOLD}), as a header declaring more than the entry holds then costs at
+	 * most that. Both sizes in an archive's headers are its author's to write: a compressed size bounds nothing the
+	 * archive's own length doesn't, so a larger entry is read into buffers as it arrives, costing what it holds.
 	 */
 	private static boolean presized(ZipEntry entry) {
-		return entry.getSize() <= Integer.MAX_VALUE - 8 && (entry.getSize() <= ArchiveLimits.RATIO_CHECK_THRESHOLD || entry.getCompressedSize() > 0);
+		return entry.getSize() <= ArchiveLimits.RATIO_CHECK_THRESHOLD;
 	}
 
 	private static ArchiveException oversized(String name, long budget, long limit) {
