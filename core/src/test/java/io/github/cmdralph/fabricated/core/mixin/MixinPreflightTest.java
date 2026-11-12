@@ -2792,7 +2792,7 @@ class MixinPreflightTest {
 			List<PreflightFinding> notes = new ArrayList<>();
 			Map<String, byte[]> repaired = preflight.apply(travelLike(frame), true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
 			assertTrue(notes.stream().anyMatch(n -> n.message().contains("@ModifyVariable setSlipperiness modifies the local of type float the call's result is"
-					+ " stored in, by its type, of which Forge's Mixin finds more than one in travel in net.minecraft.world.Thing there, keeping those whose"
+					+ " stored in, by its type, of which Forge's Mixin may find more than one in travel in net.minecraft.world.Thing there, keeping those whose"
 					+ " scope ended before; the injector takes it by its slot, 2")), notes.toString());
 			ClassNode node = new ClassNode();
 			new ClassReader(repaired.get("com/example/mixin/Slipperiness.class")).accept(node, 0);

@@ -389,8 +389,8 @@ final class LocalRepairs extends PreflightPart {
 		}
 		if (slot < 0 || most < 2) return List.of();
 		Annotations.put(injector, "index", slot);
-		return List.of("the local of type " + type.getClassName() + " the call's result is stored in, by its type, of which " + loader + "'s Mixin finds more"
-				+ " than one in " + methods.get(0).name + " in " + target.name.replace('/', '.') + " there, keeping those whose scope ended before; the"
+		return List.of("the local of type " + type.getClassName() + " the call's result is stored in, by its type, of which " + loader + "'s Mixin may find"
+				+ " more than one in " + methods.get(0).name + " in " + target.name.replace('/', '.') + " there, keeping those whose scope ended before; the"
 				+ " injector takes it by its slot, " + slot);
 	}
 

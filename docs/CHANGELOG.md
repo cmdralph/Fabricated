@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-12: Vanilla's calls of a block state or a stack put back where the platform asks an extension of it (SEAM-8)
+## 2026-11-12: Vanilla's calls of a block state or a stack put back where the platform asks an extension of it (SEAM-8), a stored result taken by its slot on Forge's Mixin (PRE-30)
 
 - **SEAM-8** (P1), fixed: where vanilla asks a block state or a stack itself, NeoForge and Forge ask an extension of it
   taking more, whose default leads back to vanilla's code: the block's friction (`getFriction(level, pos, entity)`) in
@@ -42,7 +42,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   descriptor (NeoForge 26.x's `Entity`) isn't parsed; the rewrite's states share their unchanged locals and stack.
 - Verified: core's tests, CI's script tests and the inventory; the rewrite of every class concerned, read in NeoForge
   21.1.265's, 21.11.45's and 26.1.2.116's and Forge 47.4.28's (under SRG's names), 52.1.21's, 61.2.4's, 64.1.5's,
-  65.1.5's and 66.1.0's classes, passes ASM's analyzer and the JVM's verifier.
+  65.1.5's and 66.1.0's classes, passes ASM's analyzer and the JVM's verifier. Local servers of NeoForge 1.21.1 and
+  26.1.2 and Forge 47, 52 and 66 (Forge from trial merges into `forge` and `forge-legacy`): every check passes,
+  `vanilla-friction` among them. The corpus servers against runs before the change: NeoForge 1.21.1's and Forge 52's
+  advanced corpus apply the hooks named above, Forge 47's corpus Artifacts', Friends & Foes' and Porting Lib's; every
+  check as before. Discovery on NeoForge 26.1.2's server with Fabric API allocates 276 to 278 MB (baseline 271 MB).
 
 ## 2026-11-12: The report says what the platform changed of a method's parameters or a field's type (PRE-32)
 
