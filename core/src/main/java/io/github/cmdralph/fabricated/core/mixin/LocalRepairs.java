@@ -240,10 +240,7 @@ final class LocalRepairs extends PreflightPart {
 				if (vanillaPlaces == null) {
 					PatchAlignment alignment = PatchAlignment.of(before, patched);
 					if (alignment == null) return named;
-					vanillaPlaces = new HashSet<>();
-					for (int i = 0; i < before.instructions.size(); i++) {
-						if (alignment.placeOf(i) >= 0) vanillaPlaces.add(alignment.placeOf(i));
-					}
+					vanillaPlaces = alignment.vanillaPlaces();
 				}
 				if (given instanceof Integer vanillas) {
 					int ordinal = vanillasNthLocalOrdinal(patched, params[p].getDescriptor(), positions, vanillaPlaces, vanillas);
@@ -480,7 +477,7 @@ final class LocalRepairs extends PreflightPart {
 	}
 
 	/** The index of the instruction before a local's scope starts (its store), skipping labels, line numbers and frames; -1 for none. */
-	private static int storeBefore(MethodNode method, LocalVariableNode local) {
+	static int storeBefore(MethodNode method, LocalVariableNode local) {
 		AbstractInsnNode previous = local.start.getPrevious();
 		while (previous != null && previous.getOpcode() < 0) previous = previous.getPrevious();
 		return previous == null ? -1 : method.instructions.indexOf(previous);
