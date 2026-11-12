@@ -20,6 +20,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.common.CreativeModeTabRegistry;
 import net.minecraftforge.event.ForgeEventFactory;
@@ -104,5 +106,10 @@ final class TestPlatform {
 		} catch (ReflectiveOperationException e) {
 			throw new IllegalStateException(e);
 		}
+	}
+
+	/** A block overriding the platform's extension for a player's break (SEAM-3): it leaves amethyst ({@link BreakOverride}). */
+	static Block breakOverride(BlockBehaviour.Properties properties) {
+		return new BreakOverride(properties);
 	}
 }
