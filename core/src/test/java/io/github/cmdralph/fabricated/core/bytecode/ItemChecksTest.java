@@ -157,7 +157,9 @@ public class ItemChecksTest {
 				+ " @Override public boolean canPerformAction(" + stackType + " stack, " + action + " action) { Hook.LOG.add(\"multitool asked \" + action); return true; } }");
 		sources.put("com/example/Blunt.java", "package com.example; public class Blunt extends net.minecraft.world.item.ShearsItem { public Blunt() { super(\"blunt\"); }"
 				+ " @Override public boolean canPerformAction(" + stackType + " stack, " + action + " action) { Hook.LOG.add(\"blunt asked \" + action); return false; } }");
-		sources.put("com/example/Hook.java", "package com.example; public class Hook { public static final java.util.List<String> LOG = new java.util.ArrayList<>();"
+		// Written from many threads at once in the threads test.
+		sources.put("com/example/Hook.java", "package com.example; public class Hook {"
+				+ " public static final java.util.List<String> LOG = java.util.Collections.synchronizedList(new java.util.ArrayList<>());"
 				+ " public static boolean answer = true, quiet;"
 				+ " public static boolean answer(boolean vanilla) { LOG.add(\"answered \" + vanilla); return answer; } }");
 		// Checks made many times over, as the game makes them, for the allocation test.
