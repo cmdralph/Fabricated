@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.core.translate;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -15,6 +14,8 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+
+import io.github.cmdralph.fabricated.core.bytecode.ClassFiles;
 
 /**
  * The mixin configs a Fabric mod's code adds to Mixin itself, through {@code Mixins.addConfiguration(String)}: ReplayMod's
@@ -73,8 +74,7 @@ final class AddedMixinConfigs {
 	}
 
 	private static boolean callsAdd(byte[] classFile) {
-		String text = new String(classFile, StandardCharsets.ISO_8859_1);
-		return text.contains(MIXINS) && text.contains(ADD);
+		return ClassFiles.contains(classFile, MIXINS) && ClassFiles.contains(classFile, ADD);
 	}
 
 	/** {@code classFile} with its calls of {@code Mixins.addConfiguration(String)} given the default environment, or null when it makes none. */
