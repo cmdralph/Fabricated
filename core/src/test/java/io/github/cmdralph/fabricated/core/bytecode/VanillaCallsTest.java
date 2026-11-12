@@ -33,9 +33,11 @@ import io.github.cmdralph.fabricated.core.testutil.TestSources;
 
 /**
  * SEAM-3: vanilla's block-breaking calls, which NeoForge and Forge make through the block state's
- * {@code onDestroyedByPlayer}, put back in {@code destroyBlock} for the blocks keeping its default. Each fixture is the
- * platform's code in its form (NeoForge 21.1's, NeoForge 21.11 to 26.3's, Forge's; the server's and the client's; Forge 47's
- * under SRG's names), against stand-ins of the game whose calls log what they do; the extensions also name a class the
+ * {@code onDestroyedByPlayer}, put back in {@code destroyBlock} for the blocks keeping its default; SEAM-4: vanilla's
+ * harvest check, {@code hasCorrectToolForDrops}, which they make through the state's {@code canHarvestBlock} there and
+ * through a hook of theirs in {@code getDestroyProgress}. Each fixture is the platform's code in its form (NeoForge 21.1's,
+ * NeoForge 21.11 to 26.3's, Forge's; the server's and the client's; Forge 47's under SRG's names), against stand-ins of the
+ * game whose calls log what they do, NeoForge's harvest event and Forge's among them; the extensions also name a class the
  * game lacks as it runs, as Forge 66's name client classes. The class rewritten does what the platform's did, step for
  * step, for a block keeping the default, one overriding it, one overriding it to call it, one overriding it through an
  * interface of its own, one inheriting an override and a state whose class overrides the state's; a hook of the call
@@ -44,6 +46,7 @@ import io.github.cmdralph.fabricated.core.testutil.TestSources;
 public class VanillaCallsTest {
 	private static final String SERVER = "net/minecraft/server/level/ServerPlayerGameMode";
 	private static final String CLIENT = "net/minecraft/client/multiplayer/MultiPlayerGameMode";
+	private static final String BEHAVIOUR = "net/minecraft/world/level/block/state/BlockBehaviour";
 
 	/** A platform's form: its extensions, its game mode classes' code, and the names its game runs with. */
 	private enum Form {
@@ -88,7 +91,8 @@ public class VanillaCallsTest {
 	static {
 		for (String[] names : new String[][] {{"getBlockState", "m_8055_"}, {"setBlock", "m_7731_"}, {"removeBlock", "m_7471_"},
 				{"createLegacyBlock", "m_76188_"}, {"getBlock", "m_60734_"}, {"destroy", "m_6786_"}, {"playerWillDestroy", "m_5707_"},
-				{"destroyBlock", "m_9280_"}, {"clientDestroyBlock", "m_105267_"}, {"level", "f_9244_"}, {"player", "f_9245_"}}) {
+				{"destroyBlock", "m_9280_"}, {"clientDestroyBlock", "m_105267_"}, {"level", "f_9244_"}, {"player", "f_9245_"},
+				{"hasCorrectToolForDrops", "m_36298_"}, {"requiresCorrectToolForDrops", "m_60834_"}, {"getDestroyProgress", "m_5880_"}}) {
 			MOJANG.put("$" + names[0] + "$", names[0].equals("clientDestroyBlock") ? "destroyBlock" : names[0]);
 			SRG.put("$" + names[0] + "$", names[1]);
 		}
@@ -99,7 +103,8 @@ public class VanillaCallsTest {
 		String willDestroy = form.srg ? "void" : "BlockState";
 		Map<String, String> sources = new HashMap<>();
 		sources.put("net/minecraft/core/BlockPos.java", "package net.minecraft.core; public record BlockPos(int x) { }");
-		sources.put("net/minecraft/world/level/LevelAccessor.java", "package net.minecraft.world.level; public interface LevelAccessor { }");
+		sources.put("net/minecraft/world/level/BlockGetter.java", "package net.minecraft.world.level; public interface BlockGetter { }");
+		sources.put("net/minecraft/world/level/LevelAccessor.java", "package net.minecraft.world.level; public interface LevelAccessor extends BlockGetter { }");
 		sources.put("net/minecraft/world/level/Level.java", "package net.minecraft.world.level; import java.util.*; import net.minecraft.core.BlockPos;"
 				+ " import net.minecraft.world.level.block.state.BlockState; import net.minecraft.world.level.material.FluidState;"
 				+ " public class Level implements LevelAccessor { public final List<String> log = new ArrayList<>(); public final Map<Integer, BlockState> blocks = new HashMap<>();"
@@ -112,7 +117,42 @@ public class VanillaCallsTest {
 				+ " public ServerLevel() { super(false); } }");
 		sources.put("net/minecraft/world/level/material/FluidState.java", "package net.minecraft.world.level.material; import net.minecraft.world.level.block.state.BlockState;"
 				+ " public class FluidState { public BlockState $createLegacyBlock$() { return BlockState.AIR; } }");
-		sources.put("net/minecraft/world/entity/player/Player.java", "package net.minecraft.world.entity.player; public class Player { }");
+		// Vanilla's harvest check; Forge's fires its event with vanilla's answer.
+		String answer = "!state.$requiresCorrectToolForDrops$() || this.tool";
+		sources.put("net/minecraft/world/entity/player/Player.java", "package net.minecraft.world.entity.player; import net.minecraft.world.level.block.state.BlockState;"
+				+ " public class Player { public boolean tool; public boolean $hasCorrectToolForDrops$(BlockState state) { return "
+				+ (form.forge ? "net.minecraftforge.event.ForgeEventFactory.doPlayerHarvestCheck(this, state, " + answer + ")" : answer) + "; } }");
+		// A player of the platform's kind whose class answers the check itself.
+		sources.put("com/example/OwnPlayer.java", "package com.example; import net.minecraft.world.level.block.state.BlockState; public class OwnPlayer extends"
+				+ " net.minecraft.server.level.ServerPlayer { @Override public boolean $hasCorrectToolForDrops$(BlockState state) { Hook.LOG.add(\"own player\");"
+				+ " return true; } }");
+		if (form.forge) {
+			sources.put("net/minecraftforge/event/ForgeEventFactory.java", "package net.minecraftforge.event; public class ForgeEventFactory {"
+					+ " public static boolean doPlayerHarvestCheck(net.minecraft.world.entity.player.Player player, net.minecraft.world.level.block.state.BlockState state,"
+					+ " boolean success) { com.example.Hook.LOG.add(\"harvest event \" + success); return success; } }");
+		} else {
+			sources.put("net/neoforged/bus/api/Event.java", "package net.neoforged.bus.api; public class Event { }");
+			sources.put("net/neoforged/bus/api/IEventBus.java", "package net.neoforged.bus.api; public interface IEventBus { <T extends Event> T post(T event); }");
+			sources.put("net/neoforged/neoforge/common/NeoForge.java", "package net.neoforged.neoforge.common; public class NeoForge {"
+					+ " public static final net.neoforged.bus.api.IEventBus EVENT_BUS = new net.neoforged.bus.api.IEventBus() { public <T extends net.neoforged.bus.api.Event>"
+					+ " T post(T event) { com.example.Hook.LOG.add(\"harvest event \" + ((net.neoforged.neoforge.event.entity.player.PlayerEvent.HarvestCheck) event)"
+					+ ".canHarvest()); return event; } }; }");
+			sources.put("net/neoforged/neoforge/event/entity/player/PlayerEvent.java", "package net.neoforged.neoforge.event.entity.player; public class PlayerEvent"
+					+ " extends net.neoforged.bus.api.Event { public static class HarvestCheck extends PlayerEvent { final boolean success; public HarvestCheck("
+					+ "net.minecraft.world.entity.player.Player player, net.minecraft.world.level.block.state.BlockState state, net.minecraft.world.level.BlockGetter level,"
+					+ " net.minecraft.core.BlockPos pos, boolean success) { this.success = success; } public boolean canHarvest() { return success; } } }");
+			sources.put("net/neoforged/neoforge/event/EventHooks.java", "package net.neoforged.neoforge.event; import net.minecraft.world.entity.player.Player;"
+					+ " import net.minecraft.world.level.block.state.BlockState; public class EventHooks { public static boolean doPlayerHarvestCheck(Player player,"
+					+ " BlockState state, net.minecraft.world.level.BlockGetter level, net.minecraft.core.BlockPos pos) { boolean vanilla = player.$hasCorrectToolForDrops$(state);"
+					+ " return net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(new net.neoforged.neoforge.event.entity.player.PlayerEvent.HarvestCheck(player, state,"
+					+ " level, pos, vanilla)).canHarvest(); } }");
+		}
+		// The platform's form of getDestroyProgress, its harvest check made through the platform's hook.
+		sources.put(BEHAVIOUR + ".java", "package net.minecraft.world.level.block.state; import net.minecraft.core.BlockPos;"
+				+ " import net.minecraft.world.entity.player.Player; import net.minecraft.world.level.BlockGetter; public class BlockBehaviour {"
+				+ " public float $getDestroyProgress$(BlockState state, Player player, BlockGetter level, BlockPos pos) { int i = "
+				+ (form.forge ? "net.minecraftforge.common.ForgeHooks.isCorrectToolForDrops(state, player)" : "net.neoforged.neoforge.event.EventHooks.doPlayerHarvestCheck("
+						+ "player, state, level, pos)") + " ? 30 : 100; return 1.0F / (float) i; } }");
 		sources.put("net/minecraft/server/level/ServerPlayer.java", "package net.minecraft.server.level; public class ServerPlayer extends net.minecraft.world.entity.player.Player { }");
 		sources.put("net/minecraft/world/item/ItemStack.java", "package net.minecraft.world.item; public class ItemStack { public ItemStack copy() { return new ItemStack(); } }");
 		String imports = " import net.minecraft.core.BlockPos; import net.minecraft.world.level.*; import net.minecraft.world.level.block.Block;"
@@ -126,26 +166,45 @@ public class VanillaCallsTest {
 		sources.put("net/minecraft/world/level/block/state/BlockState.java", "package net.minecraft.world.level.block.state; import net.minecraft.world.level.block.Block;"
 				+ " public class BlockState implements " + form.ext() + "." + form.stateExt() + " { public static final BlockState AIR = new BlockState(new Block(\"air\"));"
 				+ " final Block block; public BlockState(Block block) { this.block = block; } public Block $getBlock$() { return block; }"
+				+ " public boolean $requiresCorrectToolForDrops$() { return !block.name.equals(\"loose\"); }"
 				+ " public String toString() { return block.name; } }");
 		String ext = form.ext().replace('.', '/') + "/";
 		sources.put(ext + form.stateExt() + ".java", "package " + form.ext() + ";" + imports + " public interface " + form.stateExt() + " {"
 				+ " default boolean onDestroyedByPlayer(Level level, BlockPos pos, Player player," + form.params() + ") {"
-				+ " return ((BlockState) this).$getBlock$().onDestroyedByPlayer((BlockState) this, level, pos, player," + form.args() + "); } }");
+				+ " return ((BlockState) this).$getBlock$().onDestroyedByPlayer((BlockState) this, level, pos, player," + form.args() + "); }"
+				+ " default boolean canHarvestBlock(BlockGetter level, BlockPos pos, Player player) { return ((BlockState) this).$getBlock$().canHarvestBlock("
+				+ "(BlockState) this, level, pos, player); } }");
 		String body = form.forge ? " ((Block) this).$playerWillDestroy$(level, pos, state, player); return level.$setBlock$(pos, fluid.$createLegacyBlock$(), level.isClientSide() ? 11 : 3);"
 				: " if (level.isClientSide()) return level.$setBlock$(pos, fluid.$createLegacyBlock$(), 11); return level.$removeBlock$(pos, false);";
 		sources.put(ext + form.blockExt() + ".java", "package " + form.ext() + ";" + imports + " public interface " + form.blockExt() + " {"
 				+ " default boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player," + form.params() + ") {" + body + " }"
+				+ " default boolean canHarvestBlock(BlockState state, BlockGetter level, BlockPos pos, Player player) { return " + (form.forge
+						? "net.minecraftforge.common.ForgeHooks.isCorrectToolForDrops(state, player)" : "net.neoforged.neoforge.event.EventHooks.doPlayerHarvestCheck("
+						+ "player, state, level, pos)") + "; }"
 				+ " default void drawn(com.example.ClientOnly client) { } }");
 		sources.put("com/example/ClientOnly.java", "package com.example; public class ClientOnly { }");
 		sources.put(form.forge ? "net/minecraftforge/common/ForgeHooks.java" : "net/neoforged/neoforge/common/CommonHooks.java",
-				form.forge ? "package net.minecraftforge.common; public class ForgeHooks { public static void onBlockBreakEvent() { } }"
+				form.forge ? "package net.minecraftforge.common; import net.minecraft.world.entity.player.Player; import net.minecraft.world.level.block.state.BlockState;"
+						+ " public class ForgeHooks { public static void onBlockBreakEvent() { } public static boolean isCorrectToolForDrops(BlockState state,"
+						+ " Player player) { if (!state.$requiresCorrectToolForDrops$()) return net.minecraftforge.event.ForgeEventFactory.doPlayerHarvestCheck(player,"
+						+ " state, true); return player.$hasCorrectToolForDrops$(state); } }"
 						: "package net.neoforged.neoforge.common; public class CommonHooks { public static void fireBlockBreak() { } }");
 		// A platform mod's blocks: one overriding the extension, one overriding it to call the default.
 		String override = " @Override public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player," + form.params() + ") {";
 		sources.put("com/example/Overriding.java", "package com.example;" + imports + " public class Overriding extends Block { public Overriding() { super(\"overriding\"); }"
 				+ override + " level.log.add(\"override \" + willHarvest); return level.$setBlock$(pos, new BlockState(new Block(\"stump\")), 3); } }");
 		sources.put("com/example/Hook.java", "package com.example; public class Hook { public static final java.util.List<String> LOG = new java.util.ArrayList<>();"
-				+ " public static void hooked() { LOG.add(\"hooked\"); } }");
+				+ " public static void hooked() { LOG.add(\"hooked\"); } public static boolean answer(boolean vanilla) { LOG.add(\"answered \" + vanilla);"
+				+ " return true; } }");
+		// A platform mod's block overriding the harvest extension, and a block needing no tool.
+		sources.put("com/example/Harvesting.java", "package com.example;" + imports + " public class Harvesting extends Block { public Harvesting() { super(\"harvesting\"); }"
+				+ " @Override public boolean canHarvestBlock(BlockState state, BlockGetter level, BlockPos pos, Player player) { Hook.LOG.add(\"harvest override\");"
+				+ " return true; } }");
+		// A state of a class of its own overriding the state's harvest extension.
+		sources.put("com/example/HarvestingState.java", "package com.example;" + imports + " public class HarvestingState extends BlockState {"
+				+ " public HarvestingState(Block block) { super(block); } @Override public boolean canHarvestBlock(BlockGetter level, BlockPos pos, Player player) {"
+				+ " Hook.LOG.add(\"state harvest override\"); return true; } }");
+		sources.put("com/example/Loose.java", "package com.example; public class Loose extends net.minecraft.world.level.block.Block { public Loose() { super(\"loose\"); } }");
 		// One overriding it through an interface of its own extending the platform's.
 		sources.put("com/example/OverridingExtension.java", "package com.example;" + imports + " public interface OverridingExtension extends "
 				+ form.ext() + "." + form.blockExt() + " {" + override.replace(" @Override public", " @Override default") + " level.log.add(\"interface\");"
@@ -165,7 +224,7 @@ public class VanillaCallsTest {
 		sources.put(SERVER + ".java", "package net.minecraft.server.level;" + imports + " public class ServerPlayerGameMode {"
 				+ " protected ServerLevel $level$; protected final ServerPlayer $player$; private final boolean creative;"
 				+ " public ServerPlayerGameMode(ServerLevel level, ServerPlayer player, boolean creative) { this.$level$ = level; this.$player$ = player; this.creative = creative; }"
-				+ " boolean harvest(BlockState state) { return true; }" + serverBody + " }");
+				+ serverBody + " }");
 		sources.put(CLIENT + ".java", "package net.minecraft.client.multiplayer;" + imports + " public class MultiPlayerGameMode {"
 				+ " final Level level; final Player player; public MultiPlayerGameMode(Level level, Player player) { this.level = level; this.player = player; }"
 				+ clientBody + " }");
@@ -183,7 +242,8 @@ public class VanillaCallsTest {
 		if (form.forge) {
 			return " public boolean $destroyBlock$(BlockPos pos) { BlockState blockstate = this.$level$.$getBlockState$(pos); " + form.hook()
 					+ " Block block = blockstate.$getBlock$(); if (this.creative) { removeBlock(pos, false); return true; }"
-					+ " boolean flag1 = harvest(blockstate); boolean flag = removeBlock(pos, flag1); if (flag && flag1) this.$level$.log.add(\"playerDestroy\"); return true; }"
+					+ " boolean flag1 = blockstate.canHarvestBlock(this.$level$, pos, this.$player$); boolean flag = removeBlock(pos, flag1);"
+					+ " if (flag && flag1) this.$level$.log.add(\"playerDestroy\"); return true; }"
 					+ " private boolean removeBlock(BlockPos pos, boolean canHarvest) { BlockState state = this.$level$.$getBlockState$(pos);"
 					+ " boolean removed = state.onDestroyedByPlayer(this.$level$, pos, this.$player$, canHarvest, this.$level$.getFluidState(pos));"
 					+ " if (removed) state.$getBlock$().$destroy$(this.$level$, pos, state); return removed; }";
@@ -191,7 +251,7 @@ public class VanillaCallsTest {
 		return " public boolean $destroyBlock$(BlockPos pos) { BlockState blockstate1 = this.$level$.$getBlockState$(pos); " + form.hook()
 				+ " Block block = blockstate1.$getBlock$(); BlockState blockstate = block.$playerWillDestroy$(this.$level$, pos, blockstate1, this.$player$);"
 				+ " if (this.creative) { removeBlock(pos, blockstate, false" + tool + "); return true; }"
-				+ " boolean flag1 = harvest(blockstate); boolean flag = removeBlock(pos, blockstate, flag1" + tool + ");"
+				+ " boolean flag1 = blockstate.canHarvestBlock(this.$level$, pos, this.$player$); boolean flag = removeBlock(pos, blockstate, flag1" + tool + ");"
 				+ " if (flag1 && flag) this.$level$.log.add(\"playerDestroy\"); return true; }"
 				+ " private boolean removeBlock(BlockPos pos, BlockState state, boolean canHarvest" + (form.tool ? ", ItemStack tool" : "") + ") {"
 				+ " boolean removed = state.onDestroyedByPlayer(this.$level$, pos, this.$player$" + (form.tool ? ", tool" : "") + ", canHarvest, this.$level$.getFluidState(pos));"
@@ -217,6 +277,11 @@ public class VanillaCallsTest {
 		return sources(Form.FORGE, server(Form.FORGE), client(Form.FORGE, "level"));
 	}
 
+	/** Forge 47's game classes, under SRG's names, as the fixtures have them. */
+	public static Map<String, String> forge47Sources() {
+		return sources(Form.FORGE_47, server(Form.FORGE_47), client(Form.FORGE_47, "level"));
+	}
+
 	private static Map<String, byte[]> platform(Path dir, Form form) throws Exception {
 		return TestSources.compileWithLocals(dir, sources(form, server(form), client(form, "level")));
 	}
@@ -224,7 +289,7 @@ public class VanillaCallsTest {
 	/** The classes with the game mode classes put back, as they load. */
 	private static Map<String, byte[]> restored(Map<String, byte[]> platform) {
 		Map<String, byte[]> restored = new HashMap<>(platform);
-		for (String name : List.of(SERVER, CLIENT)) {
+		for (String name : List.of(SERVER, CLIENT, BEHAVIOUR)) {
 			ClassNode node = node(platform.get(name));
 			VanillaSeams.Restoring done = VanillaSeams.restoreWhole(node);
 			assertEquals(null, done.failure());
@@ -263,8 +328,9 @@ public class VanillaCallsTest {
 			// Pre-flight reads what was put back.
 			String gameMode = names.get("$destroyBlock$") + "(Lnet/minecraft/core/BlockPos;)Z";
 			List<VanillaSeams.Restored> server = VanillaSeams.restoredIn(node(restored.get(SERVER)));
-			assertEquals(List.of("net/minecraft/server/level/ServerLevel;" + names.get("$removeBlock$"), "net/minecraft/world/level/block/Block;" + names.get("$destroy$")),
-					server.stream().map(r -> r.owner() + ";" + r.name()).toList(), form.name());
+			assertEquals(List.of("net/minecraft/server/level/ServerLevel;" + names.get("$removeBlock$") + " SEAM-3", "net/minecraft/world/level/block/Block;"
+					+ names.get("$destroy$") + " SEAM-3", "net/minecraft/server/level/ServerPlayer;" + names.get("$hasCorrectToolForDrops$") + " SEAM-4"),
+					server.stream().map(r -> r.owner() + ";" + r.name() + " " + r.finding()).toList(), form.name());
 			assertTrue(server.stream().allMatch(r -> r.in().equals(gameMode)), server.toString());
 			List<String> client = VanillaSeams.restoredIn(node(restored.get(CLIENT))).stream().map(r -> r.name()).toList();
 			assertEquals(form.forge ? List.of(names.get("$playerWillDestroy$"), names.get("$createLegacyBlock$"), names.get("$setBlock$"))
@@ -287,35 +353,57 @@ public class VanillaCallsTest {
 			Object player = loader.loadClass("net.minecraft.server.level.ServerPlayer").getConstructor().newInstance();
 			destroy(loader, gameMode, gameMode.getConstructors()[0].newInstance(level, player, false));
 		}
-		java.lang.reflect.Field field = gameMode.getDeclaredField("fabricated$overriding");
+		assertEquals(Map.of("net.minecraft.world.level.block.state.BlockState", false, block, false, "com.example.Overriding", true,
+				"com.example.Unreadable", true), known(gameMode, "fabricated$overriding"));
+		// Each extension's answers are kept apart: the overriding block keeps canHarvestBlock's default.
+		assertEquals(Map.of("net.minecraft.world.level.block.state.BlockState", false, block, false, "com.example.Overriding", false,
+				"com.example.Unreadable", true), known(gameMode, "fabricated$overridingHarvest"));
+		assertEquals(List.of("hooked", "hooked"), ((List<?>) loader.loadClass("com.example.Hook").getField("LOG").get(null)).stream().filter("hooked"::equals).toList());
+	}
+
+	/** The answers a rewritten class keeps in its field, by the class asked of. */
+	private static Map<String, Boolean> known(Class<?> owner, String name) throws Exception {
+		java.lang.reflect.Field field = owner.getDeclaredField(name);
 		field.setAccessible(true);
 		Map<String, Boolean> known = new HashMap<>();
 		((Map<?, ?>) field.get(null)).forEach((type, overrides) -> known.put(((Class<?>) type).getName(), (Boolean) overrides));
-		assertEquals(Map.of("net.minecraft.world.level.block.state.BlockState", false, block, false, "com.example.Overriding", true,
-				"com.example.Unreadable", true), known);
-		assertEquals(List.of("hooked", "hooked"), loader.loadClass("com.example.Hook").getField("LOG").get(null));
+		return known;
 	}
 
-	/** Translation reads classes in parallel: every class put back at once is the same, the helpers copied whole. */
+	/**
+	 * Translation reads classes in parallel: every class put back at once is the same, the helpers copied whole; for each
+	 * platform's server game mode (both families' calls, and on Forge the player's check) and its getDestroyProgress.
+	 */
 	@Test
 	void classesPutBackInParallelAreTheSame(@TempDir Path dir) throws Exception {
-		Map<String, byte[]> platform = platform(dir, Form.NEOFORGE);
-		Callable<byte[]> restore = () -> {
-			ClassNode node = node(platform.get(SERVER));
-			assertTrue(!VanillaSeams.restore(node).isEmpty());
-			return write(node);
-		};
-		byte[] reference = restore.call();
+		Map<String, byte[]> neoForge = platform(dir.resolve("neoforge"), Form.NEOFORGE), forge = platform(dir.resolve("forge"), Form.FORGE);
+		List<Callable<byte[]>> restores = new ArrayList<>();
+		for (Map<String, byte[]> platform : List.of(neoForge, forge)) {
+			for (String name : List.of(SERVER, BEHAVIOUR)) {
+				restores.add(() -> {
+					ClassNode node = node(platform.get(name));
+					assertTrue(!VanillaSeams.restore(node).isEmpty());
+					return write(node);
+				});
+			}
+		}
+		List<byte[]> references = new ArrayList<>();
+		for (Callable<byte[]> restore : restores) references.add(restore.call());
 		ExecutorService pool = Executors.newFixedThreadPool(8);
 		try {
 			for (int round = 0; round < 100; round++) {
 				CyclicBarrier start = new CyclicBarrier(8);
 				List<Future<byte[]>> copies = new ArrayList<>();
-				for (int i = 0; i < 8; i++) copies.add(pool.submit(() -> {
-					start.await();
-					return restore.call();
-				}));
-				for (Future<byte[]> copy : copies) assertArrayEquals(reference, copy.get(60, TimeUnit.SECONDS), "round " + round);
+				for (int i = 0; i < 8; i++) {
+					Callable<byte[]> restore = restores.get(i % restores.size());
+					copies.add(pool.submit(() -> {
+						start.await();
+						return restore.call();
+					}));
+				}
+				for (int i = 0; i < copies.size(); i++) {
+					assertArrayEquals(references.get(i % restores.size()), copies.get(i).get(60, TimeUnit.SECONDS), "round " + round + ", copy " + i);
+				}
 			}
 		} finally {
 			pool.shutdownNow();
@@ -327,17 +415,38 @@ public class VanillaCallsTest {
 		Map<String, byte[]> platform = platform(dir, Form.NEOFORGE);
 		VanillaSeams.Rewrite server = VanillaSeams.rewriteOf(node(platform.get(SERVER)));
 		String pos = "Lnet/minecraft/core/BlockPos;", state = "Lnet/minecraft/world/level/block/state/BlockState;";
-		assertEquals(Set.of(SERVER + ";removeBlock(" + pos + state + "ZLnet/minecraft/world/item/ItemStack;)Z"), server.movedCalls());
+		String harvest = "Lnet/minecraft/world/level/BlockGetter;" + pos + "Lnet/minecraft/world/entity/player/Player;)Z";
+		assertEquals(Set.of(SERVER + ";removeBlock(" + pos + state + "ZLnet/minecraft/world/item/ItemStack;)Z",
+				"net/minecraft/world/level/block/state/BlockState;canHarvestBlock(" + harvest), server.movedCalls());
 		assertEquals(Set.of("destroyBlock(" + pos + ")Z"), server.holders());
 		assertEquals(Set.of("removeBlock(" + pos + state + "ZLnet/minecraft/world/item/ItemStack;)Z"), server.bypassed());
 		assertTrue(server.added().containsAll(Set.of("net/minecraft/server/level/ServerLevel;removeBlock(" + pos + "Z)Z",
-				SERVER + ";level:Lnet/minecraft/server/level/ServerLevel;")), server.added().toString());
-		assertEquals(Map.of("net/neoforged/neoforge/common/extensions/IBlockExtension", Set.of("onDestroyedByPlayer"),
-				"net/neoforged/neoforge/common/extensions/IBlockStateExtension", Set.of("onDestroyedByPlayer")), server.others());
-		// Forge's server: Level's removeBlock, which vanilla's call put back runs, where Forge's default sets the block itself.
-		VanillaSeams.Rewrite forge = VanillaSeams.rewriteOf(node(platform(dir.resolve("forge"), Form.FORGE).get(SERVER)));
+				SERVER + ";level:Lnet/minecraft/server/level/ServerLevel;", "net/minecraft/server/level/ServerPlayer;hasCorrectToolForDrops(" + state + ")Z",
+				"net/neoforged/neoforge/event/entity/player/PlayerEvent$HarvestCheck;<init>(Lnet/minecraft/world/entity/player/Player;" + state
+						+ "Lnet/minecraft/world/level/BlockGetter;" + pos + "Z)V")), server.added().toString());
+		assertEquals(Map.of("net/neoforged/neoforge/common/extensions/IBlockExtension", Set.of("canHarvestBlock", "onDestroyedByPlayer"),
+				"net/neoforged/neoforge/common/extensions/IBlockStateExtension", Set.of("canHarvestBlock", "onDestroyedByPlayer"),
+				"net/neoforged/neoforge/event/EventHooks", Set.of("doPlayerHarvestCheck")), server.others());
+		// getDestroyProgress: NeoForge's hook, put back in its place, no longer called.
+		VanillaSeams.Rewrite progress = VanillaSeams.rewriteOf(node(platform.get(BEHAVIOUR)));
+		assertEquals(Set.of("net/neoforged/neoforge/event/EventHooks;doPlayerHarvestCheck(Lnet/minecraft/world/entity/player/Player;" + state
+				+ "Lnet/minecraft/world/level/BlockGetter;" + pos + ")Z"), progress.movedCalls());
+		assertEquals(Set.of("getDestroyProgress(" + state + "Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/level/BlockGetter;" + pos + ")F"),
+				progress.holders());
+		assertEquals(Map.of("net/neoforged/neoforge/event/EventHooks", Set.of("doPlayerHarvestCheck")), progress.others());
+		assertTrue(!progress.constants());
+		// Forge's server: Level's removeBlock, which vanilla's call put back runs, where Forge's default sets the block itself;
+		// Forge's harvest hook, no longer called, and the player's harvest check, called where Forge's only fires its event.
+		Map<String, byte[]> forgeClasses = platform(dir.resolve("forge"), Form.FORGE);
+		VanillaSeams.Rewrite forge = VanillaSeams.rewriteOf(node(forgeClasses.get(SERVER)));
 		assertEquals(Set.of("removeBlock", "m_7471_"), forge.others().get("net/minecraft/world/level/Level"));
 		assertEquals(Set.of("removeBlock", "m_7471_"), forge.others().get("net/minecraft/server/level/ServerLevel"));
+		assertEquals(Set.of("isCorrectToolForDrops"), forge.others().get("net/minecraftforge/common/ForgeHooks"));
+		assertEquals(Set.of("hasCorrectToolForDrops", "m_36298_"), forge.others().get("net/minecraft/world/entity/player/Player"));
+		assertEquals(Set.of("canHarvestBlock", "onDestroyedByPlayer"), forge.others().get("net/minecraftforge/common/extensions/IForgeBlock"));
+		VanillaSeams.Rewrite forgeProgress = VanillaSeams.rewriteOf(node(forgeClasses.get(BEHAVIOUR)));
+		assertEquals(Map.of("net/minecraftforge/common/ForgeHooks", Set.of("isCorrectToolForDrops"), "net/minecraft/world/entity/player/Player",
+				Set.of("hasCorrectToolForDrops", "m_36298_")), forgeProgress.others());
 		// Vanilla's false and 11 are constants destroyBlock didn't have as many of.
 		assertTrue(server.constants());
 		VanillaSeams.Rewrite client = VanillaSeams.rewriteOf(node(platform.get(CLIENT)));
@@ -357,13 +466,21 @@ public class VanillaCallsTest {
 		// NeoForge's form isn't put back in Forge's classes, nor Forge's in NeoForge's.
 		Map<String, byte[]> forge = platform(dir.resolve("forge"), Form.FORGE);
 		ClassNode node = node(forge.get(CLIENT));
-		assertEquals(List.of("FORGE_CLIENT"), VanillaCalls.applicable(node).stream().map(r -> r.removal().name()).toList());
+		assertEquals(List.of("FORGE_CLIENT"), VanillaCalls.applicable(node).stream().map(r -> r.code().name()).toList());
 
 		// Pre-flight's view, from a game whose extension it can't find, keeps the class as it is.
 		Map<String, byte[]> platform = platform(dir.resolve("neoforge"), Form.NEOFORGE);
 		ClassBytesSource lacking = name -> name.endsWith("IBlockExtension") ? null : platform.get(name);
 		assertArrayEquals(platform.get(SERVER), VanillaSeams.over(lacking).read(SERVER));
 		assertTrue(!VanillaSeams.restoredIn(VanillaSeams.over(platform::get).readNode(SERVER, 0)).isEmpty());
+		// NeoForge's event bus is a library of its own, not in the game's files: the harvest event's post counts as there where
+		// EventHooks.doPlayerHarvestCheck, whose code the helper copies, makes it the same way; without that, nothing is put back.
+		ClassBytesSource noBus = name -> name.startsWith("net/neoforged/bus/") ? null : platform.get(name);
+		for (String name : List.of(SERVER, BEHAVIOUR)) {
+			assertTrue(!VanillaSeams.restoredIn(VanillaSeams.over(noBus).readNode(name, 0)).isEmpty(), name);
+		}
+		ClassBytesSource noHooks = name -> name.startsWith("net/neoforged/bus/") || name.equals("net/neoforged/neoforge/event/EventHooks") ? null : platform.get(name);
+		assertArrayEquals(platform.get(BEHAVIOUR), VanillaSeams.over(noHooks).read(BEHAVIOUR));
 		// Pre-flight's view rewrites a class once, at its first read.
 		int[] reads = {0};
 		ClassBytesSource counting = name -> {
@@ -380,6 +497,105 @@ public class VanillaCallsTest {
 		List<String> failed = new ArrayList<>();
 		assertArrayEquals(broken, VanillaSeams.over(name -> name.equals(SERVER) ? broken : null, Set.of(), (name, e) -> failed.add(name)).read(SERVER));
 		assertEquals(List.of(SERVER), failed);
+	}
+
+	/**
+	 * SEAM-4: vanilla's harvest check, put back in the server's destroyBlock and in getDestroyProgress, answers as the
+	 * platform's code did for every block and player, the platform's harvest event fired as it fired it; a hook of it runs
+	 * where the platform's default would make vanilla's call, and only there: for the blocks keeping canHarvestBlock's
+	 * default, and on Forge for the players whose class keeps Player.hasCorrectToolForDrops. A hook answering otherwise than
+	 * vanilla's call is followed by NeoForge's event, as NeoForge's default posts it after the call; Forge's fires inside it.
+	 */
+	@Test
+	void vanillasHarvestCheckIsPutBackWhereThePlatformsCodeMakesIt(@TempDir Path dir) throws Exception {
+		for (Form form : Form.values()) {
+			Map<String, byte[]> platform = platform(dir.resolve(form.name()), form);
+			Map<String, byte[]> restored = restored(platform);
+			Map<String, String> names = form.srg ? SRG : MOJANG;
+			for (String player : List.of("net.minecraft.server.level.ServerPlayer", "com.example.OwnPlayer")) {
+				for (String block : List.of("net.minecraft.world.level.block.Block", "com.example.Loose", "com.example.Harvesting", "com.example.HarvestingState",
+						"com.example.Overriding")) {
+					for (boolean tool : List.of(false, true)) {
+						String what = form + " " + player + " " + block + " tool " + tool;
+						List<String> before = harvest(platform, block, player, tool, null), after = harvest(restored, block, player, tool, null);
+						// Forge's default sets the fluid's block, where vanilla's removeBlock does (SEAM-3).
+						if (form.forge) after.remove("removeBlock");
+						assertEquals(before, after, what);
+						List<String> progressBefore = progress(platform, block, player, tool, null), progressAfter = progress(restored, block, player, tool, null);
+						assertEquals(progressBefore, progressAfter, what);
+						// The hook of the call put back, answering true.
+						boolean keeps = !block.endsWith("Harvesting") && !block.endsWith("HarvestingState") && (!form.forge || !player.endsWith("OwnPlayer"));
+						List<String> hooked = harvest(restored, block, player, tool, "net/minecraft/server/level/ServerPlayer");
+						assertEquals(keeps, hooked.stream().anyMatch(l -> l.startsWith("answered")), what + " " + hooked);
+						if (keeps) assertTrue(hooked.contains("playerDestroy"), what + " " + hooked);
+						boolean progressKeeps = !form.forge || !player.endsWith("OwnPlayer");
+						List<String> hookedProgress = progress(restored, block, player, tool, "net/minecraft/world/entity/player/Player");
+						assertEquals(progressKeeps, hookedProgress.stream().anyMatch(l -> l.startsWith("answered")), what + " " + hookedProgress);
+						if (progressKeeps) assertEquals("progress 0.033333335", hookedProgress.get(hookedProgress.size() - 1), what + " " + hookedProgress);
+					}
+				}
+			}
+			// The event follows the hook's answer on NeoForge, and vanilla's inside the call on Forge.
+			List<String> answered = harvest(restored, "net.minecraft.world.level.block.Block", "net.minecraft.server.level.ServerPlayer", false,
+					"net/minecraft/server/level/ServerPlayer");
+			assertTrue(answered.contains(form.forge ? "harvest event false" : "harvest event true"), form + " " + answered);
+			// Pre-flight reads what was put back in getDestroyProgress.
+			List<VanillaSeams.Restored> progress = VanillaSeams.restoredIn(node(restored.get(BEHAVIOUR)));
+			assertEquals(List.of("net/minecraft/world/entity/player/Player;" + names.get("$hasCorrectToolForDrops$") + " SEAM-4"),
+					progress.stream().map(r -> r.owner() + ";" + r.name() + " " + r.finding()).toList(), form.name());
+			assertEquals(form.forge ? "ForgeHooks.isCorrectToolForDrops" : "EventHooks.doPlayerHarvestCheck", progress.get(0).through());
+		}
+	}
+
+	/** The server's survival break of a block of the class at 1 by a player of the class; with {@code hook}, vanilla's harvest check put back answers true. */
+	private static List<String> harvest(Map<String, byte[]> classes, String block, String player, boolean tool, String hook) throws Exception {
+		ClassLoader loader = loader(hook != null ? answering(classes, SERVER, hook) : classes);
+		Object level = loader.loadClass("net.minecraft.server.level.ServerLevel").getConstructor().newInstance();
+		place(loader, level, block);
+		Object who = loader.loadClass(player).getConstructor().newInstance();
+		loader.loadClass("net.minecraft.world.entity.player.Player").getField("tool").set(who, tool);
+		Class<?> gameMode = loader.loadClass(SERVER.replace('/', '.'));
+		destroy(loader, gameMode, gameMode.getConstructors()[0].newInstance(level, who, false));
+		return log(loader, level);
+	}
+
+	/** getDestroyProgress of a block of the class for a player of the class, its answer last; with {@code hook}, as {@link #harvest}. */
+	private static List<String> progress(Map<String, byte[]> classes, String block, String player, boolean tool, String hook) throws Exception {
+		ClassLoader loader = loader(hook != null ? answering(classes, BEHAVIOUR, hook) : classes);
+		Object level = loader.loadClass("net.minecraft.server.level.ServerLevel").getConstructor().newInstance();
+		place(loader, level, block);
+		@SuppressWarnings("unchecked")
+		Object state = ((Map<Integer, Object>) level.getClass().getField("blocks").get(level)).get(1);
+		Object who = loader.loadClass(player).getConstructor().newInstance();
+		loader.loadClass("net.minecraft.world.entity.player.Player").getField("tool").set(who, tool);
+		Class<?> behaviour = loader.loadClass(BEHAVIOUR.replace('/', '.'));
+		Object pos = loader.loadClass("net.minecraft.core.BlockPos").getConstructor(int.class).newInstance(1);
+		Object answer = null;
+		for (java.lang.reflect.Method m : behaviour.getMethods()) {
+			if (m.getReturnType() == float.class && m.getParameterCount() == 4) answer = m.invoke(behaviour.getConstructor().newInstance(), state, who, level, pos);
+		}
+		List<String> log = log(loader, level);
+		log.add("progress " + answer);
+		return log;
+	}
+
+	/**
+	 * The classes with vanilla's harvest check put back in the class made through a hook that answers true, logging
+	 * vanilla's answer, as a Fabric mod's wrapper of it would: the calls of {@code owner}'s harvest check outside the helpers.
+	 */
+	private static Map<String, byte[]> answering(Map<String, byte[]> classes, String name, String owner) {
+		ClassNode node = node(classes.get(name));
+		for (MethodNode method : node.methods) {
+			if (method.name.startsWith("fabricated$")) continue;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof MethodInsnNode call && call.owner.equals(owner) && call.desc.equals("(Lnet/minecraft/world/level/block/state/BlockState;)Z")) {
+					method.instructions.insert(call, new MethodInsnNode(Opcodes.INVOKESTATIC, "com/example/Hook", "answer", "(Z)Z", false));
+				}
+			}
+		}
+		Map<String, byte[]> hooked = new HashMap<>(classes);
+		hooked.put(name, write(node));
+		return hooked;
 	}
 
 	/** The server's break of a block of the class at 1, in creative or not; with {@code hook}, vanilla's call put back is hooked. */

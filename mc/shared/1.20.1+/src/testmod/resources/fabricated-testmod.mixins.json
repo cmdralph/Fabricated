@@ -3,7 +3,7 @@
   "package": "io.github.cmdralph.fabricated.testmod.mixin",
   "plugin": "io.github.cmdralph.fabricated.testmod.TestMixinPlugin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["BlockRemovalMixin", "BuiltInRegistriesMixin", "ChiseledBookShelfBlockMixin", "LivingEntityMixin", "LivingEntitySelfMixin", "LootTableBuilderNamingMixin", "MappedRegistryMixin", "MinecraftServerMixin", "MobMultipartMixin", "PackRepositoryMixin", "PlayerListMixin", "PluginRejectedMixin", "PreflightLeftOutMixin", "PreflightShapesMixin", "RecordedFramesMixin", "RegistryDataLoaderMixin", "StructureEntitiesMixin", "Vec3iInstanceofMixin"],
+  "mixins": ["BlockRemovalMixin", "BuiltInRegistriesMixin", "ChiseledBookShelfBlockMixin", "DestroyProgressMixin", "HarvestCheckMixin", "LivingEntityMixin", "LivingEntitySelfMixin", "LootTableBuilderNamingMixin", "MappedRegistryMixin", "MinecraftServerMixin", "MobMultipartMixin", "PackRepositoryMixin", "PlayerListMixin", "PluginRejectedMixin", "PreflightLeftOutMixin", "PreflightShapesMixin", "RecordedFramesMixin", "RegistryDataLoaderMixin", "StructureEntitiesMixin", "Vec3iInstanceofMixin"],
   "server": ["LoaderHookMixin"],
   "client": ["client.MinecraftStopMixin", "client.MinecraftEarlyReloadListenerMixin"],
   "injectors": {

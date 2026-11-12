@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.testmod;
 
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 import com.mojang.brigadier.CommandDispatcher;
 
@@ -16,12 +17,14 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.CommonHooks;
 import net.neoforged.neoforge.common.CreativeModeTabRegistry;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.registries.RegistryBuilder;
 
 /**
@@ -77,8 +80,18 @@ final class TestPlatform {
 		return registry.resolve(id);
 	}
 
-	/** A block overriding the platform's extension for a player's break (SEAM-3): it leaves amethyst ({@link BreakOverride}). */
+	/**
+	 * A block overriding the platform's extensions for a player's break (SEAM-3) and harvest check (SEAM-4): it leaves
+	 * amethyst, and answers its harvest check itself ({@link BreakOverride}).
+	 */
 	static Block breakOverride(BlockBehaviour.Properties properties) {
 		return new BreakOverride(properties);
+	}
+
+	/** Lets players harvest the blocks {@code granted} accepts, as a mod of the platform's does through its harvest check event. */
+	static void grantHarvest(Predicate<BlockState> granted) {
+		NeoForge.EVENT_BUS.addListener(PlayerEvent.HarvestCheck.class, event -> {
+			if (granted.test(event.getTargetBlock())) event.setCanHarvest(true);
+		});
 	}
 }
