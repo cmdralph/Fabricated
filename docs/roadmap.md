@@ -256,10 +256,21 @@ Candidates, each waiting for a mod or a report that needs it:
 - Block breaking, what SEAM-3 leaves: vanilla's removal calls in `destroyBlock` are put back for the blocks keeping the
   platform's `onDestroyedByPlayer`; a block overriding it breaks as the platform has it, without Fabric mods' hooks of
   vanilla's calls. On Forge, wrappers of the server's `playerWillDestroy` call stay left out (a known limit: Forge makes
-  it after the tool is damaged; `@Inject`s at it move to vanilla's place, CORPUS-72). The tool checks in the same
-  methods are the next family: vanilla's `hasCorrectToolForDrops`, where both platforms ask `canHarvestBlock` (Porting
-  Lib's and Apoli's harvest wrappers; Apoli's break action goes with them, SHARE-2), and Forge's dropping vanilla's
-  `canAttackBlock` (Porting Lib's). The client rows are checked by unit tests only, not in game.
+  it after the tool is damaged; `@Inject`s at it move to vanilla's place, CORPUS-72). The client rows are checked by
+  unit tests only, not in game.
+- Harvest checks, what SEAM-4 leaves: vanilla's `hasCorrectToolForDrops` is put back in the server's `destroyBlock` and
+  in `getDestroyProgress`; a block overriding `canHarvestBlock` (and on Forge a player whose class overrides
+  `hasCorrectToolForDrops`) is checked as the platform has it, without Fabric mods' hooks. Hooks of the held item's
+  `canAttackBlock`/`canDestroyBlock` in `destroyBlock` stay left out (a known limit: both platforms ask it inside their
+  block break event, which a listener may overrule; Porting Lib's break event hook), as do hooks of vanilla's call in
+  NeoForge's `DoorBlock.playerWillDestroy`, which asks NeoForge's own overload (no Fabric mod in the corpora hooks it;
+  a row of `VanillaCalls` with the player's check could put it back).
+- Returns a patch merges (VANILLA-5 leaves them): a hook picking vanilla's return by ordinal where the platform's
+  method returns there and on another path at once, as NeoForge 21.1's and Forge 52's `MushroomBlock.canSurvive` does
+  (BetterNether's mushroom hook, at vanilla's second return), still finds no return there, as pre-flight warns. Putting
+  it at the shared return behind a check of the path taken would keep it to vanilla's path. Apoli 2.9.2's break
+  action, at vanilla's survival return on Forge 47, is skipped by Mixin there for its captured locals, which Forge's
+  `destroyBlock` declares otherwise.
 - Item checks the platform asks its extensions instead: Forge asks the stack's tool actions (`canPerformAction`) where
   vanilla asks `stack.is(Items.SHEARS)`, so BCLib's and Porting Lib's wrappers of that check
   have nothing to wrap (a shears item that is a `ShearsItem` gets the actions from the platform's, UNVERIFIED for these
