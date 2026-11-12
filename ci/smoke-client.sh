@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # CI's client harness, every platform's: installs the platform's client with its official installer (the adapter,
 # ci/<platform>/platform.sh), adds Fabricated, the test mod and the extra mods, and starts it headlessly (Xvfb) with
-# HeadlessMC. mc-runtime-test creates a singleplayer world, waits until the player's chunk is loaded and quits; the run
-# is then checked against ci/checks.tsv (ci/check-log.py).
+# HeadlessMC. mc-runtime-test creates a singleplayer world, waits until the player's chunk is loaded and quits a few
+# ticks later, which the test mod holds until the integrated server has had as many ticks in the world (its ClientHold,
+# CI-15); the run is then checked against ci/checks.tsv (ci/check-log.py).
 #
 # Usage: ci/smoke-client.sh <platform> <minecraft> <loader version> <work-dir> [extra-mods-dir]
 # Settings: SMOKE_RUN, the run of ci/runs.tsv it is (client); SMOKE_TESTMODS=none; SMOKE_TIMEOUT; SMOKE_EXIT_TIMEOUT;
@@ -27,6 +28,7 @@ timeout_seconds="${SMOKE_TIMEOUT:-900}"
 # hasn't exited this many seconds later is stuck shutting down, and is stopped then, not at the run's time limit.
 exit_timeout="${SMOKE_EXIT_TIMEOUT:-120}"
 hmc_version=2.10.0
+# It tests and quits once the player has ticked 100 times (4.5.2): the test mod's ClientHold.WORLD_TICKS repeats that.
 mcrt_version=4.5.2
 
 rm -rf "$work"
