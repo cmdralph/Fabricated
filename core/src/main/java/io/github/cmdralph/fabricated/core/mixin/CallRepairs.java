@@ -137,8 +137,6 @@ final class CallRepairs extends PreflightPart {
 		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
 		if (methods.size() != 1) return List.of();
 		MethodNode method = methods.get(0);
-		int places = VanillaSeams.putBackPlaces(method);
-		if (places < 2 || Annotations.value(injector, "allow") instanceof Integer allow && allow >= 0 && allow < places) return List.of();
 		ClassNode original = vanillaClass(target.name);
 		MethodNode before = original == null ? null : PreflightAsm.declared(original, method.name, method.desc);
 		List<VanillaSeams.Restored> putBack = VanillaSeams.restoredIn(target).stream().filter(r -> (method.name + method.desc).equals(r.in())).toList();
@@ -148,7 +146,9 @@ final class CallRepairs extends PreflightPart {
 			if (!point.equals("INVOKE") && !point.equals("INVOKE_ASSIGN") || !Integer.valueOf(0).equals(Annotations.value(at, "ordinal"))
 					|| !(Annotations.value(at, "target") instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
-			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null
+			int places = ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null ? 0
+					: VanillaSeams.putBackPlaces(method, ref.owner(), ref.name(), ref.desc());
+			if (places < 2 || Annotations.value(injector, "allow") instanceof Integer allow && allow >= 0 && allow < places
 					|| putBack.stream().noneMatch(r -> r.owner().equals(ref.owner()) && r.name().equals(ref.name()) && r.desc().equals(ref.desc()))
 					// Every call of it here is one put back, and vanilla's code makes one.
 					|| PreflightAsm.matching(method, point, ref, -1).size() != places

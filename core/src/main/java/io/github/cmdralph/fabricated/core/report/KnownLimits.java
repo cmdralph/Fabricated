@@ -44,6 +44,13 @@ public final class KnownLimits {
 							+ " ServerPlayerGameMode makes that call through the block's IForgeBlock\\.onDestroyedByPlayer instead", Pattern.DOTALL),
 					"Forge calls playerWillDestroy from the block state's onDestroyedByPlayer, after the tool is damaged, so hooks of vanilla's call"
 							+ " before it can't apply there; Fabricated puts back only the removal (SEAM-3)"),
+			// A hook of vanilla's check of the held item in destroyBlock, which the platforms make inside their block break
+			// event's hook, where a listener may overrule it: pre-flight's hint says so (NeoForge's client from 26.1.2 too).
+			new Limit(Set.of("NeoForge", "Forge"), null,
+					Pattern.compile("expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/world/item/(?:Item;(?:canAttackBlock|m_6777_)|ItemStack;canDestroyBlock)\\("
+							+ ".*asks the held item's (?:canAttackBlock|canDestroyBlock) inside its block break event", Pattern.DOTALL),
+					"NeoForge and Forge ask the held item whether it can break the block inside their block break event, which a listener may"
+							+ " overrule, so hooks of vanilla's check in destroyBlock can't apply there (SEAM-4)"),
 			// ForgeRegistry.add, whose maps key a value by its equality: two objects, by their identity hashes, not one object
 			// under two names.
 			new Limit(Set.of(), IllegalArgumentException.class.getName(),

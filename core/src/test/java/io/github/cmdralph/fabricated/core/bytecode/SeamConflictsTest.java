@@ -123,6 +123,12 @@ class SeamConflictsTest {
 	}
 
 	private static SeamConflicts.Conflict breaking(Path dir, Map<String, String> gameSources, String nativeMembers, String nativeTarget) throws Exception {
+		return conflict(dir, gameSources, nativeMembers, nativeTarget, "net/minecraft/server/level/ServerPlayerGameMode");
+	}
+
+	/** As {@link #breaking(Path, Map, String, String)}, for the game's class {@code gameClass}. */
+	private static SeamConflicts.Conflict conflict(Path dir, Map<String, String> gameSources, String nativeMembers, String nativeTarget, String gameClass)
+			throws Exception {
 		Map<String, String> sources = new HashMap<>(gameSources);
 		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value();"
 				+ " String target() default \"\"; }");
@@ -139,7 +145,44 @@ class SeamConflictsTest {
 		ClassBytesSource game = classes::get;
 		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("breaker", classes::containsKey, classes::get,
 				() -> List.of("com/moon/NativeBreak"))));
-		return SeamConflicts.find(game.readNode("net/minecraft/server/level/ServerPlayerGameMode", 0), installed);
+		return SeamConflicts.find(game.readNode(gameClass, 0), installed);
+	}
+
+	/**
+	 * SEAM-4: a native mod's mixin of what putting vanilla's harvest check back moves or bypasses keeps the class as the
+	 * platform has it: the platform's calls there (the state's canHarvestBlock, its hook in getDestroyProgress), the
+	 * extension's default and NeoForge's EventHooks.doPlayerHarvestCheck, which those blocks no longer reach, and on Forge
+	 * Player.hasCorrectToolForDrops, which vanilla's call put back makes where Forge's default only fires its event.
+	 */
+	@Test
+	void aNativeMixinOfWhatPuttingTheHarvestCheckBackChangesKeepsTheClass(@TempDir Path dir) throws Exception {
+		String gameMode = "net.minecraft.server.level.ServerPlayerGameMode";
+		String behaviour = "net/minecraft/world/level/block/state/BlockBehaviour";
+		SeamConflicts.Conflict expected = new SeamConflicts.Conflict("breaker", "com/moon/NativeBreak", true);
+		String head = " @Inject(method = \"%s\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		assertEquals(expected, breaking(dir.resolve("call"), " @Inject(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target ="
+				+ " \"Lnet/minecraft/world/level/block/state/BlockState;canHarvestBlock(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;"
+				+ "Lnet/minecraft/world/entity/player/Player;)Z\")) private void call(CallbackInfo ci) { }", gameMode));
+		assertEquals(expected, breaking(dir.resolve("default"), head.formatted("canHarvestBlock"), "net.neoforged.neoforge.common.extensions.IBlockExtension"));
+		assertEquals(expected, breaking(dir.resolve("hook"), head.formatted("doPlayerHarvestCheck"), "net.neoforged.neoforge.event.EventHooks"));
+		// NeoForge's default makes vanilla's call too: a mixin into it changes nothing there.
+		assertNull(breaking(dir.resolve("player"), head.formatted("hasCorrectToolForDrops"), "net.minecraft.world.entity.player.Player"));
+		assertEquals(expected, breaking(dir.resolve("forge-player"), VanillaCallsTest.forgeSources(), head.formatted("hasCorrectToolForDrops"),
+				"net.minecraft.world.entity.player.Player"));
+		assertEquals(expected, breaking(dir.resolve("forge-player-srg"), VanillaCallsTest.forgeSources(), head.formatted("m_36298_"),
+				"net.minecraft.world.entity.player.Player"));
+		assertEquals(expected, breaking(dir.resolve("forge-hook"), VanillaCallsTest.forgeSources(), head.formatted("isCorrectToolForDrops"),
+				"net.minecraftforge.common.ForgeHooks"));
+		assertNull(breaking(dir.resolve("forge-player-other"), VanillaCallsTest.forgeSources(), head.formatted("tick"), "net.minecraft.world.entity.player.Player"));
+		// getDestroyProgress: the hook's call there moves; its start stays.
+		assertEquals(expected, conflict(dir.resolve("progress-call"), VanillaCallsTest.neoForgeSources(), " @Inject(method = \"getDestroyProgress\", at = @At("
+				+ "value = \"INVOKE\", target = \"Lnet/neoforged/neoforge/event/EventHooks;doPlayerHarvestCheck(Lnet/minecraft/world/entity/player/Player;"
+				+ "Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)Z\"))"
+				+ " private void call(CallbackInfo ci) { }", behaviour.replace('/', '.'), behaviour));
+		assertNull(conflict(dir.resolve("progress-head"), VanillaCallsTest.neoForgeSources(), head.formatted("getDestroyProgress"), behaviour.replace('/', '.'),
+				behaviour));
+		assertEquals(expected, conflict(dir.resolve("progress-forge-player"), VanillaCallsTest.forgeSources(), head.formatted("hasCorrectToolForDrops"),
+				"net.minecraft.world.entity.player.Player", behaviour));
 	}
 
 	@Test

@@ -450,7 +450,8 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	private static boolean isSeamNote(PreflightFinding f) {
-		return f.severity() == Severity.INFO && f.handler() != null && f.mixin() != null && (f.message().endsWith("(SEAM-1)") || f.message().endsWith("(SEAM-3)"));
+		return f.severity() == Severity.INFO && f.handler() != null && f.mixin() != null
+				&& (f.message().endsWith("(SEAM-1)") || f.message().endsWith("(SEAM-3)") || f.message().endsWith("(SEAM-4)"));
 	}
 
 	/** A left-out injector's key: its mixin and handler, or its mixin alone where all of it is. */
@@ -1404,7 +1405,7 @@ public final class MixinPreflight extends PreflightPart {
 	/**
 	 * Notes each of the mixin's members that hooks a vanilla method the platform took out of the target and Fabricated
 	 * puts back ({@link VanillaSeams}, SEAM-1): an injector or invoker naming it, through the refmap, or a shadow of it;
-	 * or an injector of a method of the target naming vanilla's call Fabricated puts back there (SEAM-3). Each note is the
+	 * or an injector of a method of the target naming vanilla's call Fabricated puts back there (SEAM-3, SEAM-4). Each note is the
 	 * member's (its handler's), and the target is recorded among the classes rewritten as they load ({@link #restoredSeams})
 	 * once the config's checks leave the member in, and only then.
 	 */
@@ -1424,17 +1425,15 @@ public final class MixinPreflight extends PreflightPart {
 						if (shadow || !namesSeam(ann, seam, seam.owner(), ctx) || !selects(ann, seam.in(), ctx)) continue;
 						String call = seam.owner().substring(seam.owner().lastIndexOf('/') + 1) + "." + seam.name() + seam.desc();
 						String in = seam.in().substring(0, seam.in().indexOf('('));
-						String keeps = seam.answer().substring(seam.answer().lastIndexOf('/') + 1);
 						if (kept != null) {
 							ctx.info("@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + call + " in " + in + ", vanilla's call " + ctx.loader()
-									+ "'s " + simple + " makes through the block's " + keeps + " instead, which Fabricated doesn't put back there, so it finds"
-									+ " nothing to hook, as before SEAM-3: " + kept.describe(ctx.loader(), "vanilla's calls") + " (SEAM-3)");
+									+ "'s " + simple + " makes through " + seam.through() + " instead, which Fabricated doesn't put back there, so it finds"
+									+ " nothing to hook, as before " + seam.finding() + ": " + kept.describe(ctx.loader(), "vanilla's calls") + " (" + seam.finding() + ")");
 							continue;
 						}
 						seamNote(ctx, method, target.name, "@" + PreflightAsm.simpleName(ann.desc) + " " + method.name + " hooks " + call + " in " + in
-								+ ", vanilla's call " + ctx.loader() + "'s " + simple + " makes through the block's " + keeps + " instead; Fabricated puts it back"
-								+ " there for the blocks keeping that method's default, so the hook applies to their breaking, and a block overriding it breaks as "
-								+ ctx.loader() + " has it, without the hook (SEAM-3)");
+								+ ", vanilla's call " + ctx.loader() + "'s " + simple + " makes through " + seam.through() + " instead; " + seam.note()
+								+ " (" + seam.finding() + ")");
 						continue;
 					}
 					if (shadow ? !method.desc.equals(seam.desc()) || !method.name.equals(seam.name()) && !method.name.equals("shadow$" + seam.name())
@@ -1946,14 +1945,13 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * Why an injector at vanilla's call that the platform makes through its extension, and Fabricated doesn't put back,
-	 * stays out (SEAM-3, {@link VanillaSeams#callNotPutBack}); null for any other call.
+	 * Why an injector at vanilla's call that the platform makes otherwise, and Fabricated doesn't put back, stays out
+	 * (SEAM-3, SEAM-4, {@link VanillaSeams#callNotPutBack}); null for any other call.
 	 */
 	private String notPutBackHint(ClassNode target, MethodNode method, String rawTarget, Context ctx) {
 		MemberRef ref = rawTarget == null ? null : MemberRef.parse(ctx.resolve(rawTarget));
-		String how = ref == null || ref.fuzzy() || ref.owner() == null || ref.name() == null ? null
+		return ref == null || ref.fuzzy() || ref.owner() == null || ref.name() == null ? null
 				: VanillaSeams.callNotPutBack(target, method.name, method.desc, ref.owner(), ref.name());
-		return how == null ? null : how + ", which Fabricated doesn't put back there (SEAM-3).";
 	}
 
 	/** A selector's name and descriptor, as reports print it. */
