@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
@@ -17,6 +18,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
+import io.github.cmdralph.fabricated.core.report.KnownLimits;
 import io.github.cmdralph.fabricated.core.testutil.TestSources;
 
 /**
@@ -383,6 +385,89 @@ class RestoredSeamsTest {
 					+ " puts it back there for the items keeping that method's default, so the hook applies to their check, and an item overriding it (vanilla's"
 					+ " shears among them) is checked as " + loader + " has it, without the hook (SEAM-6)")), findings.toString());
 		}
+	}
+
+	/**
+	 * SEAM-8: a wrapper of vanilla's friction in a living entity's travel, as FrozenLib's, Artifacts' and Spell Engine's,
+	 * applies, and the class is rewritten for it, on NeoForge and on Forge 47 under SRG's names, its note saying how: the
+	 * block state's call, the same on both platforms, as the note names it.
+	 */
+	@Test
+	void aWrapperOfVanillasFrictionPutBackHasTheClassRewritten(@TempDir Path dir) throws Exception {
+		for (boolean forge47 : List.of(false, true)) {
+			Map<String, String> game = new HashMap<>(forge47 ? io.github.cmdralph.fabricated.core.bytecode.ExtensionCallsTest.forge47Sources()
+					: io.github.cmdralph.fabricated.core.bytecode.ExtensionCallsTest.neoForgeSources());
+			game.put("net/minecraft/server/level/ServerLevel.java", "package net.minecraft.server.level; public class ServerLevel { }");
+			String method = forge47 ? "m_7023_" : "travel", friction = (forge47 ? "m_49958_" : "getFriction") + "()F";
+			String wrap = " @WrapOperation(method = \"" + method + "\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/world/level/block/Block;" + friction + "\"))"
+					+ " private float friction(net.minecraft.world.level.block.Block block, Operation<Float> original) { return original.call(block); }";
+			List<PreflightFinding> findings = new java.util.ArrayList<>();
+			MixinPreflight preflight = checked(dir.resolve("friction-" + forge47), game, "net.minecraft.world.entity.LivingEntity", wrap, null, true, Set.of(), findings,
+					new HashMap<>());
+			assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), findings.toString());
+			assertEquals(Set.of("net/minecraft/world/entity/LivingEntity"), preflight.restoredSeams());
+			assertTrue(findings.stream().anyMatch(f -> f.message().equals("@WrapOperation friction hooks Block." + friction + " in " + method + ", vanilla's call"
+					+ " NeoForge's LivingEntity makes through the block state's getFriction(level, pos, entity) instead; Fabricated puts it back there for the blocks"
+					+ " keeping that method's default, so the hook applies to them, and a block overriding it is asked as the platform has it, without the hook"
+					+ " (SEAM-8)")), findings.toString());
+		}
+	}
+
+	/**
+	 * PRE-33: where vanilla's friction goes back before the platform's store of it, the branches meet before that store, so
+	 * Forge's Mixin, as pre-flight reads it, keeps the stored local from the store on, no frame of the rewrite's after it
+	 * (Apoli's slipperiness hook after the friction in Forge 52's travel, which PRE-30's repair names by that local's slot,
+	 * found the slot untold once a frame of the rewrite's followed the store). Vanilla's branch stores the friction too.
+	 */
+	@Test
+	void theFrictionsStoreKeepsItsLocalWhereVanillasCallIsPutBack(@TempDir Path dir) throws Exception {
+		for (boolean forge47 : List.of(false, true)) {
+			Map<String, String> game = forge47 ? io.github.cmdralph.fabricated.core.bytecode.ExtensionCallsTest.forge47Sources()
+					: io.github.cmdralph.fabricated.core.bytecode.ExtensionCallsTest.neoForgeSources();
+			Map<String, byte[]> classes = TestSources.compileWithLocals(dir.resolve("kept-" + forge47), game);
+			String living = "net/minecraft/world/entity/LivingEntity";
+			org.objectweb.asm.tree.ClassNode node = new org.objectweb.asm.tree.ClassNode();
+			// As Mixin reads the class: its frames compressed.
+			new org.objectweb.asm.ClassReader(VanillaSeams.over(classes::get).read(living)).accept(node, 0);
+			org.objectweb.asm.tree.MethodNode travel = node.methods.stream().filter(m -> m.name.equals(forge47 ? "m_7023_" : "travel")).findFirst().orElseThrow();
+			int stores = 0;
+			for (org.objectweb.asm.tree.AbstractInsnNode insn : travel.instructions) {
+				if (!(insn instanceof org.objectweb.asm.tree.VarInsnNode store) || store.getOpcode() != org.objectweb.asm.Opcodes.FSTORE) continue;
+				stores++;
+				org.objectweb.asm.tree.AbstractInsnNode next = store.getNext();
+				while (next.getOpcode() < 0) next = next.getNext();
+				assertEquals("F", MixinPreflight.keptLocalTypes(travel, living, travel.instructions.indexOf(next))[store.var], (forge47 ? "Forge 47 " : "")
+						+ "store at " + travel.instructions.indexOf(store));
+			}
+			assertEquals(2, stores, "vanilla's branch's store and the platform's");
+		}
+	}
+
+	/**
+	 * SEAM-8: a wrapper of vanilla's sweep box in doSweepAttack, which NeoForge 21.11 on keeps and never calls, making the
+	 * box in attack for an overload of its own: the hook applies, and pre-flight's note says it never runs, which the known
+	 * limits read on NeoForge.
+	 */
+	@Test
+	void aHookInVanillasSweepAttackNeoForgeNeverCallsIsNamed(@TempDir Path dir) throws Exception {
+		Map<String, String> game = new HashMap<>(io.github.cmdralph.fabricated.core.bytecode.ExtensionCallsTest.neoForge26Sources());
+		game.put("net/minecraft/server/level/ServerLevel.java", "package net.minecraft.server.level; public class ServerLevel { }");
+		String wrap = " @WrapOperation(method = \"doSweepAttack\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/world/phys/AABB;inflate(DDD)"
+				+ "Lnet/minecraft/world/phys/AABB;\")) private net.minecraft.world.phys.AABB sweep(net.minecraft.world.phys.AABB box, double x, double y,"
+				+ " double z, Operation<net.minecraft.world.phys.AABB> original) { return original.call(box, x, y, z); }";
+		List<PreflightFinding> findings = new java.util.ArrayList<>();
+		MixinPreflight preflight = checked(dir, game, "net.minecraft.world.entity.player.Player", wrap, null, true, Set.of(), findings, new HashMap<>());
+		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), findings.toString());
+		assertTrue(preflight.restoredSeams().isEmpty(), "nothing is put back for it");
+		PreflightFinding note = findings.stream().filter(f -> f.message().contains("never calls")).findFirst().orElseThrow(() -> new AssertionError(findings));
+		assertEquals(Severity.INFO, note.severity());
+		assertEquals("@WrapOperation sweep applies in doSweepAttack(Lnet/minecraft/world/entity/Entity;FLjava/lang/Object;F)Ljava/lang/String;, vanilla's"
+				+ " method, which NeoForge's Player never calls: it makes the sweep attack's box in attack through the stack's getSweepHitBox(player, target)"
+				+ " and hands it to an overload of doSweepAttack of its own, so the hook never runs; Fabricated doesn't put vanilla's call back there"
+				+ " (SEAM-8)", note.message());
+		assertEquals("Known limit: NeoForge makes the sweep attack's box in attack, for an overload of doSweepAttack of its own, so hooks in vanilla's"
+				+ " doSweepAttack apply there but never run (SEAM-8)", KnownLimits.ofFinding("NeoForge", note));
+		assertNull(KnownLimits.ofFinding("Forge", note));
 	}
 
 	/**

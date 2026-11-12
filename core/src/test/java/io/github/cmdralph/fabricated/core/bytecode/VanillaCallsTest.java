@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.bytecode;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Constructor;
@@ -413,20 +414,30 @@ public class VanillaCallsTest {
 			Object player = loader.loadClass("net.minecraft.server.level.ServerPlayer").getConstructor().newInstance();
 			destroy(loader, gameMode, gameMode.getConstructors()[0].newInstance(level, player, false));
 		}
-		assertEquals(Map.of("net.minecraft.world.level.block.state.BlockState", false, block, false, "com.example.Overriding", true,
-				"com.example.Unreadable", true), known(gameMode, "fabricated$overriding"));
+		Map<String, Boolean> breaks = Map.of("net.minecraft.world.level.block.state.BlockState", false, block, false, "com.example.Overriding", true,
+				"com.example.Unreadable", true);
+		assertEquals(breaks, known(gameMode, "fabricated$overriding", breaks.keySet()));
 		// Each extension's answers are kept apart: the overriding block keeps canHarvestBlock's default.
-		assertEquals(Map.of("net.minecraft.world.level.block.state.BlockState", false, block, false, "com.example.Overriding", false,
-				"com.example.Unreadable", true), known(gameMode, "fabricated$overridingHarvest"));
+		Map<String, Boolean> harvests = Map.of("net.minecraft.world.level.block.state.BlockState", false, block, false, "com.example.Overriding", false,
+				"com.example.Unreadable", true);
+		assertEquals(harvests, known(gameMode, "fabricated$overridingHarvest", harvests.keySet()));
 		assertEquals(List.of("hooked", "hooked"), ((List<?>) loader.loadClass("com.example.Hook").getField("LOG").get(null)).stream().filter("hooked"::equals).toList());
 	}
 
-	/** The answers a rewritten class keeps in its field, by the class asked of. */
-	private static Map<String, Boolean> known(Class<?> owner, String name) throws Exception {
+	/**
+	 * The answers a rewritten class keeps in its field (a ClassValue, each class's slot holding its answer once asked), for
+	 * the classes named; one never asked of has none.
+	 */
+	private static Map<String, Boolean> known(Class<?> owner, String name, Set<String> types) throws Exception {
 		java.lang.reflect.Field field = owner.getDeclaredField(name);
 		field.setAccessible(true);
+		ClassValue<?> store = (ClassValue<?>) field.get(null);
 		Map<String, Boolean> known = new HashMap<>();
-		((Map<?, ?>) field.get(null)).forEach((type, overrides) -> known.put(((Class<?>) type).getName(), (Boolean) overrides));
+		for (String type : types) {
+			Object answer = ((Object[]) store.get(Class.forName(type, false, owner.getClassLoader())))[0];
+			if (answer != null) known.put(type, (Boolean) answer);
+		}
+		assertNull(((Object[]) store.get(Object.class))[0], "a class never asked of has no answer");
 		return known;
 	}
 
