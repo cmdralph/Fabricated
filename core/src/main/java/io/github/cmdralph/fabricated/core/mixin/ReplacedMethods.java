@@ -212,24 +212,14 @@ final class ReplacedMethods extends PreflightPart {
 	 * vanilla's doesn't; Forge's {@code addEntitiesToWorld} returns once at its end, as vanilla's {@code placeEntities}.
 	 */
 	private static boolean returnsAlike(MethodNode vanilla, MethodNode platform) {
-		List<Integer> was = returns(vanilla);
-		List<Integer> now = returns(platform);
+		List<Integer> was = PreflightAsm.returns(vanilla);
+		List<Integer> now = PreflightAsm.returns(platform);
 		PatchAlignment alignment = was.size() == now.size() ? PatchAlignment.of(vanilla, platform) : null;
 		if (alignment == null) return false;
 		for (int k = 0; k < was.size(); k++) {
 			if (alignment.placeOf(was.get(k)) != now.get(k)) return false;
 		}
 		return true;
-	}
-
-	/** The indices of a method's return instructions. */
-	private static List<Integer> returns(MethodNode method) {
-		List<Integer> returns = new ArrayList<>();
-		for (int i = 0; i < method.instructions.size(); i++) {
-			int op = method.instructions.get(i).getOpcode();
-			if (op >= Opcodes.IRETURN && op <= Opcodes.RETURN) returns.add(i);
-		}
-		return returns;
 	}
 
 	/** How the handler gets vanilla's parameters: none where it takes the callback info alone; null where they can't be worked out. */

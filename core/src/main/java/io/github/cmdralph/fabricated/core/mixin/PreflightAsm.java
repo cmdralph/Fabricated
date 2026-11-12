@@ -177,6 +177,16 @@ final class PreflightAsm {
 		return null;
 	}
 
+	/** The indices of a method's return instructions. */
+	static List<Integer> returns(MethodNode method) {
+		List<Integer> returns = new ArrayList<>();
+		for (int i = 0; i < method.instructions.size(); i++) {
+			int op = method.instructions.get(i).getOpcode();
+			if (op >= Opcodes.IRETURN && op <= Opcodes.RETURN) returns.add(i);
+		}
+		return returns;
+	}
+
 	/** Whether {@code method} is marked deprecated. */
 	static boolean deprecated(MethodNode method) {
 		return (method.access & Opcodes.ACC_DEPRECATED) != 0 || Annotations.find(method, "Ljava/lang/Deprecated;") != null;

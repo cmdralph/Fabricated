@@ -171,8 +171,12 @@ final class CallRepairs extends PreflightPart {
 	 * takes every match, is pinned to vanilla's where vanilla's code has one and the patch adds others on the same path
 	 * ({@link #onOnePath}): the hook would run at each, more than once where vanilla runs it once (VANILLA-4: Forge 52's
 	 * {@code Gui} constructor reads {@code layers} again to resolve Forge's layers, and Apoli's hook at that read added its
-	 * HUD twice). A point inside a slice, or a target method vanilla doesn't declare, is left as it is. Returns a
-	 * description of each change.
+	 * HUD twice). A {@code RETURN} point picked by ordinal, where the patch adds returns and each of vanilla's keeps one
+	 * of its own, is pointed at the return in the place of vanilla's (VANILLA-5: Forge's {@code destroyBlock} returns
+	 * where the held item's {@code onBlockStartBreak} says so, before vanilla's creative and survival returns, which
+	 * Apoli's break action picks); where the patch merges a return of vanilla's with another, a hook there would run on
+	 * both paths, and the point stays. A point inside a slice, or a target method vanilla doesn't declare, is left as it
+	 * is. Returns a description of each change.
 	 */
 	List<String> vanillaPointRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
@@ -188,6 +192,26 @@ final class CallRepairs extends PreflightPart {
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : ats) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (point.equals("RETURN") && Annotations.value(at, "ordinal") instanceof Integer ordinal) {
+				List<Integer> inVanilla = PreflightAsm.returns(before), here = PreflightAsm.returns(patched);
+				if (ordinal >= inVanilla.size() || here.size() <= inVanilla.size()) continue;
+				if (alignment == null) alignment = PatchAlignment.of(before, patched);
+				if (alignment == null) return moved;
+				// Only where none of vanilla's returns is gone or shares one here: one the patch merges with another runs on its path too.
+				// A return the alignments disagree on (the same instructions as another's) tells nothing of that.
+				Set<Integer> taken = new HashSet<>();
+				boolean merged = false;
+				for (int vanillaReturn : inVanilla) {
+					int place = alignment.placeOf(vanillaReturn);
+					merged |= place == -1 || place >= 0 && !taken.add(place);
+				}
+				int now = here.indexOf(alignment.placeOf(inVanilla.get(ordinal)));
+				if (merged || now < 0 || now == ordinal) continue;
+				Annotations.put(at, "ordinal", now);
+				moved.add("the return with ordinal " + ordinal + " in vanilla's code, which has ordinal " + now + " in this game build, as " + loader
+						+ "'s patches add returns before it; the injection point is pointed there");
+				continue;
+			}
 			if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)) continue;
 			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));

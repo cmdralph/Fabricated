@@ -4205,6 +4205,121 @@ class MixinPreflightTest {
 		}
 	}
 
+	@Test
+	void returnsPickedByOrdinalAreReadAgainstVanillasCode() throws Exception {
+		// VANILLA-5: as Forge's destroyBlock, which returns where the held item's onBlockStartBreak says so, before
+		// vanilla's creative and survival returns: Apoli's break action, at vanilla's returns 3 and 4, ran at Forge's
+		// restricted return and at the creative one. A patch keeping vanilla's returns, one merging vanilla's creative return
+		// into the last (as Forge 52's MushroomBlock.canSurvive returns once where vanilla's returns twice), with or without
+		// returns added, and no vanilla code, leave them.
+		Map<String, byte[]> vanilla = Map.of(TARGET, returnsLikeDestroyBlock(false, false, false, false));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Returns", mixin("com/example/mixin/Returns", false, cw -> {
+			for (int ordinal : new int[] {0, 3, 4}) {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "atReturn" + ordinal, "(" + CIR + ")V", null, null);
+				AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, "tick");
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", "RETURN");
+				at.visit("ordinal", ordinal);
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visitEnd();
+				mv.visitEnd();
+			}
+		})));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Returns"));
+		// added, a second added, merged
+		for (boolean[] shape : new boolean[][] {{true, false, false}, {false, false, false}, {false, false, true}, {true, true, true}}) {
+			ClassIndex platform = new ClassIndex(Map.of(TARGET, returnsLikeDestroyBlock(true, shape[0], shape[1], shape[2]))::get);
+			for (boolean withVanilla : new boolean[] {true, false}) {
+				List<PreflightFinding> notes = new ArrayList<>();
+				Map<String, byte[]> repaired = new MixinPreflight(platform, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true,
+						withVanilla ? vanilla::get : ClassBytesSource.EMPTY).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+				String what = "added " + shape[0] + ", a second " + shape[1] + ", merged " + shape[2] + ", vanilla's code " + withVanilla;
+				Map<String, Object> ordinals = new HashMap<>();
+				byte[] data = repaired.get("com/example/mixin/Returns.class");
+				ClassNode node = new ClassNode();
+				new ClassReader(data != null ? data : mod.get("com/example/mixin/Returns")).accept(node, 0);
+				for (MethodNode m : node.methods) {
+					AnnotationNode inject = Annotations.find(m, INJECT);
+					if (inject != null) ordinals.put(m.name, Annotations.value(Annotations.list(Annotations.value(inject, "at")).getFirst(), "ordinal"));
+				}
+				if (!shape[0] || shape[2] || !withVanilla) {
+					assertTrue(notes.stream().noneMatch(n -> n.message().contains("in vanilla's code")), what + ": " + notes);
+					assertEquals(Map.of("atReturn0", 0, "atReturn3", 3, "atReturn4", 4), ordinals, what);
+					continue;
+				}
+				assertEquals(2, notes.size(), what + ": " + notes);
+				assertTrue(notes.stream().allMatch(n -> n.message().contains("in vanilla's code")), notes.toString());
+				assertEquals(Map.of("atReturn0", 0, "atReturn3", 4, "atReturn4", 5), ordinals, "vanilla's creative and survival returns, after the patch's");
+			}
+		}
+	}
+
+	/**
+	 * Game class: {@code tick()Z} as the server's {@code destroyBlock}: it returns false where {@code check(0)},
+	 * {@code check(1)} or {@code check(2)} says so, true where {@code check(3)} does (the creative return) and true at its
+	 * end. With {@code patched} the first check is {@code event()}, as Forge's break event takes the item's check's
+	 * place; with {@code added} it returns false after the second where {@code started()} says so, as Forge's
+	 * {@code onBlockStartBreak}, and with {@code second} after it where {@code other()} does; with {@code merged} the
+	 * creative branch goes to the last return.
+	 */
+	private static byte[] returnsLikeDestroyBlock(boolean patched, boolean added, boolean second, boolean merged) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()Z", null, null);
+		tick.visitCode();
+		Label last = new Label();
+		for (int i = 0; i < 4; i++) {
+			for (String check : patched && i == 2 ? List.of(added ? "started" : "", second ? "other" : "") : List.<String>of()) {
+				if (check.isEmpty()) continue;
+				Label next = new Label();
+				tick.visitVarInsn(Opcodes.ALOAD, 0);
+				tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, check, "()Z", false);
+				tick.visitJumpInsn(Opcodes.IFEQ, next);
+				tick.visitInsn(Opcodes.ICONST_0);
+				tick.visitInsn(Opcodes.IRETURN);
+				tick.visitLabel(next);
+			}
+			Label next = new Label();
+			tick.visitVarInsn(Opcodes.ALOAD, 0);
+			if (patched && i == 0) {
+				tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "event", "()Z", false);
+			} else {
+				tick.visitInsn(Opcodes.ICONST_0 + i);
+				tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "check", "(I)Z", false);
+			}
+			tick.visitJumpInsn(Opcodes.IFEQ, next);
+			tick.visitInsn(i == 3 ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
+			if (merged && i == 3) {
+				tick.visitJumpInsn(Opcodes.GOTO, last);
+			} else {
+				tick.visitInsn(Opcodes.IRETURN);
+			}
+			tick.visitLabel(next);
+		}
+		tick.visitVarInsn(Opcodes.ALOAD, 0);
+		tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "done", "()V", false);
+		tick.visitInsn(Opcodes.ICONST_1);
+		tick.visitLabel(last);
+		tick.visitInsn(Opcodes.IRETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		for (String name : List.of("check(I)Z", "event()Z", "started()Z", "other()Z", "done()V")) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, name.substring(0, name.indexOf('(')), name.substring(name.indexOf('(')), null, null);
+			mv.visitCode();
+			if (name.endsWith("Z")) mv.visitInsn(Opcodes.ICONST_0);
+			mv.visitInsn(name.endsWith("Z") ? Opcodes.IRETURN : Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
 	/**
 	 * Game class: {@code tick()} calls {@code helper(0)} and {@code done()}; with {@code patched} it calls {@code helper(5)}
 	 * after them, as a patch adds a call at a method's end (behind a jump over it with {@code branch}).
