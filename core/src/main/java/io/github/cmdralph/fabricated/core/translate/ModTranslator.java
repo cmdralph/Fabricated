@@ -753,10 +753,14 @@ public final class ModTranslator {
 			Set<String> askPlugin = new TreeSet<>();
 			if (!override.ignorePreflight()) {
 				Set<String> chosen = skip;
-				List<PreflightFinding> checked = new ArrayList<>(relocated.relocated(preflight.check(entry.config(), config, refmap, skip)));
+				// Mixins using an unsupported module's classes go before the check, which then takes them as skipped.
+				List<PreflightFinding> unsupported = unsupportedModuleUses(entry.config(), config, skip, translated);
+				Set<String> checking = new TreeSet<>(skip);
+				for (PreflightFinding f : unsupported) checking.add(relativeMixin(config, f.mixin()));
+				List<PreflightFinding> checked = new ArrayList<>(relocated.relocated(preflight.check(entry.config(), config, refmap, checking)));
 				// Their targets are library classes, which Mixin never applies them to: the generated classes stand in.
 				checked.removeIf(f -> servedAccessors.contains(f.mixin()));
-				checked.addAll(unsupportedModuleUses(entry.config(), config, skip, translated));
+				checked.addAll(unsupported);
 				findings.addAll(checked);
 				// As Mixin does with an injector that may fail: only the failing handler goes, the rest of the mixin
 				// (its interfaces, accessors and other injectors) still applies.
@@ -769,6 +773,20 @@ public final class ModTranslator {
 				}
 				for (String whole : leaveOutHandlers(entry.config(), handlers, true, translated, overlay, findings)) leftOut.add(relativeMixin(config, whole));
 				if (leftOut.size() > skip.size()) skip = withDependents(entry.config(), config, leftOut, translated, findings, served(ducks, adapted));
+				// What goes whole after the check, pre-flight takes as gone too: nothing rewritten for its hooks, and the
+				// injectors reading what it shares leave with it (SHARE-2), which may leave more out in turn.
+				for (List<PreflightFinding> more = leftOutAfterCheck(preflight, relocated, config, skip); !more.isEmpty();
+						more = leftOutAfterCheck(preflight, relocated, config, skip)) {
+					findings.addAll(more);
+					checked.addAll(more);
+					Map<String, Set<String>> going = new TreeMap<>();
+					for (PreflightFinding f : more) going.computeIfAbsent(f.mixin().replace('.', '/') + ".class", k -> new TreeSet<>()).add(f.handler());
+					Set<String> grown = new TreeSet<>(skip);
+					for (String whole : leaveOutHandlers(entry.config(), going, true, translated, overlay, findings)) {
+						if (config.allMixins().contains(relativeMixin(config, whole))) grown.add(relativeMixin(config, whole));
+					}
+					if (grown.size() > skip.size()) skip = withDependents(entry.config(), config, grown, translated, findings, served(ducks, adapted));
+				}
 				String plugin = observedPlugin(config, translated);
 				if (plugin != null && checked.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
 					Set<String> asked = new TreeSet<>(observedPlugins.getOrDefault(plugin, Set.of()));
@@ -847,8 +865,8 @@ public final class ModTranslator {
 		}
 		installedClasses.putAll(preflight.installedClasses());
 		widened.addAll(preflight.accessTransformers());
-		// A hook another config's check left out (SHARE-2) applies to nothing put back.
-		MixinPreflight.withoutSeamNotesOfLeftOut(findings);
+		// A hook left out after its config's check (SHARE-2, a mixin translation left out whole) applies to nothing put back.
+		preflight.withoutSeamNotesOfLeftOut(findings);
 		seams.addAll(preflight.restoredSeams());
 		Set<String> written = new TreeSet<>(override.skipMixins());
 		written.removeAll(plannedSkips);
@@ -990,6 +1008,11 @@ public final class ModTranslator {
 			}
 		}
 		return out;
+	}
+
+	/** {@link MixinPreflight#leftOutAfterCheck} of the config's mixins left out whole, {@code skip}, as the mod names them. */
+	private static List<PreflightFinding> leftOutAfterCheck(MixinPreflight preflight, RelocatedMixinExtras relocated, MixinConfigFile config, Set<String> skip) {
+		return relocated.relocated(preflight.leftOutAfterCheck(skip.stream().map(m -> config.internalName(m).replace('/', '.')).toList()));
 	}
 
 	/**

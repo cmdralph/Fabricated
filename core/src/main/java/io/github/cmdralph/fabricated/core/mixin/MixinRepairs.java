@@ -81,7 +81,8 @@ final class MixinRepairs extends PreflightPart {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Map.of(), Set.of(), out, null, loader);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Map.of(), Set.of(), out, null, loader,
+					new java.util.HashSet<>());
 			boolean changed = false;
 			// First, as it takes the constructor from the mixin parsed again.
 			List<String> outlined = restrictsInitialisers ? Initialisers.outline(node, () -> modClasses.readNode(internal, ClassReader.EXPAND_FRAMES)) : List.of();
@@ -1410,7 +1411,8 @@ final class MixinRepairs extends PreflightPart {
 	/** Whether pre-flight finds nothing but notes in {@code mixin} against {@code target}. */
 	private boolean fits(ClassNode mixin, ClassNode target, Context ctx) {
 		List<PreflightFinding> found = new ArrayList<>();
-		checker.checkMembers(mixin, target, new Context(ctx.configName(), ctx.mixinDotted(), ctx.config(), ctx.refmap(), false, false, false, Map.of(), Set.of(), found, null, loader));
+		checker.checkMembers(mixin, target, new Context(ctx.configName(), ctx.mixinDotted(), ctx.config(), ctx.refmap(), false, false, false, Map.of(), Set.of(), found, null,
+				loader, new java.util.HashSet<>()));
 		return found.stream().allMatch(f -> f.severity() == Severity.INFO);
 	}
 }

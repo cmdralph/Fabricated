@@ -619,6 +619,71 @@ class PipelineTest {
 	 * finds nothing, as before SEAM-1, the class isn't rewritten, and the report names the native mixin. Where the native
 	 * mod's mixin hooks only what stays, they are put back; a cached translation is redone when that decision changes.
 	 */
+	/**
+	 * Mixins translation leaves out whole besides pre-flight's own leaving out are out for the seams too (SEAM-1,
+	 * SEAM-3): one using a class of an unsupported Fabric API module goes before the check, one using the interface only
+	 * that one adds goes after it. Nothing is rewritten for their hooks, nor noted as applying, and the injectors of the
+	 * mod's other mixins reading a local either sets go with them (SHARE-2).
+	 */
+	@Test
+	void mixinsLeftOutWholeAroundTheCheckTakeTheirSeamsAndSharesWithThem(@TempDir Path game, @TempDir Path src) throws Exception {
+		String resolver = "net/minecraft/world/level/block/piston/PistonStructureResolver";
+		Map<String, String> gameSources = Map.of(
+				"net/minecraft/world/level/block/state/BlockState.java", "package net.minecraft.world.level.block.state; public class BlockState {"
+						+ " public boolean isStickyBlock() { return false; } }",
+				resolver + ".java", "package net.minecraft.world.level.block.piston; import net.minecraft.world.level.block.state.BlockState;"
+						+ " public class PistonStructureResolver { public boolean resolve(BlockState s) { return s.isStickyBlock(); } }");
+		Map<String, String> stubs = Map.of(
+				"org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); }",
+				"org/spongepowered/asm/mixin/injection/Inject.java", "package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); }",
+				"org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable.java", "package org.spongepowered.asm.mixin.injection.callback; public class CallbackInfoReturnable<R> { }",
+				"com/llamalad7/mixinextras/sugar/Share.java", "package com.llamalad7.mixinextras.sugar; public @interface Share { String value(); String namespace() default \"\"; }",
+				"com/llamalad7/mixinextras/sugar/ref/LocalRef.java", "package com.llamalad7.mixinextras.sugar.ref; public interface LocalRef<T> { T get(); void set(T value); }",
+				"net/fabricmc/fabric/api/renderer/v1/Renderer.java", "package net.fabricmc.fabric.api.renderer.v1; public interface Renderer { }",
+				"com/sticky/Duck.java", "package com.sticky; public interface Duck { }");
+		String imports = " import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.injection.*; import org.spongepowered.asm.mixin.injection.callback.*;"
+				+ " import com.llamalad7.mixinextras.sugar.*; import com.llamalad7.mixinextras.sugar.ref.*; import net.minecraft.world.level.block.state.BlockState;"
+				+ " import net.minecraft.world.level.block.piston.PistonStructureResolver;";
+		java.util.function.BiFunction<String, String, String> hook = (name, body) -> " @Inject(method = \"isSticky\", at = @At(\"HEAD\")) private static void " + name
+				+ "(BlockState s, CallbackInfoReturnable<Boolean> cir, @Share(value = \"" + body.substring(0, 1) + "\", namespace = \"sticky\") LocalRef<Object> shared) {"
+				+ body.substring(1) + " }";
+		Map<String, String> mixins = Map.of(
+				// Uses the unsupported renderer API, and adds the mod's Duck to the resolver; sets x.
+				"com/sticky/mixin/Breaking.java", "package com.sticky.mixin;" + imports + " @Mixin(PistonStructureResolver.class) public abstract class Breaking"
+						+ " implements com.sticky.Duck {" + hook.apply("breaking", "x shared.set(s);")
+						+ " private static void render(net.fabricmc.fabric.api.renderer.v1.Renderer renderer) { } }",
+				// Uses Duck, which only Breaking adds; sets y.
+				"com/sticky/mixin/Middle.java", "package com.sticky.mixin;" + imports + " @Mixin(PistonStructureResolver.class) public abstract class Middle {"
+						+ hook.apply("middle", "y shared.set(s); if ((Object) s instanceof com.sticky.Duck) { }") + " }",
+				"com/sticky/mixin/ReaderX.java", "package com.sticky.mixin;" + imports + " @Mixin(PistonStructureResolver.class) public abstract class ReaderX {"
+						+ hook.apply("readX", "x shared.get();") + " }",
+				"com/sticky/mixin/ReaderY.java", "package com.sticky.mixin;" + imports + " @Mixin(PistonStructureResolver.class) public abstract class ReaderY {"
+						+ hook.apply("readY", "y shared.get();") + " }");
+		Map<String, byte[]> gameClasses = TestSources.compile(src.resolve("game"), gameSources);
+		Map<String, byte[]> classes = TestSources.compile(src.resolve("fabric"), TestSources.MIXIN_ANNOTATIONS, stubs, gameSources, mixins);
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path renderer = TestJars.create().fabricModJson(TestJars.modJson("fabric-renderer-api-v1", "1.0", ""))
+				.bytes("net/fabricmc/fabric/api/renderer/v1/Renderer.class", classes.get("net/fabricmc/fabric/api/renderer/v1/Renderer"))
+				.write(mods.resolve("fabric-renderer-api-v1.jar"));
+		TestJars jar = TestJars.create().fabricModJson(TestJars.modJson("sticky", "1.0", "\"mixins\":[\"sticky.mixins.json\"]"))
+				.text("sticky.mixins.json", "{\"required\":false,\"package\":\"com.sticky.mixin\",\"mixins\":[\"Breaking\",\"Middle\",\"ReaderX\",\"ReaderY\"],"
+						+ "\"injectors\":{\"defaultRequire\":1}}")
+				.bytes("com/sticky/Duck.class", classes.get("com/sticky/Duck"));
+		for (String mixin : List.of("Breaking", "Middle", "ReaderX", "ReaderY")) jar.bytes("com/sticky/mixin/" + mixin + ".class", classes.get("com/sticky/mixin/" + mixin));
+		Path sticky = jar.write(mods.resolve("sticky.jar"));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(renderer, sticky), Namespace.OFFICIAL, gameClasses, null, List.of()));
+		String report = result.report().render();
+		assertEquals(Set.of(), result.restoredSeams(), report);
+		assertFalse(report.contains("Fabricated puts it back there"), report);
+		assertTrue(report.contains("[sticky.mixins.json com.sticky.mixin.Breaking] uses net.fabricmc.fabric.api.renderer.v1.Renderer from fabric-renderer-api-v1"), report);
+		assertTrue(report.contains("[sticky.mixins.json com.sticky.mixin.Middle] also left out: it uses com.sticky.Duck, which only the skipped mixin Breaking adds"), report);
+		assertTrue(report.contains("[sticky.mixins.json com.sticky.mixin.ReaderX] The injector of readX"), report);
+		assertTrue(report.contains("goes with that of com.sticky.mixin.Breaking.breaking("), report);
+		assertTrue(report.contains("[sticky.mixins.json com.sticky.mixin.ReaderY] The injector of readY"), report);
+		assertTrue(report.contains("goes with that of com.sticky.mixin.Middle.middle("), report);
+	}
+
 	@Test
 	void vanillaMethodsArentPutBackWhereANativeModsMixinHooksThePlatformsCode(@TempDir Path game, @TempDir Path src) throws Exception {
 		String resolver = "net/minecraft/world/level/block/piston/PistonStructureResolver";

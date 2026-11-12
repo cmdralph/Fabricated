@@ -69,6 +69,15 @@ class RestoredSeamsTest {
 
 	private static MixinPreflight breaking(Path dir, Map<String, String> gameSources, String members, List<PreflightFinding> findings, Map<String, byte[]> classes)
 			throws Exception {
+		return breaking(dir, gameSources, members, null, true, Set.of(), findings, classes);
+	}
+
+	/**
+	 * As {@link #breaking(Path, String, List)}, with a second mixin of the class, {@code Reader} ({@code reader} its members,
+	 * null for none), a config that is or isn't required, and the mixins {@code skip} leaves out.
+	 */
+	private static MixinPreflight breaking(Path dir, Map<String, String> gameSources, String members, String reader, boolean required, Set<String> skip,
+			List<PreflightFinding> findings, Map<String, byte[]> classes) throws Exception {
 		Map<String, String> sources = new HashMap<>(gameSources);
 		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); String target() default \"\";"
 				+ " int ordinal() default -1; }");
@@ -87,16 +96,73 @@ class RestoredSeamsTest {
 				+ " import org.spongepowered.asm.mixin.injection.callback.*; import com.llamalad7.mixinextras.sugar.*; import com.llamalad7.mixinextras.sugar.ref.*;"
 				+ " import com.llamalad7.mixinextras.injector.wrapoperation.*; import net.minecraft.core.BlockPos; import net.minecraft.server.level.*;"
 				+ " @Mixin(ServerPlayerGameMode.class) public abstract class Breaking {" + members + " }");
+		if (reader != null) {
+			sources.put("com/example/mixin/Reader.java", sources.get("com/example/mixin/Breaking.java").replace("class Breaking {" + members, "class Reader {" + reader));
+		}
 		classes.putAll(TestSources.compileWithLocals(dir, TestSources.MIXIN_ANNOTATIONS, sources));
 		ClassBytesSource game = VanillaSeams.over(classes::get);
 		MixinPreflight preflight = new MixinPreflight(new ClassIndex(game), InstalledClasses.NONE, classes::get, ClassBytesSource.EMPTY, false, true,
 				ClassBytesSource.EMPTY);
-		MixinConfigFile config = MixinConfigFile.parse("{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Breaking\"],"
-				+ "\"injectors\":{\"defaultRequire\":1}}");
-		preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), findings)
+		MixinConfigFile config = MixinConfigFile.parse("{\"required\":" + required + ",\"package\":\"com.example.mixin\",\"mixins\":[\"Breaking\""
+				+ (reader != null ? ",\"Reader\"" : "") + "],\"injectors\":{\"defaultRequire\":1}}");
+		preflight.repairs("test.mixins.json", config, Refmap.EMPTY, skip, findings)
 				.forEach((file, data) -> classes.put(file.substring(0, file.length() - ".class".length()), data));
-		findings.addAll(preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of()));
+		findings.addAll(preflight.check("test.mixins.json", config, Refmap.EMPTY, skip));
 		return preflight;
+	}
+
+	/**
+	 * A mixin out whole in other ways than the check's own leaving out is out for the seams too: no class is recorded for
+	 * its hook, its note goes, and the injectors reading a local it sets in another mixin go with it (SHARE-2). Skipped
+	 * before the check (as translation does a mixin using an unsupported module's class), rejected by Mixin as it applies
+	 * (a problem of the whole mixin in a config that isn't required: here, a wrapper missing an argument of the call), or
+	 * left out by translation after the check (a mixin using an interface only one left out adds).
+	 */
+	@Test
+	void aMixinOutWholeTakesItsSeamsAndItsSharesReadersWithIt(@TempDir Path dir) throws Exception {
+		String share = "@Share(value = \"removed\", namespace = \"test\") LocalRef<Object> removed";
+		String wrap = " @WrapOperation(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/server/level/ServerLevel;"
+				+ "removeBlock(Lnet/minecraft/core/BlockPos;Z)Z\")) private boolean removed(ServerLevel level, BlockPos pos, boolean moving,"
+				+ " Operation<Boolean> original, " + share + ") { removed.set(pos); return original.call(level, pos, moving); }";
+		String reader = " @Inject(method = \"destroyBlock\", at = @At(\"HEAD\")) private void read(BlockPos pos, CallbackInfoReturnable<Boolean> cir, "
+				+ share + ") { removed.get(); }";
+		Map<String, String> game = io.github.cmdralph.fabricated.core.bytecode.VanillaCallsTest.neoForgeSources();
+		String readHandler = "read(Lnet/minecraft/core/BlockPos;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;"
+				+ "Lcom/llamalad7/mixinextras/sugar/ref/LocalRef;)V";
+
+		// Both apply: the class is recorded for the wrapper.
+		List<PreflightFinding> applying = new java.util.ArrayList<>();
+		MixinPreflight both = breaking(dir.resolve("both"), game, wrap, reader, true, Set.of(), applying, new HashMap<>());
+		assertEquals(Set.of("net/minecraft/server/level/ServerPlayerGameMode"), both.restoredSeams(), applying.toString());
+		assertTrue(applying.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT), applying.toString());
+
+		// Skipped before the check.
+		List<PreflightFinding> skipped = new java.util.ArrayList<>();
+		assertEquals(Set.of(), breaking(dir.resolve("skipped"), game, wrap, reader, true, Set.of("Breaking"), skipped, new HashMap<>()).restoredSeams());
+		assertTrue(skipped.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && readHandler.equals(f.handler())
+				&& f.message().contains("goes with that of com.example.mixin.Breaking.removed(") && f.message().contains(", which is left out")), skipped.toString());
+		assertTrue(skipped.stream().noneMatch(f -> f.message().endsWith("(SEAM-3)")), skipped.toString());
+
+		// Rejected by Mixin: a wrapper missing the call's boolean, in a config that isn't required.
+		List<PreflightFinding> rejected = new java.util.ArrayList<>();
+		MixinPreflight rejecting = breaking(dir.resolve("rejected"), game, wrap.replace("BlockPos pos, boolean moving,", "BlockPos pos,")
+				.replace("original.call(level, pos, moving)", "original.call(level, pos)"), reader, false, Set.of(), rejected, new HashMap<>());
+		assertTrue(rejected.stream().anyMatch(f -> f.severity() == Severity.WARN && "com.example.mixin.Breaking".equals(f.mixin()) && f.handler() == null),
+				rejected.toString());
+		assertEquals(Set.of(), rejecting.restoredSeams(), rejected.toString());
+		assertTrue(rejected.stream().noneMatch(f -> f.message().endsWith("(SEAM-3)")), rejected.toString());
+		assertTrue(rejected.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && readHandler.equals(f.handler())), rejected.toString());
+
+		// Left out by translation after the check: its reader goes, returned to be left out in turn, and its note.
+		List<PreflightFinding> after = new java.util.ArrayList<>();
+		MixinPreflight later = breaking(dir.resolve("after"), game, wrap, reader, true, Set.of(), after, new HashMap<>());
+		List<PreflightFinding> more = later.leftOutAfterCheck(List.of("com.example.mixin.Breaking"));
+		assertEquals(List.of(readHandler), more.stream().filter(f -> f.severity() == Severity.LEFT_OUT).map(PreflightFinding::handler).toList(), more.toString());
+		assertEquals(List.of(), later.leftOutAfterCheck(List.of("com.example.mixin.Breaking")), "told once, it adds nothing again");
+		assertEquals(Set.of(), later.restoredSeams());
+		after.addAll(more);
+		later.withoutSeamNotesOfLeftOut(after);
+		assertTrue(after.stream().noneMatch(f -> f.message().endsWith("(SEAM-3)")), after.toString());
 	}
 
 	@Test

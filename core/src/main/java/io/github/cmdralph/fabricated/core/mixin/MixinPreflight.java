@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -83,8 +84,14 @@ public final class MixinPreflight extends PreflightPart {
 	private final ReplacedMethods replacedMethods;
 	/** The hooks of seams put back noted so far ({@link #noteRestoredSeams}), across the mod's configs. */
 	private final List<SeamNote> seamNotes = new ArrayList<>();
-	/** The injectors left out so far, across the mod's configs, as {@link #handlerKey}s. */
+	/**
+	 * The injectors left out so far, across the mod's configs, as {@link #handlerKey}s: those the checks leave out, the
+	 * mixins Mixin rejects whole ({@link #rejected}) and those translation leaves out after the check
+	 * ({@link #leftOutAfterCheck}).
+	 */
 	private final Set<String> leftOutHandlers = new HashSet<>();
+	/** The mixins (dotted) Mixin rejects whole as it applies them, their configs not required ({@link Context#classLevel}). */
+	private final Set<String> rejected = new HashSet<>();
 
 	/** A hook of a seam put back: its mixin, its handler, and the class to rewrite for it. */
 	private record SeamNote(String mixin, String handler, String target) {
@@ -289,7 +296,7 @@ public final class MixinPreflight extends PreflightPart {
 			ClassNode code = node != null && (!selfContained || addsFields) ? modClasses.readNode(internal, ClassReader.SKIP_FRAMES) : null;
 			Set<String> stateless = node == null || selfContained ? Set.of() : statelessHandlers(code);
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, selfContained, addsFields,
-					addsFields ? stateGroups(code) : Map.of(), stateless, out, null, loader);
+					addsFields ? stateGroups(code) : Map.of(), stateless, out, null, loader, rejected);
 			if (node == null) {
 				ctx.classLevel("Mixin class " + ctx.mixinDotted() + " listed in " + configName + " is missing from the mod jar",
 						"The mod jar is incomplete or corrupted; re-download it.");
@@ -307,6 +314,8 @@ public final class MixinPreflight extends PreflightPart {
 			ctx.leaveOutReadersOfSkippedCaptures(from, code, shares(node), () -> threadLocalShares(code != null ? code
 					: modClasses.readNode(internal, ClassReader.SKIP_FRAMES), modClassCache));
 		}
+		// A mixin Mixin rejects whole is out as one left out is.
+		for (String mixin : rejected) leftOutHandlers.add(handlerKey(mixin, null));
 		leaveOutNamespacedSharers(out, checked, skipped);
 		for (PreflightFinding f : out) {
 			if (f.severity() == Severity.LEFT_OUT && f.mixin() != null) leftOutHandlers.add(handlerKey(f.mixin(), f.handler()));
@@ -406,16 +415,39 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * Takes out the notes of hooks of seams put back ({@link #noteRestoredSeams}) whose injector the findings leave out, with
-	 * its mixin or alone: the hook doesn't apply, whatever was put back. A config's check does so for its own; translation,
-	 * for those a later config's leaves out (SHARE-2).
+	 * Takes out the notes of hooks of seams put back ({@link #noteRestoredSeams}) whose injector is out, with its mixin or
+	 * alone: by the findings, or with a mixin Mixin rejects or translation left out after the check. The hook doesn't
+	 * apply, whatever was put back. A config's check does so for its own; translation, once it has left out all it does.
 	 */
-	public static void withoutSeamNotesOfLeftOut(List<PreflightFinding> findings) {
+	public void withoutSeamNotesOfLeftOut(List<PreflightFinding> findings) {
 		Set<String> gone = new HashSet<>();
 		for (PreflightFinding f : findings) {
 			if (f.severity() == Severity.LEFT_OUT && f.mixin() != null) gone.add(handlerKey(f.mixin(), f.handler()));
 		}
+		// Whole mixins by their name, which a relocated MixinExtras doesn't change.
+		for (String key : leftOutHandlers) if (key.endsWith("#")) gone.add(key);
 		if (!gone.isEmpty()) findings.removeIf(f -> isSeamNote(f) && leftOut(gone, f.mixin(), f.handler()));
+	}
+
+	/**
+	 * The mixins (dotted) translation leaves out whole after their config's check: those using an interface only a mixin
+	 * left out adds, those left with accessors only. Nothing is rewritten for their hooks of seams, and those of the mod's
+	 * other mixins reading a local they may set go with them (SHARE-2), which this returns, for translation to leave out
+	 * in turn. A mixin it was told of before adds nothing again, so translation calls it again with what that leaves out
+	 * whole until it returns nothing.
+	 */
+	public List<PreflightFinding> leftOutAfterCheck(Collection<String> mixins) {
+		List<Sharer> from = new ArrayList<>();
+		for (String mixin : mixins) {
+			if (!leftOutHandlers.add(handlerKey(mixin, null))) continue;
+			for (Sharer s : sharers) {
+				if (s.mixin().equals(mixin) && goneSharers.add(s)) from.add(s);
+			}
+		}
+		List<PreflightFinding> out = new ArrayList<>();
+		goWith(out, from);
+		for (PreflightFinding f : out) leftOutHandlers.add(handlerKey(f.mixin(), f.handler()));
+		return out;
 	}
 
 	private static boolean isSeamNote(PreflightFinding f) {
@@ -780,9 +812,8 @@ public final class MixinPreflight extends PreflightPart {
 			goneSharers.addAll(skipped);
 			return;
 		}
-		ArrayDeque<Sharer> next = new ArrayDeque<>();
 		// The mod's injectors left out so far, this config's among them: earlier configs' meet this one's anew.
-		Set<String> gone = new HashSet<>();
+		Set<String> gone = new HashSet<>(leftOutHandlers);
 		for (PreflightFinding f : out) {
 			if (f.severity() == Severity.LEFT_OUT && f.mixin() != null) gone.add(handlerKey(f.mixin(), f.handler()));
 		}
@@ -790,7 +821,12 @@ public final class MixinPreflight extends PreflightPart {
 			if (leftOut(gone, s.mixin(), s.handler())) goneSharers.add(s);
 		}
 		goneSharers.addAll(skipped);
-		next.addAll(goneSharers);
+		goWith(out, goneSharers);
+	}
+
+	/** SHARE-2's walk from the injectors {@code from}, gone: those reading what they may set go, and in turn theirs. */
+	private void goWith(List<PreflightFinding> out, Collection<Sharer> from) {
+		ArrayDeque<Sharer> next = new ArrayDeque<>(from);
 		while (!next.isEmpty()) {
 			Sharer with = next.pop();
 			for (Sharer other : sharers) {
@@ -1035,16 +1071,18 @@ public final class MixinPreflight extends PreflightPart {
 	 * @param stateGroups   see {@link #stateGroups(ClassNode)}, for a self-contained mixin that adds fields
 	 * @param stateless     see {@link #statelessHandlers(ClassNode)}, for a mixin that isn't self-contained
 	 * @param owner         the installed mod the target belongs to, or {@code null} for a game class
+	 * @param rejected      where the mixin goes (dotted) when a problem of the whole mixin, in a config that isn't
+	 *                      required, makes Mixin reject it as it applies ({@link #classLevel})
 	 */
 	record Context(String configName, String mixinDotted, MixinConfigFile config, Refmap refmap, boolean hasPlugin,
 			boolean selfContained, boolean addsFields, Map<String, StateGroup> stateGroups, Set<String> stateless, List<PreflightFinding> out,
-			String owner, String loader) {
+			String owner, String loader, Set<String> rejected) {
 		String resolve(String selector) {
 			return refmap.resolve(mixinDotted.replace('.', '/'), selector);
 		}
 
 		Context withOwner(String owner) {
-			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, addsFields, stateGroups, stateless, out, owner, loader);
+			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, addsFields, stateGroups, stateless, out, owner, loader, rejected);
 		}
 
 		/** What changed the target since the mod was built: the loader or this Minecraft version, or this version of the mod. */
@@ -1058,9 +1096,13 @@ public final class MixinPreflight extends PreflightPart {
 			return owner == null ? loader : owner;
 		}
 
-		/** A problem that makes Mixin reject the whole mixin; fatal when the config is required, unless it can be left out. */
+		/**
+		 * A problem that makes Mixin reject the whole mixin; fatal when the config is required, unless it can be left out.
+		 * Where it isn't, Mixin goes on without the mixin, which is then as if left out ({@code rejected}).
+		 */
 		void classLevel(String message, String suggestion) {
 			out.add(new PreflightFinding(config.required() ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion));
+			if (!config.required()) rejected.add(mixinDotted);
 		}
 
 		/**
