@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.core.cache;
 
+import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
@@ -14,10 +16,12 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -293,6 +297,38 @@ public final class TranslationCache {
 		Path target = storeNested(data);
 		nestedIndex.put(parentSha + "!/" + entry, new NestedRef(nestedSha(target), launch));
 		return target;
+	}
+
+	/** A nested jar's bytes, written to the stream it is given ({@link #storeNested(Content, String, String)}). */
+	@FunctionalInterface
+	public interface Content {
+		void writeTo(OutputStream out) throws IOException;
+	}
+
+	/**
+	 * {@link #storeNested(byte[], String, String)} for a jar written to the cache as it is read, never held in memory whole
+	 * (a server bundler's game jar): hashed as it is written to a temporary file, which then becomes the stored jar unless
+	 * that is there already.
+	 */
+	public Path storeNested(Content content, String parentSha, String entry) throws IOException {
+		Path tmp = Files.createTempFile(root.resolve("tmp"), ".nested", ".tmp");
+		try {
+			MessageDigest digest = Hashing.sha256Digest();
+			try (OutputStream out = new DigestOutputStream(new BufferedOutputStream(Files.newOutputStream(tmp)), digest)) {
+				content.writeTo(out);
+			}
+			String sha = HexFormat.of().formatHex(digest.digest());
+			Path target = root.resolve("nested").resolve(sha + ".jar");
+			if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || (verify && !sha256(target).equals(sha))) {
+				AtomicFiles.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+				remember(target, sha);
+			}
+			lastUsed.put("nested/" + sha + ".jar", launch);
+			nestedIndex.put(parentSha + "!/" + entry, new NestedRef(sha, launch));
+			return target;
+		} finally {
+			deleteQuietly(tmp);
+		}
 	}
 
 	/**

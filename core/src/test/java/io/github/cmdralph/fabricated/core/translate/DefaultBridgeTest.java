@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -87,5 +90,55 @@ class DefaultBridgeTest {
 		add("mod/FabricExtension", true, "java/lang/Object", List.of(), "box" + BOX);
 		assertEquals(List.of(), bridges("game/Declaring", "mod/FabricExtension"), "the target declares the method itself");
 		assertEquals(List.of(), bridges("game/Absent", "mod/FabricExtension"), "an absent target");
+	}
+
+	/**
+	 * Bridges, and the methods of a mixin that would hide a default, are told from classes' access, supertypes and
+	 * members, never their code: translation reads the classes it asks these of without their code.
+	 */
+	@Test
+	void classesReadWithoutTheirCodeAnswerTheSame() {
+		Map<String, byte[]> files = Map.of(
+				"neo/Extension", compiled("neo/Extension", true, "java/lang/Object", List.of(), "box" + BOX),
+				"game/Base", compiled("game/Base", false, "java/lang/Object", List.of("neo/Extension"), "tick()V"),
+				"game/Thing", compiled("game/Thing", false, "game/Base", List.of(), "tick()V"),
+				"mod/FabricExtension", compiled("mod/FabricExtension", true, "java/lang/Object", List.of(), "box" + BOX));
+		for (int options : List.of(ClassReader.SKIP_FRAMES, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES)) {
+			java.util.function.Function<String, ClassNode> read = name -> {
+				byte[] data = files.get(name);
+				if (data == null) return null;
+				ClassNode node = new ClassNode();
+				new ClassReader(data).accept(node, options);
+				return node;
+			};
+			assertEquals(List.of(new DefaultBridge("game/Thing", "game/Base", "box", BOX)), DefaultBridge.of("game/Thing", List.of("mod/FabricExtension"), read));
+			ClassNode mixin = new ClassNode();
+			mixin.name = "mod/ThingMixin";
+			mixin.methods.add(new MethodNode(Opcodes.ACC_PRIVATE, "box", BOX, null, null));
+			assertEquals(List.of("box" + BOX), List.copyOf(HiddenDefaults.renames(mixin, List.of("game/Thing"), read).keySet()));
+		}
+	}
+
+	/** A class file (an interface when {@code itf}) whose methods ({@code name + descriptor}) have code returning a default. */
+	private static byte[] compiled(String name, boolean itf, String superName, List<String> interfaces, String... methods) {
+		ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		writer.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | (itf ? Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT : 0), name, null, superName,
+				interfaces.toArray(String[]::new));
+		for (String method : methods) {
+			int paren = method.indexOf('(');
+			String desc = method.substring(paren);
+			MethodVisitor code = writer.visitMethod(Opcodes.ACC_PUBLIC, method.substring(0, paren), desc, null, null);
+			code.visitCode();
+			if (desc.endsWith(")V")) {
+				code.visitInsn(Opcodes.RETURN);
+			} else {
+				code.visitInsn(Opcodes.ACONST_NULL);
+				code.visitInsn(Opcodes.ARETURN);
+			}
+			code.visitMaxs(0, 0);
+			code.visitEnd();
+		}
+		writer.visitEnd();
+		return writer.toByteArray();
 	}
 }
