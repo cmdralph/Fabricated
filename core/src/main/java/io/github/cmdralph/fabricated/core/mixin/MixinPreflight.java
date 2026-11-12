@@ -715,10 +715,13 @@ public final class MixinPreflight extends PreflightPart {
 	private final Set<Sharer> goneSharers = new HashSet<>();
 	private final Set<Sharer> skippedSharers = new HashSet<>();
 
-	/** The mixin's handlers sharing locals ({@link #shares}), as {@link Sharer}s; none for a mixin not read. */
+	/**
+	 * The mixin's handlers sharing locals ({@link #shares}), as {@link Sharer}s; none for a mixin not read, or sharing none
+	 * with a namespace: SHARE-2 reaches a mixin only through a namespaced local, and SHARE-1 takes the others' sharers.
+	 */
 	private List<Sharer> sharers(String configName, String internal, ClassNode node, Refmap refmap) {
 		Map<String, Set<String>> shares = shares(node);
-		if (shares.isEmpty()) return List.of();
+		if (shares.values().stream().allMatch(keys -> keys.stream().allMatch(k -> k.startsWith(":")))) return List.of();
 		ClassNode code = modClasses.readNode(internal, ClassReader.SKIP_FRAMES);
 		List<String> targets = InstalledClasses.mixinTargets(node);
 		List<Sharer> found = new ArrayList<>();

@@ -146,6 +146,10 @@ final class VanillaCalls {
 
 	static final Set<String> CLASSES = PUT_BACKS.stream().map(PutBack::owner).collect(Collectors.toUnmodifiableSet());
 
+	/** Every class whose methods' calls a put-back may change ({@link #changes}' {@code others}): the extensions, and Level's. */
+	static final Set<String> OTHER_CLASSES = java.util.stream.Stream.concat(PUT_BACKS.stream().flatMap(r -> java.util.stream.Stream.of(
+			r.extension().stateInterface(), r.extension().blockInterface())), java.util.stream.Stream.of(LEVEL, SERVER_LEVEL)).collect(Collectors.toUnmodifiableSet());
+
 	// Vanilla's calls and the fields they read, and what the helpers call.
 	private static final Member REMOVE_BLOCK = new Member(SERVER_LEVEL, "removeBlock", "m_7471_", "(" + POS + "Z)Z");
 	private static final Member DESTROY = new Member(BLOCK, "destroy", "m_6786_", "(Lnet/minecraft/world/level/LevelAccessor;" + POS + "L" + STATE + ";)V");
@@ -809,34 +813,32 @@ final class VanillaCalls {
 
 	/**
 	 * Whether every member and class {@code added} names is in the game, by the classes' own declarations and those they
-	 * inherit (the JDK's taken as there): pre-flight puts nothing back that would fail as it runs.
+	 * inherit (the JDK's taken as there): pre-flight puts nothing back that would fail as it runs. The classes are read
+	 * for their members' names alone, each once.
 	 */
 	static boolean resolves(Set<String> added, ClassBytesSource game) {
+		ClassIndex classes = new ClassIndex(game);
 		for (String key : added) {
 			int semicolon = key.indexOf(';');
 			if (semicolon < 0) {
-				if (!key.startsWith("java/") && game.readNode(key, ClassReader.SKIP_CODE) == null) return false;
+				if (!key.startsWith("java/") && !classes.contains(key)) return false;
 				continue;
 			}
 			String owner = key.substring(0, semicolon), member = key.substring(semicolon + 1);
 			if (owner.startsWith("java/")) continue;
-			int paren = member.indexOf('('), colon = member.indexOf(':');
-			boolean field = paren < 0;
-			String name = member.substring(0, field ? colon : paren), desc = member.substring(field ? colon + 1 : paren);
-			if (!declares(game, owner, name, desc, field, new LinkedHashSet<>())) return false;
+			if (!declares(classes, owner, member, member.indexOf('(') < 0, new LinkedHashSet<>())) return false;
 		}
 		return true;
 	}
 
-	private static boolean declares(ClassBytesSource game, String owner, String name, String desc, boolean field, Set<String> seen) {
+	/** Whether the class or one of its supertypes declares the member ({@code name(desc)}, {@code name:desc}). */
+	private static boolean declares(ClassIndex classes, String owner, String member, boolean field, Set<String> seen) {
 		if (owner == null || !seen.add(owner)) return false;
-		ClassNode node = game.readNode(owner, ClassReader.SKIP_CODE);
-		if (node == null) return false;
-		boolean has = field ? node.fields.stream().anyMatch(f -> f.name.equals(name) && f.desc.equals(desc))
-				: node.methods.stream().anyMatch(m -> m.name.equals(name) && m.desc.equals(desc));
-		if (has) return true;
-		if (declares(game, node.superName, name, desc, field, seen)) return true;
-		for (String itf : node.interfaces) if (declares(game, itf, name, desc, field, seen)) return true;
+		ClassIndex.ClassInfo info = classes.get(owner);
+		if (info == null) return false;
+		if ((field ? info.fieldAccess(member) : info.methodAccess(member)) != null) return true;
+		if (declares(classes, info.superName(), member, field, seen)) return true;
+		for (String itf : info.interfaces()) if (declares(classes, itf, member, field, seen)) return true;
 		return false;
 	}
 

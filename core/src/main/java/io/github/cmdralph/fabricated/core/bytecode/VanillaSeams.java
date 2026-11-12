@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -132,6 +133,16 @@ public final class VanillaSeams {
 	 */
 	public static int putBackPlaces(MethodNode method) {
 		return VanillaCalls.places(method);
+	}
+
+	/**
+	 * The classes whose methods' calls putting the class's seams back may change ({@link Rewrite#others}, of any form the
+	 * table reads), and the class itself: only a mixin naming one of them can hook what the rewrite moves.
+	 */
+	static Set<String> concerned(String internalName) {
+		Set<String> concerned = new HashSet<>(Set.of(internalName));
+		if (putsBackCalls(internalName)) concerned.addAll(VanillaCalls.OTHER_CLASSES);
+		return concerned;
 	}
 
 	/** Whether the table names the class (internal name): a class whose seams {@link #restore} may put back. */
@@ -279,27 +290,42 @@ public final class VanillaSeams {
 		});
 	}
 
-	/** As {@link #over(ClassBytesSource, Set)}, telling {@code failed} of each class whose rewrite throws, and what it threw. */
+	/**
+	 * As {@link #over(ClassBytesSource, Set)}, telling {@code failed} of each class whose rewrite throws, and what it threw.
+	 * A class is rewritten once, at its first read, and read so after: pre-flight reads a class as often as the mods' mixins
+	 * target it, and the game's classes don't change. The bytes are what is kept, each read parsing its own tree.
+	 */
 	public static ClassBytesSource over(ClassBytesSource game, Set<String> kept, BiConsumer<String, Throwable> failed) {
+		Map<String, byte[]> read = new ConcurrentHashMap<>();
 		return internalName -> {
+			if (!names(internalName) || kept.contains(internalName)) return game.read(internalName);
+			byte[] done = read.get(internalName);
+			if (done != null) return done;
 			byte[] data = game.read(internalName);
-			if (data == null || !names(internalName) || kept.contains(internalName)) return data;
-			try {
-				ClassNode node = new ClassNode();
-				new ClassReader(data).accept(node, 0);
-				if (restore(node).isEmpty()) return data;
-				// Nothing is put back that names what the game lacks: the class then loads, and pre-flight reads it, as it is.
-				ClassNode platform = new ClassNode();
-				new ClassReader(data).accept(platform, 0);
-				if (!VanillaCalls.resolves(VanillaCalls.added(platform, node), game)) return data;
-				ClassWriter writer = new ClassWriter(0);
-				node.accept(writer);
-				return writer.toByteArray();
-			} catch (RuntimeException | LinkageError | StackOverflowError e) {
-				failed.accept(internalName, e);
-				return data;
-			}
+			if (data == null) return null;
+			done = rewritten(internalName, data, game, failed);
+			byte[] first = read.putIfAbsent(internalName, done);
+			return first != null ? first : done;
 		};
+	}
+
+	/** The class's bytes with its seams put back, or as they are where nothing is or the rewrite throws ({@link #over}). */
+	private static byte[] rewritten(String internalName, byte[] data, ClassBytesSource game, BiConsumer<String, Throwable> failed) {
+		try {
+			ClassNode node = new ClassNode();
+			new ClassReader(data).accept(node, 0);
+			if (restore(node).isEmpty()) return data;
+			// Nothing is put back that names what the game lacks: the class then loads, and pre-flight reads it, as it is.
+			ClassNode platform = new ClassNode();
+			new ClassReader(data).accept(platform, 0);
+			if (!VanillaCalls.resolves(VanillaCalls.added(platform, node), game)) return data;
+			ClassWriter writer = new ClassWriter(0);
+			node.accept(writer);
+			return writer.toByteArray();
+		} catch (RuntimeException | LinkageError | StackOverflowError e) {
+			failed.accept(internalName, e);
+			return data;
+		}
 	}
 
 	/**

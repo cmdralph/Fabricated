@@ -133,7 +133,7 @@ final class CallRepairs extends PreflightPart {
 	 * calls, as the mod names them.
 	 */
 	List<String> putBackOrdinalRepairs(AnnotationNode injector, ClassNode target, Context ctx) {
-		if (Annotations.value(injector, "slice") != null) return List.of();
+		if (!VanillaSeams.putsBackCalls(target.name) || Annotations.value(injector, "slice") != null) return List.of();
 		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
 		if (methods.size() != 1) return List.of();
 		MethodNode method = methods.get(0);
