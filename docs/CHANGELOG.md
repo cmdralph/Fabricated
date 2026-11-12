@@ -9,13 +9,16 @@ One entry per working session, newest first: what changed, and how it was verifi
   `BoneMealItem.growCrop` takes `@Local(ordinal = 0) BlockState`; the platforms deprecate `growCrop` for
   `applyBonemeal`, which also takes the player, and pre-flight moves hooks there (DEPRECATED-1), but followed a
   handler's `@Local` only by name or by type alone. A local taken by its ordinal now follows too where the method
-  passes its parameters on to the other with the inserted one: vanilla's local of that ordinal at vanilla's point is
-  found there by aligning the two methods' code, a parameter in its parameter's place and any other local by its
-  store, placed with certainty, and the `@Local` gets the ordinal it has there. Each point must line up with one there,
-  each of vanilla's locals of the type at it must be found so and be all the other method's locals of the type that
-  are vanilla's, the ordinal must be the same at each, and where Forge's Mixin keeps locals past their scope those it
-  keeps must be the same; else the hook stays out. As Mixin, an ordinal is read before a slot or a name. FrozenLib's
-  behaviours run in `applyBonemeal`, after the platform's bone meal event. Apoli's bed-spawn and drop hooks don't
+  passes its parameters on to the other with the inserted one, as the instruction pushing each argument shows (a plain
+  load of the parameter in its place, never stored into; the inserted argument no parameter's), and no two locals of
+  the type made alike need telling apart: the local is a parameter, found in its parameter's place, or vanilla's one
+  other local of the type at the point where the other method has one too, made by the store the two methods' code
+  aligned places with certainty. An alignment can be certain and wrong where the platform makes a local as vanilla
+  does, so it is trusted no further. The `@Local` gets the ordinal the local has there, as Mixin counts; the hook
+  stays out where the locals in scope differ between points, where a stack map frame drops one (Mixin drops a slot's
+  local at a frame holding a null there), or where Forge's Mixin, keeping locals past their scope, may keep others. As
+  Mixin, an ordinal is read before a slot or a name. FrozenLib's behaviours run in `applyBonemeal`, after the
+  platform's bone meal event. Apoli's bed-spawn and drop hooks don't
   share the cause (a cancellable callback in the lambda NeoForge runs `startSleepInBed`'s code in, a call NeoForge's
   toss event makes in another class) and stay out, as does Additional Entity Attributes' water speed constant, which in
   NeoForge's `sinkInFluid` would apply to every fluid.
@@ -33,14 +36,16 @@ One entry per working session, newest first: what changed, and how it was verifi
   mixin of those is still left out. The test mod hooks the class as YUNG does (`pack-creator-hooks`): on 1.21.1 a data
   pack it offers at the end of `loadPacks` must be among the server's packs; from 1.21.11 its hook there must run for
   the server's creator, whose built-in pack the server has.
-- Verified: core's tests (675, OVERLOAD-3's failing before its change), CI's script tests and the inventory; NeoForge
+- Verified: core's tests (691, OVERLOAD-3's failing before its change), CI's script tests and the inventory; NeoForge
   1.21.1, 1.21.11 and 26.1.2 build, and Forge 52 on a branch made from `forge-legacy` and synced with this one. Local
   servers pass every check: NeoForge 1.21.1, 1.21.11 and 26.1.2 (`pack-creator-hooks` with the test mods, with Fabric
   API, with stand-ins and beside Forgified Fabric API), Forge 52, each as before but for the new check. On the advanced
   corpus servers of NeoForge 1.21.1 and Forge 52, against runs before the change, FrozenLib's hook is pointed at
   `applyBonemeal` and applies, and on NeoForge 1.21.1 YUNG's three hooks apply and the server loads its locate
   replacer's pack; nothing else changes, and the checks are as before. Pre-flight finds nothing in YUNG's 26.1.2
-  build's mixin against NeoForge 26.1.2's class. NeoForge 26.2 and 26.3 don't build locally.
+  build's mixin against NeoForge 26.1.2's class. NeoForge 26.2 and 26.3 don't build locally. 17 pairs of vanilla and
+  platform methods compiled by javac: each OVERLOAD-3 move takes the local real Mixin's ordinal names there (Fabric's
+  0.16.5, SpongePowered's 0.8.5), the others stay out; taking out any one of its checks fails one of its tests.
 
 ## 2026-11-12: Pre-flight reads an @At's opcode as Mixin does (PRE-30) and a selector in the refmap without its whitespace (PRE-31); a mob's shear call is SEAM-6's known limit
 

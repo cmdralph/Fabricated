@@ -385,11 +385,11 @@ failures fall into a few groups:
   counts as moved there (DEPRECATED-1: `BoneMealItem.growCrop`, whose code is in `applyBonemeal`, taking the player).
   A MixinExtras `@Local` the handler takes follows it there by name; by type alone where one local of that type is in
   scope at the points there; and by its ordinal (read first, as Mixin reads it) where the method passes its own
-  parameters on to the other with the one it inserts: vanilla's version of the method aligned with the other's code
-  must place each point, and each of vanilla's locals of the type there (a parameter in its parameter's place, another
-  local by its store), with certainty, those being all of the other method's locals of the type that are vanilla's, and
-  the `@Local` takes the ordinal vanilla's local has there; otherwise the hook stays out (OVERLOAD-3: FrozenLib's bone
-  meal API on 1.21.1, NeoForge's and Forge 52's bone meal event fired first, as for vanilla's growth).
+  parameters on to the other with the one it inserts, each pushed by a plain load of it, and the local is a parameter,
+  or vanilla's one other local of the type at the point where the other method has one too, made by the store
+  vanilla's code aligned with the other's places with certainty (two locals made alike aren't told apart): the
+  `@Local` takes the ordinal that local has there; otherwise the hook stays out (OVERLOAD-3: FrozenLib's bone meal API
+  on 1.21.1, NeoForge's and Forge 52's bone meal event fired first, as for vanilla's growth).
 - **A mixin uses an unsupported module**: Mixin fails on a class it can't find as it applies a mixin, so a mod
   whose mixin uses a class only an unsupported Fabric API module has (Continuity's used the renderer API while that
   was unsupported on 1.21.11; today only the game test modules are) is disabled before launch with the reason.
