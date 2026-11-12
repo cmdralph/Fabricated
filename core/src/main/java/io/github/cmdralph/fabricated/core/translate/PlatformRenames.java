@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.core.translate;
 
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -17,6 +16,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
 
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+import io.github.cmdralph.fabricated.core.bytecode.ClassFiles;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.PlatformConstructors;
 
@@ -101,11 +101,10 @@ final class PlatformRenames {
 	 * {@code constructors} gets the classes whose replaced constructor it calls (dotted).
 	 */
 	byte[] apply(byte[] classFile, Set<String> constructors) {
-		String text = new String(classFile, StandardCharsets.ISO_8859_1);
-		boolean renames = active.keySet().stream().anyMatch(text::contains);
-		boolean screens = portScreens && text.contains(CONFIGURATION_SCREEN) && text.contains(PORT_CONSTRUCTOR);
-		boolean tabs = tabBuilders && text.contains(VANILLA_TAB_ARGUMENTS);
-		boolean named = PlatformConstructors.NAMED.stream().anyMatch(text::contains);
+		boolean renames = active.keySet().stream().anyMatch(name -> ClassFiles.contains(classFile, name));
+		boolean screens = portScreens && ClassFiles.contains(classFile, CONFIGURATION_SCREEN) && ClassFiles.contains(classFile, PORT_CONSTRUCTOR);
+		boolean tabs = tabBuilders && ClassFiles.contains(classFile, VANILLA_TAB_ARGUMENTS);
+		boolean named = PlatformConstructors.NAMED.stream().anyMatch(name -> ClassFiles.contains(classFile, name));
 		if (!renames && !screens && !tabs && !named) return null;
 		boolean[] changed = {false};
 		ClassReader reader = new ClassReader(classFile);

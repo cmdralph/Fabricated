@@ -50,9 +50,10 @@ final class VanillaGameJar {
 					String bundler = "vanilla-" + candidate.getFileName() + "-" + Files.size(candidate) + "-" + Files.getLastModifiedTime(candidate).toMillis();
 					Path extracted = cache.nested(bundler, nested).orElse(null);
 					if (extracted == null) {
-						byte[] data = archive.read(nested);
-						if (data == null) return missing(candidate + " lists " + nested + ", which it doesn't hold");
-						extracted = cache.storeNested(data, bundler, nested);
+						if (!archive.contains(nested) || archive.isDirectory(nested)) return missing(candidate + " lists " + nested + ", which it doesn't hold");
+						// Written to the cache as it is read: the game jar is tens of megabytes.
+						SafeArchive bundle = archive;
+						extracted = cache.storeNested(out -> bundle.copy(nested, out), bundler, nested);
 					}
 					archive = SafeArchive.open(extracted, ArchiveLimits.DEFAULTS);
 					opened.add(archive);

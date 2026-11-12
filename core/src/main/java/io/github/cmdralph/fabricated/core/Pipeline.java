@@ -337,6 +337,8 @@ public final class Pipeline {
 	}
 
 	private final Input in;
+	/** {@link Input#gameClasses}, each class read once: pre-flight, translation and the linkage checks read the game's again and again. */
+	private final ClassBytesSource gameClassFiles;
 	private final FabricatedConfig config;
 	private final FabricApiPlan plan;
 	private final Report report;
@@ -359,6 +361,7 @@ public final class Pipeline {
 
 	private Pipeline(Input in) {
 		this.in = in;
+		this.gameClassFiles = in.gameClasses().memoised();
 		this.config = in.config();
 		this.plan = in.fabricApiPlan();
 		this.report = new Report(in.fabricatedVersion());
@@ -531,7 +534,7 @@ public final class Pipeline {
 		// With vanilla's methods the platform took out (SEAM-1), and its calls the platform makes through its extensions and
 		// hooks (SEAM-3, SEAM-4), put back where Fabric mods' mixins hook them, as they then load, but in the classes where a
 		// native mod's mixin hooks the platform's code that would move, left as the platform has them.
-		ClassBytesSource platformGame = coremods.over(in.gameClasses());
+		ClassBytesSource platformGame = coremods.over(gameClassFiles);
 		Map<String, SeamConflicts.Conflict> keptSeams = SeamConflicts.of(platformGame, in.installedClasses(), in.cache(), String.join("|",
 				in.fabricatedVersion(), in.fabricatedBuild(), in.minecraftVersion(), in.neoForgeVersion(), in.clientSide() ? "client" : "server"));
 		keptSeams.forEach((owner, conflict) -> {
@@ -542,8 +545,9 @@ public final class Pipeline {
 		});
 		// A class whose rewrite throws is read, and loads, as the platform has it: the report names it, with what it threw.
 		Map<String, String> seamFailures = new java.util.concurrent.ConcurrentSkipListMap<>();
+		// Kept as read: the platform's transformers and the fields put back change classes as they are read.
 		ClassBytesSource gameClasses = restored.over(VanillaSeams.over(platformGame, keptSeams.keySet(),
-				(owner, failure) -> seamFailures.putIfAbsent(owner, String.valueOf(failure))));
+				(owner, failure) -> seamFailures.putIfAbsent(owner, String.valueOf(failure)))).memoised();
 		ClassIndex game = new ClassIndex(gameClasses);
 		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11
 		// remapped from intermediary names, as translating each mod remaps it.
@@ -1021,7 +1025,7 @@ public final class Pipeline {
 					+ "|" + in.fabricatedBuild() + "|" + String.join(",", new TreeSet<>(unloaded.keySet()))
 					+ "|" + in.neoForgeMods().stream().map(m -> m.id() + "@" + m.version()).sorted().collect(Collectors.joining(",")));
 			try (JarClassSource jars = new JarClassSource(ordered, config.limits())) {
-				linkage = analysis.analyse(ordered, in.gameClasses().or(in.nativeApiClasses()).or(jars).or(in.installedClasses()),
+				linkage = analysis.analyse(ordered, gameClassFiles.or(in.nativeApiClasses()).or(jars).or(in.installedClasses()),
 						in.nativeApiInterfaces(), fingerprint, unloaded, name -> in.installedClasses().owner(name) != null);
 			}
 			boolean dropped = false;
