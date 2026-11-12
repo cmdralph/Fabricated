@@ -88,6 +88,35 @@ class KnownLimitsTest {
 		assertNull(KnownLimits.ofFinding("NeoForge", finding(Severity.LEFT_OUT, message)));
 	}
 
+	/**
+	 * Ledger's hooks of a sheep's and a snow golem's shear call in their mobInteract, which the platforms leave to the shears
+	 * item with the shears check guarding it, are SEAM-6 as the hooks of that check are, where pre-flight's hint says so.
+	 */
+	@Test
+	void aHookOfAMobsShearCallIsSeam6WherePreflightsHintSaysThePlatformShearsFromTheShearsItem() {
+		String check = "@WrapOperation in mobInteract expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/item/ItemStack;is(Lnet/minecraft/world/item/Item;)Z\"),"
+				+ " which does not occur in that method";
+		String hint = "%s's mobInteract asks for no shears here: the platform shears it from the shears item, through its shearable extension (NeoForge's"
+				+ " IShearable, Forge's IForgeShearable), which posts its events and drops what its loot says, so Fabricated doesn't put vanilla's %s back"
+				+ " there (SEAM-6).";
+		String limit = KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.LEFT_OUT, "bclib.mixins.common.json",
+				"org.betterx.bclib.mixin.common.shears.SheepMixin", check, String.format(hint, "Sheep", "check"), "handler()V"));
+		assertTrue(limit.endsWith("(SEAM-6)"), limit);
+		// NeoForge 21.1 and Forge 52 under Mojang's names, Forge 47 under SRG's.
+		for (String mob : List.of("Sheep", "SnowGolem")) {
+			String message = "@Inject in mobInteract expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/entity/animal/" + mob
+					+ ";shear(Lnet/minecraft/sounds/SoundSource;)V\"), which does not occur in that method";
+			for (String m : List.of(message, message.replace("mobInteract", "m_6071_").replace(";shear(", ";m_5851_("))) {
+				PreflightFinding shear = new PreflightFinding(Severity.LEFT_OUT, "ledger.mixins.json", "com.github.quiltservertools.ledger.mixin.entities." + mob
+						+ "EntityMixin", m, String.format(hint, mob, "check and its shear call"), "handler()V");
+				assertEquals(limit, KnownLimits.ofFinding("NeoForge", shear), m);
+				assertEquals(limit, KnownLimits.ofFinding("Forge", shear), m);
+			}
+			// Left out for another reason, without the hint (Forge 65 and 66 shear there), it is none.
+			assertNull(KnownLimits.ofFinding("Forge", finding(Severity.LEFT_OUT, message)), message);
+		}
+	}
+
 	@Test
 	void twoEqualEntriesRegisteredOnForgeAreReg13() {
 		IllegalArgumentException thrown = new IllegalArgumentException(registeredTwice("36b858fa", "4bef7d97"));
