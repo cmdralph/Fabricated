@@ -413,7 +413,7 @@ final class VanillaCalls {
 					&& (row.code() != Code.FORGE_CLIENT || calls(method, WILL_DESTROY.owner(), WILL_DESTROY.name(srg)).isEmpty())
 					&& (row.code() != Code.LAYER || layerBase(node, row) != null)) {
 				// NeoForge 26.x asks the stack's ItemInstance extension, its item's taking an ItemInstance.
-				rows.add(row.code() == Code.ACTION && node.version >= JAVA_25 ? new PutBack(row.owner(), row.method(), row.srgMethod(), row.desc(), row.platform(),
+				rows.add(row.code() == Code.ACTION && java25(node.version) ? new PutBack(row.owner(), row.method(), row.srgMethod(), row.desc(), row.platform(),
 						NEOFORGE_ACTION_26, row.code(), row.check()) : row);
 			}
 		}
@@ -664,9 +664,14 @@ final class VanillaCalls {
 	private static void itemCheck(InsnList code, int version, PutBack row, boolean srg, Set<String> putBack) {
 		Member item = row.check().item();
 		code.add(new FieldInsnNode(Opcodes.GETSTATIC, item.owner(), item.name(srg), item.desc(srg)));
-		Member is = (version & 0xFFFF) >= JAVA_25 ? IS_OBJECT : IS_ITEM;
+		Member is = java25(version) ? IS_OBJECT : IS_ITEM;
 		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, is.owner(), is.name(srg), is.desc(srg), false));
 		putBack.add(is.key(srg));
+	}
+
+	/** Whether a class file version, its minor part aside, is Java 25's or later: the game's classes from 26.1 on. */
+	private static boolean java25(int version) {
+		return (version & 0xFFFF) >= JAVA_25;
 	}
 
 	private static AbstractInsnNode previousReal(AbstractInsnNode insn) {
