@@ -14,7 +14,8 @@ import java.util.WeakHashMap;
  * every public method of the classes and interfaces, and Forge 66's extensions name client classes, absent on a
  * dedicated server. Where it can't tell (a class it can't load), the object is taken to override it, and the platform's
  * call is made. The answer is asked once for each class: the game class keeps the answers ({@link #known}), one store
- * for each method it asks of, as a lookup that fails throws.
+ * for each method it asks of, as a lookup that fails throws. Once the classes were asked of, the game class reads their
+ * answers first ({@link #asked}), so a check makes nothing: the lookup's arrays only where a class is new.
  */
 final class KeepsDefault {
 	private KeepsDefault() {
@@ -42,6 +43,24 @@ final class KeepsDefault {
 		} catch (RuntimeException | LinkageError e) {
 			return false;
 		}
+	}
+
+	/**
+	 * {@link #keepsDefault}'s answer from the answers kept for the classes of the state and its block, told without making
+	 * a lookup's arrays: 1 where both keep the default, 0 where one doesn't, -1 where one wasn't asked of yet.
+	 */
+	static int asked(Map<Class<?>, Boolean> known, Object state, Object block) {
+		int answer = asked(known, state);
+		return answer != 1 ? answer : asked(known, block);
+	}
+
+	/**
+	 * {@link #keepsMethod}'s answer from the one kept for the object's class: 1 where it keeps the method, 0 where it
+	 * overrides it, -1 where it wasn't asked of yet.
+	 */
+	static int asked(Map<Class<?>, Boolean> known, Object object) {
+		Boolean overrides = known.get(object.getClass());
+		return overrides == null ? -1 : overrides ? 0 : 1;
 	}
 
 	/** {@link #declaresOver}, from {@code known} where it was asked for the class before; true where it can't tell. */

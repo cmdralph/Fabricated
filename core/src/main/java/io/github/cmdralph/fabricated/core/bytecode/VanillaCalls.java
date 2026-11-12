@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.bytecode;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -9,7 +10,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.BiPredicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
@@ -65,6 +68,20 @@ import org.objectweb.asm.tree.VarInsnNode;
  * where the state needs the correct tool, and fires the event with {@code true} where it doesn't, which Forge's
  * {@code Player.hasCorrectToolForDrops} also does there: vanilla's call alone goes back, for the players whose class keeps
  * that method (and in {@code destroyBlock} the blocks keeping the default).
+ *
+ * <p>Item checks (SEAM-6): where vanilla asks {@code stack.is(Items.SHEARS)} (the beehive's harvest, the pumpkin's
+ * carving, the tripwire's disarming; on Forge 65 and 66 a sheep's, a snow golem's and a mooshroom's shearing too),
+ * {@code stack.is(Items.FISHING_ROD)} (whether a fishing hook's player still holds a rod, and on the client which hand
+ * the line comes from) or {@code stack.is(Items.SHIELD)} (a shield's damage, a piglin's shield; up to 1.21.1), NeoForge
+ * asks the stack's {@code canPerformAction(ability)} and Forge its {@code canPerformAction(toolAction)}. Their defaults
+ * ask the item's, which answers no for these actions (a sword's sweep and dig and a pickaxe's dig, or a campfire's
+ * dousing on NeoForge 26.3, are the only ones it says yes to), and vanilla's shears, rod and shield override it, answering
+ * yes; so for an item keeping the default vanilla's check answers no too: it goes back for the stacks whose class and item
+ * keep the default ({@link KeepsDefault}), and an item overriding it is asked as the platform has it. The stack the
+ * platform's code pushes is kept and asked first, so its code runs once; vanilla's check is {@code is(Item)}, or from
+ * Minecraft 26.1 on, whose classes are Java 25's, {@code TypedInstance.is(T)} as {@code is(Object)}. The client's elytra
+ * layer asks {@code this.shouldRender(stack, entity)} where vanilla asks {@code stack.is(Items.ELYTRA)} (NeoForge 21.1,
+ * Forge 47 and 52), whose default makes that check: it goes back for the layers whose class keeps that method.
  */
 final class VanillaCalls {
 	private static final String STATE = "net/minecraft/world/level/block/state/BlockState";
@@ -85,6 +102,17 @@ final class VanillaCalls {
 	private static final String DESTROY_PROGRESS = "(L" + STATE + ";" + PLAYER + GETTER + POS + ")F";
 	private static final String NEOFORGE = "net/neoforged/";
 	private static final String FORGE = "net/minecraftforge/";
+	private static final String STACK_CLASS = "net/minecraft/world/item/ItemStack";
+	private static final String ITEM_CLASS = "net/minecraft/world/item/Item";
+	private static final String ITEMS = "net/minecraft/world/item/Items";
+	private static final String ITEM_INSTANCE = "net/minecraft/world/item/ItemInstance";
+	private static final String TYPED_INSTANCE = "net/minecraft/core/TypedInstance";
+	private static final String ABILITY = "net/neoforged/neoforge/common/ItemAbility";
+	private static final String ABILITIES = "net/neoforged/neoforge/common/ItemAbilities";
+	private static final String TOOL_ACTION = "net/minecraftforge/common/ToolAction";
+	private static final String TOOL_ACTIONS = "net/minecraftforge/common/ToolActions";
+	/** The class file version of Java 25, which the game's classes are compiled for from Minecraft 26.1 on. */
+	private static final int JAVA_25 = 69;
 
 	/**
 	 * A member of the game the rewrite names: by Mojang's names, and SRG's where the game runs with them (Forge 47, which
@@ -111,12 +139,46 @@ final class VanillaCalls {
 	}
 
 	/**
-	 * The platform's extension a put-back stands in for: the block state's method and the block's, each an interface's
-	 * default; the helper asking whether a state's block keeps them, and the field it keeps its answers in.
+	 * What an extension's object is asked of with its holder, as the platform's defaults pass it on: the block state and
+	 * its block, the stack and its item; the getter, the helper calling it and the noun a note names the holder by.
 	 */
-	record Extension(String stateInterface, String blockInterface, String name, String desc, String entry, String field) {
+	record Holder(String type, Member getter, String helper, String noun) {
+		String holderType() {
+			return Type.getReturnType(getter.desc()).getInternalName();
+		}
+
+		String helperDesc() {
+			return "(L" + type + ";)L" + holderType() + ";";
+		}
+	}
+
+	/**
+	 * The platform's extension a put-back stands in for: the object's method and its holder's, each an interface's
+	 * default, the holder's taking the object first as {@code first}; the helper asking whether an object's classes keep
+	 * them, and the field it keeps its answers in.
+	 */
+	record Extension(String stateInterface, String blockInterface, String name, String desc, String entry, String field, Holder holder, String first) {
+		Extension(String stateInterface, String blockInterface, String name, String desc, String entry, String field) {
+			this(stateInterface, blockInterface, name, desc, entry, field, BLOCK_OF_STATE, STATE);
+		}
+
 		String blockDesc() {
-			return "(L" + STATE + ";" + desc.substring(1);
+			return "(L" + first + ";" + desc.substring(1);
+		}
+
+		String entryDesc() {
+			return "(L" + holder.type() + ";)Z";
+		}
+	}
+
+	/**
+	 * What an item check compares (SEAM-6): vanilla's item, a field of {@code Items}; and the platform's action it asks of
+	 * the stack in its place, by its class and field (none for the elytra layer, which the platform asks instead).
+	 */
+	record ItemCheck(Member item, String actions, String action) {
+		/** The item as a note names it: {@code fishing rod}. */
+		String noun() {
+			return item.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
 		}
 	}
 
@@ -137,19 +199,35 @@ final class VanillaCalls {
 		/** NeoForge's {@code getDestroyProgress}: {@code EventHooks.doPlayerHarvestCheck(player, state, level, pos)}'s place gets its own code, vanilla's call then the event, always. */
 		PROGRESS,
 		/** Forge's {@code getDestroyProgress}: {@code ForgeHooks.isCorrectToolForDrops(state, player)}'s place gets {@code player.hasCorrectToolForDrops(state)}. */
-		FORGE_PROGRESS;
+		FORGE_PROGRESS,
+		/** NeoForge's item checks: the stack's {@code canPerformAction(ability)}'s place gets {@code stack.is(item)}, for the stacks keeping the default. */
+		ACTION,
+		/** Forge's: the same, of its {@code ToolAction}. */
+		FORGE_ACTION,
+		/** The elytra layer (NeoForge 21.1, Forge 47 and 52): its {@code shouldRender(stack, entity)}'s place gets {@code stack.is(Items.ELYTRA)}, for the layers keeping that method. */
+		LAYER;
 
 		boolean forge() {
-			return this == FORGE_SERVER || this == FORGE_CLIENT || this == FORGE_HARVEST || this == FORGE_PROGRESS;
+			return this == FORGE_SERVER || this == FORGE_CLIENT || this == FORGE_HARVEST || this == FORGE_PROGRESS || this == FORGE_ACTION;
 		}
 
-		/** The finding a put-back of this kind answers: block breaking, SEAM-3; harvest checks, SEAM-4. */
+		/** The finding a put-back of this kind answers: block breaking, SEAM-3; harvest checks, SEAM-4; item checks, SEAM-6. */
 		String finding() {
-			return ordinal() < HARVEST.ordinal() ? "SEAM-3" : "SEAM-4";
+			return item() ? "SEAM-6" : ordinal() < HARVEST.ordinal() ? "SEAM-3" : "SEAM-4";
 		}
 
 		boolean harvest() {
-			return ordinal() >= HARVEST.ordinal();
+			return ordinal() >= HARVEST.ordinal() && !item();
+		}
+
+		/** Whether it puts back an item check (SEAM-6). */
+		boolean item() {
+			return this == ACTION || this == FORGE_ACTION || this == LAYER;
+		}
+
+		/** Whether the platform's call is the stack's {@code canPerformAction}. */
+		boolean action() {
+			return this == ACTION || this == FORGE_ACTION;
 		}
 
 		/** Whether the platform's call is a static hook's ({@code getDestroyProgress}'s). */
@@ -164,17 +242,22 @@ final class VanillaCalls {
 	}
 
 	/**
-	 * A row: the game method, the platform's call there whose place gets vanilla's calls, the extension whose default those
-	 * calls stand for (null where no block's class is asked), and which calls.
+	 * A row: the game method (any of the name holding the platform's call where {@code desc} is null), the platform's call
+	 * there whose place gets vanilla's calls, the extension whose default those calls stand for (null where no block's or
+	 * item's class is asked), which calls, and for an item check what it compares.
 	 */
-	record PutBack(String owner, String method, String srgMethod, String desc, Member platform, Extension extension, Code code) {
+	record PutBack(String owner, String method, String srgMethod, String desc, Member platform, Extension extension, Code code, ItemCheck check) {
+		PutBack(String owner, String method, String srgMethod, String desc, Member platform, Extension extension, Code code) {
+			this(owner, method, srgMethod, desc, platform, extension, code, null);
+		}
+
 		String method(boolean srg) {
 			return srg ? srgMethod : method;
 		}
 
-		/** The package of the platform's own classes, which only its game's classes reference. */
+		/** The package of the platform's own classes, which only its game's classes reference (none for the elytra layer's, either platform's). */
 		String platformPackage() {
-			return code.forge() ? FORGE : NEOFORGE;
+			return code == Code.LAYER ? null : code.forge() ? FORGE : NEOFORGE;
 		}
 
 		String loader() {
@@ -184,6 +267,10 @@ final class VanillaCalls {
 
 	private static final String NEOFORGE_EXT = "net/neoforged/neoforge/common/extensions/";
 	private static final String FORGE_EXT = "net/minecraftforge/common/extensions/";
+	private static final Member GET_BLOCK = new Member(STATE, "getBlock", "m_60734_", "()L" + BLOCK + ";");
+	private static final Member GET_ITEM = new Member(STACK_CLASS, "getItem", "m_41720_", "()L" + ITEM_CLASS + ";");
+	private static final Holder BLOCK_OF_STATE = new Holder(STATE, GET_BLOCK, "fabricated$block", "block");
+	private static final Holder ITEM_OF_STACK = new Holder(STACK_CLASS, GET_ITEM, "fabricated$item", "item");
 	private static final String DESTROYED = "(L" + LEVEL + ";" + POS + PLAYER;
 	private static final String KEEPS_DEFAULT = "fabricated$keepsDefault";
 	private static final String KNOWN = "fabricated$overriding";
@@ -204,9 +291,71 @@ final class VanillaCalls {
 	private static final String FORGE_HOOKS = "net/minecraftforge/common/ForgeHooks";
 	private static final Member HARVEST_HOOK = new Member(EVENT_HOOKS, "doPlayerHarvestCheck", null, "(" + PLAYER + "L" + STATE + ";" + GETTER + POS + ")Z");
 	private static final Member FORGE_HARVEST_HOOK = new Member(FORGE_HOOKS, "isCorrectToolForDrops", null, "(L" + STATE + ";" + PLAYER + ")Z");
+	// The item checks: the stack's extension and the item's (on NeoForge 26.x the stack's is ItemInstance's, and the item's
+	// takes an ItemInstance), and vanilla's items, by Mojang's names and SRG's.
+	private static final String KEEPS_ACTION = "fabricated$keepsActionDefault";
+	private static final String KNOWN_ACTION = "fabricated$overridingAction";
+	private static final Extension NEOFORGE_ACTION = new Extension(NEOFORGE_EXT + "IItemStackExtension", NEOFORGE_EXT + "IItemExtension", "canPerformAction",
+			"(L" + ABILITY + ";)Z", KEEPS_ACTION, KNOWN_ACTION, ITEM_OF_STACK, STACK_CLASS);
+	private static final Extension NEOFORGE_ACTION_26 = new Extension(NEOFORGE_EXT + "ItemInstanceExtension", NEOFORGE_EXT + "IItemExtension", "canPerformAction",
+			"(L" + ABILITY + ";)Z", KEEPS_ACTION, KNOWN_ACTION, ITEM_OF_STACK, ITEM_INSTANCE);
+	private static final Extension FORGE_ACTION_EXT = new Extension(FORGE_EXT + "IForgeItemStack", FORGE_EXT + "IForgeItem", "canPerformAction",
+			"(L" + TOOL_ACTION + ";)Z", KEEPS_ACTION, KNOWN_ACTION, ITEM_OF_STACK, STACK_CLASS);
+	private static final Member CAN_PERFORM = new Member(STACK_CLASS, NEOFORGE_ACTION.name(), null, NEOFORGE_ACTION.desc());
+	private static final Member FORGE_CAN_PERFORM = new Member(STACK_CLASS, FORGE_ACTION_EXT.name(), null, FORGE_ACTION_EXT.desc());
+	private static final Member SHEARS = new Member(ITEMS, "SHEARS", "f_42574_", "L" + ITEM_CLASS + ";");
+	private static final Member FISHING_ROD = new Member(ITEMS, "FISHING_ROD", "f_42523_", "L" + ITEM_CLASS + ";");
+	private static final Member SHIELD = new Member(ITEMS, "SHIELD", "f_42740_", "L" + ITEM_CLASS + ";");
+	private static final Member ELYTRA = new Member(ITEMS, "ELYTRA", "f_42741_", "L" + ITEM_CLASS + ";");
+	/** Vanilla's check: {@code ItemStack.is(Item)}; from 26.1 on {@code TypedInstance.is(T)}, called as the stack's {@code is(Object)}. */
+	private static final Member IS_ITEM = new Member(STACK_CLASS, "is", "m_150930_", "(L" + ITEM_CLASS + ";)Z");
+	private static final Member IS_OBJECT = new Member(STACK_CLASS, "is", null, "(Ljava/lang/Object;)Z");
+	private static final String ELYTRA_LAYER = "net/minecraft/client/renderer/entity/layers/ElytraLayer";
+	private static final String FORGE_ELYTRA_LAYER = "net/minecraftforge/client/extensions/IForgeElytraLayer";
+	private static final String LIVING = "net/minecraft/world/entity/LivingEntity";
+	/** The helper asking whether the layer's class keeps {@code shouldRender}, and its answers' field. */
+	private static final String KEEPS_LAYER = "fabricated$keepsLayerDefault";
+	private static final String KNOWN_LAYER = "fabricated$overridingLayer";
 
-	/** The table: the platforms' forms of the server's and the client's {@code destroyBlock} and of {@code getDestroyProgress}, read in their classes. */
-	static final List<PutBack> PUT_BACKS = List.of(
+	/**
+	 * The item checks' rows of a game method, each platform's: vanilla's check of the item, the platform's of the action;
+	 * NeoForge's where it asks there too.
+	 */
+	private static List<PutBack> itemChecks(String owner, String method, String srgMethod, Member item, String action, boolean neoForge) {
+		PutBack forge = new PutBack(owner, method, srgMethod, null, FORGE_CAN_PERFORM, FORGE_ACTION_EXT, Code.FORGE_ACTION, new ItemCheck(item, TOOL_ACTIONS, action));
+		return neoForge ? List.of(new PutBack(owner, method, srgMethod, null, CAN_PERFORM, NEOFORGE_ACTION, Code.ACTION, new ItemCheck(item, ABILITIES, action)), forge)
+				: List.of(forge);
+	}
+
+	private static final String BLOCKS = "net/minecraft/world/level/block/";
+	private static final String ANIMALS = "net/minecraft/world/entity/animal/";
+	/** The item checks' rows: the methods where vanilla asks for its shears, rod or shield, and the platforms ask an action, read in their classes. */
+	private static final List<PutBack> ITEM_CHECKS = Stream.of(
+			itemChecks(BLOCKS + "BeehiveBlock", "useItemOn", "m_6227_", SHEARS, "SHEARS_HARVEST", true),
+			itemChecks(BLOCKS + "PumpkinBlock", "useItemOn", "m_6227_", SHEARS, "SHEARS_CARVE", true),
+			itemChecks(BLOCKS + "TripWireBlock", "playerWillDestroy", "m_5707_", SHEARS, "SHEARS_DISARM", true),
+			// Forge 65 and 66 only: NeoForge and Forge 47 to 64 shear these mobs from the shears item instead (NOT_PUT_BACK).
+			itemChecks(ANIMALS + "sheep/Sheep", "mobInteract", "m_6071_", SHEARS, "SHEARS_HARVEST", false),
+			itemChecks(ANIMALS + "golem/SnowGolem", "mobInteract", "m_6071_", SHEARS, "SHEARS_HARVEST", false),
+			itemChecks(ANIMALS + "cow/MushroomCow", "mobInteract", "m_6071_", SHEARS, "SHEARS_HARVEST", false),
+			itemChecks("net/minecraft/world/entity/projectile/FishingHook", "shouldStopFishing", "m_37136_", FISHING_ROD, "FISHING_ROD_CAST", true),
+			// The client's line, from the hand holding the rod: 1.21.1's getPlayerHandPos, 1.20.1's render (SRG's m_7392_).
+			itemChecks("net/minecraft/client/renderer/entity/FishingHookRenderer", "getPlayerHandPos", "m_7392_", FISHING_ROD, "FISHING_ROD_CAST", true),
+			// Up to 1.21.1: from 1.21.5 a shield blocks by its components.
+			itemChecks(PLAYER_CLASS, "hurtCurrentlyUsedShield", "m_7909_", SHIELD, "SHIELD_BLOCK", true),
+			itemChecks("net/minecraft/world/entity/monster/piglin/StopHoldingItemIfNoLongerAdmiring", "lambda$create$0", "m_289159_", SHIELD, "SHIELD_BLOCK", true),
+			List.of(new PutBack(ELYTRA_LAYER, "render", "m_6494_", null, new Member(ELYTRA_LAYER, "shouldRender", null, "(" + ITEM + "L" + LIVING + ";)Z"), null,
+							Code.LAYER, new ItemCheck(ELYTRA, null, null)),
+					// Forge 52's, from its IForgeElytraLayer<T>.
+					new PutBack(ELYTRA_LAYER, "render", "m_6494_", null, new Member(ELYTRA_LAYER, "shouldRender", null, "(" + ITEM + "Ljava/lang/Object;)Z"), null,
+							Code.LAYER, new ItemCheck(ELYTRA, null, null))))
+			.flatMap(List::stream).toList();
+
+	/**
+	 * The table: the platforms' forms of the server's and the client's {@code destroyBlock} and of {@code getDestroyProgress},
+	 * read in their classes, and the item checks.
+	 */
+	static final List<PutBack> PUT_BACKS = Stream.concat(Stream.of(
 			new PutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, new Member(GAME_MODE, "removeBlock", null, "(" + POS + "L" + STATE + ";Z)Z"),
 					NEOFORGE_21_1, Code.SERVER),
 			new PutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, new Member(GAME_MODE, "removeBlock", null, "(" + POS + "L" + STATE + ";Z" + ITEM + ")Z"),
@@ -222,7 +371,7 @@ final class VanillaCalls {
 			new PutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, CAN_HARVEST, NEOFORGE_HARVEST, Code.HARVEST),
 			new PutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, CAN_HARVEST, FORGE_HARVEST, Code.FORGE_HARVEST),
 			new PutBack(BEHAVIOUR, "getDestroyProgress", "m_5880_", DESTROY_PROGRESS, HARVEST_HOOK, null, Code.PROGRESS),
-			new PutBack(BEHAVIOUR, "getDestroyProgress", "m_5880_", DESTROY_PROGRESS, FORGE_HARVEST_HOOK, null, Code.FORGE_PROGRESS));
+			new PutBack(BEHAVIOUR, "getDestroyProgress", "m_5880_", DESTROY_PROGRESS, FORGE_HARVEST_HOOK, null, Code.FORGE_PROGRESS)), ITEM_CHECKS.stream()).toList();
 
 	static final Set<String> CLASSES = PUT_BACKS.stream().map(PutBack::owner).collect(Collectors.toUnmodifiableSet());
 
@@ -233,7 +382,6 @@ final class VanillaCalls {
 	private static final Member LEGACY_BLOCK = new Member("net/minecraft/world/level/material/FluidState", "createLegacyBlock", "m_76188_", "()L" + STATE + ";");
 	private static final Member WILL_DESTROY = new Member(BLOCK, "playerWillDestroy", "m_5707_", "(L" + LEVEL + ";" + POS + "L" + STATE + ";" + PLAYER + ")L"
 			+ STATE + ";", "(L" + LEVEL + ";" + POS + "L" + STATE + ";" + PLAYER + ")V");
-	private static final Member GET_BLOCK = new Member(STATE, "getBlock", "m_60734_", "()L" + BLOCK + ";");
 	private static final Member GET_BLOCK_STATE = new Member(SERVER_LEVEL, "getBlockState", "m_8055_", "(" + POS + ")L" + STATE + ";");
 	private static final Member LEVEL_FIELD = new Member(GAME_MODE, "level", "f_9244_", "L" + SERVER_LEVEL + ";");
 	private static final Member PLAYER_FIELD = new Member(GAME_MODE, "player", "f_9245_", "L" + SERVER_PLAYER + ";");
@@ -259,13 +407,58 @@ final class VanillaCalls {
 		if (!CLASSES.contains(node.name)) return rows;
 		boolean srg = VanillaSeams.srg(node);
 		for (PutBack row : PUT_BACKS) {
+			if (!row.owner().equals(node.name)) continue;
 			MethodNode method = holder(node, row, srg);
-			if (row.owner().equals(node.name) && method != null && !calls(method, row).isEmpty() && references(node, row.platformPackage())
-					&& (row.code() != Code.FORGE_CLIENT || calls(method, WILL_DESTROY.owner(), WILL_DESTROY.name(srg)).isEmpty())) {
-				rows.add(row);
+			if (method != null && !calls(method, row).isEmpty() && (row.platformPackage() == null || references(node, row.platformPackage()))
+					&& (row.code() != Code.FORGE_CLIENT || calls(method, WILL_DESTROY.owner(), WILL_DESTROY.name(srg)).isEmpty())
+					&& (row.code() != Code.LAYER || layerBase(node, row) != null)) {
+				// NeoForge 26.x asks the stack's ItemInstance extension, its item's taking an ItemInstance.
+				rows.add(row.code() == Code.ACTION && java25(node.version) ? new PutBack(row.owner(), row.method(), row.srgMethod(), row.desc(), row.platform(),
+						NEOFORGE_ACTION_26, row.code(), row.check()) : row);
 			}
 		}
 		return rows;
+	}
+
+	/**
+	 * The class or interface declaring the elytra layer's {@code shouldRender}, which a layer keeping it keeps: the layer's
+	 * class where it declares it (NeoForge 21.1, Forge 47), else the platform's interface it implements (Forge 52's
+	 * {@code IForgeElytraLayer}); null where neither.
+	 */
+	private static String layerBase(ClassNode node, PutBack row) {
+		if (indexOf(node, row.platform().name(), row.platform().desc()) >= 0) return node.name;
+		for (String itf : node.interfaces) {
+			if (itf.startsWith(FORGE) || itf.startsWith(NEOFORGE)) return itf;
+		}
+		return null;
+	}
+
+	/**
+	 * Whether a put-back may apply to the class as its bytes are, told without parsing them: for an item check's class,
+	 * whether they name a row's platform call and, for an action, the action (Player's names no shield action from 1.21.5
+	 * on); true for any other class.
+	 */
+	static boolean mayApply(String owner, byte[] data) {
+		boolean items = false;
+		for (PutBack row : PUT_BACKS) {
+			if (!row.owner().equals(owner)) continue;
+			if (!row.code().item()) return true;
+			items = true;
+			if (contains(data, row.platform().name()) && (row.check().action() == null || contains(data, row.check().action()))) return true;
+		}
+		return !items;
+	}
+
+	/** Whether the bytes hold the ASCII text, as a class's constant pool holds a name. */
+	private static boolean contains(byte[] data, String ascii) {
+		search:
+		for (int i = 0, n = ascii.length(); i + n <= data.length; i++) {
+			for (int j = 0; j < n; j++) {
+				if (data[i + j] != (byte) ascii.charAt(j)) continue search;
+			}
+			return true;
+		}
+		return false;
 	}
 
 	/** The findings the class's rows answer, as reports name them ({@code SEAM-3, SEAM-4}); empty for a class the table doesn't name. */
@@ -309,10 +502,10 @@ final class VanillaCalls {
 			MethodNode method = holder(expanded, row, srg);
 			Rewritten done = rewrite(expanded, method, row, srg);
 			if (done == null) continue;
-			addHelpers(expanded, row, srg);
+			addHelpers(expanded, row, srg, row.code() == Code.LAYER ? layerBase(node, row) : null);
 			AnnotationNode marker = new AnnotationNode(VanillaSeams.MARKER);
-			marker.values = new ArrayList<>(List.of("calls", done.calls(), "keeps", keeps(row), "places", done.places(), "platform", row.platform().key(false),
-					"finding", row.code().finding(), "through", through(row), "note", note(row)));
+			marker.values = new ArrayList<>(List.of("calls", done.calls(), "keeps", keeps(row, node), "places", done.places(), "platform", row.platform().key(false),
+					"finding", row.code().finding(), "through", through(row, node), "note", note(row)));
 			if (method.invisibleAnnotations == null) method.invisibleAnnotations = new ArrayList<>();
 			method.invisibleAnnotations.add(marker);
 			if (!rewritten.contains(method.name + method.desc)) rewritten.add(method.name + method.desc);
@@ -334,20 +527,25 @@ final class VanillaCalls {
 		return restored;
 	}
 
-	/** Whether the row's put-back asks of an object's class (the block's, the player's) first. */
+	/** Whether the row's put-back asks of an object's class (the block's, the item's, the player's, the layer's) first. */
 	private static boolean checks(PutBack row) {
-		return row.extension() != null || row.code().keepingPlayer() >= 0;
+		return row.extension() != null || row.code().keepingPlayer() >= 0 || row.code() == Code.LAYER;
 	}
 
-	/** What a row's put-back stands for, as its marker names it: the extension's default, or the platform's hook. */
-	private static String keeps(PutBack row) {
-		return row.extension() != null ? row.extension().blockInterface() + "." + row.extension().name() : row.platform().owner() + "." + row.platform().name();
+	/**
+	 * What a row's put-back in the class stands for, as its marker names it: the extension's default, the elytra layer's
+	 * method, or the platform's hook.
+	 */
+	private static String keeps(PutBack row, ClassNode node) {
+		if (row.extension() != null) return row.extension().blockInterface() + "." + row.extension().name();
+		return (row.code() == Code.LAYER ? layerBase(node, row) : row.platform().owner()) + "." + row.platform().name();
 	}
 
 	/** How the platform makes vanilla's call, as pre-flight's note says it: {@code the block's IBlockExtension.onDestroyedByPlayer}. */
-	private static String through(PutBack row) {
-		String keeps = keeps(row);
-		return (row.extension() != null ? "the block's " : "") + keeps.substring(keeps.lastIndexOf('/') + 1);
+	private static String through(PutBack row, ClassNode node) {
+		String keeps = keeps(row, node);
+		String whose = row.extension() != null ? "the " + row.extension().holder().noun() + "'s " : row.code() == Code.LAYER ? "the layer's " : "";
+		return whose + keeps.substring(keeps.lastIndexOf('/') + 1);
 	}
 
 	/** What putting the call back does, as pre-flight's note of a hook of it says. */
@@ -364,6 +562,10 @@ final class VanillaCalls {
 			case PROGRESS -> "Fabricated puts it back there, NeoForge's harvest check event following it as that method posts it, so the hook applies";
 			case FORGE_PROGRESS -> "Fabricated puts it back there for a player whose class keeps Player.hasCorrectToolForDrops, which fires Forge's harvest"
 					+ " check event, so the hook applies to their mining; other players' is checked as Forge has it, without the hook";
+			case ACTION, FORGE_ACTION -> "Fabricated puts it back there for the items keeping that method's default, so the hook applies to their check, and"
+					+ " an item overriding it (vanilla's " + row.check().noun() + " among them) is checked as " + loader + " has it, without the hook";
+			case LAYER -> "Fabricated puts it back there for the layers keeping that method, so the hook applies to them, and a layer overriding it draws as"
+					+ " the platform has it, without the hook";
 		};
 	}
 
@@ -379,6 +581,7 @@ final class VanillaCalls {
 		List<MethodInsnNode> places = calls(method, row);
 		Map<AbstractInsnNode, State> frames = frames(owner, method);
 		if (frames == null) return null;
+		if (row.code().action()) return actions(owner, method, row, srg, places, frames);
 		List<Site> sites = new ArrayList<>();
 		for (MethodInsnNode place : places) {
 			Site site = site(method, place, frames);
@@ -388,7 +591,7 @@ final class VanillaCalls {
 		int temp = method.maxLocals;
 		Set<String> putBack = new LinkedHashSet<>();
 		for (Site site : sites) {
-			Emitter out = new Emitter(owner.name, row, srg, site, temp);
+			Emitter out = new Emitter(owner, row, srg, site, temp);
 			if (row.code() == Code.PROGRESS) {
 				// No branch: vanilla's call goes in front of the hook's operands, and a helper posting the event takes the hook's place.
 				out.harvestCall(putBack);
@@ -407,6 +610,73 @@ final class VanillaCalls {
 		if (row.code() == Code.FORGE_SERVER) method.maxLocals = temp + 1;
 		method.maxStack = Math.max(method.maxStack, sites.stream().mapToInt(s -> slots(s.under())).max().orElse(0) + 7);
 		return new Rewritten(List.copyOf(putBack), sites.size());
+	}
+
+	/**
+	 * The item checks' places (SEAM-6), each the stack the platform's code pushes, then the action's push and the
+	 * platform's call: the stack is kept and its classes asked whether they keep the platform's default, then it gets
+	 * vanilla's check, {@code stack.is(item)}, or the action and the platform's call as before. The stack's code runs once,
+	 * as it did, and the method gets no local. Null where a place isn't so (a jump or a handler reaching between the stack
+	 * and the call, a frame after it, a type a frame can't name).
+	 */
+	private static Rewritten actions(ClassNode owner, MethodNode method, PutBack row, boolean srg, List<MethodInsnNode> places, Map<AbstractInsnNode, State> frames) {
+		Set<LabelNode> targets = targets(method);
+		List<State> befores = new ArrayList<>();
+		for (MethodInsnNode call : places) {
+			AbstractInsnNode action = previousReal(call), stack = previousReal(action);
+			if (stack == null) return null;
+			for (AbstractInsnNode insn = stack.getNext(); insn != call; insn = insn.getNext()) {
+				if (insn instanceof FrameNode || insn instanceof LabelNode label && targets.contains(label)) return null;
+			}
+			for (AbstractInsnNode next = call.getNext(); next != null && next.getOpcode() < 0; next = next.getNext()) {
+				if (next instanceof FrameNode) return null;
+			}
+			State before = frames.get(action);
+			if (before == null || before.stack().isEmpty() || !STACK_CLASS.equals(before.stack().get(before.stack().size() - 1))
+					|| Stream.concat(before.stack().stream(), before.locals().stream()).anyMatch(t -> !(t instanceof String) && !(t instanceof Integer))) return null;
+			befores.add(before);
+		}
+		Set<String> putBack = new LinkedHashSet<>();
+		for (int i = 0; i < places.size(); i++) {
+			MethodInsnNode call = places.get(i);
+			State before = befores.get(i);
+			LabelNode platform = new LabelNode(), end = new LabelNode();
+			InsnList code = new InsnList();
+			code.add(new InsnNode(Opcodes.DUP));
+			code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner.name, row.extension().entry(), row.extension().entryDesc(), false));
+			code.add(new JumpInsnNode(Opcodes.IFEQ, platform));
+			itemCheck(code, owner.version, row, srg, putBack);
+			code.add(new JumpInsnNode(Opcodes.GOTO, end));
+			code.add(platform);
+			code.add(frame(before.locals(), -1, before.stack(), false));
+			method.instructions.insertBefore(previousReal(call), code);
+			method.instructions.insert(call, frame(before.locals(), -1, before.stack().subList(0, before.stack().size() - 1), true));
+			method.instructions.insert(call, end);
+		}
+		method.maxStack = Math.max(method.maxStack, befores.stream().mapToInt(b -> slots(b.stack())).max().orElse(0) + 1);
+		return new Rewritten(List.copyOf(putBack), places.size());
+	}
+
+	/**
+	 * Vanilla's check of the item check's item, of the stack on the stack: {@code is(Item)}, or in a class of Java 25's
+	 * (Minecraft 26.1 on) {@code is(Object)}, {@code TypedInstance}'s {@code is(T)}.
+	 */
+	private static void itemCheck(InsnList code, int version, PutBack row, boolean srg, Set<String> putBack) {
+		Member item = row.check().item();
+		code.add(new FieldInsnNode(Opcodes.GETSTATIC, item.owner(), item.name(srg), item.desc(srg)));
+		Member is = java25(version) ? IS_OBJECT : IS_ITEM;
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, is.owner(), is.name(srg), is.desc(srg), false));
+		putBack.add(is.key(srg));
+	}
+
+	/** Whether a class file version, its minor part aside, is Java 25's or later: the game's classes from 26.1 on. */
+	private static boolean java25(int version) {
+		return (version & 0xFFFF) >= JAVA_25;
+	}
+
+	private static AbstractInsnNode previousReal(AbstractInsnNode insn) {
+		do insn = insn.getPrevious(); while (insn != null && insn.getOpcode() < 0);
+		return insn;
 	}
 
 	/**
@@ -447,6 +717,9 @@ final class VanillaCalls {
 			case FORGE_CLIENT -> new int[] {0, 1, 2, 3, -1};
 			case HARVEST -> new int[] {0, 1, 2, 3};
 			case FORGE_HARVEST, PROGRESS, FORGE_PROGRESS -> harvestOperands(row.code());
+			// The layer and the stack; an action's stack is kept, not loaded again (actions).
+			case LAYER -> new int[] {0, 1};
+			case ACTION, FORGE_ACTION -> new int[0];
 		};
 	}
 
@@ -532,9 +805,11 @@ final class VanillaCalls {
 		private final boolean srg;
 		private final Site site;
 		private final int temp;
+		private final int version;
 
-		Emitter(String owner, PutBack row, boolean srg, Site site, int temp) {
-			this.owner = owner;
+		Emitter(ClassNode owner, PutBack row, boolean srg, Site site, int temp) {
+			this.owner = owner.name;
+			this.version = owner.version;
 			this.row = row;
 			this.srg = srg;
 			this.site = site;
@@ -543,6 +818,16 @@ final class VanillaCalls {
 
 		void vanilla(LabelNode platform, LabelNode end, Set<String> putBack) {
 			Code removal = row.code();
+			if (removal == Code.LAYER) {
+				// The layer's class asked, then vanilla's check of the stack the layer draws for.
+				load(0);
+				code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, KEEPS_LAYER, "(Ljava/lang/Object;)Z", false));
+				code.add(new JumpInsnNode(Opcodes.IFEQ, platform));
+				load(1);
+				itemCheck(code, version, row, srg, putBack);
+				code.add(new JumpInsnNode(Opcodes.GOTO, end));
+				return;
+			}
 			if (removal == Code.FORGE_SERVER) {
 				load(0);
 				load(1);
@@ -551,7 +836,7 @@ final class VanillaCalls {
 			}
 			if (row.extension() != null) {
 				state();
-				code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, row.extension().entry(), "(L" + STATE + ";)Z", false));
+				code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, row.extension().entry(), row.extension().entryDesc(), false));
 				code.add(new JumpInsnNode(Opcodes.IFEQ, platform));
 			}
 			if (removal.keepingPlayer() >= 0) {
@@ -633,7 +918,7 @@ final class VanillaCalls {
 		}
 
 		private void block() {
-			code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$block", "(L" + STATE + ";)L" + BLOCK + ";", false));
+			code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, BLOCK_OF_STATE.helper(), BLOCK_OF_STATE.helperDesc(), false));
 		}
 
 		private void field(Member field) {
@@ -650,19 +935,24 @@ final class VanillaCalls {
 	 * The private helpers vanilla's branch calls: the checks, the block's {@code getBlock}, Forge's server's reads and
 	 * NeoForge's harvest check event; each once.
 	 */
-	private static void addHelpers(ClassNode node, PutBack row, boolean srg) {
+	private static void addHelpers(ClassNode node, PutBack row, boolean srg, String layerBase) {
 		Extension extension = row.extension();
-		if (extension != null && indexOf(node, extension.entry(), "(L" + STATE + ";)Z") < 0) {
+		if (extension != null && indexOf(node, extension.entry(), extension.entryDesc()) < 0) {
 			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, extension.field(), "Ljava/util/Map;", null, null));
 			node.methods.add(keepsDefault(extension, node.name));
+		}
+		if (layerBase != null && indexOf(node, KEEPS_LAYER, "(Ljava/lang/Object;)Z") < 0) {
+			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KNOWN_LAYER, "Ljava/util/Map;", null, null));
+			node.methods.add(keepsLayer(node.name, layerBase, row.platform()));
 		}
 		if (row.code().keepingPlayer() >= 0 && indexOf(node, KEEPS_PLAYER, "(" + PLAYER + ")Z") < 0) {
 			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KNOWN_PLAYER, "Ljava/util/Map;", null, null));
 			node.methods.add(keepsPlayer(node.name, srg));
 		}
 		if (checks(row) && indexOf(node, "fabricated$keeps", KEEPS) < 0) node.methods.addAll(keepsHelpers(node.name));
-		if (extension != null && indexOf(node, "fabricated$block", "(L" + STATE + ";)L" + BLOCK + ";") < 0) {
-			node.methods.add(helper("fabricated$block", "(L" + STATE + ";)L" + BLOCK + ";", Opcodes.ARETURN, new VarInsnNode(Opcodes.ALOAD, 0), invoke(GET_BLOCK, srg)));
+		Holder holder = extension == null ? null : extension.holder();
+		if (holder != null && indexOf(node, holder.helper(), holder.helperDesc()) < 0) {
+			node.methods.add(helper(holder.helper(), holder.helperDesc(), Opcodes.ARETURN, new VarInsnNode(Opcodes.ALOAD, 0), invoke(holder.getter(), srg)));
 		}
 		if ((row.code() == Code.HARVEST || row.code() == Code.PROGRESS) && indexOf(node, HARVEST_EVENT, HARVEST_EVENT_DESC) < 0) node.methods.add(harvestEvent());
 		if (row.code() != Code.FORGE_SERVER) return;
@@ -678,17 +968,18 @@ final class VanillaCalls {
 	}
 
 	/**
-	 * {@code private static boolean <entry>(BlockState state)}: {@link KeepsDefault#keepsDefault} of the state and its block,
-	 * for the extension's methods, whose code is copied into the class beside it ({@link #keepsHelpers}), with the answers
-	 * the class keeps in the extension's field, made the first time it asks (its initialiser stays as it is).
+	 * {@code private static boolean <entry>(BlockState state)}: {@link KeepsDefault#keepsDefault} of the state and its block
+	 * (of the stack and its item), for the extension's methods, whose code is copied into the class beside it
+	 * ({@link #keepsHelpers}), with the answers the class keeps in the extension's field, made the first time it asks (its
+	 * initialiser stays as it is).
 	 */
 	private static MethodNode keepsDefault(Extension extension, String owner) {
-		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, extension.entry(), "(L" + STATE + ";)Z", null, null);
+		Holder holder = extension.holder();
+		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, extension.entry(), extension.entryDesc(), null, null);
 		InsnList code = method.instructions;
-		known(code, owner, extension.field(), STATE);
-		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$block", "(L" + STATE + ";)L" + BLOCK + ";", false));
+		known(code, owner, extension.field(), holder.type());
+		askedFirst(code, owner, holder.type(), objectAndHolder(owner, holder), ASKED_BOTH);
+		code.add(objectAndHolder(owner, holder));
 		code.add(new LdcInsnNode(Type.getObjectType(extension.stateInterface())));
 		code.add(new LdcInsnNode(Type.getObjectType(extension.blockInterface())));
 		code.add(new LdcInsnNode(extension.name()));
@@ -697,7 +988,59 @@ final class VanillaCalls {
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$keeps", KEEPS, false));
 		code.add(new InsnNode(Opcodes.IRETURN));
 		method.maxStack = 12;
-		method.maxLocals = 1;
+		method.maxLocals = 2;
+		return method;
+	}
+
+	/** Pushes the entry's object and its holder ({@code state.getBlock()}, {@code stack.getItem()}). */
+	private static InsnList objectAndHolder(String owner, Holder holder) {
+		InsnList code = new InsnList();
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, holder.helper(), holder.helperDesc(), false));
+		return code;
+	}
+
+	private static final String ASKED_ONE = "(Ljava/util/Map;Ljava/lang/Object;)I";
+	private static final String ASKED_BOTH = "(Ljava/util/Map;Ljava/lang/Object;Ljava/lang/Object;)I";
+
+	/**
+	 * After {@link #known}, the store on the stack: the answer kept for the classes of the objects {@code objects} pushes,
+	 * where each was asked of before ({@link KeepsDefault#asked}), returned with nothing made; else the store again, kept in
+	 * local 1, for the lookup's code after.
+	 */
+	private static void askedFirst(InsnList code, String owner, String param, InsnList objects, String askedDesc) {
+		LabelNode ask = new LabelNode();
+		code.add(new InsnNode(Opcodes.DUP));
+		code.add(new VarInsnNode(Opcodes.ASTORE, 1));
+		code.add(objects);
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$asked", askedDesc, false));
+		code.add(new InsnNode(Opcodes.DUP));
+		code.add(new JumpInsnNode(Opcodes.IFLT, ask));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		code.add(ask);
+		code.add(new FrameNode(Opcodes.F_NEW, 2, new Object[] {param, "java/util/Map"}, 1, new Object[] {Opcodes.INTEGER}));
+		code.add(new InsnNode(Opcodes.POP));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 1));
+	}
+
+	/**
+	 * {@code private static boolean fabricated$keepsLayerDefault(Object layer)}: {@link KeepsDefault#keepsMethod} of the
+	 * elytra layer for {@code shouldRender}, which {@code base} declares, its answers kept as {@link #keepsDefault}'s are.
+	 */
+	private static MethodNode keepsLayer(String owner, String base, Member shouldRender) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KEEPS_LAYER, "(Ljava/lang/Object;)Z", null, null);
+		InsnList code = method.instructions;
+		known(code, owner, KNOWN_LAYER, "java/lang/Object");
+		askedFirst(code, owner, "java/lang/Object", parameter(), ASKED_ONE);
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new LdcInsnNode(Type.getObjectType(base)));
+		code.add(new LdcInsnNode(shouldRender.name()));
+		classes(code, Type.getArgumentTypes(shouldRender.desc()));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$keepsMethod", KEEPS_METHOD, false));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		method.maxStack = 9;
+		method.maxLocals = 2;
 		return method;
 	}
 
@@ -709,6 +1052,7 @@ final class VanillaCalls {
 		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KEEPS_PLAYER, "(" + PLAYER + ")Z", null, null);
 		InsnList code = method.instructions;
 		known(code, owner, KNOWN_PLAYER, PLAYER_CLASS);
+		askedFirst(code, owner, PLAYER_CLASS, parameter(), ASKED_ONE);
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		code.add(new LdcInsnNode(Type.getObjectType(PLAYER_CLASS)));
 		code.add(new LdcInsnNode(HAS_CORRECT_TOOL.name(srg)));
@@ -716,8 +1060,14 @@ final class VanillaCalls {
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$keepsMethod", KEEPS_METHOD, false));
 		code.add(new InsnNode(Opcodes.IRETURN));
 		method.maxStack = 9;
-		method.maxLocals = 1;
+		method.maxLocals = 2;
 		return method;
+	}
+
+	private static InsnList parameter() {
+		InsnList code = new InsnList();
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		return code;
 	}
 
 	/** Pushes the class's store of answers in {@code field}, made the first time; the method's one parameter is of {@code param}. */
@@ -779,7 +1129,7 @@ final class VanillaCalls {
 
 	/**
 	 * {@link KeepsDefault}'s methods, as javac wrote them, made the class's own private helpers: {@code fabricated$keeps},
-	 * {@code fabricated$keepsMethod}, {@code fabricated$overrides} and {@code fabricated$declares}, their calls of each other
+	 * {@code fabricated$keepsMethod}, {@code fabricated$asked}, {@code fabricated$overrides} and {@code fabricated$declares}, their calls of each other
 	 * the class's. They name only the JDK's classes. Read afresh for each class: a tree shared between threads isn't safe to
 	 * copy (ASM's {@code MethodNode.accept} resets and sets its labels' state as it goes), and translation reads classes in
 	 * parallel.
@@ -899,9 +1249,13 @@ final class VanillaCalls {
 		return targets;
 	}
 
+	/** The row's method: by its name and descriptor, or where the row gives none, the first of its name making the platform's call. */
 	private static MethodNode holder(ClassNode node, PutBack row, boolean srg) {
-		int at = indexOf(node, row.method(srg), row.desc());
-		return at < 0 ? null : node.methods.get(at);
+		for (MethodNode m : node.methods) {
+			if (!m.name.equals(row.method(srg)) || row.desc() != null && !m.desc.equals(row.desc())) continue;
+			if (row.desc() != null || !calls(m, row).isEmpty()) return m;
+		}
+		return null;
 	}
 
 	private static int indexOf(ClassNode node, String name, String desc) {
@@ -912,16 +1266,26 @@ final class VanillaCalls {
 		return -1;
 	}
 
-	/** The method's calls of the row's platform call: a static hook's, or an instance method's. */
+	/**
+	 * The method's calls of the row's platform call: a static hook's, or an instance method's; an item check's, of the
+	 * row's action, pushed just before.
+	 */
 	private static List<MethodInsnNode> calls(MethodNode method, PutBack row) {
 		List<MethodInsnNode> found = new ArrayList<>();
 		if (method.instructions == null) return found;
 		Member member = row.platform();
 		for (AbstractInsnNode insn : method.instructions) {
 			if (insn instanceof MethodInsnNode call && (call.getOpcode() == Opcodes.INVOKESTATIC) == row.code().hookCall() && call.owner.equals(member.owner())
-					&& call.name.equals(member.name()) && call.desc.equals(member.desc())) found.add(call);
+					&& call.name.equals(member.name()) && call.desc.equals(member.desc()) && (!row.code().action() || pushesAction(previousReal(call), row.check()))) {
+				found.add(call);
+			}
 		}
 		return found;
+	}
+
+	/** Whether the instruction pushes the item check's action, a field of the platform's actions. */
+	private static boolean pushesAction(AbstractInsnNode insn, ItemCheck check) {
+		return insn instanceof FieldInsnNode field && field.getOpcode() == Opcodes.GETSTATIC && field.owner.equals(check.actions()) && field.name.equals(check.action());
 	}
 
 	private static List<MethodInsnNode> calls(MethodNode method, String owner, String name) {
@@ -945,40 +1309,90 @@ final class VanillaCalls {
 	}
 
 	/**
-	 * A vanilla call a platform makes otherwise in a game method, which Fabricated doesn't put back: the method, vanilla's
-	 * call (its owner, its names), the platform's call that shows the platform's code is there, and why, as pre-flight's
-	 * hint for a hook of the call says it.
+	 * A vanilla call a platform makes otherwise in a game method, which Fabricated doesn't put back: the method (any of the
+	 * name where {@code desc} is null), vanilla's call (its owner, its names), what shows the platform's code is there,
+	 * and why, as pre-flight's hint for a hook of the call says it.
 	 */
-	private record NotPutBack(String owner, String method, String srgMethod, String callOwner, Set<String> names, String hookOwner, String hook, String why) {
+	private record NotPutBack(String owner, String method, String srgMethod, String desc, String callOwner, Set<String> names,
+			BiPredicate<ClassNode, MethodNode> evidence, String why) {
 	}
 
-	private static final String ITEM_CLASS = "net/minecraft/world/item/Item";
-	private static final String STACK_CLASS = "net/minecraft/world/item/ItemStack";
+	/** The evidence of a method making a call of the class's method of that name. */
+	private static BiPredicate<ClassNode, MethodNode> making(String owner, String name) {
+		return (node, method) -> !calls(method, owner, name).isEmpty();
+	}
+
+	/** The evidence of a class of the platform's package whose method asks whether an object is of one of the classes. */
+	private static BiPredicate<ClassNode, MethodNode> asking(String platform, String... types) {
+		Set<String> asked = Set.of(types);
+		return (node, method) -> references(node, platform) && Arrays.stream(method.instructions.toArray())
+				.anyMatch(insn -> insn.getOpcode() == Opcodes.INSTANCEOF && asked.contains(((TypeInsnNode) insn).desc));
+	}
+
+	private static final String COMMON_HOOKS = "net/neoforged/neoforge/common/CommonHooks";
+	private static final String MAP_ITEM = "net/minecraft/world/item/MapItem";
+	private static final String CROSSBOW_ITEM = "net/minecraft/world/item/CrossbowItem";
+	private static final String IS = "is";
+
 	/**
 	 * The calls not put back. Forge's server makes {@code playerWillDestroy} from its extension, once the tool is damaged,
 	 * where vanilla makes it before the creative check: only the removal goes back there (SEAM-3). Both platforms' servers
 	 * ask the held item's {@code canAttackBlock} (1.21.11 on: the stack's {@code canDestroyBlock}) inside their block break
 	 * event's hook, which pre-cancels the event where the item says no and lets a listener overrule it, where vanilla returns
-	 * before anything else; NeoForge 26.1.2 to 26.3's client too (SEAM-4).
+	 * before anything else; NeoForge 26.1.2 to 26.3's client too (SEAM-4). NeoForge and Forge 47 to 64 make a sheep's, a
+	 * snow golem's, a bogged's and (NeoForge 21.1, Forge) a mooshroom's {@code mobInteract} ask for no shears: the shears
+	 * item shears a mob through their shearable extension, which posts their events and drops what their loot says. The
+	 * client's held item renderer (NeoForge 21.1 to 26.1.2's, and Forge's crossbow) and item frame renderer ask whether
+	 * the item is a {@code MapItem} or a {@code CrossbowItem}, which other mods' items are too, where vanilla asks whether
+	 * it is the vanilla item (SEAM-6).
 	 */
-	private static final List<NotPutBack> NOT_PUT_BACK = List.of(
-			new NotPutBack(GAME_MODE, "destroyBlock", "m_9280_", WILL_DESTROY.owner(), Set.of(WILL_DESTROY.name(), WILL_DESTROY.srgName()), FORGE_HOOKS,
-					"onBlockBreakEvent", "Forge's ServerPlayerGameMode makes that call through the block's IForgeBlock.onDestroyedByPlayer instead, which Fabricated"
-							+ " doesn't put back there (SEAM-3)."),
-			new NotPutBack(GAME_MODE, "destroyBlock", "m_9280_", ITEM_CLASS, Set.of("canAttackBlock", "m_6777_"), FORGE_HOOKS, "onBlockBreakEvent",
+	private static final List<NotPutBack> NOT_PUT_BACK = Stream.concat(Stream.of(
+			new NotPutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, WILL_DESTROY.owner(), Set.of(WILL_DESTROY.name(), WILL_DESTROY.srgName()),
+					making(FORGE_HOOKS, "onBlockBreakEvent"), "Forge's ServerPlayerGameMode makes that call through the block's IForgeBlock.onDestroyedByPlayer"
+							+ " instead, which Fabricated doesn't put back there (SEAM-3)."),
+			new NotPutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, ITEM_CLASS, Set.of("canAttackBlock", "m_6777_"), making(FORGE_HOOKS, "onBlockBreakEvent"),
 					breakEvent("Forge", "ServerPlayerGameMode", "canAttackBlock", "ForgeHooks.onBlockBreakEvent")),
-			new NotPutBack(GAME_MODE, "destroyBlock", "m_9280_", STACK_CLASS, Set.of("canDestroyBlock"), FORGE_HOOKS, "onBlockBreakEvent",
+			new NotPutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, STACK_CLASS, Set.of("canDestroyBlock"), making(FORGE_HOOKS, "onBlockBreakEvent"),
 					breakEvent("Forge", "ServerPlayerGameMode", "canDestroyBlock", "ForgeHooks.onBlockBreakEvent")),
-			new NotPutBack(GAME_MODE, "destroyBlock", "m_9280_", ITEM_CLASS, Set.of("canAttackBlock"), "net/neoforged/neoforge/common/CommonHooks", "fireBlockBreak",
+			new NotPutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, ITEM_CLASS, Set.of("canAttackBlock"), making(COMMON_HOOKS, "fireBlockBreak"),
 					breakEvent("NeoForge", "ServerPlayerGameMode", "canAttackBlock", "CommonHooks.fireBlockBreak")),
-			new NotPutBack(GAME_MODE, "destroyBlock", "m_9280_", STACK_CLASS, Set.of("canDestroyBlock"), "net/neoforged/neoforge/common/CommonHooks", "fireBlockBreak",
+			new NotPutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, STACK_CLASS, Set.of("canDestroyBlock"), making(COMMON_HOOKS, "fireBlockBreak"),
 					breakEvent("NeoForge", "ServerPlayerGameMode", "canDestroyBlock", "CommonHooks.fireBlockBreak")),
-			new NotPutBack(CLIENT_GAME_MODE, "destroyBlock", "m_105267_", STACK_CLASS, Set.of("canDestroyBlock"), "net/neoforged/neoforge/common/CommonHooks",
-					"fireBlockBreak", breakEvent("NeoForge", "MultiPlayerGameMode", "canDestroyBlock", "CommonHooks.fireBlockBreak")));
+			new NotPutBack(CLIENT_GAME_MODE, "destroyBlock", "m_105267_", DESTROY_BLOCK, STACK_CLASS, Set.of("canDestroyBlock"), making(COMMON_HOOKS, "fireBlockBreak"),
+					breakEvent("NeoForge", "MultiPlayerGameMode", "canDestroyBlock", "CommonHooks.fireBlockBreak")),
+			heldItems(NEOFORGE, "NeoForge"), heldItems(FORGE, "Forge"),
+			new NotPutBack("net/minecraft/client/renderer/entity/ItemFrameRenderer", "getFrameModelResourceLoc", "m_174212_", null, STACK_CLASS,
+					Set.of(IS, IS_ITEM.srgName()), asking(NEOFORGE, MAP_ITEM), mapItem("NeoForge")),
+			new NotPutBack("net/minecraft/client/renderer/entity/ItemFrameRenderer", "getFrameModelResourceLoc", "m_174212_", null, STACK_CLASS,
+					Set.of(IS, IS_ITEM.srgName()), asking(FORGE, MAP_ITEM), mapItem("Forge"))),
+			// Each mob's class, before and after 1.21.11 moved them.
+			Stream.of(ANIMALS + "Sheep", ANIMALS + "sheep/Sheep", ANIMALS + "SnowGolem", ANIMALS + "golem/SnowGolem", ANIMALS + "MushroomCow",
+					ANIMALS + "cow/MushroomCow", "net/minecraft/world/entity/monster/Bogged", "net/minecraft/world/entity/monster/skeleton/Bogged")
+					.map(mob -> new NotPutBack(mob, "mobInteract", "m_6071_", null, STACK_CLASS, Set.of(IS, IS_ITEM.srgName()),
+							(node, method) -> calls(method, STACK_CLASS, CAN_PERFORM.name()).isEmpty(), sheared(mob.substring(mob.lastIndexOf('/') + 1)))))
+			.toList();
 
 	private static String breakEvent(String loader, String gameMode, String check, String hook) {
 		return loader + "'s " + gameMode + " asks the held item's " + check + " inside its block break event (" + hook + "), which can overrule the answer,"
 				+ " so Fabricated doesn't put that check back there (SEAM-4).";
+	}
+
+	private static String sheared(String mob) {
+		return mob + "'s mobInteract asks for no shears here: the platform shears it from the shears item, through its shearable extension (NeoForge's"
+				+ " IShearable, Forge's IForgeShearable), which posts its events and drops what its loot says, so Fabricated doesn't put vanilla's check back there"
+				+ " (SEAM-6).";
+	}
+
+	private static NotPutBack heldItems(String platform, String loader) {
+		return new NotPutBack("net/minecraft/client/renderer/ItemInHandRenderer", "renderArmWithItem", "m_109371_", null, STACK_CLASS, Set.of(IS, IS_ITEM.srgName()),
+				asking(platform, MAP_ITEM, CROSSBOW_ITEM), loader + "'s ItemInHandRenderer asks whether"
+						+ " the held item is a MapItem or a CrossbowItem instead, which other mods' map and crossbow items are too, so Fabricated doesn't put vanilla's"
+						+ " check back there (SEAM-6).");
+	}
+
+	private static String mapItem(String loader) {
+		return loader + "'s ItemFrameRenderer asks whether the framed item is a MapItem instead, which other mods' map items are too, so Fabricated doesn't put"
+				+ " vanilla's check back there (SEAM-6).";
 	}
 
 	/**
@@ -989,10 +1403,10 @@ final class VanillaCalls {
 	static String notPutBack(ClassNode node, String method, String desc, String owner, String name) {
 		boolean srg = VanillaSeams.srg(node);
 		for (NotPutBack row : NOT_PUT_BACK) {
-			if (!row.owner().equals(node.name) || !(srg ? row.srgMethod() : row.method()).equals(method) || !DESTROY_BLOCK.equals(desc)
+			if (!row.owner().equals(node.name) || !(srg ? row.srgMethod() : row.method()).equals(method) || row.desc() != null && !row.desc().equals(desc)
 					|| !owner.equals(row.callOwner()) || !row.names().contains(name)) continue;
 			int at = indexOf(node, method, desc);
-			if (at >= 0 && !calls(node.methods.get(at), row.hookOwner(), row.hook()).isEmpty()) return row.why();
+			if (at >= 0 && node.methods.get(at).instructions != null && row.evidence().test(node, node.methods.get(at))) return row.why();
 		}
 		return null;
 	}
@@ -1046,7 +1460,7 @@ final class VanillaCalls {
 			if (method == null || method.invisibleAnnotations == null || method.invisibleAnnotations.stream()
 					.noneMatch(a -> VanillaSeams.MARKER.equals(a.desc) && platform.key(false).equals(value(a, "platform")))) continue;
 			moved.add(platform.key(false));
-			holders.add(row.method(srg) + row.desc());
+			holders.add(method.name + method.desc);
 			if (platform.owner().equals(node.name)) bypassed.add(platform.name() + platform.desc());
 			others(row).forEach((owner, names) -> others.computeIfAbsent(owner, k -> new TreeSet<>()).addAll(names));
 		}
@@ -1057,7 +1471,9 @@ final class VanillaCalls {
 	 * the extensions' defaults, no longer called; on Forge's server {@code Level.removeBlock}, called where Forge's default
 	 * sets the block itself; NeoForge's {@code EventHooks.doPlayerHarvestCheck}, which vanilla's call and the event's helper
 	 * stand in for; Forge's {@code ForgeHooks.isCorrectToolForDrops}, no longer called, and {@code
-	 * Player.hasCorrectToolForDrops}, called where Forge's default only fires the event (a block needing no tool).
+	 * Player.hasCorrectToolForDrops}, called where Forge's default only fires the event (a block needing no tool). For the
+	 * item checks, vanilla's {@code ItemStack.is}, called where the platform's code didn't (on NeoForge either era's stack
+	 * extension), and the elytra layer's {@code shouldRender}, no longer called for the layers keeping it.
 	 */
 	static Map<String, Set<String>> others(PutBack row) {
 		Map<String, Set<String>> others = new TreeMap<>();
@@ -1065,7 +1481,16 @@ final class VanillaCalls {
 			others.computeIfAbsent(row.extension().stateInterface(), k -> new TreeSet<>()).add(row.extension().name());
 			others.computeIfAbsent(row.extension().blockInterface(), k -> new TreeSet<>()).add(row.extension().name());
 		}
+		if (row.code().item()) {
+			others.computeIfAbsent(STACK_CLASS, k -> new TreeSet<>()).addAll(List.of(IS_ITEM.name(), IS_ITEM.srgName()));
+			others.computeIfAbsent(TYPED_INSTANCE, k -> new TreeSet<>()).add(IS_OBJECT.name());
+		}
 		switch (row.code()) {
+			case ACTION -> others.computeIfAbsent(NEOFORGE_ACTION_26.stateInterface(), k -> new TreeSet<>()).add(NEOFORGE_ACTION_26.name());
+			case LAYER -> {
+				others.computeIfAbsent(row.platform().owner(), k -> new TreeSet<>()).add(row.platform().name());
+				others.computeIfAbsent(FORGE_ELYTRA_LAYER, k -> new TreeSet<>()).add(row.platform().name());
+			}
 			case FORGE_SERVER -> {
 				for (String level : List.of(LEVEL, SERVER_LEVEL)) others.computeIfAbsent(level, k -> new TreeSet<>()).addAll(List.of(REMOVE_BLOCK.name(), REMOVE_BLOCK.srgName()));
 			}
@@ -1082,11 +1507,16 @@ final class VanillaCalls {
 
 	/** Every class whose methods' calls a put-back in the class may change ({@link #others}), of any platform's rows. */
 	static Set<String> otherClasses(String owner) {
-		Set<String> classes = new TreeSet<>();
+		return otherMethods(owner).keySet();
+	}
+
+	/** {@link #others} of every platform's rows of the class, by class: what any put-back in it may change. */
+	static Map<String, Set<String>> otherMethods(String owner) {
+		Map<String, Set<String>> methods = new TreeMap<>();
 		for (PutBack row : PUT_BACKS) {
-			if (row.owner().equals(owner)) classes.addAll(others(row).keySet());
+			if (row.owner().equals(owner)) others(row).forEach((c, names) -> methods.computeIfAbsent(c, k -> new TreeSet<>()).addAll(names));
 		}
-		return classes;
+		return methods;
 	}
 
 	/**

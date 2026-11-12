@@ -51,6 +51,20 @@ public final class KnownLimits {
 							+ ".*asks the held item's (?:canAttackBlock|canDestroyBlock) inside its block break event", Pattern.DOTALL),
 					"NeoForge and Forge ask the held item whether it can break the block inside their block break event, which a listener may"
 							+ " overrule, so hooks of vanilla's check in destroyBlock can't apply there (SEAM-4)"),
+			// A hook of vanilla's shears check in a mob's mobInteract, where the platforms shear the mob from the shears item
+			// through their shearable extension: pre-flight's hint says so (Forge 65 and 66 ask an action there, which goes back).
+			new Limit(Set.of("NeoForge", "Forge"), null,
+					Pattern.compile("expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/world/item/ItemStack;(?:is|m_150930_)\\(.*'s mobInteract asks for no shears"
+							+ " here: the platform shears it from the shears item", Pattern.DOTALL),
+					"NeoForge and Forge shear a mob from the shears item, through their shearable extension, so hooks of vanilla's shears check in"
+							+ " its mobInteract can't apply there (SEAM-6)"),
+			// A hook of vanilla's map or crossbow check in the client's held item or item frame renderer, where the platforms ask
+			// whether the item is of the item's class, which other mods' items are too: pre-flight's hint says so.
+			new Limit(Set.of("NeoForge", "Forge"), null,
+					Pattern.compile("expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/world/item/ItemStack;(?:is|m_150930_)\\(.*(?:ItemInHandRenderer|ItemFrameRenderer)"
+							+ " asks whether the (?:held|framed) item is a MapItem", Pattern.DOTALL),
+					"NeoForge and Forge ask whether the item is a map (or crossbow) item there, which other mods' items are too, so hooks of vanilla's"
+							+ " check of the vanilla item can't apply there (SEAM-6)"),
 			// ForgeRegistry.add, whose maps key a value by its equality: two objects, by their identity hashes, not one object
 			// under two names.
 			new Limit(Set.of(), IllegalArgumentException.class.getName(),

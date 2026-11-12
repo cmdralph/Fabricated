@@ -451,7 +451,7 @@ public final class MixinPreflight extends PreflightPart {
 
 	private static boolean isSeamNote(PreflightFinding f) {
 		return f.severity() == Severity.INFO && f.handler() != null && f.mixin() != null
-				&& (f.message().endsWith("(SEAM-1)") || f.message().endsWith("(SEAM-3)") || f.message().endsWith("(SEAM-4)"));
+				&& (f.message().endsWith("(SEAM-1)") || f.message().endsWith("(SEAM-3)") || f.message().endsWith("(SEAM-4)") || f.message().endsWith("(SEAM-6)"));
 	}
 
 	/** A left-out injector's key: its mixin and handler, or its mixin alone where all of it is. */
@@ -1405,7 +1405,7 @@ public final class MixinPreflight extends PreflightPart {
 	/**
 	 * Notes each of the mixin's members that hooks a vanilla method the platform took out of the target and Fabricated
 	 * puts back ({@link VanillaSeams}, SEAM-1): an injector or invoker naming it, through the refmap, or a shadow of it;
-	 * or an injector of a method of the target naming vanilla's call Fabricated puts back there (SEAM-3, SEAM-4). Each note is the
+	 * or an injector of a method of the target naming vanilla's call Fabricated puts back there (SEAM-3, SEAM-4, SEAM-6). Each note is the
 	 * member's (its handler's), and the target is recorded among the classes rewritten as they load ({@link #restoredSeams})
 	 * once the config's checks leave the member in, and only then.
 	 */
@@ -1946,7 +1946,7 @@ public final class MixinPreflight extends PreflightPart {
 
 	/**
 	 * Why an injector at vanilla's call that the platform makes otherwise, and Fabricated doesn't put back, stays out
-	 * (SEAM-3, SEAM-4, {@link VanillaSeams#callNotPutBack}); null for any other call.
+	 * (SEAM-3, SEAM-4, SEAM-6, {@link VanillaSeams#callNotPutBack}); null for any other call.
 	 */
 	private String notPutBackHint(ClassNode target, MethodNode method, String rawTarget, Context ctx) {
 		MemberRef ref = rawTarget == null ? null : MemberRef.parse(ctx.resolve(rawTarget));

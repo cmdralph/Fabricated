@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -47,7 +48,12 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * any of its injectors selects a method no longer reached for those blocks (the platform's private {@code removeBlock}),
  * or selects a method holding put-back calls (or one it can't tell) and names a member the rewrite adds there (vanilla's
  * calls, the fields they read); and a mixin into the extension's interfaces where an injector or an overwrite selects
- * the extension's method, whose default those blocks no longer reach.
+ * the extension's method, whose default those blocks no longer reach. Where vanilla's item checks are put back (SEAM-6),
+ * a mixin into {@code ItemStack} (or {@code TypedInstance}) selecting its {@code is}, which those checks then call, keeps
+ * the class too, as does one into the elytra layer, or Forge's interface of it, selecting {@code shouldRender}.
+ * <p>
+ * Each listed mixin is read once for all the seam classes, and only one naming a class concerned is parsed; a class's
+ * rewrite is worked out only where such a mixin targets it, or selects a method a put-back in it may change.
  */
 public final class SeamConflicts {
 	private static final String AT = "Lorg/spongepowered/asm/mixin/injection/At;";
@@ -118,68 +124,131 @@ public final class SeamConflicts {
 	 * @param platformClass the class as the platform has it, before any seam is put back
 	 */
 	public static Conflict find(ClassNode platformClass, InstalledClasses installed) {
-		return find(platformClass.name, () -> platformClass, installed.nativeListing()).conflict();
+		Candidate candidate = new Candidate(platformClass.name, () -> platformClass);
+		decide(List.of(candidate), installed.nativeListing());
+		return candidate.found.conflict();
 	}
 
 	/**
-	 * {@link #find(ClassNode, InstalledClasses)} of the class {@code internal}, read ({@code platformClass}, null where it
-	 * doesn't parse) and its rewrite worked out only once a native mixin may concern it: most launches have none.
+	 * A seam class being decided: read ({@code platformClass}, null where it doesn't parse) and its rewrite worked out only
+	 * once a native mixin may concern it, as most launches have none; and once decided, what keeps it.
 	 */
-	private static Found find(String internal, Supplier<ClassNode> platformClass, InstalledClasses.NativeListing listing) {
-		VanillaSeams.Rewrite[] worked = {null};
-		Supplier<VanillaSeams.Rewrite> rewrite = () -> {
-			if (worked[0] == null) {
+	private static final class Candidate {
+		final String name;
+		final Supplier<ClassNode> platformClass;
+		/** The class and those whose methods' calls a put-back in it may change: only a mixin naming one can target what moves. */
+		final Set<String> concerned;
+		/** Those classes' methods a put-back in it may change, by class, of any form the table reads ({@link VanillaSeams#mayChange}). */
+		final Map<String, Set<String>> mayChange;
+		private VanillaSeams.Rewrite rewrite;
+		Found found;
+
+		Candidate(String name, Supplier<ClassNode> platformClass) {
+			this.name = name;
+			this.platformClass = platformClass;
+			this.concerned = VanillaSeams.concerned(name);
+			this.mayChange = VanillaSeams.mayChange(name);
+		}
+
+		VanillaSeams.Rewrite rewrite() {
+			if (rewrite == null) {
 				ClassNode node = platformClass.get();
-				worked[0] = node == null ? VanillaSeams.Rewrite.NONE : VanillaSeams.rewriteOf(node);
+				rewrite = node == null ? VanillaSeams.Rewrite.NONE : VanillaSeams.rewriteOf(node);
 			}
-			return worked[0];
-		};
-		Set<String> concerned = VanillaSeams.concerned(internal);
+			return rewrite;
+		}
+
+		/** The conflict, where something would be put back; no conflict where nothing would. */
+		Found kept(Conflict conflict, boolean clean) {
+			return rewrite().isEmpty() ? new Found(null, true) : new Found(conflict, clean);
+		}
+	}
+
+	/**
+	 * Decides each candidate ({@link Candidate#found}): the first of the native mixins, in the order the jars list them,
+	 * that keeps it. Each mixin is read once, for every candidate: only one naming a candidate's concerned classes is
+	 * parsed, and a candidate's rewrite is worked out only where such a mixin targets the class, or a class whose methods
+	 * a put-back in it may change and selects one of those. A mixin that fails to read keeps every class still undecided,
+	 * and so does a file listing mixins that failed to read, where no mixin read does.
+	 */
+	private static void decide(List<Candidate> candidates, InstalledClasses.NativeListing listing) {
+		List<Candidate> open = new ArrayList<>(candidates);
 		for (InstalledClasses.ListedMixin listed : listing.mixins()) {
+			if (open.isEmpty()) return;
 			byte[] data;
 			try {
 				data = listed.classes().read(listed.mixin());
 			} catch (IOException | RuntimeException e) {
 				// A read error, which the next launch may not have.
-				return kept(rewrite, new Conflict(listed.owner(), listed.mixin(), false), false);
+				for (Candidate c : open) c.found = c.kept(new Conflict(listed.owner(), listed.mixin(), false), false);
+				return;
 			}
 			// A class the config lists and the jar hasn't, or one that doesn't parse, is so at every launch.
-			if (data == null) return kept(rewrite, new Conflict(listed.owner(), listed.mixin(), false), true);
+			if (data == null) {
+				for (Candidate c : open) c.found = c.kept(new Conflict(listed.owner(), listed.mixin(), false), true);
+				return;
+			}
 			// Only a mixin naming the class, or another whose methods' calls may change, can target it (its @Mixin's class or
 			// string): the others aren't parsed.
 			String text = new String(data, StandardCharsets.ISO_8859_1);
-			if (concerned.stream().noneMatch(name -> names(text, name))) continue;
-			if (rewrite.get().isEmpty()) return new Found(null, true);
+			Read read = null;
+			for (Iterator<Candidate> it = open.iterator(); it.hasNext();) {
+				Candidate c = it.next();
+				if (c.concerned.stream().noneMatch(name -> names(text, name))) continue;
+				if (read == null) read = Read.of(listed, data);
+				Found found = read.decides(c);
+				if (found != null) {
+					c.found = found;
+					it.remove();
+				}
+			}
+		}
+		for (Candidate c : open) {
+			if (listing.complete()) {
+				c.found = new Found(null, true);
+			} else {
+				InstalledClasses.UnreadList unread = listing.unread().get(0);
+				c.found = c.kept(new Conflict(unread.owner(), unread.path(), false), false);
+			}
+		}
+	}
+
+	/**
+	 * A native mixin as read for the candidates its text names: its tree (null where it doesn't parse), what its refmap
+	 * reads its annotations' strings as (null where the refmap fails to read), and its targets.
+	 */
+	private record Read(InstalledClasses.ListedMixin listed, ClassNode mixin, Map<String, String> mapped, List<String> targets) {
+		static Read of(InstalledClasses.ListedMixin listed, byte[] data) {
 			ClassNode mixin = new ClassNode();
 			try {
 				new ClassReader(data).accept(mixin, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
 			} catch (RuntimeException e) {
-				return new Found(new Conflict(listed.owner(), listed.mixin(), false), true);
+				return new Read(listed, null, null, List.of());
 			}
-			// What its annotations' strings are read as: through its config's refmap, Forge 47's mods' development names
-			// the game's SRG names.
+			// What its annotations' strings are read as: through its config's refmap, Forge 47's mods' development names the
+			// game's SRG names.
 			Map<String, String> mapped;
 			try {
 				mapped = listed.refmap() == null ? Map.of() : listed.refmap().of(listed.mixin());
 			} catch (IOException | RuntimeException e) {
-				return kept(rewrite, new Conflict(listed.owner(), listed.mixin(), false), false);
+				mapped = null;
 			}
-			List<String> targets = InstalledClasses.mixinTargets(mixin);
-			if (targets.contains(internal) && hooks(mixin, platformClass.get(), rewrite.get(), mapped)
-					|| rewrite.get().others().entrySet().stream().anyMatch(d -> targets.contains(d.getKey()) && hooksMethod(mixin, d.getValue(), mapped))) {
+			return new Read(listed, mixin, mapped, InstalledClasses.mixinTargets(mixin));
+		}
+
+		/** What the mixin decides of the candidate, or null where it leaves it undecided. */
+		Found decides(Candidate c) {
+			if (mixin == null) return c.kept(new Conflict(listed.owner(), listed.mixin(), false), true);
+			if (mapped == null) return c.kept(new Conflict(listed.owner(), listed.mixin(), false), false);
+			boolean own = targets.contains(c.name);
+			if (!own && c.mayChange.entrySet().stream().noneMatch(d -> targets.contains(d.getKey()) && hooksMethod(mixin, d.getValue(), mapped))) return null;
+			if (c.rewrite().isEmpty()) return new Found(null, true);
+			if (own && hooks(mixin, c.platformClass.get(), c.rewrite(), mapped)
+					|| c.rewrite().others().entrySet().stream().anyMatch(d -> targets.contains(d.getKey()) && hooksMethod(mixin, d.getValue(), mapped))) {
 				return new Found(new Conflict(listed.owner(), listed.mixin(), true), true);
 			}
+			return null;
 		}
-		if (!listing.complete()) {
-			InstalledClasses.UnreadList unread = listing.unread().get(0);
-			return kept(rewrite, new Conflict(unread.owner(), unread.path(), false), false);
-		}
-		return new Found(null, true);
-	}
-
-	/** The conflict, where something would be put back; no conflict where nothing would. */
-	private static Found kept(Supplier<VanillaSeams.Rewrite> rewrite, Conflict conflict, boolean clean) {
-		return rewrite.get().isEmpty() ? new Found(null, true) : new Found(conflict, clean);
 	}
 
 	/**
@@ -217,13 +286,19 @@ public final class SeamConflicts {
 	 * (an error from the platform's transformers among them), as is one where a mixin or a list failed to read.
 	 */
 	public static Decision decide(ClassBytesSource game, InstalledClasses installed) {
+		return decide(game, installed, Map.of());
+	}
+
+	/** {@link #decide(ClassBytesSource, InstalledClasses)}, the seam classes {@code read} already taken as read. */
+	private static Decision decide(ClassBytesSource game, InstalledClasses installed, Map<String, byte[]> read) {
 		InstalledClasses.NativeListing listing = installed.nativeListing();
 		boolean clean = listing.complete();
 		Map<String, Conflict> kept = new TreeMap<>();
-		for (String name : VanillaSeams.CLASSES) {
+		List<Candidate> candidates = new ArrayList<>();
+		for (String name : new TreeSet<>(VanillaSeams.CLASSES)) {
 			byte[] data;
 			try {
-				data = game.read(name);
+				data = read.containsKey(name) ? read.get(name) : game.read(name);
 			} catch (IOException | RuntimeException e) {
 				kept.put(name, Conflict.unreadClass(name));
 				clean = false;
@@ -231,9 +306,12 @@ public final class SeamConflicts {
 			}
 			if (data == null) continue;
 			ClassNode[] node = {null};
-			Found found = find(name, () -> node[0] != null ? node[0] : (node[0] = parse(data)), listing);
-			clean &= found.clean();
-			if (found.conflict() != null) kept.put(name, found.conflict());
+			candidates.add(new Candidate(name, () -> node[0] != null ? node[0] : (node[0] = parse(data))));
+		}
+		decide(candidates, listing);
+		for (Candidate c : candidates) {
+			clean &= c.found.clean();
+			if (c.found.conflict() != null) kept.put(c.name, c.found.conflict());
 		}
 		return new Decision(kept, clean);
 	}
@@ -264,6 +342,7 @@ public final class SeamConflicts {
 		String jars = installed.nativeFingerprint();
 		if (cache == null || jars == null) return of(game, installed);
 		StringBuilder classes = new StringBuilder();
+		Map<String, byte[]> read = new java.util.HashMap<>();
 		for (String name : new TreeSet<>(VanillaSeams.CLASSES)) {
 			byte[] data;
 			try {
@@ -272,12 +351,13 @@ public final class SeamConflicts {
 				// Not cached: the decision reads it again, and keeps the class where it fails again.
 				return of(game, installed);
 			}
+			read.put(name, data);
 			classes.append(name).append('=').append(data == null ? "none" : Hashing.sha256(data)).append('\n');
 		}
 		String blob = "seams-" + Hashing.sha256(environment + "|" + jars + "|" + classes) + ".json";
 		Map<String, Conflict> cached = cached(cache, blob);
 		if (cached != null) return cached;
-		Decision decision = decide(game, installed);
+		Decision decision = decide(game, installed, read);
 		if (!decision.clean()) return decision.kept();
 		Map<String, Object> json = new TreeMap<>();
 		decision.kept().forEach((owner, c) -> json.put(owner, Map.of("owner", c.owner(), "mixin", c.mixin(), "readable", c.readable())));

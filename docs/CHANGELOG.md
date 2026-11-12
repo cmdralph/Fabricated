@@ -3,6 +3,37 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-12: Vanilla's item checks put back where the platform asks the stack's actions (SEAM-6)
+
+- **SEAM-6** (P1), fixed: NeoForge and Forge ask the stack's `canPerformAction` of an action where vanilla asks
+  whether the item is its shears (the beehive's harvest, the pumpkin's carving, the tripwire's disarming; on Forge 65
+  and 66 a sheep's, a snow golem's and a mooshroom's shearing too), its fishing rod (the fishing hook's check of the
+  player's hands, and on the 1.20.1 and 1.21.1 client which hand the line comes from) or, up to 1.21.1, its shield (a
+  player's shield damage, a piglin's shield). Fabric mods' hooks of vanilla's check found nothing there and were left
+  out, or wrapped another check: BCLib's shears hooks, which let the items of the common shears tag act as shears,
+  Porting Lib's tool action hooks in Create, and Fabric API 0.164's own hook letting any fishing rod item keep its line
+  (Forge 66). Where a Fabric mod's mixin hooks such a check, it now goes back for the stacks whose classes keep the
+  platform's default, which answers no for these actions as vanilla's check does; an item overriding
+  `canPerformAction` (vanilla's own tools, the platform mods' tools, BCLib's shears) is asked as the platform has it,
+  without the hook. On the 1.20.1 and 1.21.1 client the elytra layer's own `shouldRender`, whose default is vanilla's
+  check for the elytra, goes back the same way for the layers keeping it (Apoli's elytra power). A NeoForge or Forge
+  mod's mixin of the platform's code there, or of `ItemStack.is`, keeps the class as the platform has it. Hooks of a
+  mob's shears check where the platform shears it from the shears item (NeoForge; Forge 47 to 64), and of the client's
+  map and crossbow checks in the held item and item frame renderers, which the platforms ask of the item's class, stay
+  left out: known limits the report names. The test mod wraps the tripwire's check and disarms a tripwire with a stick
+  (through the hook), dirt and shears (`vanilla-items`: NeoForge, every run; Forge, with Fabric API).
+- The seam conflict check reads each NeoForge or Forge mod's mixin once for all the classes Fabricated puts code back
+  in, where it read them all again for each class, and works out a class's rewrite only where a mixin may hook it.
+  The checks the put-backs add read the answers kept for the classes first and make nothing, where they made the
+  lookup's arrays at each call (36 bytes a check on average): the item checks run every tick and every frame.
+- Verified: core's tests (659), CI's script tests and the inventory; NeoForge 1.21.1 and 26.1.2 and Forge 47, 52 and
+  66 build; local servers pass every check (NeoForge 1.21.1, 26.1.2; Forge 47, 52, 66), `vanilla-items` among them,
+  and beside Forgified Fabric API (NeoForge 1.21.1 and 26.1.2, Forge 47); on the advanced corpus servers of NeoForge
+  1.21.1, Forge 52 and Forge 66 and Forge 47's corpus server, against runs before the change, only the hooks above
+  change, and the checks are as before. The client rows are checked by unit tests only. Discovery on NeoForge 26.1.2's
+  server with Fabric API allocates 384 to 387 MB, from 378 to 381 MB: the item checks' rows themselves (with the test
+  mod as before, 384 to 385 MB; with the rows taken out, 381 MB).
+
 ## 2026-11-12: Vanilla's harvest check put back where the platform's code makes it (SEAM-4), returns picked by ordinal read against vanilla's code (VANILLA-5), native mixins read through their refmaps (SEAM-5)
 
 - **SEAM-4** (P1), fixed: NeoForge and Forge ask the block state's `canHarvestBlock` in the server's `destroyBlock`, and
