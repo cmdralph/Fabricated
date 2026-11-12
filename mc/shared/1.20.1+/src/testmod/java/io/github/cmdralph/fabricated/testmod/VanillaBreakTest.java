@@ -52,6 +52,11 @@ public final class VanillaBreakTest implements ModInitializer {
 	private static final Pattern KEPT = Pattern.compile("Vanilla's calls not put back in ServerPlayerGameMode:\\s*((?:NeoForge|Forge) mod [^\\n]*)");
 	private static Block override;
 
+	/** The block of the platform's kind overriding its extensions, where the platform's half provides one ({@link VanillaHarvestTest} breaks it too). */
+	static Block override() {
+		return override;
+	}
+
 	/** The mixin's wrapper of the removal: counts it; calcite is left as tuff (true, as removed); null to remove as vanilla. */
 	public static Boolean removing(ServerLevel level, BlockPos pos) {
 		WRAPPED.incrementAndGet();

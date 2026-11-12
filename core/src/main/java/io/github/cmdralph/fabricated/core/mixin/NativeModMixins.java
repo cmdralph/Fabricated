@@ -62,8 +62,7 @@ public final class NativeModMixins {
 
 	/** A file of a jar, by path, or null where it has none. */
 	@FunctionalInterface
-	public interface Files {
-		byte[] read(String path) throws IOException;
+	public interface Files extends InstalledClasses.JarFiles {
 	}
 
 	/**
@@ -118,11 +117,14 @@ public final class NativeModMixins {
 	/**
 	 * The mixin classes the configs list for this side, by internal name, in order: those of a config the jar doesn't
 	 * have, or that doesn't parse, are left out (its mod's loader reports it); a config that fails to read is among the
-	 * listing's unread ones.
+	 * listing's unread ones. A mixin's config naming a refmap has it read, from the jar, only where asked
+	 * ({@link InstalledClasses.RefmapFile}).
 	 */
 	static InstalledClasses.Listing listed(Files files, Collection<String> configs, boolean clientSide) {
 		Set<String> mixins = new LinkedHashSet<>();
 		List<String> unread = new ArrayList<>();
+		Map<String, InstalledClasses.RefmapFile> refmaps = new HashMap<>();
+		Map<String, InstalledClasses.RefmapFile> refmapFiles = new HashMap<>();
 		for (String path : configs) {
 			byte[] data;
 			try {
@@ -134,12 +136,17 @@ public final class NativeModMixins {
 			if (data == null) continue;
 			try {
 				MixinConfigFile config = MixinConfigFile.parse(new String(data, StandardCharsets.UTF_8));
-				for (String mixin : config.mixinsFor(clientSide)) mixins.add(config.internalName(mixin));
+				InstalledClasses.RefmapFile refmap = config.refmap() == null || config.refmap().isBlank() ? null
+						: refmapFiles.computeIfAbsent(config.refmap(), name -> new InstalledClasses.RefmapFile(name, files));
+				for (String mixin : config.mixinsFor(clientSide)) {
+					String internal = config.internalName(mixin);
+					if (mixins.add(internal) && refmap != null) refmaps.put(internal, refmap);
+				}
 			} catch (JsonException | RuntimeException e) {
 				// As above.
 			}
 		}
-		return new InstalledClasses.Listing(List.copyOf(mixins), unread);
+		return new InstalledClasses.Listing(List.copyOf(mixins), unread, refmaps);
 	}
 
 	/**

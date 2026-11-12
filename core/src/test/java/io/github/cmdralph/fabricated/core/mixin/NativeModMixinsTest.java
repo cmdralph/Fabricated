@@ -220,6 +220,28 @@ class NativeModMixinsTest {
 				NativeModMixins.manifestMixins(failingConfig, true));
 	}
 
+	/** A config's refmap goes with its mixins, read from the jar only where asked, once. */
+	@Test
+	void aConfigsRefmapIsReadOnlyWhereAsked() throws Exception {
+		Map<String, String> files = Map.of(
+				"a.mixins.json", "{\"package\": \"a.mixin\", \"refmap\": \"a.refmap.json\", \"mixins\": [\"Common\"]}",
+				"b.mixins.json", "{\"package\": \"b\", \"mixins\": [\"Plain\"]}",
+				"a.refmap.json", "{\"mappings\": {\"a.mixin.Common\": {\"tick\": \"m_8119_()V\"}}, \"data\": {}}");
+		int[] reads = {0};
+		NativeModMixins.Files read = path -> {
+			if (path.endsWith(".refmap.json")) reads[0]++;
+			return files.containsKey(path) ? files.get(path).getBytes(StandardCharsets.UTF_8) : null;
+		};
+		InstalledClasses.Listing listing = NativeModMixins.listed(read, List.of("a.mixins.json", "b.mixins.json"), false);
+		assertEquals(List.of("a/mixin/Common", "b/Plain"), listing.mixins());
+		assertEquals(Map.of("a/mixin/Common", new InstalledClasses.RefmapFile("a.refmap.json", null)), listing.refmaps());
+		assertEquals(0, reads[0], "listing the mixins reads no refmap");
+		InstalledClasses.RefmapFile refmap = listing.refmaps().get("a/mixin/Common");
+		assertEquals(Map.of("tick", "m_8119_()V"), refmap.of("a/mixin/Common"));
+		assertEquals(Map.of(), refmap.of("a/mixin/Other"));
+		assertEquals(1, reads[0], "read once");
+	}
+
 	/**
 	 * A NeoForge mod's jar lists the mixins of the configs its mods.toml declares, then of those its manifest names: what
 	 * pre-flight reads of them, and whether one keeps a class's vanilla methods from being put back (SEAM-1).

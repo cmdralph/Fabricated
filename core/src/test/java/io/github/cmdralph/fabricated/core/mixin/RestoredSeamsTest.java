@@ -78,6 +78,12 @@ class RestoredSeamsTest {
 	 */
 	private static MixinPreflight breaking(Path dir, Map<String, String> gameSources, String members, String reader, boolean required, Set<String> skip,
 			List<PreflightFinding> findings, Map<String, byte[]> classes) throws Exception {
+		return checked(dir, gameSources, "ServerPlayerGameMode", members, reader, required, skip, findings, classes);
+	}
+
+	/** As {@link #breaking(Path, Map, String, String, boolean, Set, List, Map)}, the mixins targeting {@code target}. */
+	private static MixinPreflight checked(Path dir, Map<String, String> gameSources, String target, String members, String reader, boolean required,
+			Set<String> skip, List<PreflightFinding> findings, Map<String, byte[]> classes) throws Exception {
 		Map<String, String> sources = new HashMap<>(gameSources);
 		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); String target() default \"\";"
 				+ " int ordinal() default -1; }");
@@ -95,7 +101,7 @@ class RestoredSeamsTest {
 		sources.put("com/example/mixin/Breaking.java", "package com.example.mixin; import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.injection.*;"
 				+ " import org.spongepowered.asm.mixin.injection.callback.*; import com.llamalad7.mixinextras.sugar.*; import com.llamalad7.mixinextras.sugar.ref.*;"
 				+ " import com.llamalad7.mixinextras.injector.wrapoperation.*; import net.minecraft.core.BlockPos; import net.minecraft.server.level.*;"
-				+ " @Mixin(ServerPlayerGameMode.class) public abstract class Breaking {" + members + " }");
+				+ " @Mixin(" + target + ".class) public abstract class Breaking {" + members + " }");
 		if (reader != null) {
 			sources.put("com/example/mixin/Reader.java", sources.get("com/example/mixin/Breaking.java").replace("class Breaking {" + members, "class Reader {" + reader));
 		}
@@ -192,7 +198,7 @@ class RestoredSeamsTest {
 
 		// The same call wrapped in a method it isn't put back in finds nothing there, and the class isn't rewritten for it.
 		List<PreflightFinding> elsewhere = new java.util.ArrayList<>();
-		assertEquals(Set.of(), breaking(dir.resolve("elsewhere"), wrap.replace("method = \"destroyBlock\"", "method = \"harvest\""), elsewhere).restoredSeams());
+		assertEquals(Set.of(), breaking(dir.resolve("elsewhere"), wrap.replace("method = \"destroyBlock\"", "method = \"removeBlock\""), elsewhere).restoredSeams());
 		assertTrue(elsewhere.stream().anyMatch(f -> f.message().contains("which does not occur in that method")), elsewhere.toString());
 	}
 
@@ -262,6 +268,83 @@ class RestoredSeamsTest {
 		assertEquals("Forge's ServerPlayerGameMode makes that call through the block's IForgeBlock.onDestroyedByPlayer instead, which Fabricated doesn't"
 				+ " put back there (SEAM-3).", out.suggestion(), findings.toString());
 		assertTrue(io.github.cmdralph.fabricated.core.report.KnownLimits.ofFinding("Forge", out).endsWith("(SEAM-3)"));
+	}
+
+	/**
+	 * SEAM-4: a wrapper of vanilla's harvest check in the server's destroyBlock, as Apoli's and Porting Lib's (Apoli's with a
+	 * namespaced share of the block it keeps at the method's start), applies, and the class is rewritten for it, on each
+	 * platform; one in getDestroyProgress, as Apoli's other, the same for BlockBehaviour.
+	 */
+	@Test
+	void aWrapperOfVanillasHarvestCheckPutBackHasTheClassRewritten(@TempDir Path dir) throws Exception {
+		String state = "net.minecraft.world.level.block.state.BlockState";
+		String harvest = " @WrapOperation(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/server/level/ServerPlayer;"
+				+ "hasCorrectToolForDrops(Lnet/minecraft/world/level/block/state/BlockState;)Z\")) private boolean harvest(ServerPlayer player, " + state + " s,"
+				+ " Operation<Boolean> original, @Share(value = \"block\", namespace = \"test\") LocalRef<Object> block) { block.get(); return original.call(player, s); }"
+				+ " @Inject(method = \"destroyBlock\", at = @At(\"HEAD\")) private void keep(BlockPos pos, CallbackInfoReturnable<Boolean> cir,"
+				+ " @Share(value = \"block\", namespace = \"test\") LocalRef<Object> block) { block.set(pos); }";
+		String progress = " @WrapOperation(method = \"getDestroyProgress\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/world/entity/player/Player;"
+				+ "hasCorrectToolForDrops(Lnet/minecraft/world/level/block/state/BlockState;)Z\")) private boolean delta(net.minecraft.world.entity.player.Player player,"
+				+ " " + state + " s, Operation<Boolean> original) { return original.call(player, s); }";
+		for (boolean forge : List.of(false, true)) {
+			Map<String, String> game = forge ? io.github.cmdralph.fabricated.core.bytecode.VanillaCallsTest.forgeSources()
+					: io.github.cmdralph.fabricated.core.bytecode.VanillaCallsTest.neoForgeSources();
+			List<PreflightFinding> findings = new java.util.ArrayList<>();
+			MixinPreflight server = breaking(dir.resolve("server-" + forge), game, harvest, findings, new HashMap<>());
+			assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), findings.toString());
+			assertEquals(Set.of("net/minecraft/server/level/ServerPlayerGameMode"), server.restoredSeams());
+			String through = forge ? "IForgeBlock" : "IBlockExtension";
+			assertTrue(findings.stream().anyMatch(f -> f.message().startsWith("@WrapOperation harvest hooks ServerPlayer.hasCorrectToolForDrops("
+					+ "Lnet/minecraft/world/level/block/state/BlockState;)Z in destroyBlock, vanilla's call ") && f.message().contains(" makes through the block's "
+					+ through + ".canHarvestBlock instead; Fabricated puts it back there for the blocks keeping that method's default") && f.message().endsWith("(SEAM-4)")),
+					findings.toString());
+			List<PreflightFinding> mining = new java.util.ArrayList<>();
+			MixinPreflight behaviour = checked(dir.resolve("progress-" + forge), game, "net.minecraft.world.level.block.state.BlockBehaviour", progress, null, true,
+					Set.of(), mining, new HashMap<>());
+			assertTrue(mining.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), mining.toString());
+			assertEquals(Set.of("net/minecraft/world/level/block/state/BlockBehaviour"), behaviour.restoredSeams());
+			assertTrue(mining.stream().anyMatch(f -> f.message().contains("@WrapOperation delta hooks Player.hasCorrectToolForDrops(") && f.message().contains(
+					" makes through " + (forge ? "ForgeHooks.isCorrectToolForDrops" : "EventHooks.doPlayerHarvestCheck") + " instead; Fabricated puts it back there")
+					&& f.message().endsWith("(SEAM-4)")), mining.toString());
+		}
+		assertTrue(breakingNote(dir.resolve("note"), harvest).equals("@WrapOperation harvest hooks ServerPlayer.hasCorrectToolForDrops("
+				+ "Lnet/minecraft/world/level/block/state/BlockState;)Z in destroyBlock, vanilla's call NeoForge's ServerPlayerGameMode makes through the block's"
+				+ " IBlockExtension.canHarvestBlock instead; Fabricated puts it back there for the blocks keeping that method's default, NeoForge's harvest check"
+				+ " event following it as that default posts it, so the hook applies to their harvest check, and a block overriding it is checked as NeoForge has"
+				+ " it, without the hook (SEAM-4)"));
+	}
+
+	/** The SEAM-4 note of a NeoForge server's mixin. */
+	private static String breakingNote(Path dir, String members) throws Exception {
+		List<PreflightFinding> findings = new java.util.ArrayList<>();
+		breaking(dir, members, findings);
+		return findings.stream().map(PreflightFinding::message).filter(m -> m.endsWith("(SEAM-4)")).findFirst().orElse("");
+	}
+
+	/**
+	 * SEAM-4: a hook of vanilla's check of the held item in the server's destroyBlock, which both platforms ask inside their
+	 * block break event's hook, stays out, its hint saying why, which the known limit reads.
+	 */
+	@Test
+	void aHookOfTheHeldItemsCheckStaysOutSayingWhy(@TempDir Path dir) throws Exception {
+		String hook = " @ModifyExpressionValue(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/world/item/Item;canAttackBlock("
+				+ "Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;"
+				+ "Lnet/minecraft/world/entity/player/Player;)Z\")) private boolean attack(boolean original) { return original; }";
+		for (boolean forge : List.of(false, true)) {
+			Map<String, String> game = new HashMap<>(forge ? io.github.cmdralph.fabricated.core.bytecode.VanillaCallsTest.forgeSources()
+					: io.github.cmdralph.fabricated.core.bytecode.VanillaCallsTest.neoForgeSources());
+			game.put("com/llamalad7/mixinextras/injector/ModifyExpressionValue.java", "package com.llamalad7.mixinextras.injector;"
+					+ " public @interface ModifyExpressionValue { String[] method(); org.spongepowered.asm.mixin.injection.At[] at(); }");
+			List<PreflightFinding> findings = new java.util.ArrayList<>();
+			breaking(dir.resolve("attack-" + forge), game, hook.replace("@ModifyExpressionValue", "@com.llamalad7.mixinextras.injector.ModifyExpressionValue"),
+					findings, new HashMap<>());
+			PreflightFinding out = findings.stream().filter(f -> f.severity() == Severity.LEFT_OUT).findFirst().orElseThrow();
+			String loader = forge ? "Forge" : "NeoForge";
+			assertEquals(loader + "'s ServerPlayerGameMode asks the held item's canAttackBlock inside its block break event ("
+					+ (forge ? "ForgeHooks.onBlockBreakEvent" : "CommonHooks.fireBlockBreak") + "), which can overrule the answer, so Fabricated doesn't put that"
+					+ " check back there (SEAM-4).", out.suggestion(), findings.toString());
+			assertTrue(io.github.cmdralph.fabricated.core.report.KnownLimits.ofFinding(loader, out).endsWith("(SEAM-4)"));
+		}
 	}
 
 	@Test
