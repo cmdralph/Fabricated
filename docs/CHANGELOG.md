@@ -8,13 +8,17 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **OVERLOAD-3** (P1), fixed: FrozenLib 2.2.4's bone meal API was left out on NeoForge 1.21.1 and Forge 52. Its hook in
   `BoneMealItem.growCrop` takes `@Local(ordinal = 0) BlockState`; the platforms deprecate `growCrop` for
   `applyBonemeal`, which also takes the player, and pre-flight moves hooks there (DEPRECATED-1), but followed a
-  handler's `@Local` only by name or by type alone. A local taken by its ordinal now follows too, as the local of that
-  ordinal among vanilla's of the type: vanilla's version of the method, aligned with the other's code, tells which
-  locals there are vanilla's, the platform's inserted parameter not among them, and the `@Local` gets that local's
-  ordinal there. FrozenLib's behaviours run in `applyBonemeal`, after the platform's bone meal event. Apoli's bed-spawn
-  and drop hooks don't share the cause (a cancellable callback in the lambda NeoForge runs `startSleepInBed`'s code
-  in, a call NeoForge's toss event makes in another class) and stay out, as does Additional Entity Attributes' water
-  speed constant, which in NeoForge's `sinkInFluid` would apply to every fluid.
+  handler's `@Local` only by name or by type alone. A local taken by its ordinal now follows too where the method
+  passes its parameters on to the other with the inserted one: vanilla's local of that ordinal at vanilla's point is
+  found there by aligning the two methods' code, a parameter in its parameter's place and any other local by its
+  store, placed with certainty, and the `@Local` gets the ordinal it has there. Each point must line up with one there,
+  each of vanilla's locals of the type at it must be found so and be all the other method's locals of the type that
+  are vanilla's, the ordinal must be the same at each, and where Forge's Mixin keeps locals past their scope those it
+  keeps must be the same; else the hook stays out. As Mixin, an ordinal is read before a slot or a name. FrozenLib's
+  behaviours run in `applyBonemeal`, after the platform's bone meal event. Apoli's bed-spawn and drop hooks don't
+  share the cause (a cancellable callback in the lambda NeoForge runs `startSleepInBed`'s code in, a call NeoForge's
+  toss event makes in another class) and stay out, as does Additional Entity Attributes' water speed constant, which in
+  NeoForge's `sinkInFluid` would apply to every fluid.
 - **PROVIDER-22** (P2), fixed: YUNG's API (every YUNG structure mod) hooks Fabric API's internal
   `ModResourcePackCreator`, the pack finder upstream gives each pack repository: the pack type its constructor took,
   and the end of its `loadPacks`, where it offers its locate replacer's data pack. That pack adds the vanilla structures

@@ -215,7 +215,11 @@ final class OverloadRepairs extends PreflightPart {
 				// for the limb animation's values (Figura's armour hooks, PRE-20).
 				boolean forwarded = inject && captured >= 0 && inserted < 0 && ConstructorRepairs.forwardsItsParameters(chosen, overload)
 						&& ConstructorRepairs.takesExactly(handler, chosen);
-				List<Runnable> locals = LocalRepairs.localsFit(handler, overload) ? List.of() : localsInOverload(handler, overload, inserted, found, vanillas(target, chosen), ctx);
+				// Whether the method passes its own parameters on, with the inserted one: insertedParameter tells it of a method
+				// doing nothing else; a deprecated one's calls of its replacement must show it.
+				boolean passedOn = inserted >= 0 && (replacement == null || passesItsParameters(chosen, target, overload, inserted));
+				List<Runnable> locals = LocalRepairs.localsFit(handler, overload) ? List.of()
+						: localsInOverload(handler, target, chosen, overload, inserted, passedOn, found, ctx);
 				if (locals == null || captured >= 0 && (found != ats || inserted < 0 && !forwarded || selectors.size() != 1
 						|| (mixin.access & Opcodes.ACC_INTERFACE) != 0)) continue;
 				locals.forEach(Runnable::run);
@@ -1097,30 +1101,74 @@ final class OverloadRepairs extends PreflightPart {
 		return 0;
 	}
 
-	/** Vanilla's version (VANILLA-1) of {@code method}, a method of {@code target}, or null. */
-	private MethodNode vanillas(ClassNode target, MethodNode method) {
-		ClassNode original = vanillaClass(target.name);
-		return original == null ? null : PreflightAsm.declared(original, method.name, method.desc);
+	/**
+	 * Whether each of {@code method}'s calls of {@code overload} of {@code target} (one at least) passes it
+	 * {@code method}'s parameters in order and, at {@code inserted}, a constant: the instructions right before the call
+	 * push just those, and no jump, switch or exception handler leads among them. {@code BoneMealItem.growCrop} calls
+	 * {@code applyBonemeal(stack, level, pos, null)} so, on a server level.
+	 */
+	static boolean passesItsParameters(MethodNode method, ClassNode target, MethodNode overload, int inserted) {
+		Type[] own = Type.getArgumentTypes(method.desc);
+		Type[] all = Type.getArgumentTypes(overload.desc);
+		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
+		if (inserted < 0 || all.length != own.length + 1 || isStatic != ((overload.access & Opcodes.ACC_STATIC) != 0)) return false;
+		Set<AbstractInsnNode> entered = new HashSet<>();
+		for (var block : method.tryCatchBlocks) entered.add(block.handler);
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof JumpInsnNode jump) entered.add(jump.label);
+			if (insn instanceof TableSwitchInsnNode table) {
+				entered.add(table.dflt);
+				entered.addAll(table.labels);
+			}
+			if (insn instanceof LookupSwitchInsnNode lookup) {
+				entered.add(lookup.dflt);
+				entered.addAll(lookup.labels);
+			}
+		}
+		int[] slots = new int[own.length];
+		int slot = isStatic ? 0 : 1;
+		for (int i = 0; i < own.length; i++) {
+			slots[i] = slot;
+			slot += own[i].getSize();
+		}
+		int calls = 0;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(target.name) || !call.name.equals(overload.name) || !call.desc.equals(overload.desc)) {
+				continue;
+			}
+			// The values pushed for the call, last first.
+			AbstractInsnNode pushed = call;
+			for (int k = all.length - 1; k >= -1; k--) {
+				if (k < 0 && isStatic) break;
+				pushed = pushed.getPrevious();
+				while (pushed != null && pushed.getOpcode() < 0) {
+					if (entered.contains(pushed)) return false;
+					pushed = pushed.getPrevious();
+				}
+				if (pushed == null) return false;
+				boolean fits = k < 0 ? isLoad(pushed, Type.getObjectType(target.name), 0)
+						: k == inserted ? pushed.getOpcode() >= Opcodes.ACONST_NULL && pushed.getOpcode() <= Opcodes.LDC
+						: isLoad(pushed, own[k < inserted ? k : k - 1], slots[k < inserted ? k : k - 1]);
+				if (!fits) return false;
+			}
+			calls++;
+		}
+		return calls > 0;
 	}
 
 	/**
-	 * How the handler's {@code @Local}s find their locals in {@code overload}, an injector moved there from the method
-	 * that only calls it: by name, when the overload has a local of that name; by type, when one local of that type
-	 * besides the parameter the method inserted ({@code inserted}) is in scope at each instruction the injection point
-	 * picks ({@link #pointPositions}), which the {@code @Local} then names by its ordinal (MixinExtras counts the
-	 * parameters too): architectury's explosion hook takes the entities' list in {@code ServerExplosion.hurtEntities},
-	 * whose overload takes the exploded blocks' list too; by its ordinal among the locals of its type, where the overload
-	 * takes vanilla's method's parameters and the one it inserts, as the local with that ordinal among those of vanilla's
-	 * version of the method ({@code original}, VANILLA-1), whose code aligned with the overload's ({@link PatchAlignment})
-	 * tells which of the overload's locals are vanilla's ({@link LocalRepairs#isVanillasLocal}; the inserted parameter
-	 * is the platform's), the {@code @Local} naming it by its ordinal among all of the overload's: FrozenLib's bone meal
-	 * hook takes {@code @Local(ordinal = 0) BlockState} at the {@code getBlock} call in {@code BoneMealItem.growCrop},
-	 * whose code NeoForge 21.1 and Forge 52 moved into {@code applyBonemeal}, after their bone meal events (OVERLOAD-3);
-	 * or, as {@link LocalRepairs#localsFit} allows, a parameter. The changes to make, or null when one can't be found
-	 * that way.
+	 * How the handler's {@code @Local}s find their locals in {@code overload}, an injector moved there from {@code chosen},
+	 * whose code moved there: by type, when one local of that type besides the parameter the method inserted
+	 * ({@code inserted}) is in scope at each instruction the injection point picks ({@link #pointPositions}), which the
+	 * {@code @Local} then names by its ordinal (MixinExtras counts the parameters too): architectury's explosion hook takes
+	 * the entities' list in {@code ServerExplosion.hurtEntities}, whose overload takes the exploded blocks' list too; by
+	 * its ordinal, which Mixin reads before a slot or a name, as {@link #vanillasOrdinalThere} works it out, where
+	 * {@code passedOn} says {@code chosen} passes its own parameters on to the overload with the inserted one; by name,
+	 * when the overload has a local of that name; or, as {@link LocalRepairs#localsFit} allows, a parameter. The changes to
+	 * make, or null when one can't be found that way.
 	 */
-	private static List<Runnable> localsInOverload(MethodNode handler, MethodNode overload, int inserted, List<AnnotationNode> ats, MethodNode original,
-			Context ctx) {
+	private List<Runnable> localsInOverload(MethodNode handler, ClassNode target, MethodNode chosen, MethodNode overload, int inserted, boolean passedOn,
+			List<AnnotationNode> ats, Context ctx) {
 		Type[] types = Type.getArgumentTypes(handler.desc);
 		Type[] params = Type.getArgumentTypes(overload.desc);
 		boolean isStatic = (overload.access & Opcodes.ACC_STATIC) != 0;
@@ -1131,32 +1179,25 @@ final class OverloadRepairs extends PreflightPart {
 			slot += params[i].getSize();
 		}
 		List<Runnable> changes = new ArrayList<>();
-		Set<Integer> vanillaPlaces = null;
 		for (int i = 0; i < types.length; i++) {
 			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
 				if (!a.desc.equals(MixinNames.LOCAL)) continue;
 				Type type = types[i];
 				if (Boolean.TRUE.equals(Annotations.value(a, "argsOnly"))) {
 					if (List.of(params).stream().filter(type::equals).count() != 1) return null;
-				} else if (Annotations.value(a, "name") instanceof List<?> names && !names.isEmpty()) {
-					if (overload.localVariables == null || overload.localVariables.stream().noneMatch(lv -> names.contains(lv.name))) return null;
-				} else if (Annotations.value(a, "index") != null || type.getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) {
+				} else if (type.getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) {
 					return null;
 				} else if (Annotations.value(a, "ordinal") != null) {
-					if (!(Annotations.value(a, "ordinal") instanceof Integer nth) || nth < 0 || original == null || overload.localVariables == null) return null;
-					if (vanillaPlaces == null) {
-						// The ordinal counts the parameters: the overload's must be vanilla's method's, and the one it inserts.
-						List<Type> own = new ArrayList<>(List.of(params));
-						if (inserted >= 0) own.remove(inserted);
-						if (!own.equals(List.of(Type.getArgumentTypes(original.desc)))) return null;
-						PatchAlignment alignment = PatchAlignment.of(original, overload);
-						if (alignment == null) return null;
-						vanillaPlaces = alignment.vanillaPlaces();
-					}
-					List<Integer> positions = pointPositions(ats, overload, ctx);
-					int ordinal = positions == null ? -1 : LocalRepairs.vanillasNthLocalOrdinal(overload, type.getDescriptor(), positions, vanillaPlaces, nth, insertedSlot);
+					ClassNode vanilla = passedOn ? vanillaClass(target.name) : null;
+					MethodNode original = vanilla == null ? null : PreflightAsm.declared(vanilla, chosen.name, chosen.desc);
+					int ordinal = original == null || !(Annotations.value(a, "ordinal") instanceof Integer nth) ? -1
+							: vanillasOrdinalThere(original, target, overload, inserted, type.getDescriptor(), nth, ats, ctx);
 					if (ordinal < 0) return null;
-					if (ordinal != nth) changes.add(() -> Annotations.put(a, "ordinal", ordinal));
+					changes.add(() -> Annotations.put(a, "ordinal", ordinal));
+				} else if (Annotations.value(a, "index") != null) {
+					return null;
+				} else if (Annotations.value(a, "name") instanceof List<?> names && !names.isEmpty()) {
+					if (overload.localVariables == null || overload.localVariables.stream().noneMatch(lv -> names.contains(lv.name))) return null;
 				} else {
 					List<Integer> positions = pointPositions(ats, overload, ctx);
 					int ordinal = positions == null ? -1 : ordinalAt(overload, type, insertedSlot, positions);
@@ -1170,6 +1211,158 @@ final class OverloadRepairs extends PreflightPart {
 			}
 		}
 		return changes;
+	}
+
+	/**
+	 * The ordinal an {@code @Local(ordinal = nth)} of type {@code desc} needs in {@code overload}, where the code of
+	 * vanilla's {@code original} (VANILLA-1) moved, its parameters passed on with one inserted ({@code inserted}), to take
+	 * the local it takes in vanilla's code (OVERLOAD-3: FrozenLib's bone meal hook takes {@code @Local(ordinal = 0)
+	 * BlockState} at the {@code getBlock} call in {@code BoneMealItem.growCrop}, whose code NeoForge 21.1 and Forge 52
+	 * moved into {@code applyBonemeal}, after their bone meal events). Vanilla's code aligned with the overload's
+	 * ({@link PatchAlignment}) must place each instruction the point picks in vanilla's method, with certainty, at the
+	 * one it picks in the overload, in order. At each: the locals of the type vanilla's local variable table has in scope
+	 * there, by slot, are more than {@code nth}; each is, in the overload, the parameter in its parameter's place, or the
+	 * local whose scope starts after the store its own starts after placed with certainty there, in scope at the point;
+	 * those are exactly the overload's locals of the type in scope there that are vanilla's
+	 * ({@link LocalRepairs#isVanillasLocal}; the inserted parameter is the platform's), so none of vanilla's went
+	 * unrecognised; and the ordinal is that of the {@code nth}'s, among all of the overload's of the type in scope there
+	 * (MixinExtras counts the parameters too). Where the running Mixin keeps locals once their scope has ended (PRE-26),
+	 * those of the type it keeps there below the local must be those in scope, a slot it may look up again told only where
+	 * it is a parameter of another type, which its one entry covers. The ordinal must be the same at each point. -1 where
+	 * any of that can't be told for sure.
+	 */
+	private int vanillasOrdinalThere(MethodNode original, ClassNode target, MethodNode overload, int inserted, String desc, int nth, List<AnnotationNode> ats,
+			Context ctx) {
+		if (nth < 0 || (original.access & Opcodes.ACC_STATIC) != (overload.access & Opcodes.ACC_STATIC)) return -1;
+		Type[] own = Type.getArgumentTypes(original.desc);
+		Type[] all = Type.getArgumentTypes(overload.desc);
+		if (inserted < 0 || all.length != own.length + 1) return -1;
+		// Each of vanilla's parameter slots, and this, to the overload's.
+		java.util.Map<Integer, Integer> parameterSlots = new java.util.HashMap<>();
+		int base = (original.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		if (base == 1) parameterSlots.put(0, 0);
+		int[] overloadSlots = new int[all.length];
+		int slot = base;
+		for (int i = 0; i < all.length; i++) {
+			overloadSlots[i] = slot;
+			slot += all[i].getSize();
+		}
+		slot = base;
+		for (int i = 0; i < own.length; i++) {
+			if (!own[i].equals(all[i < inserted ? i : i + 1])) return -1;
+			parameterSlots.put(slot, overloadSlots[i < inserted ? i : i + 1]);
+			slot += own[i].getSize();
+		}
+		int insertedSlot = overloadSlots[inserted];
+		PatchAlignment alignment = PatchAlignment.of(original, overload);
+		List<Integer> before = pointPositions(ats, original, ctx);
+		List<Integer> after = pointPositions(ats, overload, ctx);
+		if (alignment == null || before == null || after == null || before.size() != after.size()) return -1;
+		Set<Integer> vanillaPlaces = alignment.vanillaPlaces();
+		int found = -1;
+		List<Integer> chosenSlots = new ArrayList<>();
+		for (int k = 0; k < before.size(); k++) {
+			int at = before.get(k);
+			int there = after.get(k);
+			if (alignment.placeOf(at) != there) return -1;
+			List<LocalVariableNode> vanillas = inScope(original, desc, at);
+			List<LocalVariableNode> patched = inScope(overload, desc, there);
+			if (vanillas == null || patched == null || vanillas.size() <= nth) return -1;
+			Set<Integer> mapped = new TreeSet<>();
+			int chosen = -1;
+			for (int v = 0; v < vanillas.size(); v++) {
+				int counterpart = counterpart(original, overload, vanillas.get(v), alignment, parameterSlots, patched);
+				if (counterpart < 0 || !mapped.add(counterpart)) return -1;
+				if (v == nth) chosen = counterpart;
+			}
+			Set<Integer> theirs = new TreeSet<>();
+			for (LocalVariableNode lv : patched) {
+				if (lv.index != insertedSlot && LocalRepairs.isVanillasLocal(overload, lv, vanillaPlaces)) theirs.add(lv.index);
+			}
+			if (!mapped.equals(theirs) || chosen < base) return -1;
+			int ordinal = 0;
+			for (LocalVariableNode lv : patched) {
+				if (lv.index < chosen) ordinal++;
+			}
+			if (found >= 0 && found != ordinal) return -1;
+			found = ordinal;
+			chosenSlots.add(chosen);
+		}
+		if (found < 0 || !keepsLocalsPastScope) return found;
+		// The locals the running Mixin keeps at each point, from the frames the overload's bytes have.
+		MethodNode framed = classes.withFrames(target.name, overload);
+		List<Integer> framedAt = framed == null || framed.localVariables == null ? null : pointPositions(ats, framed, ctx);
+		if (framedAt == null || framedAt.size() != after.size()) return -1;
+		for (int k = 0; k < framedAt.size(); k++) {
+			List<LocalVariableNode> inScope = inScope(framed, desc, framedAt.get(k));
+			String[] kept = MixinPreflight.keptLocalTypes(framed, target.name, framedAt.get(k));
+			int chosen = chosenSlots.get(k);
+			if (inScope == null || chosen >= kept.length || !desc.equals(kept[chosen])) return -1;
+			Set<Integer> scoped = new TreeSet<>();
+			for (LocalVariableNode lv : inScope) scoped.add(lv.index);
+			// Below it, Mixin's locals of the type are those in scope: a slot it may look up again is told where it is a
+			// parameter of another type, whose one entry covers the method.
+			for (int s = 0; s < chosen; s++) {
+				boolean ofType = MixinPreflight.UNTOLD.equals(kept[s]) ? !isParameterOfAnotherType(framed, s, desc) : desc.equals(kept[s]);
+				if (ofType != scoped.contains(s)) return -1;
+			}
+		}
+		return found;
+	}
+
+	/** Whether the slot is {@code this} or a parameter of {@code method}, of a type other than {@code desc}, with one entry in its local variable table, covering the method. */
+	private static boolean isParameterOfAnotherType(MethodNode method, int slot, String desc) {
+		if (slot >= firstLocalSlot(method)) return false;
+		LocalVariableNode only = null;
+		for (LocalVariableNode lv : method.localVariables) {
+			if (lv.index != slot) continue;
+			if (only != null) return false;
+			only = lv;
+		}
+		return only != null && !only.desc.equals(desc) && LocalRepairs.storeBefore(method, only) < 0
+				&& method.instructions.indexOf(only.end) >= lastRealInstruction(method);
+	}
+
+	/** The index of {@code method}'s last instruction that isn't a label, line number or frame. */
+	private static int lastRealInstruction(MethodNode method) {
+		for (int i = method.instructions.size() - 1; i >= 0; i--) {
+			if (method.instructions.get(i).getOpcode() >= 0) return i;
+		}
+		return -1;
+	}
+
+	/**
+	 * Where vanilla's local {@code lv} of {@code original} is in {@code overload}, its code moved there: the slot of the
+	 * parameter in its parameter's place ({@code parameterSlots}), or of the local whose scope starts after the store
+	 * vanilla's starts after, placed with certainty by {@code alignment}; among {@code patched}, the overload's locals of
+	 * its type in scope at the point. -1 otherwise.
+	 */
+	private static int counterpart(MethodNode original, MethodNode overload, LocalVariableNode lv, PatchAlignment alignment,
+			java.util.Map<Integer, Integer> parameterSlots, List<LocalVariableNode> patched) {
+		int store = LocalRepairs.storeBefore(original, lv);
+		if (store < 0) {
+			Integer parameter = lv.index < firstLocalSlot(original) ? parameterSlots.get(lv.index) : null;
+			return parameter != null && patched.stream().anyMatch(p -> p.index == parameter && LocalRepairs.storeBefore(overload, p) < 0) ? parameter : -1;
+		}
+		if (!(original.instructions.get(store) instanceof VarInsnNode stored) || stored.getOpcode() < Opcodes.ISTORE || stored.getOpcode() > Opcodes.ASTORE
+				|| stored.var != lv.index) return -1;
+		int place = alignment.placeOf(store);
+		if (place < 0 || !(overload.instructions.get(place) instanceof VarInsnNode there) || there.getOpcode() != stored.getOpcode()) return -1;
+		for (LocalVariableNode p : patched) {
+			if (p.index == there.var && LocalRepairs.storeBefore(overload, p) == place) return p.index;
+		}
+		return -1;
+	}
+
+	/** The locals of type {@code desc} {@code method}'s local variable table has in scope at the instruction at {@code index}, by slot; null without a table, or where two share a slot. */
+	private static List<LocalVariableNode> inScope(MethodNode method, String desc, int index) {
+		if (method.localVariables == null || method.localVariables.isEmpty()) return null;
+		java.util.TreeMap<Integer, LocalVariableNode> bySlot = new java.util.TreeMap<>();
+		for (LocalVariableNode lv : method.localVariables) {
+			if (!lv.desc.equals(desc) || method.instructions.indexOf(lv.start) > index || index >= method.instructions.indexOf(lv.end)) continue;
+			if (bySlot.put(lv.index, lv) != null) return null;
+		}
+		return new ArrayList<>(bySlot.values());
 	}
 
 	/**
