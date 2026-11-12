@@ -41,7 +41,6 @@ abstract class PreflightPart {
 	final Map<ClassNode, Set<String>> independent;
 	final Map<String, String> installedRead;
 	final Set<String> widened;
-	final Set<String> restoredSeams;
 
 	PreflightPart(PreflightClasses classes) {
 		this.classes = classes;
@@ -67,7 +66,6 @@ abstract class PreflightPart {
 		this.independent = classes.independent;
 		this.installedRead = classes.installedRead;
 		this.widened = classes.widened;
-		this.restoredSeams = classes.restoredSeams;
 	}
 
 	/** {@link PreflightClasses#isSubtype} */

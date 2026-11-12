@@ -7058,6 +7058,159 @@ class MixinPreflightTest {
 		assertTrue(check.apply(GrowthBuild.VANILLA).isEmpty(), "all apply where the first does");
 	}
 
+	private static final String SHARING = "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;Lcom/llamalad7/mixinextras/sugar/ref/LocalRef;)V";
+
+	/**
+	 * A mixin of the growth class sharing locals: each member is {handler, method, a call its {@code @Inject} is at ("" for
+	 * the method's start), the local's name, its namespace ("" for none), what the handler does with it: "get", "set",
+	 * "pass" (hands it on), "passThenSet" (hands it on, then sets another reference), "setAnother" (sets another reference
+	 * to it) or nothing}.
+	 */
+	private static byte[] sharing(String name, String[]... members) {
+		return mixin(name, false, cw -> {
+			for (String[] member : members) {
+				MethodVisitor m = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, member[0], SHARING, null, null);
+				AnnotationVisitor inject = m.visitAnnotation(INJECT, true);
+				AnnotationVisitor targets = inject.visitArray("method");
+				targets.visit(null, member[1]);
+				targets.visitEnd();
+				AnnotationVisitor ats = inject.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", member[2].isEmpty() ? "HEAD" : "INVOKE");
+				if (!member[2].isEmpty()) at.visit("target", member[2]);
+				at.visitEnd();
+				ats.visitEnd();
+				inject.visitEnd();
+				AnnotationVisitor shared = m.visitParameterAnnotation(1, "Lcom/llamalad7/mixinextras/sugar/Share;", false);
+				shared.visit("value", member[3]);
+				if (!member[4].isEmpty()) shared.visit("namespace", member[4]);
+				shared.visitEnd();
+				m.visitCode();
+				if (member[5].equals("set")) {
+					m.visitVarInsn(Opcodes.ALOAD, 1);
+					m.visitInsn(Opcodes.ACONST_NULL);
+					m.visitMethodInsn(Opcodes.INVOKEINTERFACE, "com/llamalad7/mixinextras/sugar/ref/LocalRef", "set", "(Ljava/lang/Object;)V", true);
+				} else if (member[5].equals("get")) {
+					m.visitVarInsn(Opcodes.ALOAD, 1);
+					m.visitMethodInsn(Opcodes.INVOKEINTERFACE, "com/llamalad7/mixinextras/sugar/ref/LocalRef", "get", "()Ljava/lang/Object;", true);
+					m.visitInsn(Opcodes.POP);
+				} else if (member[5].startsWith("pass")) {
+					m.visitVarInsn(Opcodes.ALOAD, 1);
+					m.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Objects", "requireNonNull", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
+					m.visitInsn(Opcodes.POP);
+				}
+				if (member[5].equals("passThenSet") || member[5].equals("setAnother")) {
+					// Another reference's set: with this one as its value, or after handing this one on.
+					m.visitInsn(Opcodes.ACONST_NULL);
+					if (member[5].equals("setAnother")) m.visitVarInsn(Opcodes.ALOAD, 1);
+					else m.visitInsn(Opcodes.ACONST_NULL);
+					m.visitMethodInsn(Opcodes.INVOKEINTERFACE, "com/llamalad7/mixinextras/sugar/ref/LocalRef", "set", "(Ljava/lang/Object;)V", true);
+				}
+				m.visitInsn(Opcodes.RETURN);
+				m.visitMaxs(2, 2);
+				m.visitEnd();
+			}
+		});
+	}
+
+	/** The growth class with a second method, of the same code, for an injector to select instead. */
+	private static byte[] twoGrowths() {
+		ClassNode node = new ClassNode();
+		new ClassReader(growth(GrowthBuild.VANILLA)).accept(node, 0);
+		MethodNode speed = node.methods.stream().filter(m -> m.name.equals("getGrowthSpeed")).findFirst().orElseThrow();
+		MethodNode other = new MethodNode(speed.access, "getOtherSpeed", speed.desc, null, null);
+		speed.accept(other);
+		node.methods.add(other);
+		ClassWriter cw = new ClassWriter(0);
+		node.accept(cw);
+		return cw.toByteArray();
+	}
+
+	private static final String MISSING_CALL = "L" + STATE + ";noSuchCall()Z";
+
+	/** The configs' findings, checked in order by one pre-flight, as a mod's are: each config is {name, its mixins' names...}. */
+	private static List<PreflightFinding> checkSharing(Map<String, byte[]> mod, Set<String> skip, String[]... configs) throws Exception {
+		MixinPreflight preflight = preflight(new ClassIndex(Map.of(TARGET, twoGrowths())::get), mod::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> found = new ArrayList<>();
+		for (String[] config : configs) {
+			String mixins = java.util.Arrays.stream(config).skip(1).map(m -> "\"" + m + "\"").collect(java.util.stream.Collectors.joining(","));
+			found.addAll(preflight.check(config[0], MixinConfigFile.parse("{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[" + mixins + "],"
+					+ "\"injectors\":{\"defaultRequire\":1}}"), Refmap.EMPTY, skip));
+		}
+		return found;
+	}
+
+	private static boolean leftOut(List<PreflightFinding> found, String handler) {
+		return found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && (handler + SHARING).equals(f.handler()));
+	}
+
+	@Test
+	void anInjectorSharingANamespacedLocalWithOneOfAnotherMixinLeftOutGoesWithIt() throws Exception {
+		// SHARE-2, SHARE-1 across mixins: Apoli's break action reads the block from breakingBlock (namespace apoli), which another
+		// of its mixins keeps beside its harvest hook. Here the keeper, whose call this build lacks, is left out; the reader
+		// in the other mixin goes with it; a local of the same name in no namespace stays the reader mixin's own.
+		byte[] keeper = sharing("com/example/mixin/Keeper", new String[] {"keep", "getGrowthSpeed", MISSING_CALL, "breaking", "apoli", "set"});
+		byte[] reader = sharing("com/example/mixin/Reader", new String[] {"read", "getGrowthSpeed", "", "breaking", "apoli", "get"},
+				new String[] {"removed", "getGrowthSpeed", "", "removed", "", "get"}, new String[] {"own", "getGrowthSpeed", "", "breaking", "", "get"});
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Keeper", keeper, "com/example/mixin/Reader", reader);
+		List<PreflightFinding> found = checkSharing(mod, Set.of(), new String[] {"test.mixins.json", "Keeper", "Reader"});
+		assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && ("read" + SHARING).equals(f.handler())
+				&& f.message().equals("The injector of read" + SHARING + " goes with that of com.example.mixin.Keeper.keep" + SHARING
+						+ ", which can't apply: they share the local breaking (namespace apoli) (@Share), which it would read without the other's value")),
+				found.toString());
+		assertTrue(!leftOut(found, "own") && !leftOut(found, "removed"), found.toString());
+	}
+
+	/**
+	 * SHARE-2's reach: only an injector that may set a local takes those reading it with it (one that only reads it
+	 * takes nothing), only in the method they both inject into (MixinExtras keeps a local for each), and from a mixin
+	 * skipped as from one left out; across the mod's configs, either way round: one checked later takes one checked before.
+	 */
+	@Test
+	void namespacedSharersGoWithAnInjectorSettingTheLocalInTheirMethodAcrossTheModsConfigs() throws Exception {
+		byte[] keeper = sharing("com/example/mixin/Keeper", new String[] {"keep", "getGrowthSpeed", MISSING_CALL, "breaking", "apoli", "set"});
+		byte[] reader = sharing("com/example/mixin/Reader", new String[] {"read", "getGrowthSpeed", "", "breaking", "apoli", "get"},
+				new String[] {"elsewhere", "getOtherSpeed", "", "breaking", "apoli", "get"});
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Keeper", keeper, "com/example/mixin/Reader", reader);
+		List<PreflightFinding> found = checkSharing(mod, Set.of(), new String[] {"test.mixins.json", "Keeper", "Reader"});
+		assertTrue(leftOut(found, "read") && !leftOut(found, "elsewhere"), found.toString());
+
+		// A reader left out takes no setter with it.
+		byte[] setter = sharing("com/example/mixin/Keeper", new String[] {"keep", "getGrowthSpeed", "", "breaking", "apoli", "set"});
+		byte[] failing = sharing("com/example/mixin/Reader", new String[] {"read", "getGrowthSpeed", MISSING_CALL, "breaking", "apoli", "get"});
+		Map<String, byte[]> reversed = Map.of("com/example/mixin/Keeper", setter, "com/example/mixin/Reader", failing);
+		List<PreflightFinding> readerOut = checkSharing(reversed, Set.of(), new String[] {"test.mixins.json", "Keeper", "Reader"});
+		assertTrue(leftOut(readerOut, "read") && !leftOut(readerOut, "keep"), readerOut.toString());
+		// One whose code hands the reference on may set it: one reading it goes with it.
+		byte[] passing = sharing("com/example/mixin/Reader", new String[] {"read", "getGrowthSpeed", MISSING_CALL, "breaking", "apoli", "pass"});
+		byte[] reading = sharing("com/example/mixin/Keeper", new String[] {"keep", "getGrowthSpeed", "", "breaking", "apoli", "get"});
+		assertTrue(leftOut(checkSharing(Map.of("com/example/mixin/Keeper", reading, "com/example/mixin/Reader", passing), Set.of(),
+				new String[] {"test.mixins.json", "Keeper", "Reader"}), "keep"));
+
+		// A reference handed on, or set as another's value, may be read elsewhere: a set of another reference after it, or
+		// of another to it, isn't its own set alone.
+		for (String escaping : List.of("passThenSet", "setAnother")) {
+			byte[] other = sharing("com/example/mixin/Reader", new String[] {"read", "getGrowthSpeed", "", "breaking", "apoli", escaping});
+			assertTrue(leftOut(checkSharing(Map.of("com/example/mixin/Keeper", keeper, "com/example/mixin/Reader", other), Set.of(),
+					new String[] {"test.mixins.json", "Keeper", "Reader"}), "read"), escaping);
+		}
+
+		// A keeper skipped takes its readers with it.
+		Map<String, byte[]> skippedMod = Map.of("com/example/mixin/Keeper", setter, "com/example/mixin/Reader", reader);
+		List<PreflightFinding> skipped = checkSharing(skippedMod, Set.of("Keeper"), new String[] {"test.mixins.json", "Keeper", "Reader"});
+		assertTrue(skipped.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && ("read" + SHARING).equals(f.handler())
+				&& f.message().contains("goes with that of com.example.mixin.Keeper.keep" + SHARING + ", which is left out")), skipped.toString());
+
+		// Across the mod's configs: the keeper's first, then the reader's; and the reader's first, left out from the keeper's.
+		List<PreflightFinding> forward = checkSharing(mod, Set.of(), new String[] {"keeper.mixins.json", "Keeper"}, new String[] {"reader.mixins.json", "Reader"});
+		assertTrue(forward.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && ("read" + SHARING).equals(f.handler()) && f.config().equals("reader.mixins.json")),
+				forward.toString());
+		List<PreflightFinding> back = checkSharing(mod, Set.of(), new String[] {"reader.mixins.json", "Reader"}, new String[] {"keeper.mixins.json", "Keeper"});
+		assertTrue(back.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && ("read" + SHARING).equals(f.handler()) && f.config().equals("reader.mixins.json")),
+				back.toString());
+		assertTrue(!leftOut(back, "elsewhere"), back.toString());
+	}
+
 	/**
 	 * CORPUS-55's effect drawing methods: vanilla's, with the effect in slot 3 and the draw position in slot 6; Forge's,
 	 * recompiled, with the iterator in slot 3, the effect in slot 4, and two locals of its patch before the counter and
