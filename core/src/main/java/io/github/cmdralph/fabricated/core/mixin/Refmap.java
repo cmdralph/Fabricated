@@ -53,8 +53,11 @@ public final class Refmap {
 		return mapped != null ? mapped : selector;
 	}
 
-	/** The selector without the characters of Java's {@code \s}, as Mixin strips them; itself where it has none. */
-	private static String stripped(String selector) {
+	/**
+	 * The selector without the characters of Java's {@code \s}, as Mixin strips them before it reads the selector or looks
+	 * it up in a refmap (PRE-31); itself where it has none.
+	 */
+	public static String stripped(String selector) {
 		for (int i = 0; i < selector.length(); i++) {
 			if (WHITESPACE.indexOf(selector.charAt(i)) >= 0) return selector.replaceAll("\\s", "");
 		}
