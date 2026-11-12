@@ -471,7 +471,7 @@ sorted reload-listener events. Fabricated ships the module's unchanged public AP
 | `fabric:before_vanilla`, `fabric:after_vanilla` phases | empty listeners before the first and after the last vanilla listener |
 | Shared reload state: registries, feature flags, data store (and on 1.21.11, 26.1.2 and 26.2 the recipe and advancement managers) | a setup listener that runs before all others |
 | `MinecraftServer` as `DataResourceStore`, `Resource#getFabricPackSource` | interfaces added by mixins that only add methods |
-| `registerBuiltinPack` | `AddPackFindersEvent` |
+| `registerBuiltinPack`, upstream's pack finder (`ModResourcePackCreator`) | `AddPackFindersEvent`: each pack repository gets a `ModResourcePackCreator` of upstream's shape, which offers the built-in packs |
 
 A listener registered the vanilla way (`ReloadableResourceManager.registerReloadListener`, as OneConfig does from a
 mixin into `Minecraft`'s constructor) after NeoForge has sorted the client's listeners is added last, as vanilla adds
@@ -486,7 +486,14 @@ DATA-1); the Fabric build's `fabric:load_conditions` still decide. A built-in pa
 registry entries it adds are stable and a world with them opens without an experimental-settings warning (PACK-3).
 A mod that adds a pack source the vanilla way, replacing the repository's sources with a new immutable set
 (FrozenLib's resource pack API), keeps it: the set is made mutable again before NeoForge adds its own pack finders
-(PACK-1).
+(PACK-1). The pack finder Fabricated gives each pack repository is a `ModResourcePackCreator` with upstream's instance
+shape on every version (1.21.1's in `impl.resource.loader`, later versions' in `impl.resource.pack`): the pack type,
+the constructor taking it and whether the repository is the client's of a server's known packs (NeoForge's trusted
+one), and `loadPacks`, which offers the built-in packs. A mod's mixin of upstream's class applies to it as on Fabric
+(PROVIDER-22): YUNG's API offers its locate replacer's data pack at the end of `loadPacks` where the pack type is server
+data, which adds the vanilla structures YUNG's mods replace or remove to the `c:hidden_from_locator_selection` tag that
+other mods' structure locators read. Upstream's creator also offers Fabric's mod packs, which NeoForge builds itself, so
+Fabricated's doesn't.
 
 With Fabric API, a pack's conditional overlays (`fabric:overlays`) apply where vanilla reads a pack's metadata, as
 upstream applies them, but not to a pack that declares NeoForge's own (`neoforge:overlays`): such a pack is built for
@@ -517,7 +524,8 @@ Differences from upstream:
 CI checks, on every version: listener ordering (including an ordering against a vanilla listener), the
 shared reload state, a listener factory, the data store read back through `MinecraftServer`, a `DEFAULT_ENABLED`
 built-in data pack being enabled and loaded, a `DEFAULT_ENABLED` built-in resource pack being switched on in a new
-game directory and its resources loaded, and the listener running again after `/reload`. Core's
+game directory and its resources loaded, and the listener running again after `/reload`; on 1.21.1, a test mixin of
+upstream's `ModResourcePackCreator` of YUNG's shape, whose data pack must be among the server's packs. Core's
 `DefaultPackTrackerTest` checks upstream's rule and file format. Client listeners
 are checked by the client CI run (a client resource listener runs while the client starts).
 

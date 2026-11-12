@@ -2,7 +2,7 @@
   "required": true,
   "package": "io.github.cmdralph.fabricated.testmod.neoforge",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["ConditionRereadMixin", "ConditionsAsPreparedMixin"],
+  "mixins": ["ConditionRereadMixin", "ConditionsAsPreparedMixin", "ModResourcePackCreatorMixin"],
   "client": ["HudLayersMixin", "LayeredDrawLayersAccessor"],
   "injectors": {
     "defaultRequire": 1
