@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.core.translate;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -34,6 +33,7 @@ import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
+import io.github.cmdralph.fabricated.core.bytecode.ClassFiles;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight;
 
 /**
@@ -204,8 +204,7 @@ final class LibraryBridges {
 	 * as method references) going to their bridges; null when it has none.
 	 */
 	static byte[] rewrite(byte[] data, Map<String, Duck> ducks) {
-		String text = new String(data, StandardCharsets.ISO_8859_1);
-		if (ducks.keySet().stream().noneMatch(text::contains)) return null;
+		if (ducks.keySet().stream().noneMatch(name -> ClassFiles.contains(data, name))) return null;
 		ClassNode node = new ClassNode();
 		new ClassReader(data).accept(node, 0);
 		boolean changed = false;

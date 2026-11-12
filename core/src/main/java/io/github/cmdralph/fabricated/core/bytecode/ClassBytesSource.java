@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.core.bytecode;
 
 import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.tree.ClassNode;
@@ -41,6 +43,27 @@ public interface ClassBytesSource {
 		return name -> {
 			byte[] data = read(name);
 			return data != null ? data : other.read(name);
+		};
+	}
+
+	/**
+	 * This source, each class read from it once, and whether it has one, kept: for classes that don't change, which a
+	 * discovery reads again and again (pre-flight, translation and the linkage checks each read the game's). Callers
+	 * never change the bytes they are given. Thread-safe: two threads reading a class first at once both get one copy.
+	 * A read that throws is not kept.
+	 */
+	default ClassBytesSource memoised() {
+		byte[] absent = new byte[0];
+		Map<String, byte[]> read = new ConcurrentHashMap<>();
+		return name -> {
+			byte[] kept = read.get(name);
+			if (kept == null) {
+				byte[] data = read(name);
+				if (data == null) data = absent;
+				kept = read.putIfAbsent(name, data);
+				if (kept == null) kept = data;
+			}
+			return kept == absent ? null : kept;
 		};
 	}
 }
