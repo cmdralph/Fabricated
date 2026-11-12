@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Supplier;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
@@ -115,29 +116,38 @@ public final class SeamConflicts {
 	 * @param platformClass the class as the platform has it, before any seam is put back
 	 */
 	public static Conflict find(ClassNode platformClass, InstalledClasses installed) {
-		return find(platformClass, installed.nativeListing()).conflict();
+		return find(platformClass.name, () -> platformClass, installed.nativeListing()).conflict();
 	}
 
-	private static Found find(ClassNode platformClass, InstalledClasses.NativeListing listing) {
-		VanillaSeams.Rewrite rewrite = VanillaSeams.rewriteOf(platformClass);
-		if (rewrite.isEmpty()) return new Found(null, true);
-		String internal = platformClass.name;
-		String dotted = internal.replace('/', '.');
+	/**
+	 * {@link #find(ClassNode, InstalledClasses)} of the class {@code internal}, read ({@code platformClass}, null where it
+	 * doesn't parse) and its rewrite worked out only once a native mixin may concern it: most launches have none.
+	 */
+	private static Found find(String internal, Supplier<ClassNode> platformClass, InstalledClasses.NativeListing listing) {
+		VanillaSeams.Rewrite[] worked = {null};
+		Supplier<VanillaSeams.Rewrite> rewrite = () -> {
+			if (worked[0] == null) {
+				ClassNode node = platformClass.get();
+				worked[0] = node == null ? VanillaSeams.Rewrite.NONE : VanillaSeams.rewriteOf(node);
+			}
+			return worked[0];
+		};
+		Set<String> concerned = VanillaSeams.concerned(internal);
 		for (InstalledClasses.ListedMixin listed : listing.mixins()) {
 			byte[] data;
 			try {
 				data = listed.classes().read(listed.mixin());
 			} catch (IOException | RuntimeException e) {
 				// A read error, which the next launch may not have.
-				return new Found(new Conflict(listed.owner(), listed.mixin(), false), false);
+				return kept(rewrite, new Conflict(listed.owner(), listed.mixin(), false), false);
 			}
 			// A class the config lists and the jar hasn't, or one that doesn't parse, is so at every launch.
-			if (data == null) return new Found(new Conflict(listed.owner(), listed.mixin(), false), true);
-			// Only a mixin naming the class, or another whose methods' calls change, can target it (its @Mixin's class or
+			if (data == null) return kept(rewrite, new Conflict(listed.owner(), listed.mixin(), false), true);
+			// Only a mixin naming the class, or another whose methods' calls may change, can target it (its @Mixin's class or
 			// string): the others aren't parsed.
 			String text = new String(data, StandardCharsets.ISO_8859_1);
-			if (!text.contains(internal) && !text.contains(dotted)
-					&& rewrite.others().keySet().stream().noneMatch(i -> text.contains(i) || text.contains(i.replace('/', '.')))) continue;
+			if (concerned.stream().noneMatch(name -> names(text, name))) continue;
+			if (rewrite.get().isEmpty()) return new Found(null, true);
 			ClassNode mixin = new ClassNode();
 			try {
 				new ClassReader(data).accept(mixin, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
@@ -145,16 +155,36 @@ public final class SeamConflicts {
 				return new Found(new Conflict(listed.owner(), listed.mixin(), false), true);
 			}
 			List<String> targets = InstalledClasses.mixinTargets(mixin);
-			if (targets.contains(internal) && hooks(mixin, platformClass, rewrite)
-					|| rewrite.others().entrySet().stream().anyMatch(d -> targets.contains(d.getKey()) && hooksMethod(mixin, d.getValue()))) {
+			if (targets.contains(internal) && hooks(mixin, platformClass.get(), rewrite.get())
+					|| rewrite.get().others().entrySet().stream().anyMatch(d -> targets.contains(d.getKey()) && hooksMethod(mixin, d.getValue()))) {
 				return new Found(new Conflict(listed.owner(), listed.mixin(), true), true);
 			}
 		}
 		if (!listing.complete()) {
 			InstalledClasses.UnreadList unread = listing.unread().get(0);
-			return new Found(new Conflict(unread.owner(), unread.path(), false), false);
+			return kept(rewrite, new Conflict(unread.owner(), unread.path(), false), false);
 		}
 		return new Found(null, true);
+	}
+
+	/** The conflict, where something would be put back; no conflict where nothing would. */
+	private static Found kept(Supplier<VanillaSeams.Rewrite> rewrite, Conflict conflict, boolean clean) {
+		return rewrite.get().isEmpty() ? new Found(null, true) : new Found(conflict, clean);
+	}
+
+	/**
+	 * Whether a class file's text names the class: in a descriptor, or as a whole name (internal or dotted) in a string, as
+	 * a {@code @Mixin}'s class or its {@code targets} do; not where the name runs on into another's ({@code LevelReader}).
+	 */
+	private static boolean names(String text, String internal) {
+		if (text.contains("L" + internal + ";")) return true;
+		for (String name : List.of(internal, internal.replace('/', '.'))) {
+			for (int at = text.indexOf(name); at >= 0; at = text.indexOf(name, at + 1)) {
+				int end = at + name.length();
+				if (end == text.length() || !Character.isJavaIdentifierPart(text.charAt(end))) return true;
+			}
+		}
+		return false;
 	}
 
 	/** The classes of the game whose seams native mixins keep from being put back, with the mixin keeping each. */
@@ -180,9 +210,9 @@ public final class SeamConflicts {
 				clean = false;
 				continue;
 			}
-			ClassNode node = parse(data);
-			if (node == null) continue;
-			Found found = find(node, listing);
+			if (data == null) continue;
+			ClassNode[] node = {null};
+			Found found = find(name, () -> node[0] != null ? node[0] : (node[0] = parse(data)), listing);
 			clean &= found.clean();
 			if (found.conflict() != null) kept.put(name, found.conflict());
 		}

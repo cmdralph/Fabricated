@@ -146,6 +146,10 @@ final class VanillaCalls {
 
 	static final Set<String> CLASSES = PUT_BACKS.stream().map(PutBack::owner).collect(Collectors.toUnmodifiableSet());
 
+	/** Every class whose methods' calls a put-back may change ({@link #changes}' {@code others}): the extensions, and Level's. */
+	static final Set<String> OTHER_CLASSES = java.util.stream.Stream.concat(PUT_BACKS.stream().flatMap(r -> java.util.stream.Stream.of(
+			r.extension().stateInterface(), r.extension().blockInterface())), java.util.stream.Stream.of(LEVEL, SERVER_LEVEL)).collect(Collectors.toUnmodifiableSet());
+
 	// Vanilla's calls and the fields they read, and what the helpers call.
 	private static final Member REMOVE_BLOCK = new Member(SERVER_LEVEL, "removeBlock", "m_7471_", "(" + POS + "Z)Z");
 	private static final Member DESTROY = new Member(BLOCK, "destroy", "m_6786_", "(Lnet/minecraft/world/level/LevelAccessor;" + POS + "L" + STATE + ";)V");

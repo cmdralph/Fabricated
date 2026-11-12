@@ -135,6 +135,16 @@ public final class VanillaSeams {
 		return VanillaCalls.places(method);
 	}
 
+	/**
+	 * The classes whose methods' calls putting the class's seams back may change ({@link Rewrite#others}, of any form the
+	 * table reads), and the class itself: only a mixin naming one of them can hook what the rewrite moves.
+	 */
+	static Set<String> concerned(String internalName) {
+		Set<String> concerned = new HashSet<>(Set.of(internalName));
+		if (putsBackCalls(internalName)) concerned.addAll(VanillaCalls.OTHER_CLASSES);
+		return concerned;
+	}
+
 	/** Whether the table names the class (internal name): a class whose seams {@link #restore} may put back. */
 	public static boolean names(String internalName) {
 		return CLASSES.contains(internalName);
