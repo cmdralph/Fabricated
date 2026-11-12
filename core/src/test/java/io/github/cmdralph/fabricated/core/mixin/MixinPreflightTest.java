@@ -12017,6 +12017,67 @@ class MixinPreflightTest {
 		assertTrue(findings.getFirst().message().contains("@Shadow field gone"));
 	}
 
+	/**
+	 * A member the target has under that name but with other types is reported as changed, with the types it has, not as
+	 * renamed or removed (PRE-32): an injector's or an invoker's method, a shadow's field or method.
+	 */
+	@Test
+	void aMemberTheTargetHasWithOtherTypesIsReportedWithThem() throws Exception {
+		Map<String, java.util.function.Consumer<ClassWriter>> mixins = new LinkedHashMap<>();
+		mixins.put("Injects", cw -> inject(cw, "atHelper", "helper(Ljava/lang/String;[[J)V", "HEAD", null, null, null));
+		mixins.put("Shadows", cw -> cw.visitField(Opcodes.ACC_PRIVATE, "count", "Lnet/minecraft/world/Thing$Count;", null, null)
+				.visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", false).visitEnd());
+		mixins.put("ShadowsMethod", cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_ABSTRACT, "helper", "(J)V", null, null);
+			mv.visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", false).visitEnd();
+			mv.visitEnd();
+		});
+		mixins.put("Gone", cw -> inject(cw, "atGone", "gone(I)V", "HEAD", null, null, null));
+		Map<String, String> expected = Map.of(
+				"Injects", "NeoForge or this Minecraft version changed its parameters: Thing.helper takes (int); the mod needs an update.",
+				"Shadows", "changed the field's type to int; the mod needs an update.",
+				"ShadowsMethod", "changed its parameters: Thing.helper takes (int); the mod needs an update.",
+				"Gone", "The method was renamed or removed by");
+		for (Map.Entry<String, java.util.function.Consumer<ClassWriter>> e : mixins.entrySet()) {
+			String name = "com/example/mixin/" + e.getKey();
+			List<PreflightFinding> findings = run(config(true, e.getKey()), null, Map.of(name, mixin(name, false, e.getValue())), false);
+			assertEquals(1, findings.size(), findings.toString());
+			assertTrue(findings.getFirst().suggestion().contains(expected.get(e.getKey())), e.getKey() + ": " + findings.getFirst().suggestion());
+		}
+		assertEquals("(String, long[][], Thing.Count, boolean)", MixinPreflight.readableParameters("(Ljava/lang/String;[[JLnet/minecraft/world/Thing$Count;Z)V"));
+
+		// A method that returns another type; constructors and overloads, each listed.
+		ClassWriter overloads = new ClassWriter(0);
+		overloads.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		for (String desc : List.of("(I)V", "(J)V")) {
+			overloads.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "<init>", desc, null, null).visitEnd();
+			overloads.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "helper", desc, null, null).visitEnd();
+		}
+		overloads.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "count", "()J", null, null).visitEnd();
+		overloads.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, overloads.toByteArray())::get);
+		Map<String, java.util.function.Consumer<ClassWriter>> more = new LinkedHashMap<>();
+		more.put("AtInit", cw -> inject(cw, "atInit", "<init>(Ljava/lang/String;)V", "HEAD", null, null, null));
+		more.put("AtHelper", cw -> inject(cw, "atHelper", "helper(Ljava/lang/String;)V", "HEAD", null, null, null));
+		more.put("Counts", cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_ABSTRACT, "count", "()I", null, null);
+			mv.visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", false).visitEnd();
+			mv.visitEnd();
+		});
+		Map<String, String> said = Map.of(
+				"AtInit", "changed its parameters, or removed this one of its overloads: Thing's constructors take (int) and (long);",
+				"AtHelper", "changed its parameters, or removed this one of its overloads: Thing's helper methods take (int) and (long);",
+				"Counts", "changed what it returns: Thing.count returns long;");
+		for (Map.Entry<String, java.util.function.Consumer<ClassWriter>> e : more.entrySet()) {
+			String name = "com/example/mixin/" + e.getKey();
+			Map<String, byte[]> mod = Map.of(name, mixin(name, false, e.getValue()));
+			List<PreflightFinding> findings = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
+					.check("test.mixins.json", MixinConfigFile.parse(config(true, e.getKey())), Refmap.EMPTY, Set.of());
+			assertEquals(1, findings.size(), findings.toString());
+			assertTrue(findings.getFirst().suggestion().contains(said.get(e.getKey())), e.getKey() + ": " + findings.getFirst().suggestion());
+		}
+	}
+
 	@Test
 	void aConfigInheritsRequireFromItsParent() throws Exception {
 		MixinConfigFile parent = MixinConfigFile.parse("{\"required\":true,\"injectors\":{\"defaultRequire\":1}}");
