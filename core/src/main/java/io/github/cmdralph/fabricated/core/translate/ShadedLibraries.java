@@ -1,7 +1,6 @@
 package io.github.cmdralph.fabricated.core.translate;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -11,6 +10,7 @@ import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.Remapper;
 
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+import io.github.cmdralph.fabricated.core.bytecode.ClassFiles;
 
 /**
  * The libraries Fabric's Mixin carries in its own package, {@code org/spongepowered/include/}: its jar is
@@ -40,7 +40,7 @@ final class ShadedLibraries {
 
 	/** {@code classFile} naming the libraries' own classes where the platform lacks the relocated ones, or null when it names none. */
 	byte[] apply(byte[] classFile) {
-		if (!new String(classFile, StandardCharsets.ISO_8859_1).contains(SHADED)) return null;
+		if (!ClassFiles.contains(classFile, SHADED)) return null;
 		boolean[] changed = {false};
 		ClassWriter writer = new ClassWriter(0);
 		new ClassReader(classFile).accept(new ClassRemapper(writer, new Remapper() {
