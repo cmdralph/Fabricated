@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
+import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
 import io.github.cmdralph.fabricated.core.mixin.PreflightClasses.Code;
 
@@ -121,6 +122,41 @@ final class CallRepairs extends PreflightPart {
 					+ subtype.replace('/', '.') + " (the same method); the injection point is pointed there");
 		}
 		return moved;
+	}
+
+	/**
+	 * An injector's {@code INVOKE} and {@code INVOKE_ASSIGN} points picking by ordinal 0 vanilla's one call of a method
+	 * Fabricated puts back in each of the target method's places making the platform's extension call instead (SEAM-3):
+	 * NeoForge's and Forge's server make it in the creative branch and in the survival one, so ordinal 0 would pick the
+	 * creative branch's alone. The ordinal is dropped, and the point picks the call in each, each vanilla's one on its
+	 * path; not where the injector allows fewer injections, or vanilla's code makes the call more than once. Returns the
+	 * calls, as the mod names them.
+	 */
+	List<String> putBackOrdinalRepairs(AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!VanillaSeams.putsBackCalls(target.name) || Annotations.value(injector, "slice") != null) return List.of();
+		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
+		if (methods.size() != 1) return List.of();
+		MethodNode method = methods.get(0);
+		int places = VanillaSeams.putBackPlaces(method);
+		if (places < 2 || Annotations.value(injector, "allow") instanceof Integer allow && allow >= 0 && allow < places) return List.of();
+		ClassNode original = vanillaClass(target.name);
+		MethodNode before = original == null ? null : PreflightAsm.declared(original, method.name, method.desc);
+		List<VanillaSeams.Restored> putBack = VanillaSeams.restoredIn(target).stream().filter(r -> (method.name + method.desc).equals(r.in())).toList();
+		List<String> dropped = new ArrayList<>();
+		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!point.equals("INVOKE") && !point.equals("INVOKE_ASSIGN") || !Integer.valueOf(0).equals(Annotations.value(at, "ordinal"))
+					|| !(Annotations.value(at, "target") instanceof String raw)) continue;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null
+					|| putBack.stream().noneMatch(r -> r.owner().equals(ref.owner()) && r.name().equals(ref.name()) && r.desc().equals(ref.desc()))
+					// Every call of it here is one put back, and vanilla's code makes one.
+					|| PreflightAsm.matching(method, point, ref, -1).size() != places
+					|| before != null && PreflightAsm.matching(before, point, ref, -1).size() != 1) continue;
+			Annotations.remove(at, "ordinal");
+			dropped.add(raw);
+		}
+		return dropped;
 	}
 
 	/**

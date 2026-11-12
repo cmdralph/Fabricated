@@ -399,7 +399,11 @@ public final class TranslationCache {
 		return file.toAbsolutePath().normalize().toString();
 	}
 
-	private static String stamp(Path file) throws IOException {
+	/**
+	 * What changes when a file does, as {@link #sha256} tells (its size, modification, creation and change times, and file
+	 * key): for what is kept from a file across launches without reading it again.
+	 */
+	public static String stamp(Path file) throws IOException {
 		BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
 		return attrs.size() + "|" + attrs.lastModifiedTime().toMillis() + "|" + attrs.creationTime().toMillis() + "|" + changeTime(file) + "|" + attrs.fileKey();
 	}

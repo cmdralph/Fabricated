@@ -81,7 +81,8 @@ final class MixinRepairs extends PreflightPart {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Map.of(), Set.of(), out, null, loader);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Map.of(), Set.of(), out, null, loader,
+					new java.util.HashSet<>());
 			boolean changed = false;
 			// First, as it takes the constructor from the mixin parsed again.
 			List<String> outlined = restrictsInitialisers ? Initialisers.outline(node, () -> modClasses.readNode(internal, ClassReader.EXPAND_FRAMES)) : List.of();
@@ -404,6 +405,9 @@ final class MixinRepairs extends PreflightPart {
 			new RepairStep(RepairScope.ONE_TARGET_UNGROUPED, Severity.INFO, s -> OverloadRepairs.overloadByParameters(s.handler(), s.injector(), s.target(), s.ctx(), true),
 					(s, pinned) -> s.named() + " targets " + pinned + ", one of several methods of that name in this game build; it is pinned to that one,"
 							+ " as a mixin replacing it (@Overwrite, which Mixin adds after the others) would leave the injector on another"),
+			new RepairStep(RepairScope.ONE_TARGET_UNGROUPED, Severity.INFO, s -> calls.putBackOrdinalRepairs(s.injector(), s.target(), s.ctx()),
+					(s, call) -> s.named() + " picks the call " + call + " by ordinal 0, vanilla's one call there, which Fabricated puts back in each of "
+							+ s.ctx().loader() + "'s places making it through the block's extension (SEAM-3); the ordinal is dropped, so it picks the call in each"),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.vanillaPointRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
 					(s, moved) -> s.named() + " expects " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.movedCallRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
@@ -1407,7 +1411,8 @@ final class MixinRepairs extends PreflightPart {
 	/** Whether pre-flight finds nothing but notes in {@code mixin} against {@code target}. */
 	private boolean fits(ClassNode mixin, ClassNode target, Context ctx) {
 		List<PreflightFinding> found = new ArrayList<>();
-		checker.checkMembers(mixin, target, new Context(ctx.configName(), ctx.mixinDotted(), ctx.config(), ctx.refmap(), false, false, false, Map.of(), Set.of(), found, null, loader));
+		checker.checkMembers(mixin, target, new Context(ctx.configName(), ctx.mixinDotted(), ctx.config(), ctx.refmap(), false, false, false, Map.of(), Set.of(), found, null,
+				loader, new java.util.HashSet<>()));
 		return found.stream().allMatch(f -> f.severity() == Severity.INFO);
 	}
 }

@@ -128,13 +128,6 @@ final class PreflightClasses {
 	/** Access transformer lines {@link MixinPreflight#repairs} needs, by the method they make public. */
 	final Set<String> widened = new TreeSet<>();
 
-	/**
-	 * The game classes whose vanilla methods put back ({@link VanillaSeams}, SEAM-1) a mixin member hooks: only those are
-	 * rewritten as they load, so a native mod's mixin of the platform's calls there still finds them where no Fabric mod's
-	 * hooks a seam (Lithium's mixin of the resolver hooks none).
-	 */
-	final Set<String> restoredSeams = new TreeSet<>();
-
 	/** The libraries' classes (the JDK, DataFixerUpper, ...), for the supertypes of the classes a game method calls. */
 	ClassIndex libraries;
 
@@ -278,6 +271,9 @@ final class PreflightClasses {
 		return method != null && (method.access & Opcodes.ACC_STATIC) != 0;
 	}
 
+	/** The decision the game's classes were made by ({@link MixinPreflight#keptSeams}), or null for {@link #keptSeams} to tell. */
+	Map<String, SeamConflicts.Conflict> decidedSeams;
+
 	/** {@link #keptSeams} by class: the native mixin keeping its seams, or none. */
 	private final Map<String, Optional<SeamConflicts.Conflict>> keptSeams = new HashMap<>();
 
@@ -287,6 +283,7 @@ final class PreflightClasses {
 	 */
 	SeamConflicts.Conflict keptSeams(ClassNode target) {
 		if (!VanillaSeams.names(target.name) || !VanillaSeams.restoredIn(target).isEmpty()) return null;
+		if (decidedSeams != null) return decidedSeams.get(target.name);
 		return keptSeams.computeIfAbsent(target.name, n -> Optional.ofNullable(SeamConflicts.find(target, installed))).orElse(null);
 	}
 

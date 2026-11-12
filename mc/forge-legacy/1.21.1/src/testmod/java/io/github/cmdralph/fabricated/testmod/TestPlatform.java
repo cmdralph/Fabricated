@@ -17,6 +17,8 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.common.CreativeModeTabRegistry;
 import net.minecraftforge.common.MinecraftForge;
@@ -87,5 +89,10 @@ final class TestPlatform {
 	/** The id an id names in the registry, an alias resolved; null for neither an entry nor an alias. */
 	static <T> ResourceLocation resolve(Registry<T> registry, ResourceLocation id) {
 		return registry.getOptional(id).map(registry::getKey).orElse(null);
+	}
+
+	/** A block overriding the platform's extension for a player's break (SEAM-3): it leaves amethyst ({@link BreakOverride}). */
+	static Block breakOverride(BlockBehaviour.Properties properties) {
+		return new BreakOverride(properties);
 	}
 }

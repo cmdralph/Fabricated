@@ -53,6 +53,21 @@ class KnownLimitsTest {
 	}
 
 	@Test
+	void aHookOfTheServersPlayerWillDestroyCallIsSeam3OnForgeOnly() {
+		String message = "@ModifyExpressionValue in m_9280_ expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;"
+				+ "m_5707_(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;"
+				+ "Lnet/minecraft/world/entity/player/Player;)V\"), which does not occur in that method";
+		// Pre-flight's hint names the server's class, where the call isn't put back.
+		PreflightFinding forge47 = new PreflightFinding(Severity.LEFT_OUT, "mod.mixins.json", "com.example.mixin.BreakMixin", message,
+				"Forge's ServerPlayerGameMode makes that call through the block's IForgeBlock.onDestroyedByPlayer instead, which Fabricated doesn't"
+						+ " put back there (SEAM-3).", "handler()V");
+		assertTrue(KnownLimits.ofFinding("Forge", forge47).endsWith("(SEAM-3)"), KnownLimits.ofFinding("Forge", forge47));
+		assertNull(KnownLimits.ofFinding("NeoForge", forge47), "NeoForge keeps the call in destroyBlock: a hook left out there is left out for another reason");
+		// The client's destroyBlock (Forge 52 on) left out for another reason, where the call goes back, is none.
+		assertNull(KnownLimits.ofFinding("Forge", finding(Severity.LEFT_OUT, message.replace("m_9280_", "destroyBlock").replace("m_5707_", "playerWillDestroy"))));
+	}
+
+	@Test
 	void twoEqualEntriesRegisteredOnForgeAreReg13() {
 		IllegalArgumentException thrown = new IllegalArgumentException(registeredTwice("36b858fa", "4bef7d97"));
 		EntrypointRunner.Failure failure = new EntrypointRunner.Failure("wover_story", "main", "org.example.Story", new RuntimeException("wrapped", thrown));

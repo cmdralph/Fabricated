@@ -3,6 +3,123 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-11: Vanilla's block-breaking calls put back for the blocks keeping the platform's default (SEAM-3), shares across mixins (SHARE-2)
+
+- **SEAM-3** (P1), fixed: NeoForge and Forge break a block in `destroyBlock`, the server's and the client's, through the
+  block state's `onDestroyedByPlayer`, where vanilla removes it itself (`removeBlock` and `destroy` on the server,
+  `setBlock` with the fluid's block on the client), so Wilder Wild's, FrozenLib's and Apoli's hooks of those calls were
+  left out and Carpet's warned about: snowlogged blocks didn't leave their snow, waterlike blocks their water. Where a
+  Fabric mod's mixin hooks one of those calls, `destroyBlock` now makes vanilla's calls there for a block whose classes
+  keep the platform's default, and the platform's call for one overriding it, which breaks exactly as before. The
+  platform's own steps vanilla doesn't make there stay out of hooks' sight (Forge's server's `playerWillDestroy`: a
+  wrapper of it is a known limit). A NeoForge or Forge mod's mixin of the platform's code there keeps the class as the
+  platform has it, as for SEAM-1. The platforms' block break events fire on both paths. The test mod wraps the server's
+  `removeBlock` and breaks calcite, stone and a block overriding `onDestroyedByPlayer` (`vanilla-break`: NeoForge, every
+  run; Forge, with Fabric API).
+- **SHARE-2** (P2), fixed: a hook sharing a local with another mixin's left-out hook through a namespaced `@Share` now
+  goes with it, as one of the same mixin did (SHARE-1): Apoli's break action, which reads the broken block its harvest
+  mixin keeps, stays left out with that mixin's harvest wrapper.
+- Verified: core's tests (632), CI's script tests and the inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2 and Forge 47,
+  52 and 66 build; local servers pass every check (NeoForge 1.21.1, 26.1.2; Forge 47, 52, 66); on the advanced corpus
+  servers of NeoForge 1.21.1 and Forge 47, against runs before the change, only the hooks above change, now applying,
+  and the checks are as before. The first check, by `Class.getMethod`, failed on Forge 66, whose extensions name client
+  classes: it now reads only the classes' own methods.
+- Review fixes: the block check's helpers, copied from one tree shared between threads with ASM's `MethodNode.accept`,
+  which changes its labels, came out swapped, throwing or unverifiable where classes were put back in parallel (on
+  NeoForge 1.21.1's class, 8 threads, 3,200 copies: 107 differing, 30 throwing); each class now reads them afresh, a
+  copy still naming `KeepsDefault` fails, and pre-flight's view reads a class whose rewrite throws as the platform has
+  it (3,200 copies the same). Each break of a block keeping the default asked every class of its hierarchy, each miss
+  an exception (about 21 µs a break); the class keeps the answers by class (48 ns), a class that can't be read taken to
+  override, once. On Forge's server, vanilla's removal put back runs `Level.removeBlock`, which Forge's default doesn't
+  call: a native mixin of it keeps the class, as does one of a constant in `destroyBlock`, where vanilla's calls bring
+  their `false` and `11`. A hook picking vanilla's one removal by ordinal 0, put back in the creative and the survival
+  branch, now picks both. Pre-flight recorded a class for rewriting, and noted its hook applying, before the config's
+  groupings could leave the hook out; it records only the hooks they leave in. SHARE-2 follows only an injector that may
+  set a local, to those that may read it in the same target method, from skipped mixins and across the mod's configs.
+  The known limit of Forge's `playerWillDestroy` hooks matched the client's `destroyBlock` too: pre-flight's hint names
+  the server's class, which it now matches. Fabricated's own `AFTER` on vanilla's path stays two `@Inject`s, as upstream fires it, which a
+  `@Redirect` of the calls doesn't take away; a wrapper of the removal in their place loses the event where an outer
+  wrapper doesn't make the call.
+- Verified (review fixes): core's tests (637), CI's script tests and the inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2
+  and Forge 47, 52 and 66 build; local servers pass every check (NeoForge 1.21.1 server and server-fapi: 174; 26.1.2:
+  85; Forge 47: 234; 52: 231; 66: 212), the `vanilla-break` check now also asking `AFTER` once for each break on both
+  paths. A wrapper in place of the `@Inject`s failed it on NeoForge 1.21.1 (no `AFTER` for the calcite the test mod's
+  wrapper keeps as tuff); the `@Inject`s pass it with a `@Redirect` of the removal added to the test mod. On the
+  advanced corpus servers (NeoForge 1.21.1: 83 passing; Forge 47: 111, as before), Apoli's removal hook applies, its
+  break action still left out, and Carpet's piston hook left out by SEAM-2 is no longer also noted as applying.
+- Fixes after those: a mixin left out whole besides pre-flight's own leaving out still had its class recorded for
+  rewriting, and the readers of a namespaced local it sets applying with nothing set. One using a class of an
+  unsupported Fabric API module is now left out before the check, which takes it as skipped; one Mixin rejects whole
+  as it applies (a problem of the whole mixin in a config that isn't required) is taken as left out; and translation
+  tells pre-flight of those it leaves out after the check (those using an interface only a mixin left out adds), and
+  leaves out the readers SHARE-2 then names, until no more go. The ordinal repair covers `@At("INVOKE_ASSIGN")` too.
+  SHARE-2 follows a shared reference on the stack: only a `get` or a `set` with it as the receiver tells its use, and
+  one handed on, or set as another reference's value, may be read and set. A rewrite failing as pre-flight reads the
+  class is named in the report's environment, with what it threw.
+- Verified (those): core's tests (640) and CI's script tests on the three branches, and their inventories; NeoForge
+  1.21.1, 1.21.11 and 26.1.2 and Forge 47, 52 and 66 build; local servers pass every check (NeoForge 1.21.1 server and
+  server-fapi: 174; Forge 47 server-fapi: 123); the NeoForge 1.21.1 advanced corpus server's report and checks are
+  those of the run before (83 passing).
+- Then: discovery allocated 14 MB more than before SEAM-3 on NeoForge 26.1.2's server-fapi run (384 MB, median of 3,
+  against 370), which took 26.x over its baseline. Pre-flight's view now rewrites a seam class once, at its first read,
+  where it did at each, and checks what the rewrite names by the classes' members' names; the native mixins' decision
+  reads a seam class and works out its rewrite only once a mixin may concern it; the ordinal repair and SHARE-2 skip
+  what can't concern them. Discovery allocates 375 MB there (median of 3); of the 5 MB over 370, the test mod's new
+  hook of `destroyBlock` and its check's class take 4. The `vanilla-break` check is skipped, naming the mixin, where a
+  native mod's mixin keeps the game mode as the platform has it (Forgified Fabric API's, in NeoForge's
+  `server-coexist` and Forge 47's `server-ffapi`), as the report says and the class shows; elsewhere a skip
+  fails it. Verified: core's tests (640), CI's script tests and the inventory; NeoForge 26.1.2 `server`,
+  `server-fapi` and `server-coexist` (252 passing, the check skipped in the last), 1.21.1 `server-fapi` (91), Forge
+  47 `server-fapi` and `server-ffapi` (230, the check skipped in the last) and Forge 52 `server-fapi` (123) pass;
+  ci/bench.py passes on the 26.1.2 run against ci/bench.tsv.
+
+## 2026-11-11: SEAM-1's decision kept in the cache; Fabric's load conditions decided before other mods' hooks on NeoForge 1.21.1 (COND-1)
+
+- SEAM-1's decision (which classes a native mod's mixin keeps as the platform has them) read every mixin the native
+  mods' configs list at each launch with Fabric mods: 193 ms cold and about 140 ms warm for a synthetic 300 native jars
+  listing 5,000 mixins. It is now a cache blob keyed by the native jars' paths and file stamps (size, times and file
+  key, as the cache tells a changed jar), the seam classes as the platform has them, and Fabricated's build, the game's
+  versions and the side: a hit takes 1.7 ms, a miss 243 ms. A damaged or unreadable blob is decided again and
+  rewritten; a jar listing mixins without a file (a mod in development) is never cached, and neither is a decision a
+  read error made (a list of a jar's mixins, a mixin or a seam class failing to read keeps the class for that launch,
+  and the next decides again). On the NeoForge 1.21.1 advanced corpus server the game classes phase, which holds the
+  decision, took 24 to 91 ms across runs (few native mods list mixins there).
+- **COND-1** (P1), fixed: Moonlight's NeoForge build for 1.21.1 (3.8.3) reads every JSON data loader's
+  `fabric:load_conditions` again at the start of applying its files, as NeoForge's own conditions, its
+  `all_mods_loaded` asking NeoForge's mod list, which names a Fabric mod by its id with underscores and has none of the
+  Fabric API modules Fabricated provides. With it installed, a Fabric mod's recipe, advancement or other JSON data whose
+  `fabric:all_mods_loaded` named a Fabric mod with a dash in its id, or such a module, wasn't loaded, though upstream's
+  conditions keep it. Fabricated now decides those files first, at the same point (priority 500), with upstream's
+  evaluation and the registries upstream gives the recipe and advancement loaders, and gives each file that loads a
+  copy without its conditions in its place: upstream's hook finds none and keeps it, and so does Moonlight's. A file
+  whose conditions upstream can't parse is left exactly as it is, as upstream keeps it, and no prepared object is
+  changed. The test mod's NeoForge 1.21.1 half reads the conditions again as Moonlight does, so the
+  `json-loader-conditions` check fails without the fix, and checks that a file whose conditions name a type no mod
+  registers keeps them and that the prepared objects are as they were (`json-loader-conditions-as-they-are`).
+- Verified: core's tests (623), CI's script tests and the inventory; NeoForge 1.21.1 builds (Forge's installed jars
+  carry the same fingerprints, not built here). `SeamConflictsTest` covers a miss, a hit, a jar whose file changed,
+  another environment, a damaged, an empty and a misshapen blob, and a jar without a file. A local NeoForge 1.21.1
+  `server-fapi` run passes every check (89); with the new in-game mixin taken out of its config, its
+  `json-loader-conditions` check fails (`the loader read []`), as with Moonlight. A local NeoForge 1.21.1 advanced
+  corpus server with Moonlight's NeoForge build in place of its Fabric build, beside Carpet's, loads the test mod's
+  conditioned file (which failed there before) and keeps the resolver as NeoForge has it, Moonlight's mixin named, as
+  before; its other failures as before (CORPUS-113's `/reload` check, and `vanilla-piston`, whose hooks find nothing
+  there).
+- Review fixes: the cache stored whatever decision a launch made, so a transient read error on the launch that missed
+  it (a list of a jar's mixins dropped, a mixin read as unreadable) would have held for every later launch, the jars'
+  stamps unchanged: with Moonlight's NeoForge build, a list failing to read put the resolver's methods back and Mixin
+  would have stopped every launch. Now the listings say which files failed to read, the decision says whether every
+  read succeeded, and only such a one is stored; a seam class failing to read is kept, where its error reached the
+  locator before. COND-1 took the conditions off files upstream kept without deciding them (conditions it can't
+  parse), and changed the objects in place; neither now. `MixinPreflight.keptSeams` no longer sits between
+  `restoredSeams`' Javadoc and its method.
+- Verified (review fixes): core's tests (625), CI's script tests and the inventory; NeoForge 1.21.1 builds. A local
+  NeoForge 1.21.1 `server-fapi` run passes every check (90), both conditions checks among them, at the first load and
+  after `/reload`; with COND-1's evaluator as first written, `json-loader-conditions-as-they-are` fails for both
+  reasons. A local NeoForge 1.21.1 advanced corpus server with Moonlight's NeoForge build in place of its Fabric
+  build passes both, keeps the resolver as NeoForge has it, Moonlight's mixin named, and fails only as before
+  (CORPUS-113's `/reload` check and `vanilla-piston`).
+
 ## 2026-11-11: The client parts' Mesa install past a package mirror that's down (CI-14); GitHub's actions on Node 24
 
 - **CI-14** (P3, CI only), fixed: every client and mods part failed before any test ran when one of the runner's package
