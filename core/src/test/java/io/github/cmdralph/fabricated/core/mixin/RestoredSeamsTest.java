@@ -414,6 +414,36 @@ class RestoredSeamsTest {
 	}
 
 	/**
+	 * PRE-33: where vanilla's friction goes back before the platform's store of it, the branches meet before that store, so
+	 * Forge's Mixin, as pre-flight reads it, keeps the stored local from the store on, no frame of the rewrite's after it
+	 * (Apoli's slipperiness hook after the friction in Forge 52's travel, which PRE-30's repair names by that local's slot,
+	 * found the slot untold once a frame of the rewrite's followed the store). Vanilla's branch stores the friction too.
+	 */
+	@Test
+	void theFrictionsStoreKeepsItsLocalWhereVanillasCallIsPutBack(@TempDir Path dir) throws Exception {
+		for (boolean forge47 : List.of(false, true)) {
+			Map<String, String> game = forge47 ? io.github.cmdralph.fabricated.core.bytecode.ExtensionCallsTest.forge47Sources()
+					: io.github.cmdralph.fabricated.core.bytecode.ExtensionCallsTest.neoForgeSources();
+			Map<String, byte[]> classes = TestSources.compileWithLocals(dir.resolve("kept-" + forge47), game);
+			String living = "net/minecraft/world/entity/LivingEntity";
+			org.objectweb.asm.tree.ClassNode node = new org.objectweb.asm.tree.ClassNode();
+			// As Mixin reads the class: its frames compressed.
+			new org.objectweb.asm.ClassReader(VanillaSeams.over(classes::get).read(living)).accept(node, 0);
+			org.objectweb.asm.tree.MethodNode travel = node.methods.stream().filter(m -> m.name.equals(forge47 ? "m_7023_" : "travel")).findFirst().orElseThrow();
+			int stores = 0;
+			for (org.objectweb.asm.tree.AbstractInsnNode insn : travel.instructions) {
+				if (!(insn instanceof org.objectweb.asm.tree.VarInsnNode store) || store.getOpcode() != org.objectweb.asm.Opcodes.FSTORE) continue;
+				stores++;
+				org.objectweb.asm.tree.AbstractInsnNode next = store.getNext();
+				while (next.getOpcode() < 0) next = next.getNext();
+				assertEquals("F", MixinPreflight.keptLocalTypes(travel, living, travel.instructions.indexOf(next))[store.var], (forge47 ? "Forge 47 " : "")
+						+ "store at " + travel.instructions.indexOf(store));
+			}
+			assertEquals(2, stores, "vanilla's branch's store and the platform's");
+		}
+	}
+
+	/**
 	 * SEAM-8: a wrapper of vanilla's sweep box in doSweepAttack, which NeoForge 21.11 on keeps and never calls, making the
 	 * box in attack for an overload of its own: the hook applies, and pre-flight's note says it never runs, which the known
 	 * limits read on NeoForge.

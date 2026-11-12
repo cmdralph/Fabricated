@@ -21,7 +21,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   where vanilla asks the state, so there a state class declaring vanilla's `getSoundType` again keeps the platform's
   call; 1.21.1's piglin defaults compare the material with gold's by identity where vanilla asks `Holder.is`, so the
   check goes back only where the two agree (every material but gold's under another holder). A call's result stored at
-  once is stored in both branches, so Porting Lib's `INVOKE_ASSIGN` hooks of vanilla's friction find it. A class names
+  once is stored by vanilla's branch too, so Porting Lib's `INVOKE_ASSIGN` hooks of vanilla's friction find it, and
+  handed on to the platform's store, where the branches meet just before it. A class names
   neither platform's extension there (NeoForge's `FlyingMob`): the check finds it as it runs. A NeoForge or Forge mod's
   mixin of the platform's code there, or of the extensions' defaults, keeps the class as the platform has it. A hook of
   vanilla's friction in `Leashable.angularFriction` (1.21.11 on), an interface's method, stays out, a known limit the
@@ -40,7 +41,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   frames, as PRE-26 found for an `@Local`. PRE-30's naming of such a local by its slot judged no slice and no
   assignment: it now picks the instructions in the slice as Mixin does, and an assignment's as Mixin's `AfterInvoke`
   does (after the store), its rules as they were, and SEAM-8's put-backs name the stored local from vanilla's store on,
-  as from the platform's. Porting Lib's arrow hook in `BowItem` takes its arrow by its slot too, the one Mixin found.
+  as from the platform's. The put-back's frame after the platform's store had left the friction's local untold there,
+  so PRE-30's repair of Apoli's slipperiness hook didn't apply on Forge 52 and its advanced corpus server stopped
+  ("Found 4 candidate variables"): the branches now meet before that store.
 - Pre-flight's view reads a class whose put-backs are all SEAM-8's (`LivingEntity`, `Entity`, `BlockItem`...) by the
   rows' methods alone and writes it with its other methods copied as they are; a class naming no row's call by its
   descriptor (NeoForge 26.x's `Entity`) isn't parsed; the rewrite's states share their unchanged locals and stack.

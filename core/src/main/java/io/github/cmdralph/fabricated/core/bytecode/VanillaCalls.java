@@ -980,11 +980,12 @@ final class VanillaCalls {
 	 * (NeoForge 26.x's enchantment level, of an {@code ItemInstance}, first whether it is a stack; 1.21.1's piglin check
 	 * then whether the platform's check of the material and vanilla's agree), then it gets vanilla's code
 	 * ({@link OnReceiver}), or the other operands and the platform's call as before. The object's code runs once, as it did,
-	 * and the other operands only for the platform's call, as vanilla's code makes none of them. A store of the result just
-	 * after the call goes into each branch, so a point after vanilla's call (an {@code INVOKE_ASSIGN}'s, Porting Lib's
-	 * friction hooks) finds the value stored; where a jump's target follows the store (AbstractHorse's second step sound),
-	 * vanilla's branch goes there, its frame already the branches'. Null where a place isn't so ({@link #site}; an operand
-	 * vanilla's code loads again that isn't plain).
+	 * and the other operands only for the platform's call, as vanilla's code makes none of them. Where the result is stored
+	 * just after the call, vanilla's branch stores it there too, so a point after vanilla's call (an {@code INVOKE_ASSIGN}'s,
+	 * Porting Lib's friction hooks) finds the value stored, then loads it again for the platform's store, where the branches
+	 * meet just before it, so no frame of the rewrite's comes between that store and the code after it (PRE-33); where a
+	 * jump's target follows the store (AbstractHorse's second step sound), vanilla's branch goes there, its frame already
+	 * the branches'. Null where a place isn't so ({@link #site}; an operand vanilla's code loads again that isn't plain).
 	 */
 	private static Rewritten receivers(ClassNode owner, MethodNode method, PutBack row, boolean srg, List<MethodInsnNode> places,
 			Map<AbstractInsnNode, State> frames) {
@@ -1053,17 +1054,20 @@ final class VanillaCalls {
 				for (LocalVariableNode local : startedBy(method, place.store())) {
 					method.localVariables.add(new LocalVariableNode(local.name, local.desc, local.signature, stored, platform, local.index));
 				}
+				// Vanilla's branch hands the value it stored to the platform's store too, where the branches meet before it: the
+				// platform's code then keeps no frame of the rewrite's between its store and what follows, where Mixin and
+				// pre-flight read the local from that store (PRE-33: Apoli's slipperiness hook after the friction on Forge 52).
+				if (place.join() == null) code.add(new VarInsnNode(result.getOpcode(Opcodes.ILOAD), place.store().var));
 			}
 			code.add(new JumpInsnNode(Opcodes.GOTO, end));
 			code.add(platform);
 			code.add(frameOf(place.mid().locals(), place.mid().stack()));
 			method.instructions.insertBefore(place.split(), code);
 			if (place.join() != null) continue;
-			AbstractInsnNode last = place.store() != null ? place.store() : site.call();
 			List<Object> after = new ArrayList<>(site.under());
-			if (place.store() == null) after.add(frameType(result));
-			method.instructions.insert(last, frameOf(place.store() != null ? place.after().locals() : place.mid().locals(), after));
-			method.instructions.insert(last, end);
+			after.add(frameType(result));
+			method.instructions.insert(site.call(), frameOf(place.mid().locals(), after));
+			method.instructions.insert(site.call(), end);
 		}
 		method.maxStack = Math.max(method.maxStack, found.stream().mapToInt(p -> slots(p.mid().stack())).max().orElse(0) + 8);
 		return new Rewritten(List.copyOf(putBack), found.size());
