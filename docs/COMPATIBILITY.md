@@ -2037,14 +2037,16 @@ What else differs on Forge, for Fabric mods in general:
   vanilla's returns twice, a hook there would run on both paths: it stays as it is, and the report warns that its
   return doesn't occur (BetterNether's mushroom hook, on NeoForge 21.1 too).
 - **A local taken by its type where Forge's Mixin keeps others:** Forge's Mixin keeps a local among those it finds at a
-  point after the local's scope has ended, where only same frames come between, and finds a slot's local again wherever
-  it reads a frame or a load of the slot, so a MixinExtras `@Local` taking a local by its type, or a `@ModifyVariable`
-  modifying one so, finds more than one where the method has one in scope. Pre-flight names the one in scope by its
-  ordinal among those Mixin keeps, and leaves the hook out where that can't be told (PRE-26: FrozenLib 1.9.3's gravity
-  hook in `AbstractMinecart.tick` on Forge 47, which had stopped a server; checked on a Forge 47 server with FrozenLib
-  1.9.3). A `@ModifyVariable` whose method declares other locals of its type is named by its slot, which Mixin takes
-  whatever the other slots hold (PRE-30: Apoli 2.12's slipperiness power in `LivingEntity.travel`, which had stopped a
-  Forge 52 server once its opcode was read as Mixin reads it; checked on a Forge 52 server with Origins 1.13).
+  point after the local's scope has ended, where only same frames come between, so a MixinExtras `@Local` taking a local
+  by its type, or a `@ModifyVariable` modifying one so, finds more than one where the method has one in scope.
+  Pre-flight names the one in scope by its ordinal among those Mixin keeps, and leaves the hook out where that can't be
+  told (PRE-26: FrozenLib 1.9.3's gravity hook in `AbstractMinecart.tick` on Forge 47, which had stopped a server;
+  checked on a Forge 47 server with FrozenLib 1.9.3). Mixin also drops a local at the frame chopping it and brings it
+  back once a load past it exposes it, as another mod's injector storing and loading a local of its own past the
+  method's locals does: a `@ModifyVariable` whose method declares other locals of its type is named by its slot, which
+  Mixin's discriminator takes by its type alone, on NeoForge too, whose Mixin does the same (PRE-30: Apoli 2.12's
+  slipperiness power in `LivingEntity.travel`, which had stopped a Forge 52 server once its opcode was read as Mixin
+  reads it; checked on NeoForge 1.21.1, Forge 52 and Forge 47 servers with Origins).
 - **The libraries Fabric's Mixin carries:** Fabric's Mixin carries Guava and Gson in its own package
   (`org.spongepowered.include`), which some Fabric mods name (Wover's item API); Forge's Mixin carries none. A mod's
   references there name the game's own Guava and Gson instead (LIB-3: BetterEnd's, BetterNether's, BCLib's and Wover's

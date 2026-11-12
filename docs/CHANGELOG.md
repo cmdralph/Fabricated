@@ -10,23 +10,28 @@ One entry per working session, newest first: what changed, and how it was verifi
   (above 0). A call point with an `opcode` found no call, and its hook was left out though Mixin applies it: Apoli's
   slipperiness power in Origins 1.13 (`onGround()` with `opcode = 180` in `LivingEntity.travel`) and Wilder Wild's
   sculk vein hook (`opcode = 0`), on NeoForge 21.1 and Forge 52. One rule now decides it for every point pre-flight
-  reads. Apoli's hook takes its float by its type alone, where Forge 52's Mixin also finds three floats whose scope
-  ended, and once let through it stopped the Forge 52 server as Mixin applied it: a `@ModifyVariable`'s local taken by
-  its type is now judged as an `@Local`'s is (PRE-26), left out where Mixin finds more than one, and on Forge named by
-  its slot where the method declares others of its type, so the power works there too.
+  reads, and a local point matches plain loads and stores only, as Mixin does, never an int's increment. Apoli's hook
+  takes its float by its type alone; in `travel` as shipped Mixin finds the one, but once another mod's injector there
+  has stored and loaded a local of its own past the method's locals, Mixin brings back the floats the method dropped
+  before (its resurrection of exposed locals), and the Forge 52 server stopped as Mixin applied the hook. A local taken
+  by its type, an `@Local`'s or a `@ModifyVariable`'s, is now judged as Mixin's discriminator finds it: past `this`,
+  ambiguous where any instruction the point picks has more than one, and a `@ModifyVariable` whose method declares
+  others of its type is named by its slot, on every platform, which no other injector can make ambiguous.
 - **PRE-31** (P2), fixed: pre-flight looked a selector up in the mod's refmap as written, where Mixin strips its
   whitespace first and the refmap's keys are written without it. Modern Industrialization's hook adding the resources
   of its `generated_resources` folder to a world's packs names `PackRepository.openAllSelected ()` with a space: on
-  Forge 47, where a Fabric mod's refmap maps its names to SRG's, it was left out.
+  Forge 47, where a Fabric mod's refmap maps its names to SRG's, it was left out. The seam conflict check reads a NeoForge
+  or Forge mod's mixin strings the same way now.
 - Hooks of a mob's `shear` call in `mobInteract` are SEAM-6's known limit, as hooks of the shears check guarding it
   were: NeoForge and Forge 47 to 64 shear a mob from the shears item, through their shearable extension (Ledger's
   logging of a sheep's and a snow golem's shearing, eight hooks on NeoForge 21.1 and Forge 52).
-- Verified: core's tests (680; each new case failing before its change), CI's script tests and the inventory; NeoForge
+- Verified: core's tests (686; each new case failing before its change), CI's script tests and the inventory; NeoForge
   1.21.1, Forge 52 and Forge 47 build. Against runs before the change, every check as before, and no apply failure in
-  the logs: on NeoForge 1.21.1's and Forge 52's advanced corpus servers Apoli's and Wilder Wild's hooks apply and
-  Ledger's shear hooks carry the known limit; on Forge 52 Apoli's slipperiness hook, and its death message hook, whose
-  method declares another `String`, are named by their slots; on Forge 47's corpus server Modern Industrialization's
-  hook applies; NeoForge 1.21.1's server part is as before.
+  the logs: on the advanced corpus servers of NeoForge 1.21.1 and Forge 52, Apoli's and Wilder Wild's hooks apply and
+  Ledger's shear hooks carry the known limit, and on Forge 47's Apoli's and fzzy_config's hooks apply; Apoli's
+  slipperiness hook, and its death message hook, whose method declares another `String`, are named by their slots; on
+  Forge 47's corpus server Modern Industrialization's hook applies; NeoForge 1.21.1's server part is as before.
+
 ## 2026-11-12: The report says what the platform changed of a method's parameters or a field's type (PRE-32)
 
 - **PRE-32** (P3), fixed: where NeoForge or Forge changed the parameters of a method a Fabric mod's mixin hooks, or the
