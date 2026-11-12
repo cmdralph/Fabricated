@@ -36,13 +36,13 @@ One entry per working session, newest first: what changed, and how it was verifi
   in, where it read them all again for each class, and works out a class's rewrite only where a mixin may hook it.
   The checks the put-backs add read the answers kept for the classes first and make nothing, where they made the
   lookup's arrays at each call (36 bytes a check on average): the item checks run every tick and every frame.
-- Verified: core's tests (659), CI's script tests and the inventory; NeoForge 1.21.1 and 26.1.2 and Forge 47, 52 and
-  66 build; local servers pass every check (NeoForge 1.21.1, 26.1.2; Forge 47, 52, 66), `vanilla-items` among them,
-  and beside Forgified Fabric API (NeoForge 1.21.1 and 26.1.2, Forge 47); on the advanced corpus servers of NeoForge
-  1.21.1, Forge 52 and Forge 66 and Forge 47's corpus server, against runs before the change, only the hooks above
-  change, and the checks are as before. The client rows are checked by unit tests only. Discovery on NeoForge 26.1.2's
-  server with Fabric API allocates 384 to 387 MB, from 378 to 381 MB: the item checks' rows themselves (with the test
-  mod as before, 384 to 385 MB; with the rows taken out, 381 MB).
+- Verified: core's tests (671, SEAM-7's failing before its change), CI's script tests and the inventory; NeoForge
+  1.21.1 and 26.1.2 and Forge 47, 52 and 66 build; local servers pass every check (NeoForge 1.21.1, 26.1.2; Forge 47,
+  52, 66), `vanilla-items` among them, and beside Forgified Fabric API (NeoForge 1.21.1 and 26.1.2, Forge 47); on the
+  advanced corpus servers of NeoForge 1.21.1, Forge 52 and Forge 66 and Forge 47's corpus server, against runs before
+  the change, only the hooks above change, and the checks are as before, but for Forge 47's corpus server, where the
+  block breaking and harvest checks now pass (SEAM-7). The client rows are checked by unit tests only. Discovery on
+  NeoForge 26.1.2's server with Fabric API allocates 269 to 271 MB, from 265 to 267 MB.
 
 ## 2026-11-12: Vanilla's harvest check put back where the platform's code makes it (SEAM-4), returns picked by ordinal read against vanilla's code (VANILLA-5), native mixins read through their refmaps (SEAM-5)
 
