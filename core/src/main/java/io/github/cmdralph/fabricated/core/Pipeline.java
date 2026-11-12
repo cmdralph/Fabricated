@@ -528,9 +528,9 @@ public final class Pipeline {
 					+ coremods.redirectedClasses() + " classes through " + in.descriptor().loaderName() + "'s event hook, fields read through its getters)");
 		}
 		RestoredFields restored = RestoredFields.of(in.fabricatedFiles());
-		// With vanilla's methods the platform took out (SEAM-1), and its calls the platform makes through its extensions
-		// (SEAM-3), put back where Fabric mods' mixins hook them, as they then load, but in the classes where a native mod's
-		// mixin hooks the platform's code that would move, left as the platform has them.
+		// With vanilla's methods the platform took out (SEAM-1), and its calls the platform makes through its extensions and
+		// hooks (SEAM-3, SEAM-4), put back where Fabric mods' mixins hook them, as they then load, but in the classes where a
+		// native mod's mixin hooks the platform's code that would move, left as the platform has them.
 		ClassBytesSource platformGame = coremods.over(in.gameClasses());
 		Map<String, SeamConflicts.Conflict> keptSeams = SeamConflicts.of(platformGame, in.installedClasses(), in.cache(), String.join("|",
 				in.fabricatedVersion(), in.fabricatedBuild(), in.minecraftVersion(), in.neoForgeVersion(), in.clientSide() ? "client" : "server"));
@@ -538,7 +538,7 @@ public final class Pipeline {
 			boolean calls = VanillaSeams.putsBackCalls(owner);
 			report.environment("Vanilla's " + (calls ? "calls" : "methods") + " not put back in " + owner.substring(owner.lastIndexOf('/') + 1),
 					conflict.describe(in.descriptor().loaderName(), calls ? "vanilla's calls" : "vanilla's method") + "; Fabric mods' hooks of them find nothing there"
-							+ (calls ? " (SEAM-3)" : " (SEAM-1)"));
+							+ " (" + VanillaSeams.findings(owner) + ")");
 		});
 		// A class whose rewrite throws is read, and loads, as the platform has it: the report names it, with what it threw.
 		Map<String, String> seamFailures = new java.util.concurrent.ConcurrentSkipListMap<>();
@@ -581,7 +581,7 @@ public final class Pipeline {
 			boolean calls = VanillaSeams.putsBackCalls(owner);
 			report.environment("Vanilla's " + (calls ? "calls" : "methods") + " not put back in " + owner.substring(owner.lastIndexOf('/') + 1),
 					"putting " + (calls ? "vanilla's calls" : "vanilla's method") + " back failed as pre-flight read the class (" + failure + "), so it is read, and"
-							+ " loads, as " + in.descriptor().loaderName() + " has it; Fabric mods' hooks of them find nothing there" + (calls ? " (SEAM-3)" : " (SEAM-1)"));
+							+ " loads, as " + in.descriptor().loaderName() + " has it; Fabric mods' hooks of them find nothing there (" + VanillaSeams.findings(owner) + ")");
 		});
 		if (mappingTable != null) {
 			MappingTable loaded = mappingTable.loaded();

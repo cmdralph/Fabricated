@@ -97,6 +97,14 @@ final class PatchAlignment {
 	}
 
 	/**
+	 * Whether either alignment pairs vanilla's instruction at {@code vanillaIndex} with the patched one at
+	 * {@code patchedIndex}: where they disagree, each answer may be the patch's.
+	 */
+	boolean mayPlace(int vanillaIndex, int patchedIndex) {
+		return fromFront[vanillaIndex] == patchedIndex || fromBack[vanillaIndex] == patchedIndex;
+	}
+
+	/**
 	 * The patched instructions, as {@code [from, to)} indices, between the places of the aligned instructions around
 	 * vanilla's at {@code vanillaIndex}: what NeoForge's patch put where it changed that instruction. Where a neighbour
 	 * repeats in what the patch put there (vanilla's {@code -xRot} next to the patch's {@code -roll}), the two alignments
