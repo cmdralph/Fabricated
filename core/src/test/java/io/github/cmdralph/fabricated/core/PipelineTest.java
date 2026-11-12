@@ -684,6 +684,34 @@ class PipelineTest {
 		assertTrue(report.contains("goes with that of com.sticky.mixin.Middle.middle("), report);
 	}
 
+	/** A class whose seams' rewrite throws as pre-flight reads it is read as the platform has it, and the report says why. */
+	@Test
+	void aSeamsRewriteFailingAsPreflightReadsTheClassIsReported(@TempDir Path game, @TempDir Path src) throws Exception {
+		String resolver = "net/minecraft/world/level/block/piston/PistonStructureResolver";
+		Map<String, String> gameSources = Map.of(
+				"net/minecraft/world/level/block/state/BlockState.java", "package net.minecraft.world.level.block.state; public class BlockState { }",
+				resolver + ".java", "package net.minecraft.world.level.block.piston; public class PistonStructureResolver { }");
+		Map<String, byte[]> gameClasses = new HashMap<>(TestSources.compile(src.resolve("game"), gameSources));
+		// The class as the game has it doesn't parse: the rewrite throws on it.
+		gameClasses.put(resolver, new byte[] {(byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE, 0, 0, 0, 61, 0, 99});
+		Map<String, byte[]> fabric = TestSources.compile(src.resolve("fabric"), TestSources.MIXIN_ANNOTATIONS, gameSources, Map.of(
+				"org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); }",
+				"org/spongepowered/asm/mixin/injection/Inject.java", "package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); }",
+				"org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable.java", "package org.spongepowered.asm.mixin.injection.callback; public class CallbackInfoReturnable<R> { }",
+				"com/sticky/mixin/StickyMixin.java", "package com.sticky.mixin; import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.injection.*;"
+						+ " import org.spongepowered.asm.mixin.injection.callback.*; import net.minecraft.world.level.block.state.BlockState;"
+						+ " @Mixin(net.minecraft.world.level.block.piston.PistonStructureResolver.class) public class StickyMixin {"
+						+ " @Inject(method = \"isSticky\", at = @At(\"HEAD\")) private static void sticky(BlockState s, CallbackInfoReturnable<Boolean> cir) { } }"));
+		Path sticky = TestJars.create().fabricModJson(TestJars.modJson("sticky", "1.0", "\"mixins\":[\"sticky.mixins.json\"]"))
+				.text("sticky.mixins.json", "{\"required\":false,\"package\":\"com.sticky.mixin\",\"mixins\":[\"StickyMixin\"]}")
+				.bytes("com/sticky/mixin/StickyMixin.class", fabric.get("com/sticky/mixin/StickyMixin"))
+				.write(Files.createDirectories(game.resolve("mods")).resolve("sticky.jar"));
+		String report = Pipeline.run(input(game, List.of(sticky), Namespace.OFFICIAL, gameClasses, null, List.of())).report().render();
+		assertTrue(report.contains("Vanilla's methods not put back in PistonStructureResolver"), report);
+		assertTrue(report.contains("putting vanilla's method back failed as pre-flight read the class (java.lang."), report);
+		assertTrue(report.contains("), so it is read, and loads, as NeoForge has it; Fabric mods' hooks of them find nothing there (SEAM-1)"), report);
+	}
+
 	@Test
 	void vanillaMethodsArentPutBackWhereANativeModsMixinHooksThePlatformsCode(@TempDir Path game, @TempDir Path src) throws Exception {
 		String resolver = "net/minecraft/world/level/block/piston/PistonStructureResolver";

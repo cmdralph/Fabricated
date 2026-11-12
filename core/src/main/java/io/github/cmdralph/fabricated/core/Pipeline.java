@@ -540,7 +540,10 @@ public final class Pipeline {
 					conflict.describe(in.descriptor().loaderName(), calls ? "vanilla's calls" : "vanilla's method") + "; Fabric mods' hooks of them find nothing there"
 							+ (calls ? " (SEAM-3)" : " (SEAM-1)"));
 		});
-		ClassBytesSource gameClasses = restored.over(VanillaSeams.over(platformGame, keptSeams.keySet()));
+		// A class whose rewrite throws is read, and loads, as the platform has it: the report names it, with what it threw.
+		Map<String, String> seamFailures = new java.util.concurrent.ConcurrentSkipListMap<>();
+		ClassBytesSource gameClasses = restored.over(VanillaSeams.over(platformGame, keptSeams.keySet(),
+				(owner, failure) -> seamFailures.putIfAbsent(owner, String.valueOf(failure))));
 		ClassIndex game = new ClassIndex(gameClasses);
 		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11
 		// remapped from intermediary names, as translating each mod remaps it.
@@ -574,6 +577,12 @@ public final class Pipeline {
 				}
 			}
 		}
+		seamFailures.forEach((owner, failure) -> {
+			boolean calls = VanillaSeams.putsBackCalls(owner);
+			report.environment("Vanilla's " + (calls ? "calls" : "methods") + " not put back in " + owner.substring(owner.lastIndexOf('/') + 1),
+					"putting " + (calls ? "vanilla's calls" : "vanilla's method") + " back failed as pre-flight read the class (" + failure + "), so it is read, and"
+							+ " loads, as " + in.descriptor().loaderName() + " has it; Fabric mods' hooks of them find nothing there" + (calls ? " (SEAM-3)" : " (SEAM-1)"));
+		});
 		if (mappingTable != null) {
 			MappingTable loaded = mappingTable.loaded();
 			report.environment("Mappings", loaded != null ? loaded.classCount() + " classes, " + loaded.memberCount() + " members"

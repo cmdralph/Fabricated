@@ -364,9 +364,11 @@ public class VanillaCallsTest {
 		ClassBytesSource lacking = name -> name.endsWith("IBlockExtension") ? null : platform.get(name);
 		assertArrayEquals(platform.get(SERVER), VanillaSeams.over(lacking).read(SERVER));
 		assertTrue(!VanillaSeams.restoredIn(VanillaSeams.over(platform::get).readNode(SERVER, 0)).isEmpty());
-		// One the rewrite fails on (here, one that doesn't parse) is read as it is, as it then loads.
+		// One the rewrite fails on (here, one that doesn't parse) is read as it is, as it then loads, the failure told.
 		byte[] broken = {(byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE, 0, 0, 0, 61, 0, 99};
-		assertArrayEquals(broken, VanillaSeams.over(name -> name.equals(SERVER) ? broken : null).read(SERVER));
+		List<String> failed = new ArrayList<>();
+		assertArrayEquals(broken, VanillaSeams.over(name -> name.equals(SERVER) ? broken : null, Set.of(), (name, e) -> failed.add(name)).read(SERVER));
+		assertEquals(List.of(SERVER), failed);
 	}
 
 	/** The server's break of a block of the class at 1, in creative or not; with {@code hook}, vanilla's call put back is hooked. */

@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -274,6 +275,12 @@ public final class VanillaSeams {
 	 * Where the rewrite throws, the class is read as the platform has it, as {@link #restoreWhole} then loads it.
 	 */
 	public static ClassBytesSource over(ClassBytesSource game, Set<String> kept) {
+		return over(game, kept, (internalName, failure) -> {
+		});
+	}
+
+	/** As {@link #over(ClassBytesSource, Set)}, telling {@code failed} of each class whose rewrite throws, and what it threw. */
+	public static ClassBytesSource over(ClassBytesSource game, Set<String> kept, BiConsumer<String, Throwable> failed) {
 		return internalName -> {
 			byte[] data = game.read(internalName);
 			if (data == null || !names(internalName) || kept.contains(internalName)) return data;
@@ -289,6 +296,7 @@ public final class VanillaSeams {
 				node.accept(writer);
 				return writer.toByteArray();
 			} catch (RuntimeException | LinkageError | StackOverflowError e) {
+				failed.accept(internalName, e);
 				return data;
 			}
 		};
