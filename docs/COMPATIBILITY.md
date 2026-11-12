@@ -381,7 +381,13 @@ failures fall into a few groups:
   point inside the code is missing there. When the points all occur in the one overload that method calls, and the
   handler doesn't depend on the method's parameters (an `@Inject` taking only the callback info, a `@WrapOperation`,
   `@ModifyExpressionValue`, `@Redirect` and so on), Fabricated points the injector at the overload (for any mod,
-  reported as a warning).
+  reported as a warning). A method NeoForge deprecated for one of its class taking one more parameter, which it calls,
+  counts as moved there (DEPRECATED-1: `BoneMealItem.growCrop`, whose code is in `applyBonemeal`, taking the player).
+  A MixinExtras `@Local` the handler takes follows it there by name; by type alone where one local of that type is in
+  scope at the points there; and by its ordinal as the local of that ordinal among vanilla's of the type, which
+  vanilla's version of the method aligned with the other's tells, the `@Local` given its ordinal there (OVERLOAD-3:
+  FrozenLib's bone meal API on 1.21.1, NeoForge's and Forge 52's bone meal event fired first, as for vanilla's
+  growth).
 - **A mixin uses an unsupported module**: Mixin fails on a class it can't find as it applies a mixin, so a mod
   whose mixin uses a class only an unsupported Fabric API module has (Continuity's used the renderer API while that
   was unsupported on 1.21.11; today only the game test modules are) is disabled before launch with the reason.

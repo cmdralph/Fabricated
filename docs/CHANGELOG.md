@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-12: A local taken by ordinal follows an injector into the method the code moved to (OVERLOAD-3)
+
+- **OVERLOAD-3** (P1), fixed: FrozenLib 2.2.4's bone meal API was left out on NeoForge 1.21.1 and Forge 52. Its hook in
+  `BoneMealItem.growCrop` takes `@Local(ordinal = 0) BlockState`; the platforms deprecate `growCrop` for
+  `applyBonemeal`, which also takes the player, and pre-flight moves hooks there (DEPRECATED-1), but followed a
+  handler's `@Local` only by name or by type alone. A local taken by its ordinal now follows too, as the local of that
+  ordinal among vanilla's of the type: vanilla's version of the method, aligned with the other's code, tells which
+  locals there are vanilla's, the platform's inserted parameter not among them, and the `@Local` gets that local's
+  ordinal there. FrozenLib's behaviours run in `applyBonemeal`, after the platform's bone meal event. Apoli's bed-spawn
+  and drop hooks don't share the cause (a cancellable callback in the lambda NeoForge runs `startSleepInBed`'s code
+  in, a call NeoForge's toss event makes in another class) and stay out, as does Additional Entity Attributes' water
+  speed constant, which in NeoForge's `sinkInFluid` would apply to every fluid.
+
 ## 2026-11-12: Vanilla's item checks put back where the platform asks the stack's actions (SEAM-6), a default bridge no longer taken for an override (SEAM-7)
 
 - **SEAM-6** (P1), fixed: NeoForge and Forge ask the stack's `canPerformAction` of an action where vanilla asks

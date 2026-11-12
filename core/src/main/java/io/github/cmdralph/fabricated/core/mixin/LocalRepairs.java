@@ -240,13 +240,10 @@ final class LocalRepairs extends PreflightPart {
 				if (vanillaPlaces == null) {
 					PatchAlignment alignment = PatchAlignment.of(before, patched);
 					if (alignment == null) return named;
-					vanillaPlaces = new HashSet<>();
-					for (int i = 0; i < before.instructions.size(); i++) {
-						if (alignment.placeOf(i) >= 0) vanillaPlaces.add(alignment.placeOf(i));
-					}
+					vanillaPlaces = alignment.vanillaPlaces();
 				}
 				if (given instanceof Integer vanillas) {
-					int ordinal = vanillasNthLocalOrdinal(patched, params[p].getDescriptor(), positions, vanillaPlaces, vanillas);
+					int ordinal = vanillasNthLocalOrdinal(patched, params[p].getDescriptor(), positions, vanillaPlaces, vanillas, -1);
 					if (ordinal < 0 || ordinal == vanillas) continue;
 					Annotations.put(local, "ordinal", ordinal);
 					named.add("the local of type " + params[p].getClassName() + " with ordinal " + vanillas + ", vanilla's, which has ordinal " + ordinal
@@ -643,10 +640,11 @@ final class LocalRepairs extends PreflightPart {
 
 	/**
 	 * The ordinal, among the locals of type {@code desc} in scope (parameters first, by slot), of the one with ordinal
-	 * {@code nth} among those of them that are vanilla's ({@link #isVanillasLocal}), the same at each of {@code positions};
-	 * -1 when fewer than {@code nth + 1} of them are vanilla's at one of them.
+	 * {@code nth} among those of them that are vanilla's ({@link #isVanillasLocal}), but the parameter in
+	 * {@code platformSlot} (-1 for none), the same at each of {@code positions}; -1 when fewer than {@code nth + 1} of them
+	 * are vanilla's at one of them.
 	 */
-	private static int vanillasNthLocalOrdinal(MethodNode method, String desc, List<Integer> positions, Set<Integer> vanillaPlaces, int nth) {
+	static int vanillasNthLocalOrdinal(MethodNode method, String desc, List<Integer> positions, Set<Integer> vanillaPlaces, int nth, int platformSlot) {
 		int found = -1;
 		for (int i : positions) {
 			TreeSet<Integer> inScope = new TreeSet<>();
@@ -654,7 +652,7 @@ final class LocalRepairs extends PreflightPart {
 			for (LocalVariableNode lv : method.localVariables) {
 				if (!lv.desc.equals(desc) || method.instructions.indexOf(lv.start) > i || i >= method.instructions.indexOf(lv.end)) continue;
 				inScope.add(lv.index);
-				if (isVanillasLocal(method, lv, vanillaPlaces)) vanillas.add(lv.index);
+				if (lv.index != platformSlot && isVanillasLocal(method, lv, vanillaPlaces)) vanillas.add(lv.index);
 			}
 			if (vanillas.size() <= nth) return -1;
 			int chosen = vanillas.stream().skip(nth).findFirst().orElseThrow();

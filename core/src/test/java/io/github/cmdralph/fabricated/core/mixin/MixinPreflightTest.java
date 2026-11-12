@@ -5992,6 +5992,157 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aLocalTakenByItsOrdinalMovesWithAnInjectionToTheMethodTheCodeMovedInto() throws Exception {
+		// OVERLOAD-3: FrozenLib 2.2.4's bone meal hook takes @Local(ordinal = 0) BlockState at the getBlock call in
+		// BoneMealItem.growCrop, whose code NeoForge 21.1 moved into applyBonemeal, taking the player too, after it fires its
+		// bone meal event, kept in a local of another type. Vanilla's growCrop, aligned with applyBonemeal, tells which of the
+		// latter's locals of the type are vanilla's; the ordinal counts the parameters, the inserted one too.
+		String state = "Ljava/lang/Integer;";
+		Function<String, byte[]> target = inserted -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES) {
+				@Override
+				protected String getCommonSuperClass(String a, String b) {
+					return "java/lang/Object";
+				}
+			};
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor grow = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | (inserted != null ? Opcodes.ACC_DEPRECATED : 0), "grow",
+					"(Ljava/lang/String;)Z", null, null);
+			grow.visitCode();
+			if (inserted == null) {
+				// vanilla's: Integer state = Integer.valueOf(text.length()); state.intValue(); return true;
+				grow.visitVarInsn(Opcodes.ALOAD, 0);
+				grow.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "length", "()I", false);
+				grow.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)" + state, false);
+				grow.visitVarInsn(Opcodes.ASTORE, 1);
+				grow.visitVarInsn(Opcodes.ALOAD, 1);
+				grow.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Integer", "intValue", "()I", false);
+				grow.visitInsn(Opcodes.POP);
+				grow.visitInsn(Opcodes.ICONST_1);
+				grow.visitInsn(Opcodes.IRETURN);
+				grow.visitMaxs(0, 0);
+				grow.visitEnd();
+				cw.visitEnd();
+				return cw.toByteArray();
+			}
+			grow.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+			Label start = new Label();
+			Label otherwise = new Label();
+			Label end = new Label();
+			grow.visitLabel(start);
+			grow.visitVarInsn(Opcodes.ALOAD, 0);
+			grow.visitJumpInsn(Opcodes.IFNULL, otherwise);
+			grow.visitVarInsn(Opcodes.ALOAD, 0);
+			grow.visitInsn(Opcodes.ACONST_NULL);
+			grow.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "apply", "(Ljava/lang/String;" + inserted + ")Z", false);
+			grow.visitInsn(Opcodes.IRETURN);
+			grow.visitLabel(otherwise);
+			grow.visitInsn(Opcodes.ICONST_0);
+			grow.visitInsn(Opcodes.IRETURN);
+			grow.visitLabel(end);
+			grow.visitLocalVariable("text", "Ljava/lang/String;", null, start, end, 0);
+			grow.visitMaxs(0, 0);
+			grow.visitEnd();
+			// NeoForge's: Integer state = ...; Object event = fire(player, state); if (event != null) return false; state.intValue(); return true;
+			MethodVisitor apply = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "apply", "(Ljava/lang/String;" + inserted + ")Z", null, null);
+			Label begin = new Label();
+			Label stored = new Label();
+			Label fired = new Label();
+			Label grown = new Label();
+			Label done = new Label();
+			apply.visitCode();
+			apply.visitLabel(begin);
+			apply.visitVarInsn(Opcodes.ALOAD, 0);
+			apply.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "length", "()I", false);
+			apply.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)" + state, false);
+			apply.visitVarInsn(Opcodes.ASTORE, 2);
+			apply.visitLabel(stored);
+			apply.visitVarInsn(Opcodes.ALOAD, 1);
+			apply.visitVarInsn(Opcodes.ALOAD, 2);
+			apply.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "fire", "(Ljava/lang/Object;" + state + ")Ljava/lang/Object;", false);
+			apply.visitVarInsn(Opcodes.ASTORE, 3);
+			apply.visitLabel(fired);
+			apply.visitVarInsn(Opcodes.ALOAD, 3);
+			apply.visitJumpInsn(Opcodes.IFNULL, grown);
+			apply.visitInsn(Opcodes.ICONST_0);
+			apply.visitInsn(Opcodes.IRETURN);
+			apply.visitLabel(grown);
+			apply.visitVarInsn(Opcodes.ALOAD, 2);
+			apply.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Integer", "intValue", "()I", false);
+			apply.visitInsn(Opcodes.POP);
+			apply.visitInsn(Opcodes.ICONST_1);
+			apply.visitInsn(Opcodes.IRETURN);
+			apply.visitLabel(done);
+			apply.visitLocalVariable("text", "Ljava/lang/String;", null, begin, done, 0);
+			apply.visitLocalVariable("player", inserted, null, begin, done, 1);
+			apply.visitLocalVariable("state", state, null, stored, done, 2);
+			apply.visitLocalVariable("event", "Ljava/lang/Object;", null, fired, done, 3);
+			apply.visitMaxs(0, 0);
+			apply.visitEnd();
+			MethodVisitor fire = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "fire", "(Ljava/lang/Object;" + state + ")Ljava/lang/Object;", null, null);
+			fire.visitCode();
+			fire.visitInsn(Opcodes.ACONST_NULL);
+			fire.visitInsn(Opcodes.ARETURN);
+			fire.visitMaxs(0, 0);
+			fire.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		String handlerDesc = "(Ljava/lang/String;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;" + state + ")V";
+		byte[] mixin = mixin("com/example/mixin/BoneMeal", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "onGrow", handlerDesc, null, null);
+			AnnotationVisitor local = mv.visitParameterAnnotation(2, LOCAL, false);
+			local.visit("ordinal", 0);
+			local.visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "grow");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "Ljava/lang/Integer;intValue()I");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visit("cancellable", true);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 3);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "BoneMeal"));
+		Map<String, byte[]> vanilla = Map.of(TARGET, target.apply(null));
+		// The player, as NeoForge's, or a parameter of the local's type, which comes before it among the locals.
+		for (String inserted : List.of("Ljava/lang/Object;", state)) {
+			ClassIndex neoForge = new ClassIndex(Map.of(TARGET, target.apply(inserted))::get);
+			Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/BoneMeal", mixin));
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+			assertNotNull(repaired.get("com/example/mixin/BoneMeal.class"), inserted + " " + notes);
+			assertTrue(notes.stream().anyMatch(n -> n.message().contains("grow(Ljava/lang/String;)Z, which NeoForge deprecated for apply(Ljava/lang/String;"
+					+ inserted + ")Z; the injector is pointed there")), notes.toString());
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired.get("com/example/mixin/BoneMeal.class")).accept(node, 0);
+			MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("onGrow$fabricated")).findFirst().orElseThrow();
+			assertEquals("(Ljava/lang/String;" + inserted + "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;" + state + ")V", bridge.desc);
+			assertEquals(inserted.equals(state) ? 1 : 0, Annotations.value(Annotations.ofParameter(bridge, 3).getFirst(), "ordinal"),
+					"vanilla's state, after the parameters of its type");
+			mod.put("com/example/mixin/BoneMeal", repaired.get("com/example/mixin/BoneMeal.class"));
+			List<PreflightFinding> after = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(after.isEmpty(), after.toString());
+		}
+		// Without vanilla's code nothing tells which local is vanilla's: the injector stays, and is left out as before.
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, target.apply("Ljava/lang/Object;"))::get);
+		Map<String, byte[]> mod = Map.of("com/example/mixin/BoneMeal", mixin);
+		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>())
+				.isEmpty());
+		List<PreflightFinding> left = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(left.stream().anyMatch(f -> f.message().contains("captures the local variable of type java.lang.Integer, which grow")), left.toString());
+	}
+
+	@Test
 	void anInjectionIntoADeprecatedMethodThatCallsItselfIsPointedAtTheOverloadOfItsNameTakingOneMore() throws Exception {
 		// IRIS-2: Iris redirects RenderSystem.setShader in ParticleEngine.render. Forge 52 keeps vanilla's render,
 		// deprecated, calling itself where Forge meant its overload taking a frustum, which holds vanilla's code and which
