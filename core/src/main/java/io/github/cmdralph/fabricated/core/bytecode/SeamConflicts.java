@@ -181,10 +181,19 @@ public final class SeamConflicts {
 		for (String name : List.of(internal, internal.replace('/', '.'))) {
 			for (int at = text.indexOf(name); at >= 0; at = text.indexOf(name, at + 1)) {
 				int end = at + name.length();
-				if (end == text.length() || !Character.isJavaIdentifierPart(text.charAt(end))) return true;
+				if (end == text.length() || !continuesName(text.charAt(end))) return true;
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Whether a character of a class file's text, read byte for byte, goes on with a name: an ASCII letter or digit, '_' or
+	 * '$', or a byte of a character past ASCII. Not {@link Character#isJavaIdentifierPart}, which takes the control
+	 * characters for part of a name, and with them the tag of the constant after a string ({@code targets}' class names).
+	 */
+	private static boolean continuesName(char c) {
+		return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '$' || c >= 0x80;
 	}
 
 	/** The classes of the game whose seams native mixins keep from being put back, with the mixin keeping each. */

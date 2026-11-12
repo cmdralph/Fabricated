@@ -129,8 +129,12 @@ class SeamConflictsTest {
 		sources.put("org/spongepowered/asm/mixin/injection/Inject.java", "package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); }");
 		sources.put("org/spongepowered/asm/mixin/injection/callback/CallbackInfo.java", "package org.spongepowered.asm.mixin.injection.callback; public class CallbackInfo { }");
 		sources.put("com/moon/NativeBreak.java", "package com.moon; import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.injection.*;"
-				+ " import org.spongepowered.asm.mixin.injection.callback.CallbackInfo; @Mixin(" + nativeTarget + ".class) public abstract class NativeBreak {"
+				+ " import org.spongepowered.asm.mixin.injection.callback.CallbackInfo; @Mixin("
+				+ (nativeTarget.startsWith("targets") ? nativeTarget : nativeTarget + ".class") + ") public abstract class NativeBreak {"
 				+ nativeMembers + " }");
+		// Mixin's own annotation, with the string targets of a class a mixin can't name in code.
+		sources.put("org/spongepowered/asm/mixin/Mixin.java", "package org.spongepowered.asm.mixin; public @interface Mixin { Class<?>[] value() default { };"
+				+ " String[] targets() default { }; boolean remap() default true; }");
 		Map<String, byte[]> classes = new HashMap<>(TestSources.compile(dir, TestSources.MIXIN_ANNOTATIONS, sources));
 		ClassBytesSource game = classes::get;
 		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("breaker", classes::containsKey, classes::get,
@@ -164,6 +168,13 @@ class SeamConflictsTest {
 		// A constant there, which vanilla's calls bring more of (their false, their 11).
 		assertEquals(expected, breaking(dir.resolve("constant"), " @Inject(method = \"destroyBlock\", at = @At(value = \"CONSTANT\")) private void constant(CallbackInfo ci) { }",
 				gameMode));
+		// A mixin naming the class only in its string targets, the name followed in the class file by the next constant's tag.
+		String constant = " @Inject(method = \"destroyBlock\", at = @At(value = \"CONSTANT\")) private void constant(CallbackInfo ci) { }";
+		assertEquals(expected, breaking(dir.resolve("targets-dotted"), constant, "targets = \"" + gameMode + "\""));
+		assertEquals(expected, breaking(dir.resolve("targets-internal"), constant, "targets = \"" + gameMode.replace('.', '/') + "\""));
+		assertEquals(expected, breaking(dir.resolve("targets-level"), VanillaCallsTest.forgeSources(), level, "targets = \"net.minecraft.world.level.Level\""));
+		// One naming only a class whose name runs on from it isn't parsed: it can't target the class.
+		assertNull(breaking(dir.resolve("targets-longer"), constant, "targets = \"" + gameMode + "Extra\""));
 		// What stays: destroyBlock's start, and a call NeoForge makes there.
 		assertNull(breaking(dir.resolve("head"), " @Inject(method = \"destroyBlock\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }", gameMode));
 		assertNull(breaking(dir.resolve("kept-call"), " @Inject(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target ="
