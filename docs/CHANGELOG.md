@@ -60,6 +60,17 @@ One entry per working session, newest first: what changed, and how it was verifi
   1.21.1, 1.21.11 and 26.1.2 and Forge 47, 52 and 66 build; local servers pass every check (NeoForge 1.21.1 server and
   server-fapi: 174; Forge 47 server-fapi: 123); the NeoForge 1.21.1 advanced corpus server's report and checks are
   those of the run before (83 passing).
+- Then: discovery allocated 14 MB more than before SEAM-3 on NeoForge 26.1.2's server-fapi run (384 MB, median of 3,
+  against 370), which took 26.x over its baseline. Pre-flight's view now rewrites a seam class once, at its first read,
+  where it did at each, and checks what the rewrite names by the classes' members' names; the native mixins' decision
+  reads a seam class and works out its rewrite only once a mixin may concern it; the ordinal repair and SHARE-2 skip
+  what can't concern them. Discovery allocates 375 MB there (median of 3); of the 5 MB over 370, the test mod's new
+  hook of `destroyBlock` and its check's class take 4. The `vanilla-break` check is skipped, naming the mixin, where a
+  native mod's mixin keeps the game mode as the platform has it (Forgified Fabric API's, in NeoForge's
+  `server-coexist` and Forge 47's and 52's `server-ffapi`), as the report says and the class shows; elsewhere a skip
+  fails it. Verified: core's tests (640), CI's script tests and the inventory; NeoForge 26.1.2 `server`,
+  `server-fapi` and `server-coexist` (252 passing, the check skipped in the last) and 1.21.1 `server-fapi` (91)
+  pass; ci/bench.py passes on the 26.1.2 run against ci/bench.tsv.
 
 ## 2026-11-11: SEAM-1's decision kept in the cache; Fabric's load conditions decided before other mods' hooks on NeoForge 1.21.1 (COND-1)
 
