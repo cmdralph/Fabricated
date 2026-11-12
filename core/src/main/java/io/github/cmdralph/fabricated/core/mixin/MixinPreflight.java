@@ -45,7 +45,6 @@ import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
-import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LineNumberNode;
@@ -751,40 +750,68 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * How the code uses the local reference in {@code slot}: it reads it where it calls the reference's {@code get}, and sets
-	 * it where its straight code next calls the reference's {@code set}, only the value worked out between; anything else
-	 * (passing it on, keeping it, a lambda taking it), or no code to read, may do both.
+	 * How the code uses the local reference in {@code slot}, each load of it followed on the stack ({@link #useOf}): it
+	 * reads it where it calls the reference's {@code get}, and sets it where it calls the reference's {@code set}; where it
+	 * stores the reference in its slot, or the code can't be read, it may do both.
 	 */
 	private static Use use(MethodNode body, int slot) {
 		if (body == null || body.instructions == null || body.instructions.size() == 0) return Use.BOTH;
-		boolean reads = false, sets = false;
+		Use use = new Use(false, false);
 		for (AbstractInsnNode insn : body.instructions) {
 			if (!(insn instanceof VarInsnNode local) || local.var != slot) continue;
-			if (local.getOpcode() != Opcodes.ALOAD) return Use.BOTH;
-			AbstractInsnNode next = local.getNext();
-			while (next != null && next.getOpcode() < 0) next = next.getNext();
-			if (next instanceof MethodInsnNode call && localRef(call.owner) && call.name.equals("get")) {
-				reads = true;
-			} else if (setAfter(local)) {
-				sets = true;
-			} else {
-				return Use.BOTH;
-			}
+			Use one = local.getOpcode() == Opcodes.ALOAD ? useOf(body, local) : null;
+			if (one == null) return Use.BOTH;
+			use = use.or(one);
 		}
-		return new Use(reads, sets);
+		return use;
 	}
 
-	/** Whether the straight code after loading a reference calls its {@code set}, first doing nothing else with references. */
-	private static boolean setAfter(VarInsnNode load) {
-		for (AbstractInsnNode insn = load.getNext(); insn != null; insn = insn.getNext()) {
-			int op = insn.getOpcode();
-			if (insn instanceof MethodInsnNode call && localRef(call.owner)) return call.name.equals("set");
-			if (insn instanceof MethodInsnNode call && call.desc.contains("Lcom/llamalad7/mixinextras/sugar/ref/")
-					|| insn instanceof InvokeDynamicInsnNode indy && indy.desc.contains("Lcom/llamalad7/mixinextras/sugar/ref/")
-					|| insn instanceof VarInsnNode other && other.var == load.var || op >= Opcodes.ISTORE && op <= Opcodes.SASTORE || op == Opcodes.PUTFIELD
-					|| op == Opcodes.PUTSTATIC || insn instanceof JumpInsnNode || op >= Opcodes.TABLESWITCH && op <= Opcodes.RETURN || op == Opcodes.ATHROW) return false;
+	/**
+	 * What the code does with the reference {@code load} pushes, followed on the stack and through the locals it is stored
+	 * in, as {@link #setsValue} follows a value: calls of its {@code get} and {@code set} with it as their receiver, and a
+	 * test or a pop of it; null where anything else takes it (an argument, a field, an array, a return: it may be read or
+	 * set elsewhere) or the code past a jump keeps it.
+	 */
+	private static Use useOf(MethodNode body, VarInsnNode load) {
+		Object ref = new Object();
+		AnalyzerAdapter flow = new AnalyzerAdapter("", Opcodes.ACC_STATIC, body.name, "()V", null);
+		for (int i = 0; i < body.maxLocals; i++) flow.locals.add(Opcodes.TOP);
+		for (int i = 0; i < body.maxStack; i++) flow.stack.add(Opcodes.TOP);
+		flow.stack.add(ref);
+		boolean reads = false, sets = false;
+		try {
+			for (AbstractInsnNode insn = load.getNext(); insn != null; insn = insn.getNext()) {
+				if (insn instanceof FrameNode) continue;
+				int before = held(flow, ref), op = insn.getOpcode();
+				boolean own = false;
+				if (insn instanceof MethodInsnNode call && localRef(call.owner) && (call.name.equals("get") || call.name.equals("set"))) {
+					int receiver = flow.stack.size() - (Type.getArgumentsAndReturnSizes(call.desc) >> 2);
+					if (receiver >= 0 && flow.stack.get(receiver) == ref) {
+						if (flow.stack.subList(receiver + 1, flow.stack.size()).contains(ref)) return null;
+						own = true;
+						reads |= call.name.equals("get");
+						sets |= call.name.equals("set");
+					}
+				}
+				insn.accept(flow);
+				int after = flow.stack == null ? 0 : held(flow, ref);
+				if (after < before && !own && op != Opcodes.POP && op != Opcodes.POP2 && op != Opcodes.IFNULL && op != Opcodes.IFNONNULL
+						&& op != Opcodes.IF_ACMPEQ && op != Opcodes.IF_ACMPNE) return null;
+				if (after == 0) return new Use(reads, sets);
+				if (flow.stack == null) return null;
+			}
+		} catch (RuntimeException e) {
+			// Code the walk doesn't follow (a subroutine).
 		}
-		return false;
+		return null;
+	}
+
+	/** How many places of the stack and the locals hold {@code value}. */
+	private static int held(AnalyzerAdapter flow, Object value) {
+		int n = 0;
+		for (Object v : flow.stack) if (v == value) n++;
+		for (Object v : flow.locals) if (v == value) n++;
+		return n;
 	}
 
 	private static boolean localRef(String owner) {

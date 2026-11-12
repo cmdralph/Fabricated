@@ -7063,7 +7063,8 @@ class MixinPreflightTest {
 	/**
 	 * A mixin of the growth class sharing locals: each member is {handler, method, a call its {@code @Inject} is at ("" for
 	 * the method's start), the local's name, its namespace ("" for none), what the handler does with it: "get", "set",
-	 * "pass" (hands it on) or nothing}.
+	 * "pass" (hands it on), "passThenSet" (hands it on, then sets another reference), "setAnother" (sets another reference
+	 * to it) or nothing}.
 	 */
 	private static byte[] sharing(String name, String[]... members) {
 		return mixin(name, false, cw -> {
@@ -7093,10 +7094,17 @@ class MixinPreflightTest {
 					m.visitVarInsn(Opcodes.ALOAD, 1);
 					m.visitMethodInsn(Opcodes.INVOKEINTERFACE, "com/llamalad7/mixinextras/sugar/ref/LocalRef", "get", "()Ljava/lang/Object;", true);
 					m.visitInsn(Opcodes.POP);
-				} else if (member[5].equals("pass")) {
+				} else if (member[5].startsWith("pass")) {
 					m.visitVarInsn(Opcodes.ALOAD, 1);
 					m.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Objects", "requireNonNull", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
 					m.visitInsn(Opcodes.POP);
+				}
+				if (member[5].equals("passThenSet") || member[5].equals("setAnother")) {
+					// Another reference's set: with this one as its value, or after handing this one on.
+					m.visitInsn(Opcodes.ACONST_NULL);
+					if (member[5].equals("setAnother")) m.visitVarInsn(Opcodes.ALOAD, 1);
+					else m.visitInsn(Opcodes.ACONST_NULL);
+					m.visitMethodInsn(Opcodes.INVOKEINTERFACE, "com/llamalad7/mixinextras/sugar/ref/LocalRef", "set", "(Ljava/lang/Object;)V", true);
 				}
 				m.visitInsn(Opcodes.RETURN);
 				m.visitMaxs(2, 2);
@@ -7178,6 +7186,14 @@ class MixinPreflightTest {
 		byte[] reading = sharing("com/example/mixin/Keeper", new String[] {"keep", "getGrowthSpeed", "", "breaking", "apoli", "get"});
 		assertTrue(leftOut(checkSharing(Map.of("com/example/mixin/Keeper", reading, "com/example/mixin/Reader", passing), Set.of(),
 				new String[] {"test.mixins.json", "Keeper", "Reader"}), "keep"));
+
+		// A reference handed on, or set as another's value, may be read elsewhere: a set of another reference after it, or
+		// of another to it, isn't its own set alone.
+		for (String escaping : List.of("passThenSet", "setAnother")) {
+			byte[] other = sharing("com/example/mixin/Reader", new String[] {"read", "getGrowthSpeed", "", "breaking", "apoli", escaping});
+			assertTrue(leftOut(checkSharing(Map.of("com/example/mixin/Keeper", keeper, "com/example/mixin/Reader", other), Set.of(),
+					new String[] {"test.mixins.json", "Keeper", "Reader"}), "read"), escaping);
+		}
 
 		// A keeper skipped takes its readers with it.
 		Map<String, byte[]> skippedMod = Map.of("com/example/mixin/Keeper", setter, "com/example/mixin/Reader", reader);
