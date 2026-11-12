@@ -364,6 +364,17 @@ public class VanillaCallsTest {
 		ClassBytesSource lacking = name -> name.endsWith("IBlockExtension") ? null : platform.get(name);
 		assertArrayEquals(platform.get(SERVER), VanillaSeams.over(lacking).read(SERVER));
 		assertTrue(!VanillaSeams.restoredIn(VanillaSeams.over(platform::get).readNode(SERVER, 0)).isEmpty());
+		// Pre-flight's view rewrites a class once, at its first read.
+		int[] reads = {0};
+		ClassBytesSource counting = name -> {
+			if (name.equals(SERVER)) reads[0]++;
+			return platform.get(name);
+		};
+		ClassBytesSource view = VanillaSeams.over(counting);
+		byte[] first = view.read(SERVER);
+		int rewriting = reads[0];
+		assertArrayEquals(first, view.read(SERVER));
+		assertEquals(rewriting, reads[0], "read again, the class is neither read nor rewritten again");
 		// One the rewrite fails on (here, one that doesn't parse) is read as it is, as it then loads, the failure told.
 		byte[] broken = {(byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE, 0, 0, 0, 61, 0, 99};
 		List<String> failed = new ArrayList<>();
