@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -6357,6 +6358,588 @@ class MixinPreflightTest {
 		// A vanilla method (never deprecated) calling such a method is no sign its code moved there.
 		assertTrue(preflight(new ClassIndex(Map.of(TARGET, target.apply(false))::get), Map.of("com/example/mixin/BoneMeal", mixin)::get,
 				ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	@Test
+	void aLocalTakenByItsOrdinalMovesWithAnInjectionToTheMethodTheCodeMovedInto() throws Exception {
+		// OVERLOAD-3: FrozenLib 2.2.4's bone meal hook takes @Local(ordinal = 0) BlockState at the getBlock call in
+		// BoneMealItem.growCrop, whose code NeoForge 21.1 and Forge 52 moved into applyBonemeal, taking the player too, after
+		// their bone meal events, kept in a local of another type. Vanilla's one local of the type there is the overload's
+		// one; the ordinal counts the parameters, the inserted one too.
+		String integer = "Ljava/lang/Integer;";
+		String string = "Ljava/lang/String;";
+		String object = "Ljava/lang/Object;";
+		String handler = "(" + string + CIR + integer + ")V";
+		byte[] vanilla = movedBody(string, List.of("len a", "use a"), null, 0, null);
+		// The player, as NeoForge's, after vanilla's state.
+		assertMovedOrdinals(vanilla, movedBody(string, null, object, 1, List.of("len a", "event e", "use a")), handler, Map.of(2, 0), Map.of(3, 0),
+				"(" + string + object);
+		// An inserted parameter of the local's type comes before it among the locals.
+		assertMovedOrdinals(vanilla, movedBody(string, null, integer, 1, List.of("len a", "use a")), handler, Map.of(2, 0), Map.of(3, 1), "(" + string + integer);
+		// A local of the platform's whose scope ends before the point isn't among them.
+		assertMovedOrdinals(vanilla, movedBody(string, null, object, 1, List.of("tmp t", "len a", "use a")), handler, Map.of(2, 0), Map.of(3, 0),
+				"(" + string + object);
+		// The inserted parameter between vanilla's, which takes vanilla's second parameter too.
+		String two = "(" + string + string + CIR + integer + string + ")V";
+		assertMovedOrdinals(movedBody(string + string, List.of("len a", "use a"), null, 0, null), movedBody(string + string, null, integer, 1,
+				List.of("len a", "use a")), two, Map.of(3, 0, 4, 1), Map.of(4, 1, 5, 1), "(" + string + integer + string);
+		// Several points, the same local at each.
+		assertMovedOrdinals(movedBody(string, List.of("len a", "use a", "use a"), null, 0, null), movedBody(string, null, object, 1,
+				List.of("len a", "event e", "use a", "use a")), handler, Map.of(2, 0), Map.of(3, 0), "(" + string + object);
+		// A parameter the method passes on second, after a value it works out from it: the overload's second, which only the
+		// instruction that pushed each argument tells.
+		assertMovedOrdinals(vanilla, passedOn(string, string, 0, true, false, List.of("trim p0", "p0"), List.of("len a", "use a")), "(" + CIR + string + ")V",
+				Map.of(1, 0), Map.of(1, 1), "");
+		// Instance methods, the deprecated one calling its replacement on itself.
+		assertMovedOrdinals(vanillaInstance(string, List.of("len a", "use a")), passedOn(string, integer, 1, false, true, List.of("this", "p0", "null"),
+				List.of("len a", "use a")), "(" + CIR + integer + ")V", Map.of(1, 0), Map.of(1, 1), "");
+	}
+
+	@Test
+	void aLocalTakenByItsOrdinalStaysOutWhereVanillasLocalThereCantBeToldForSure() throws Exception {
+		String integer = "Ljava/lang/Integer;";
+		String string = "Ljava/lang/String;";
+		String object = "Ljava/lang/Object;";
+		String handler = "(" + string + CIR + integer + ")V";
+		byte[] vanilla = movedBody(string, List.of("len a", "use a"), null, 0, null);
+		// Two locals of the type in the overload, which only an alignment of the code would tell apart, and it can be sure
+		// and wrong: the platform's copy of vanilla's store before vanilla's, the method's end changed (its alignments from
+		// the front and from the back then agree, on the copy); the mirror of that; and a local of the platform's before
+		// vanilla's, or after it.
+		assertStaysOut(movedBody(string, List.of("len a", "sinkp", "use a"), null, 0, null), movedBody(string, null, object, 1,
+				List.of("len x", "call", "len a", "sinkp", "use a", "call")), handler, Map.of(2, 0));
+		assertStaysOut(movedBody(string, List.of("sinkp", "len a", "use a"), null, 0, null), movedBody(string, null, object, 1,
+				List.of("call", "sinkp", "len a", "call", "len x", "use a")), handler, Map.of(2, 0));
+		assertStaysOut(vanilla, movedBody(string, null, object, 1, List.of("extra x", "len a", "use a")), handler, Map.of(2, 0));
+		assertStaysOut(vanilla, movedBody(string, null, object, 1, List.of("len a", "extra x", "use a")), handler, Map.of(2, 0));
+		assertStaysOut(movedBody(string, List.of("len a", "hash b", "use b"), null, 0, null), movedBody(string, null, object, 1,
+				List.of("len x", "len a", "hash b", "use b")), handler, Map.of(2, 0));
+		// Two in vanilla's, where the overload keeps one of them.
+		assertStaysOut(movedBody(string, List.of("len a", "hash b", "use b"), null, 0, null), movedBody(string, null, object, 1, List.of("hash b", "use b")),
+				handler, Map.of(2, 1));
+		// The overload's one local of the type, kept in a parameter's slot.
+		assertStaysOut(vanilla, movedBody(string, null, object, 1, List.of("into 1 x", "len a", "use a")), handler, Map.of(2, 0));
+		// The locals of the type in scope differing from one of a method's points to the next: vanilla's, the overload's.
+		assertStaysOut(movedBody(string, List.of("len a", "tmpuse t", "use a"), null, 0, null), movedBody(string, null, object, 1,
+				List.of("len a", "event e", "use a", "use a")), handler, Map.of(2, 0));
+		assertStaysOut(movedBody(string, List.of("len a", "tmp t", "use a", "use a"), null, 0, null), movedBody(string, null, object, 1,
+				List.of("len a", "tmpuse t", "use a")), handler, Map.of(2, 0));
+		// The overload's one local isn't the one the alignment places vanilla's store at, whose scope ends before the point.
+		assertStaysOut(vanilla, movedBody(string, null, object, 1, List.of("extra x", "lentmp a", "use x")), handler, Map.of(2, 0));
+		// A local whose scope starts with the method: no store tells where it is made.
+		assertStaysOut(movedBody(string, List.of("early a", "use a"), null, 0, null), movedBody(string, null, object, 1, List.of("early a", "event e", "use a")),
+				handler, Map.of(2, 0));
+		// The platform's code makes the call once more: which of its calls is vanilla's isn't told.
+		assertStaysOut(vanilla, movedBody(string, null, object, 1, List.of("len a", "use a", "use a")), handler, Map.of(2, 0));
+		// An ordinal beyond vanilla's locals of the type there.
+		assertStaysOut(vanilla, movedBody(string, null, object, 1, List.of("len a", "event e", "use a")), handler, Map.of(2, 1));
+		// A parameter of the type in scope in vanilla's method, which the overload's local variable table leaves out.
+		String integerToo = "(" + CIR + integer + ")V";
+		assertStaysOut(movedBody(string + integer, List.of("len a", "use a"), null, 0, null), movedBody(string + integer, null, object, 1,
+				List.of("hide 2", "len a", "use a")), integerToo, Map.of(1, 1));
+		// Vanilla's method an instance one, the overload static.
+		assertStaysOut(instanceMethod(vanilla, "grow"), movedBody(string, null, object, 1, List.of("len a", "event e", "use a")), handler, Map.of(2, 0));
+		// A deprecated method passing its parameters to its replacement out of their order.
+		String twoOnly = "(" + string + string + CIR + integer + ")V";
+		assertStaysOut(movedBody(string + string, List.of("len a", "use a"), null, 0, null),
+				movedBody(string + string, null, object, 2, List.of("len a", "use a"), true), twoOnly, Map.of(3, 0));
+		// A method passing its parameter on twice; storing into it first; or passing a value that depends on which way its
+		// code went: which argument is the parameter isn't told.
+		String stringOnly = "(" + CIR + string + ")V";
+		assertStaysOut(vanilla, passedOn(string, string, 1, true, false, List.of("p0", "p0"), List.of("len a", "use a")), stringOnly, Map.of(1, 0), "java.lang.String");
+		assertStaysOut(vanilla, passedOn(string, object, 1, false, false, List.of("set p0", "p0", "null"), List.of("len a", "use a")), stringOnly, Map.of(1, 0),
+				"java.lang.String");
+		assertStaysOut(vanilla, passedOn(string, object, 0, false, false, List.of("joined"), List.of("len a", "use a")), stringOnly, Map.of(1, 0),
+				"java.lang.String");
+		// Or calling its replacement on another object.
+		assertStaysOut(vanillaInstance(string, List.of("len a", "use a")), passedOn(string, integer, 1, false, true, List.of("other", "p0", "null"),
+				List.of("len a", "use a")), "(" + CIR + integer + ")V", Map.of(1, 0));
+		// Code split off into a method taking the same parameters, which may be other values: left out, as before.
+		String callbackOnly = "(" + CIR + integer + ")V";
+		assertStaysOut(vanilla, splitOff(string, List.of("len a", "use a")), callbackOnly, Map.of(1, 0));
+		// Without vanilla's code nothing tells which local is vanilla's.
+		assertStaysOut(null, movedBody(string, null, object, 1, List.of("len a", "event e", "use a")), handler, Map.of(2, 0));
+	}
+
+	@Test
+	void aLocalTakenByItsOrdinalStaysOutWhereAFrameDropsALocalOfTheType() throws Exception {
+		// Mixin drops the local of a slot at a stack map frame holding a null there (or an uninitialised this) until the slot
+		// is loaded or stored again, whatever the local variable table says: such frames are made for a local only ever set
+		// to null by compilers other than javac.
+		String integer = "Ljava/lang/Integer;";
+		String string = "Ljava/lang/String;";
+		String object = "Ljava/lang/Object;";
+		String handler = "(" + string + CIR + integer + ")V";
+		byte[] vanilla = movedBody(string, List.of("nul a", "useextra"), null, 0, null);
+		assertMovedOrdinals(vanilla, movedBody(string, null, object, 1, List.of("nul a", "call", "useextra")), handler, Map.of(2, 0), Map.of(3, 0),
+				"(" + string + object);
+		assertStaysOut(vanilla, movedBody(string, null, object, 1, List.of("nul a", "event e", "useextra")), handler, Map.of(2, 0));
+		// Loaded again after the frame, it is back.
+		assertMovedOrdinals(movedBody(string, List.of("nul a", "use a"), null, 0, null), movedBody(string, null, object, 1, List.of("nul a", "event e", "use a")),
+				handler, Map.of(2, 0), Map.of(3, 0), "(" + string + object);
+	}
+
+	@Test
+	void aLocalTakenByItsOrdinalAndNameIsTakenByItsOrdinalAsMixinTakesIt() throws Exception {
+		// Mixin's discriminator reads an @Local's ordinal before its slot and its name: the name, which vanilla's local has in
+		// the overload too, would leave ordinal 0, the inserted parameter.
+		String integer = "Ljava/lang/Integer;";
+		String string = "Ljava/lang/String;";
+		String handler = "(" + string + CIR + integer + ")V";
+		ClassNode moved = moved(movedBody(string, List.of("len a", "use a"), null, 0, null), movedBody(string, null, integer, 1, List.of("len a", "use a")),
+				handler, Map.of(2, 0), Map.of(2, "a"));
+		assertNotNull(moved);
+		MethodNode bridge = moved.methods.stream().filter(m -> m.name.equals("onGrow$fabricated")).findFirst().orElseThrow();
+		assertEquals(1, Annotations.value(Annotations.ofParameter(bridge, 3).getFirst(), "ordinal"));
+	}
+
+	@Test
+	void aLocalTakenByItsOrdinalIsCountedAmongTheLocalsForgesMixinKeepsPastTheirScope() throws Exception {
+		// Forge's Mixin keeps a local whose scope has ended where only same frames come between (PRE-26): one of the type
+		// before vanilla's would take ordinal 0 there. After another frame it looks a slot up again, which for a parameter
+		// of another type, covered by its one entry, tells it isn't one of the type; for the local itself, or another below
+		// it, not loaded or stored since, what it finds isn't told.
+		String integer = "Ljava/lang/Integer;";
+		String string = "Ljava/lang/String;";
+		String object = "Ljava/lang/Object;";
+		String handler = "(" + string + CIR + integer + ")V";
+		byte[] vanilla = movedBody(string, List.of("len a", "use a"), null, 0, null);
+		byte[] keptBefore = movedBody(string, null, object, 1, List.of("tmp t", "len a", "use a"));
+		assertNotNull(moved(vanilla, keptBefore, handler, Map.of(2, 0), Map.of(), false));
+		assertNull(moved(vanilla, keptBefore, handler, Map.of(2, 0), Map.of(), true));
+		ClassNode afterFrame = moved(vanilla, movedBody(string, null, object, 1, List.of("len a", "event e", "use a")), handler, Map.of(2, 0), Map.of(), true);
+		assertNotNull(afterFrame);
+		MethodNode bridge = afterFrame.methods.stream().filter(m -> m.name.equals("onGrow$fabricated")).findFirst().orElseThrow();
+		assertEquals(0, Annotations.value(Annotations.ofParameter(bridge, 3).getFirst(), "ordinal"));
+		byte[] vanillaElsewhere = movedBody(string, List.of("len a", "useextra"), null, 0, null);
+		byte[] notReloaded = movedBody(string, null, object, 1, List.of("len a", "event e", "useextra"));
+		assertNotNull(moved(vanillaElsewhere, notReloaded, handler, Map.of(2, 0), Map.of(), false));
+		assertNull(moved(vanillaElsewhere, notReloaded, handler, Map.of(2, 0), Map.of(), true));
+		byte[] otherBelow = movedBody(string, null, object, 1, List.of("event e", "len a", "use a"));
+		assertNotNull(moved(vanilla, otherBelow, handler, Map.of(2, 0), Map.of(), false));
+		assertNull(moved(vanilla, otherBelow, handler, Map.of(2, 0), Map.of(), true));
+	}
+
+	/**
+	 * A target class for OVERLOAD-3's cases: with {@code inserted} null, vanilla's {@code grow(params)Z} doing
+	 * {@code vanillaSteps}; else the platform's, deprecated, calling {@code apply} with its parameters (in reverse with
+	 * {@code swapped}) and a null of type {@code inserted} at {@code insertedAt} where its first isn't null, and
+	 * {@code apply} doing {@code patchedSteps} ({@link #steps}).
+	 */
+	private static byte[] movedBody(String params, List<String> vanillaSteps, String inserted, int insertedAt, List<String> patchedSteps) {
+		return movedBody(params, vanillaSteps, inserted, insertedAt, patchedSteps, false);
+	}
+
+	private static byte[] movedBody(String params, List<String> vanillaSteps, String inserted, int insertedAt, List<String> patchedSteps, boolean swapped) {
+		ClassWriter cw = framedWriter();
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		Type[] own = Type.getArgumentTypes("(" + params + ")Z");
+		if (inserted == null) {
+			steps(cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "grow", "(" + params + ")Z", null, null), own, vanillaSteps);
+			cw.visitEnd();
+			return cw.toByteArray();
+		}
+		List<Type> all = new ArrayList<>(List.of(own));
+		all.add(insertedAt, Type.getType(inserted));
+		String applyDesc = Type.getMethodDescriptor(Type.BOOLEAN_TYPE, all.toArray(Type[]::new));
+		MethodVisitor grow = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_DEPRECATED, "grow", "(" + params + ")Z", null, null);
+		grow.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+		Label start = new Label();
+		Label otherwise = new Label();
+		Label end = new Label();
+		grow.visitCode();
+		grow.visitLabel(start);
+		grow.visitVarInsn(Opcodes.ALOAD, 0);
+		grow.visitJumpInsn(Opcodes.IFNULL, otherwise);
+		for (int k = 0, i = 0; k < all.size(); k++) {
+			if (k == insertedAt) {
+				grow.visitInsn(Opcodes.ACONST_NULL);
+			} else {
+				grow.visitVarInsn(Opcodes.ALOAD, swapped ? own.length - 1 - i : i);
+				i++;
+			}
+		}
+		grow.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "apply", applyDesc, false);
+		grow.visitInsn(Opcodes.IRETURN);
+		grow.visitLabel(otherwise);
+		grow.visitInsn(Opcodes.ICONST_0);
+		grow.visitInsn(Opcodes.IRETURN);
+		grow.visitLabel(end);
+		for (int i = 0; i < own.length; i++) grow.visitLocalVariable("p" + i, own[i].getDescriptor(), null, start, end, i);
+		grow.visitMaxs(0, 0);
+		grow.visitEnd();
+		steps(cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "apply", applyDesc, null, null), all.toArray(Type[]::new), patchedSteps);
+		platformHelpers(cw);
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * The platform's {@code grow(params)Z} calling its overload taking {@code inserted} too, at {@code insertedAt}, which
+	 * does {@code patchedSteps}: the same name's, its code only that call ({@code sameName}), or {@code apply}, which a
+	 * deprecated {@code grow} calls; instance methods with {@code instance}. {@code grow} pushes the call's arguments by
+	 * {@code args}: {@code this}, {@code other} (a null receiver), {@code pN} (parameter N), {@code trim pN}
+	 * ({@code String.trim()} of it), {@code null}, or first {@code set pN} (storing its trimmed value into it); or, for
+	 * {@code args} {@code joined} alone, a null and the first parameter where that isn't null, else a null and a string,
+	 * the two ways joining at the call.
+	 */
+	private static byte[] passedOn(String params, String inserted, int insertedAt, boolean sameName, boolean instance, List<String> args,
+			List<String> patchedSteps) {
+		ClassWriter cw = framedWriter();
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		Type[] own = Type.getArgumentTypes("(" + params + ")Z");
+		List<Type> all = new ArrayList<>(List.of(own));
+		all.add(insertedAt, Type.getType(inserted));
+		String overloadDesc = Type.getMethodDescriptor(Type.BOOLEAN_TYPE, all.toArray(Type[]::new));
+		String overload = sameName ? "grow" : "apply";
+		int access = Opcodes.ACC_PUBLIC | (instance ? 0 : Opcodes.ACC_STATIC);
+		int first = instance ? 1 : 0;
+		MethodVisitor grow = cw.visitMethod(access | (sameName ? 0 : Opcodes.ACC_DEPRECATED), "grow", "(" + params + ")Z", null, null);
+		if (!sameName) grow.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+		Label start = new Label();
+		Label end = new Label();
+		Label join = new Label();
+		Label detour = new Label();
+		grow.visitCode();
+		grow.visitLabel(start);
+		for (String arg : args) {
+			String[] words = arg.split(" ");
+			switch (words[0]) {
+				case "this" -> grow.visitVarInsn(Opcodes.ALOAD, 0);
+				case "other", "null" -> grow.visitInsn(Opcodes.ACONST_NULL);
+				case "trim", "set" -> {
+					grow.visitVarInsn(Opcodes.ALOAD, first + Integer.parseInt(words[1].substring(1)));
+					grow.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "trim", "()Ljava/lang/String;", false);
+					if (words[0].equals("set")) grow.visitVarInsn(Opcodes.ASTORE, first + Integer.parseInt(words[1].substring(1)));
+				}
+				case "joined" -> {
+					grow.visitVarInsn(Opcodes.ALOAD, first);
+					grow.visitJumpInsn(Opcodes.IFNULL, detour);
+					grow.visitInsn(Opcodes.ACONST_NULL);
+					grow.visitVarInsn(Opcodes.ALOAD, first);
+					grow.visitLabel(join);
+				}
+				default -> grow.visitVarInsn(Opcodes.ALOAD, first + Integer.parseInt(words[0].substring(1)));
+			}
+		}
+		grow.visitMethodInsn(instance ? Opcodes.INVOKEVIRTUAL : Opcodes.INVOKESTATIC, TARGET, overload, overloadDesc, false);
+		grow.visitInsn(Opcodes.IRETURN);
+		if (args.contains("joined")) {
+			grow.visitLabel(detour);
+			grow.visitInsn(Opcodes.ACONST_NULL);
+			grow.visitLdcInsn("x");
+			grow.visitJumpInsn(Opcodes.GOTO, join);
+		}
+		grow.visitLabel(end);
+		if (instance) grow.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		for (int i = 0; i < own.length; i++) grow.visitLocalVariable("p" + i, own[i].getDescriptor(), null, start, end, first + i);
+		grow.visitMaxs(0, 0);
+		grow.visitEnd();
+		steps(cw.visitMethod(access, overload, overloadDesc, null, null), all.toArray(Type[]::new), patchedSteps, instance);
+		platformHelpers(cw);
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** Vanilla's {@code grow(params)Z} doing {@code steps} ({@link #steps}), an instance method. */
+	private static byte[] vanillaInstance(String params, List<String> steps) {
+		ClassWriter cw = framedWriter();
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		steps(cw.visitMethod(Opcodes.ACC_PUBLIC, "grow", "(" + params + ")Z", null, null), Type.getArgumentTypes("(" + params + ")Z"), steps, true);
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** {@code bytes}' class with its method {@code name} an instance one, its code as it is. */
+	private static byte[] instanceMethod(byte[] bytes, String name) {
+		ClassNode node = new ClassNode();
+		new ClassReader(bytes).accept(node, 0);
+		for (MethodNode m : node.methods) {
+			if (m.name.equals(name)) m.access &= ~Opcodes.ACC_STATIC;
+		}
+		ClassWriter cw = new ClassWriter(0);
+		node.accept(cw);
+		return cw.toByteArray();
+	}
+
+	/** A class writer computing frames, every class's common super class Object. */
+	private static ClassWriter framedWriter() {
+		return new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES) {
+			@Override
+			protected String getCommonSuperClass(String a, String b) {
+				return "java/lang/Object";
+			}
+		};
+	}
+
+	/** The platform's {@code grow(params)Z}, not deprecated, calling {@code work}, taking the same parameters, which does {@code steps}. */
+	private static byte[] splitOff(String params, List<String> steps) {
+		ClassWriter cw = framedWriter();
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		Type[] own = Type.getArgumentTypes("(" + params + ")Z");
+		MethodVisitor grow = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "grow", "(" + params + ")Z", null, null);
+		Label start = new Label();
+		Label otherwise = new Label();
+		Label end = new Label();
+		grow.visitCode();
+		grow.visitLabel(start);
+		grow.visitVarInsn(Opcodes.ALOAD, 0);
+		grow.visitJumpInsn(Opcodes.IFNULL, otherwise);
+		for (int i = 0; i < own.length; i++) grow.visitVarInsn(Opcodes.ALOAD, i);
+		grow.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "work", "(" + params + ")Z", false);
+		grow.visitInsn(Opcodes.IRETURN);
+		grow.visitLabel(otherwise);
+		grow.visitInsn(Opcodes.ICONST_0);
+		grow.visitInsn(Opcodes.IRETURN);
+		grow.visitLabel(end);
+		for (int i = 0; i < own.length; i++) grow.visitLocalVariable("p" + i, own[i].getDescriptor(), null, start, end, i);
+		grow.visitMaxs(0, 0);
+		grow.visitEnd();
+		steps(cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "work", "(" + params + ")Z", null, null), own, steps);
+		platformHelpers(cw);
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** The platform's own methods the steps call: {@code extra()}, {@code sink(Object)} and {@code fire()}. */
+	private static void platformHelpers(ClassWriter cw) {
+		MethodVisitor extra = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "extra", "()Ljava/lang/Integer;", null, null);
+		extra.visitCode();
+		extra.visitInsn(Opcodes.ACONST_NULL);
+		extra.visitInsn(Opcodes.ARETURN);
+		extra.visitMaxs(0, 0);
+		extra.visitEnd();
+		MethodVisitor sink = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "sink", "(Ljava/lang/Object;)V", null, null);
+		sink.visitCode();
+		sink.visitInsn(Opcodes.RETURN);
+		sink.visitMaxs(0, 0);
+		sink.visitEnd();
+		MethodVisitor fire = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "fire", "()Ljava/lang/Object;", null, null);
+		fire.visitCode();
+		fire.visitInsn(Opcodes.ACONST_NULL);
+		fire.visitInsn(Opcodes.ARETURN);
+		fire.visitMaxs(0, 0);
+		fire.visitEnd();
+	}
+
+	/**
+	 * A static method's body of steps, returning true, with a local variable table naming each local. A step:
+	 * {@code len a}, {@code hash a} (an Integer local made from the first parameter's length or hash), {@code extra a}
+	 * (one the platform's own call makes, then sunk; {@code tmp a} the same, its scope ending there), {@code tmpuse a}
+	 * (one the platform's call makes, its scope only its {@code intValue()}, an injection point), {@code lentmp a}
+	 * ({@code len}'s, sunk, its scope ending there), {@code nul a} (a null), {@code early a} (the platform's call's, its
+	 * scope starting with the method), {@code into N a} (the platform's call's, in slot N), {@code event a} (an Object one,
+	 * returning false where it is set), {@code use a} (its {@code intValue()}, the injection point), {@code useextra} (the
+	 * {@code intValue()} of the platform's call), {@code sinkp} (sinking the first parameter), {@code call} (sinking
+	 * {@code fire()}), {@code hide N} (parameter N left out of the table).
+	 */
+	private static void steps(MethodVisitor mv, Type[] params, List<String> steps) {
+		steps(mv, params, steps, false);
+	}
+
+	/** {@link #steps}, of an instance method with {@code instance}. */
+	private static void steps(MethodVisitor mv, Type[] params, List<String> steps, boolean instance) {
+		record Named(String name, String desc, Label start, Label end, int slot) {
+		}
+		List<Named> locals = new ArrayList<>();
+		Map<String, Integer> slots = new HashMap<>();
+		Set<Integer> hidden = new HashSet<>();
+		int first = instance ? 1 : 0;
+		int next = first;
+		for (Type param : params) next += param.getSize();
+		Label start = new Label();
+		Label end = new Label();
+		mv.visitCode();
+		mv.visitLabel(start);
+		String integer = "Ljava/lang/Integer;";
+		for (String step : steps) {
+			String[] words = step.split(" ");
+			switch (words[0]) {
+				case "use" -> {
+					mv.visitVarInsn(Opcodes.ALOAD, slots.get(words[1]));
+					mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Integer", "intValue", "()I", false);
+					mv.visitInsn(Opcodes.POP);
+					continue;
+				}
+				case "useextra" -> {
+					mv.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "extra", "()" + integer, false);
+					mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Integer", "intValue", "()I", false);
+					mv.visitInsn(Opcodes.POP);
+					continue;
+				}
+				case "sinkp" -> {
+					mv.visitVarInsn(Opcodes.ALOAD, first);
+					mv.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "sink", "(Ljava/lang/Object;)V", false);
+					continue;
+				}
+				case "call" -> {
+					mv.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "fire", "()Ljava/lang/Object;", false);
+					mv.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "sink", "(Ljava/lang/Object;)V", false);
+					continue;
+				}
+				case "hide" -> {
+					hidden.add(Integer.parseInt(words[1]));
+					continue;
+				}
+				case "len", "hash", "lentmp" -> {
+					mv.visitVarInsn(Opcodes.ALOAD, first);
+					mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", words[0].equals("hash") ? "hashCode" : "length", "()I", false);
+					mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)" + integer, false);
+				}
+				case "extra", "tmp", "tmpuse", "early", "into" -> mv.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "extra", "()" + integer, false);
+				case "nul" -> mv.visitInsn(Opcodes.ACONST_NULL);
+				case "event" -> mv.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "fire", "()Ljava/lang/Object;", false);
+				default -> throw new IllegalArgumentException(step);
+			}
+			boolean into = words[0].equals("into");
+			String name = words[into ? 2 : 1];
+			int slot = into ? Integer.parseInt(words[1]) : next++;
+			Label stored = new Label();
+			boolean scoped = List.of("tmp", "tmpuse", "lentmp").contains(words[0]);
+			Label scopeEnd = scoped ? new Label() : end;
+			mv.visitVarInsn(Opcodes.ASTORE, slot);
+			mv.visitLabel(stored);
+			locals.add(new Named(name, words[0].equals("event") ? "Ljava/lang/Object;" : integer, words[0].equals("early") ? start : stored, scopeEnd, slot));
+			slots.put(name, slot);
+			if (List.of("extra", "tmp", "lentmp").contains(words[0])) {
+				mv.visitVarInsn(Opcodes.ALOAD, slot);
+				mv.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "sink", "(Ljava/lang/Object;)V", false);
+			} else if (words[0].equals("tmpuse")) {
+				mv.visitVarInsn(Opcodes.ALOAD, slot);
+				mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Integer", "intValue", "()I", false);
+				mv.visitInsn(Opcodes.POP);
+			} else if (words[0].equals("event")) {
+				Label carryOn = new Label();
+				mv.visitVarInsn(Opcodes.ALOAD, slot);
+				mv.visitJumpInsn(Opcodes.IFNULL, carryOn);
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitInsn(Opcodes.IRETURN);
+				mv.visitLabel(carryOn);
+			}
+			if (scoped) mv.visitLabel(scopeEnd);
+		}
+		mv.visitInsn(Opcodes.ICONST_1);
+		mv.visitInsn(Opcodes.IRETURN);
+		mv.visitLabel(end);
+		if (instance) mv.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		int slot = first;
+		for (int i = 0; i < params.length; i++) {
+			if (!hidden.contains(slot)) mv.visitLocalVariable("p" + i, params[i].getDescriptor(), null, start, end, slot);
+			slot += params[i].getSize();
+		}
+		for (Named local : locals) mv.visitLocalVariable(local.name(), local.desc(), null, local.start(), local.end(), local.slot());
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+	}
+
+	/**
+	 * A mixin {@code com/example/mixin/BoneMeal} whose static handler {@code onGrow} of descriptor {@code handlerDesc} is an
+	 * {@code @Inject} into {@code grow} at {@code Integer.intValue()}, cancellable, taking {@code @Local(ordinal = n)} at
+	 * the parameters {@code ordinals} keys, named too where {@code names} has the parameter; an instance method with
+	 * {@code instance}.
+	 */
+	private static byte[] ordinalLocalMixin(String handlerDesc, Map<Integer, Integer> ordinals, Map<Integer, String> names, boolean instance) {
+		return mixin("com/example/mixin/BoneMeal", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | (instance ? 0 : Opcodes.ACC_STATIC), "onGrow", handlerDesc, null, null);
+			for (Map.Entry<Integer, Integer> e : ordinals.entrySet()) {
+				AnnotationVisitor local = mv.visitParameterAnnotation(e.getKey(), LOCAL, false);
+				local.visit("ordinal", e.getValue());
+				if (names.containsKey(e.getKey())) {
+					AnnotationVisitor name = local.visitArray("name");
+					name.visit(null, names.get(e.getKey()));
+					name.visitEnd();
+				}
+				local.visitEnd();
+			}
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "grow");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "Ljava/lang/Integer;intValue()I");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visit("cancellable", true);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, (Type.getArgumentsAndReturnSizes(handlerDesc) >> 2) + (instance ? 1 : 0));
+			mv.visitEnd();
+		});
+	}
+
+	/** Whether the target class {@code bytes} has an instance method named {@code grow}, which a handler must then be too. */
+	private static boolean instanceGrow(byte[] bytes) {
+		ClassNode node = new ClassNode();
+		new ClassReader(bytes).accept(node, ClassReader.SKIP_CODE);
+		return node.methods.stream().anyMatch(m -> m.name.equals("grow") && (m.access & Opcodes.ACC_STATIC) == 0);
+	}
+
+	/** The repaired mixin pre-flight makes of {@link #ordinalLocalMixin} against {@code patched}, with {@code vanilla} as vanilla's class (or none); null where it changes nothing. */
+	private static ClassNode moved(byte[] vanilla, byte[] patched, String handlerDesc, Map<Integer, Integer> ordinals, Map<Integer, String> names) throws Exception {
+		return moved(vanilla, patched, handlerDesc, ordinals, names, false);
+	}
+
+	/** {@link #moved}, where the running Mixin keeps locals once their scope has ended ({@code keeps}), as Forge's does (PRE-26). */
+	private static ClassNode moved(byte[] vanilla, byte[] patched, String handlerDesc, Map<Integer, Integer> ordinals, Map<Integer, String> names,
+			boolean keeps) throws Exception {
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "BoneMeal"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/BoneMeal", ordinalLocalMixin(handlerDesc, ordinals, names, instanceGrow(patched)));
+		Map<String, byte[]> vanillaClasses = vanilla == null ? Map.of() : Map.of(TARGET, vanilla);
+		ClassIndex game = new ClassIndex(Map.of(TARGET, patched)::get);
+		MixinPreflight preflight = keeps
+				? new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanillaClasses::get, "Forge", false,
+						MixinPreflight.ConstructorInjects.RETURNS_ONLY, false, true, false, true, false, false, true, true)
+				: new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanillaClasses::get);
+		Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>());
+		byte[] bytes = repaired.get("com/example/mixin/BoneMeal.class");
+		if (bytes == null) return null;
+		ClassNode node = new ClassNode();
+		new ClassReader(bytes).accept(node, 0);
+		return node;
+	}
+
+	/**
+	 * Asserts that pre-flight points {@link #ordinalLocalMixin}'s injector at {@code apply}, its bridge taking
+	 * {@code bridgePrefix} then the handler's callback info and locals, each {@code @Local} at the bridge's parameter
+	 * (key) with the ordinal (value), and that the repaired mixin then checks clean.
+	 */
+	private static void assertMovedOrdinals(byte[] vanilla, byte[] patched, String handlerDesc, Map<Integer, Integer> ordinals, Map<Integer, Integer> expected,
+			String bridgePrefix) throws Exception {
+		ClassNode moved = moved(vanilla, patched, handlerDesc, ordinals, Map.of());
+		assertNotNull(moved, ordinals.toString());
+		MethodNode bridge = moved.methods.stream().filter(m -> m.name.equals("onGrow$fabricated")).findFirst().orElse(null);
+		MethodNode onto = bridge != null ? bridge : moved.methods.stream().filter(m -> m.name.equals("onGrow")).findFirst().orElseThrow();
+		if (bridge != null) assertTrue(bridge.desc.startsWith(bridgePrefix), bridge.desc);
+		for (Map.Entry<Integer, Integer> e : expected.entrySet()) {
+			assertEquals(e.getValue(), Annotations.value(Annotations.ofParameter(onto, e.getKey()).getFirst(), "ordinal"), "parameter " + e.getKey());
+		}
+		ClassWriter cw = new ClassWriter(0);
+		moved.accept(cw);
+		Map<String, byte[]> mod = Map.of("com/example/mixin/BoneMeal", cw.toByteArray());
+		List<PreflightFinding> after = preflight(new ClassIndex(Map.of(TARGET, patched)::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "BoneMeal")), Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
+	/**
+	 * Asserts that pre-flight leaves {@link #ordinalLocalMixin}'s injector where it is, and the check then leaves it out,
+	 * for its local or for its point, which the deprecated method doesn't have.
+	 */
+	private static void assertStaysOut(byte[] vanilla, byte[] patched, String handlerDesc, Map<Integer, Integer> ordinals) throws Exception {
+		assertStaysOut(vanilla, patched, handlerDesc, ordinals, "java.lang.Integer");
+	}
+
+	/** {@link #assertStaysOut}, for an {@code @Local} of the type {@code typeName}. */
+	private static void assertStaysOut(byte[] vanilla, byte[] patched, String handlerDesc, Map<Integer, Integer> ordinals, String typeName) throws Exception {
+		assertNull(moved(vanilla, patched, handlerDesc, ordinals, Map.of()));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/BoneMeal", ordinalLocalMixin(handlerDesc, ordinals, Map.of(), instanceGrow(patched)));
+		List<PreflightFinding> left = preflight(new ClassIndex(Map.of(TARGET, patched)::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "BoneMeal")), Refmap.EMPTY, Set.of());
+		assertTrue(left.stream().anyMatch(f -> f.message().contains("captures the local variable of type " + typeName + ", which grow")
+				|| f.message().contains("in grow expects @At(\"INVOKE\", target=\"Ljava/lang/Integer;intValue()I\"), which does not occur in that method")), left.toString());
 	}
 
 	@Test

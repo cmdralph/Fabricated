@@ -18,8 +18,9 @@ neoForge {
 
 ext.gameDependencies = { SourceSet sourceSet -> neoForge.addModdingDependenciesTo(sourceSet) }
 
-// The mixins of the platform's half of the test mod, where the version has checks of its own hooks that need them (mc.gradle).
-if (file('src/testmod/resources/fabricated-testmod-neoforge.mixins.json').isFile()) {
+// The mixins of the platform's half of the test mod, where the version, or a folder of its shared sources, has checks of
+// its own hooks that need them (mc.gradle).
+if (([projectDir] + sharedSources.collect { rootProject.file(it) }).any { new File(it, 'src/testmod/resources/fabricated-testmod-neoforge.mixins.json').isFile() }) {
     testmodDescriptor.testmod << [mixins: ['fabricated-testmod-neoforge.mixins.json']]
 }
 

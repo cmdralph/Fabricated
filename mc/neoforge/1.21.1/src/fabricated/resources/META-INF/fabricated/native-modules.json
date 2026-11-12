@@ -98,8 +98,7 @@
     ],
     "fabric-resource-loader-v0": [
       "net/fabricmc/fabric/api/resource",
-      "net/fabricmc/fabric/impl/resource/loader",
-      "net/fabricmc/fabric/impl/resource/pack"
+      "net/fabricmc/fabric/impl/resource/loader"
     ],
     "fabric-screen-handler-api-v1": [
       "net/fabricmc/fabric/api/screenhandler/v1"
