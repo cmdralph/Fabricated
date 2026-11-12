@@ -418,6 +418,25 @@ class RestoredSeamsTest {
 		}
 	}
 
+	/** SEAM-6: a hook of the shear call vanilla's shears check guards in a mob's mobInteract (Ledger's) stays out the same way. */
+	@Test
+	void aHookOfAMobsShearCallThePlatformDoesntMakeStaysOutSayingWhy(@TempDir Path dir) throws Exception {
+		Map<String, String> game = itemGame(io.github.cmdralph.fabricated.core.bytecode.ItemChecksTest.neoForgeSources());
+		game.put("net/minecraft/world/entity/animal/sheep/Sheep.java", "package net.minecraft.world.entity.animal.sheep; public class Sheep {"
+				+ " public boolean mobInteract(net.minecraft.world.entity.player.Player player) { return player.getMainHandItem().isEmpty(); }"
+				+ " public void shear() { } }");
+		List<PreflightFinding> findings = new java.util.ArrayList<>();
+		checked(dir, game, "net.minecraft.world.entity.animal.sheep.Sheep", " @Inject(method = \"mobInteract\", at = @At(value = \"INVOKE\", target ="
+				+ " \"Lnet/minecraft/world/entity/animal/sheep/Sheep;shear()V\")) private void sheared(CallbackInfoReturnable<Boolean> cir) { }", null, true, Set.of(),
+				findings, new HashMap<>());
+		PreflightFinding out = findings.stream().filter(f -> f.severity() == Severity.LEFT_OUT).findFirst().orElseThrow();
+		assertEquals("Sheep's mobInteract asks for no shears here: the platform shears it from the shears item, through its shearable extension (NeoForge's"
+				+ " IShearable, Forge's IForgeShearable), which posts its events and drops what its loot says, so Fabricated doesn't put vanilla's check and its"
+				+ " shear call back there (SEAM-6).", out.suggestion(), findings.toString());
+		assertTrue(io.github.cmdralph.fabricated.core.report.KnownLimits.ofFinding("NeoForge", out).endsWith("(SEAM-6)"),
+				String.valueOf(io.github.cmdralph.fabricated.core.report.KnownLimits.ofFinding("NeoForge", out)));
+	}
+
 	@Test
 	void aMixinHookingNoSeamLeavesTheClassAsThePlatformHasIt(@TempDir Path dir) throws Exception {
 		// As Lithium's: a redirect of another call of the resolver's.

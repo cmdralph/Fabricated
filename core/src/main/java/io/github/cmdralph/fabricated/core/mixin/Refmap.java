@@ -15,6 +15,8 @@ public final class Refmap {
 	public static final Refmap EMPTY = new Refmap(Map.of());
 	/** Refmaps of large mods exceed the 1 MiB default; the archive limits still cap the entry itself. */
 	public static final int MAX_LENGTH = 16 << 20;
+	/** The characters of Java's {@code \s}, which Mixin strips from a selector. */
+	private static final String WHITESPACE = " \t\n\u000B\f\r";
 
 	private final Map<String, Map<String, String>> mappings;
 
@@ -38,10 +40,27 @@ public final class Refmap {
 		return new Refmap(mappings);
 	}
 
-	/** Resolves {@code selector} for {@code mixinClass} (internal name), or returns it unchanged. */
+	/**
+	 * Resolves {@code selector} for {@code mixinClass} (internal name), or returns it unchanged. Mixin looks a selector up
+	 * without its whitespace ({@code MemberInfo.parse} strips it before the refmap's {@code remap}), and its annotation
+	 * processor writes the keys so ({@code ReferenceMapper.addMapping}): Modern Industrialization's
+	 * {@code "PackRepository.openAllSelected ()Ljava/util/List;"} is mapped by the key without the space (PRE-31).
+	 */
 	public String resolve(String mixinClass, String selector) {
 		Map<String, String> entries = mappings.get(mixinClass);
 		if (entries == null) return selector;
-		return entries.getOrDefault(selector, selector);
+		String mapped = entries.get(stripped(selector));
+		return mapped != null ? mapped : selector;
+	}
+
+	/**
+	 * The selector without the characters of Java's {@code \s}, as Mixin strips them before it reads the selector or looks
+	 * it up in a refmap (PRE-31); itself where it has none.
+	 */
+	public static String stripped(String selector) {
+		for (int i = 0; i < selector.length(); i++) {
+			if (WHITESPACE.indexOf(selector.charAt(i)) >= 0) return selector.replaceAll("\\s", "");
+		}
+		return selector;
 	}
 }
