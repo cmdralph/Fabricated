@@ -1438,9 +1438,22 @@ rewrite adds to `destroyBlock` (vanilla's calls, `this.level`) or of a constant 
 `false` and `11`) keeps the class as NeoForge has it, as for the stickiness methods below. A Fabric mod's hook picking
 vanilla's one removal by ordinal 0 (at the call or after it) picks it in both the creative and the survival branch,
 where it goes back. Where putting the calls back fails as pre-flight reads the class, the report names the class and
-the error, and the class loads as NeoForge has it. Apoli's
-block-break action stays left out with its harvest hook (SHARE-2), which NeoForge's own harvest check replaces; its
-removal hook applies.
+the error, and the class loads as NeoForge has it.
+
+Vanilla's harvest check, `player.hasCorrectToolForDrops(state)`, which NeoForge 21.1 to 26.3 ask through the block
+state's `canHarvestBlock` in the server's `destroyBlock` and through `EventHooks.doPlayerHarvestCheck` in
+`BlockBehaviour.getDestroyProgress`, is put back there where a Fabric mod's mixin hooks it (SEAM-4: Apoli's harvest
+power, in both places, and with it its block-break action, SHARE-2): in `destroyBlock` for the blocks whose classes keep
+NeoForge's `canHarvestBlock`, in `getDestroyProgress` always. NeoForge's `PlayerEvent.HarvestCheck` follows it with its
+answer, as NeoForge's default posts it, so the event's listeners still decide. A block overriding `canHarvestBlock` is
+checked as NeoForge has it, without the hook. A NeoForge mod's mixin of the `canHarvestBlock` call or its defaults, of
+`EventHooks.doPlayerHarvestCheck` or of its call in `getDestroyProgress` keeps the class as NeoForge has it. NeoForge
+asks the held item's `canAttackBlock` (`canDestroyBlock` from 1.21.11) inside its block break event
+(`CommonHooks.fireBlockBreak`), whose listeners may overrule the answer, where vanilla's `destroyBlock` returns before
+anything else: a Fabric mod's hook of that check in the server's `destroyBlock` (and from 26.1.2 the client's, which
+asks it there too) is left out, a known limit the report names (SEAM-4). NeoForge's `DoorBlock.playerWillDestroy` asks
+NeoForge's own overload, `hasCorrectToolForDrops(state, level, pos)`, which isn't put back: a hook of vanilla's call
+there is left out with pre-flight's usual reason (no Fabric mod in the corpora hooks it).
 
 Putting the methods back moves the resolver's `isStickyBlock` and `canStickTo` calls into them, so where a NeoForge
 mod's mixin hooks those calls, or a place the move shifts in the methods holding them, they aren't put back: the
@@ -1978,6 +1991,14 @@ What else differs on Forge, for Fabric mods in general:
   elsewhere, and is left out where that can't be told and the ordinal is past the locals Mixin can see (PRE-25: Apoli's
   tool check in `ServerPlayerGameMode.destroyBlock` on Forge 47, which had stopped a server with Origins; checked on a
   Forge 47 server with Origins 1.10.2).
+- **A return picked by its ordinal:** Forge's `destroyBlock` returns where the held item's `onBlockStartBreak` says so,
+  before vanilla's last returns. A hook picking one of a method's returns by ordinal, where Forge's patch adds returns,
+  is pointed at the return in the place of vanilla's, as pre-flight reads it against vanilla's code, and the report
+  says so (VANILLA-5: Apoli's block-break action, at vanilla's creative and survival returns). Where Forge's patch
+  adds a return made of the same instructions next to one of vanilla's, pre-flight may take Forge's for vanilla's.
+  Where it merges one of vanilla's returns with another, as Forge 52's `MushroomBlock.canSurvive` returns once where
+  vanilla's returns twice, a hook there would run on both paths: it stays as it is, and the report warns that its
+  return doesn't occur (BetterNether's mushroom hook, on NeoForge 21.1 too).
 - **A local taken by its type where Forge's Mixin keeps others:** Forge's Mixin keeps a local among those it finds at a
   point after the local's scope has ended, where only same frames come between, so a MixinExtras `@Local` taking a local
   by its type finds more than one where the method has one in scope. Pre-flight names the one in scope by its ordinal
@@ -2016,6 +2037,18 @@ What else differs on Forge, for Fabric mods in general:
   after `playerWillDestroy`, as vanilla does, where Forge's default reads it before, and runs `Level.removeBlock`,
   which Forge's default doesn't call: a Forge mod's mixin of `Level.removeBlock`, as of Forge's code there or of a
   constant in `destroyBlock`, keeps the class as Forge has it. Fabric API's block break events fire on both paths.
+- **Harvest checks:** Forge 47 to 66 ask the block state's `canHarvestBlock` in the server's `destroyBlock` and
+  `ForgeHooks.isCorrectToolForDrops` in `BlockBehaviour.getDestroyProgress`, where vanilla asks
+  `player.hasCorrectToolForDrops(state)`. Where a Fabric mod's mixin hooks that call, it is put back for the players
+  whose class keeps `Player.hasCorrectToolForDrops` and, in `destroyBlock`, the blocks whose classes keep
+  `canHarvestBlock`'s default (SEAM-4: Porting Lib's harvestable blocks hook in Create, Apoli's harvest power), under
+  their SRG names on Forge 47. Forge's `Player.hasCorrectToolForDrops` fires Forge's `PlayerEvent.HarvestCheck`, as
+  Forge's default does, inside the call a hook wraps. Forge's default fires the event without asking that method for a
+  block needing no tool, which vanilla's call put back asks: a Forge mod's mixin of `Player.hasCorrectToolForDrops`
+  keeps the class as Forge has it, as does one of Forge's code there. Forge asks the held item's `canAttackBlock`
+  (`canDestroyBlock` from Forge 61) inside its block break event (`ForgeHooks.onBlockBreakEvent`), which a listener may
+  overrule: a hook of vanilla's check in the server's `destroyBlock` is left out, a known limit the report names
+  (Porting Lib's break event hook, and its experience hook with it).
 - **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
   into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't

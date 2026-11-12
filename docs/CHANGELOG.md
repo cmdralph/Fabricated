@@ -3,6 +3,39 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-12: Vanilla's harvest check put back where the platform's code makes it (SEAM-4), returns picked by ordinal read against vanilla's code (VANILLA-5)
+
+- **SEAM-4** (P1), fixed: NeoForge and Forge ask the block state's `canHarvestBlock` in the server's `destroyBlock`, and
+  a hook of theirs in `BlockBehaviour.getDestroyProgress`, where vanilla asks `player.hasCorrectToolForDrops(state)`, so
+  Fabric mods' hooks of that call were left out: Apoli's harvest power (whether a player harvests a block, and how fast
+  they mine it) and with it its block-break action (SHARE-2), and Porting Lib's harvestable blocks in Create. Where a
+  Fabric mod's mixin hooks the call, it now goes back where the platform's own code makes it the same way: in
+  `destroyBlock` for the blocks whose classes keep the platform's `canHarvestBlock`, in `getDestroyProgress` always, and
+  on Forge only for players whose class keeps `Player.hasCorrectToolForDrops`. The platforms' harvest check events still
+  fire and decide: NeoForge's after the call, as its default posts it, Forge's inside it. A block overriding
+  `canHarvestBlock` is checked as the platform has it. A NeoForge or Forge mod's mixin of the platform's code there
+  keeps the class as the platform has it, as for SEAM-3. Hooks of the held item's `canAttackBlock` or `canDestroyBlock`
+  in `destroyBlock` stay left out, a known limit the report names: both platforms ask it inside their block break event,
+  whose listeners may overrule it. The test mod wraps the call in both places and breaks stone, deepslate, andesite
+  (which the platform's event lets it harvest) and a block overriding `canHarvestBlock` with a bare hand
+  (`vanilla-harvest`: NeoForge, every run; Forge, with Fabric API).
+- **VANILLA-5** (P1), fixed: Forge's `destroyBlock` returns where the held item's `onBlockStartBreak` says so, before
+  vanilla's last returns, so Apoli's block-break action, which picks vanilla's creative and survival returns by ordinal,
+  would run on Forge 52, now that SEAM-4 lets it apply, where a restricted player's break is refused and after a
+  creative break, and not after a survival one. A hook picking a return by ordinal, in a method whose patch adds
+  returns, is now pointed at the return in the place of vanilla's, as pre-flight reads it against vanilla's code
+  (VANILLA-1), and the report says so. Where the patch merges one of vanilla's returns with another, the hook would run
+  on both paths, and stays as it was (BetterNether's mushroom hook in `MushroomBlock.canSurvive`).
+- Pre-flight's view of the classes it puts calls back in now reads only the methods it rewrites, and checks the members
+  they name once for all of them: NeoForge 26.1.2's server game mode and `BlockBehaviour` together cost 5.1 MB as first
+  read, where the game mode alone cost 4.0 MB before; the client's game mode 2.8 MB, from 3.9 MB.
+- Verified: core's tests (646), CI's script tests and the inventory; NeoForge 1.21.1, 1.21.11 and 26.1.2 and Forge 47,
+  52 and 66 build; local servers pass every check (NeoForge 1.21.1, 26.1.2; Forge 47, 52, 66), `vanilla-harvest` among
+  them, skipped where Forgified Fabric API's mixin keeps the class; on the advanced corpus servers of NeoForge 1.21.1,
+  Forge 47 and Forge 52, against runs before the change, only the hooks above change, and the checks are as before.
+  Discovery on NeoForge 26.1.2's server with Fabric API allocates 379 to 381 MB, from 376 to 378 MB, most of it the
+  test mod's new hooks: with the test mod as before, 377 to 379 MB.
+
 ## 2026-11-11: Vanilla's block-breaking calls put back for the blocks keeping the platform's default (SEAM-3), shares across mixins (SHARE-2)
 
 - **SEAM-3** (P1), fixed: NeoForge and Forge break a block in `destroyBlock`, the server's and the client's, through the
