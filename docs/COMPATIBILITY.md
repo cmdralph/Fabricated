@@ -1436,7 +1436,9 @@ scarpet event, Apoli's removal hook). A block overriding `onDestroyedByPlayer` b
 hooks. A NeoForge mod's mixin of NeoForge's `removeBlock`, of the `onDestroyedByPlayer` call or default, of what the
 rewrite adds to `destroyBlock` (vanilla's calls, `this.level`) or of a constant there (vanilla's calls bring their
 `false` and `11`) keeps the class as NeoForge has it, as for the stickiness methods below. A Fabric mod's hook picking
-vanilla's one removal by ordinal 0 picks it in both the creative and the survival branch, where it goes back. Apoli's
+vanilla's one removal by ordinal 0 (at the call or after it) picks it in both the creative and the survival branch,
+where it goes back. Where putting the calls back fails as pre-flight reads the class, the report names the class and
+the error, and the class loads as NeoForge has it. Apoli's
 block-break action stays left out with its harvest hook (SHARE-2), which NeoForge's own harvest check replaces; its
 removal hook applies.
 

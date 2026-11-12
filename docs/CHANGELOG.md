@@ -47,6 +47,19 @@ One entry per working session, newest first: what changed, and how it was verifi
   wrapper keeps as tuff); the `@Inject`s pass it with a `@Redirect` of the removal added to the test mod. On the
   advanced corpus servers (NeoForge 1.21.1: 83 passing; Forge 47: 111, as before), Apoli's removal hook applies, its
   break action still left out, and Carpet's piston hook left out by SEAM-2 is no longer also noted as applying.
+- Fixes after those: a mixin left out whole besides pre-flight's own leaving out still had its class recorded for
+  rewriting, and the readers of a namespaced local it sets applying with nothing set. One using a class of an
+  unsupported Fabric API module is now left out before the check, which takes it as skipped; one Mixin rejects whole
+  as it applies (a problem of the whole mixin in a config that isn't required) is taken as left out; and translation
+  tells pre-flight of those it leaves out after the check (those using an interface only a mixin left out adds), and
+  leaves out the readers SHARE-2 then names, until no more go. The ordinal repair covers `@At("INVOKE_ASSIGN")` too.
+  SHARE-2 follows a shared reference on the stack: only a `get` or a `set` with it as the receiver tells its use, and
+  one handed on, or set as another reference's value, may be read and set. A rewrite failing as pre-flight reads the
+  class is named in the report's environment, with what it threw.
+- Verified (those): core's tests (640) and CI's script tests on the three branches, and their inventories; NeoForge
+  1.21.1, 1.21.11 and 26.1.2 and Forge 47, 52 and 66 build; local servers pass every check (NeoForge 1.21.1 server and
+  server-fapi: 174; Forge 47 server-fapi: 123); the NeoForge 1.21.1 advanced corpus server's report and checks are
+  those of the run before (83 passing).
 
 ## 2026-11-11: SEAM-1's decision kept in the cache; Fabric's load conditions decided before other mods' hooks on NeoForge 1.21.1 (COND-1)
 
