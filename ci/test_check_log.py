@@ -141,8 +141,9 @@ class EvaluatorTest(unittest.TestCase):
         self.assertEqual(results, {"joined": "pass", "console": "pass"})
 
     def test_the_client_hold_row_reads_the_test_mods_lines(self):
-        # CI-15: the manifest's row passes on the lines the test mod's ClientHold logs when the client goes with its
-        # server caught up, and on no other: each message of its source, its arguments filled in.
+        # CI-15: the manifest's row passes on the lines the test mod's ClientHold logs as its hold ends (caught up, or
+        # given up after its minute: the checks waiting on the server then decide), not on its start: each message of
+        # its source, its arguments filled in.
         source = HERE.parent / "mc/shared/1.20.1+/src/testmod/java/io/github/cmdralph/fabricated/testmod/ClientHold.java"
         calls = re.findall(r'LOGGER\.info\(((?:\s*\+?\s*"(?:[^"\\]|\\.)*")+)', source.read_text(encoding="utf-8"))
         messages = ["".join(re.findall(r'"((?:[^"\\]|\\.)*)"', call)).replace("{}", "7") for call in calls]
@@ -156,7 +157,7 @@ class EvaluatorTest(unittest.TestCase):
             (self.dir / "run" / "logs" / "latest.log").write_text(message + "\n")
             kind = re.match(r"FABRICATED-TEST client hold(:| not needed| released| gave up)", message).group(1)
             results[kind] = self.run_checks(hold, run="client")[1]["client-hold"]
-        self.assertEqual(results, {" not needed": "pass", ":": "fail", " released": "pass", " gave up": "fail"})
+        self.assertEqual(results, {" not needed": "pass", ":": "fail", " released": "pass", " gave up": "pass"})
 
     def test_the_summary_and_its_report(self):
         summary = self.dir / "checks.json"

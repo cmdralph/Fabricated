@@ -10,9 +10,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   client with Fabric API once missed `frapi-moving-block-outline` with its server 78 ticks behind: a falling block is
   sent to the client as it spawns, its glowing flag only with the server's next tick. The test mod now holds
   mc-runtime-test's tick hook, the extension point its controller class offers, from the tick its count is up until
-  the server has run 100 ticks with the player, 60 seconds at most, and logs what it did, which the new gating
-  `client-hold` check reads. A server that kept up is there first and nothing waits; a check that never logs still
-  fails.
+  the server has run 100 ticks with the player, 60 seconds at most, and logs how the hold ended, which the new gating
+  `client-hold` check reads to tell the hold ran. A server that kept up is there first and nothing waits; a check that
+  never logs still fails, the checks waiting on the server deciding where the hold gave up.
 - Verified: CI's script tests and the mixin inventory; the test mods build for NeoForge 1.21.1, 1.21.11 and 26.1.2.
   No client ran: none can start here (no display or GPU).
 
