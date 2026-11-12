@@ -120,7 +120,7 @@ public class ItemChecksTest {
 		sources.put("com/example/ClientOnly.java", "package com.example; public class ClientOnly { }");
 		if (form.typed) {
 			sources.put("net/minecraft/core/TypedInstance.java", "package net.minecraft.core; public interface TypedInstance<T> { T value();"
-					+ " default boolean is(T type) { com.example.Hook.LOG.add(\"is \" + type); return value() == type; } }");
+					+ " default boolean is(T type) { if (!com.example.Hook.quiet) com.example.Hook.LOG.add(\"is \" + type); return value() == type; } }");
 			sources.put("net/minecraft/world/item/ItemInstance.java", "package net.minecraft.world.item; public interface ItemInstance extends"
 					+ " net.minecraft.core.TypedInstance<Item>, " + ext + ".ItemInstanceExtension { }");
 			sources.put(ext.replace('.', '/') + "/ItemInstanceExtension.java", "package " + ext + "; public interface ItemInstanceExtension {"
@@ -136,7 +136,7 @@ public class ItemChecksTest {
 					+ " return self.$getItem$().canPerformAction(self, action); } }");
 			sources.put("net/minecraft/world/item/ItemStack.java", "package net.minecraft.world.item; public final class ItemStack implements " + ext + "." + stackExt
 					+ " { final Item item; public ItemStack(Item item) { this.item = item; } public Item $getItem$() { return item; }"
-					+ " public boolean isEmpty() { return item == Items.AIR; } public boolean $is$(Item type) { com.example.Hook.LOG.add(\"is \" + type);"
+					+ " public boolean isEmpty() { return item == Items.AIR; } public boolean $is$(Item type) { if (!com.example.Hook.quiet) com.example.Hook.LOG.add(\"is \" + type);"
 					+ " return item == type; } public String toString() { return item.toString(); } }");
 		}
 		String stackType = form.stackParam();
@@ -158,7 +158,15 @@ public class ItemChecksTest {
 		sources.put("com/example/Blunt.java", "package com.example; public class Blunt extends net.minecraft.world.item.ShearsItem { public Blunt() { super(\"blunt\"); }"
 				+ " @Override public boolean canPerformAction(" + stackType + " stack, " + action + " action) { Hook.LOG.add(\"blunt asked \" + action); return false; } }");
 		sources.put("com/example/Hook.java", "package com.example; public class Hook { public static final java.util.List<String> LOG = new java.util.ArrayList<>();"
-				+ " public static boolean answer = true; public static boolean answer(boolean vanilla) { LOG.add(\"answered \" + vanilla); return answer; } }");
+				+ " public static boolean answer = true, quiet;"
+				+ " public static boolean answer(boolean vanilla) { LOG.add(\"answered \" + vanilla); return answer; } }");
+		// Checks made many times over, as the game makes them, for the allocation test.
+		sources.put("com/example/Loop.java", "package com.example; import net.minecraft.world.item.ItemStack; public class Loop {"
+				+ " public static int harvest(net.minecraft.world.level.block.BeehiveBlock block, ItemStack stack, int times) { int n = 0;"
+				+ " for (int i = 0; i < times; i++) if (block.$useItemOn$(stack, false).length() == 9) n++; return n; }"
+				+ " public static int draw(net.minecraft.client.renderer.entity.layers.ElytraLayer<net.minecraft.world.entity.LivingEntity> layer,"
+				+ " net.minecraft.world.entity.LivingEntity entity, ItemStack stack, int times) { for (int i = 0; i < times; i++) layer.$render$(entity, stack);"
+				+ " return times; } }");
 		sources.put(PLAYER + ".java", "package net.minecraft.world.entity.player; import net.minecraft.world.item.ItemStack; public class Player {"
 				+ " public ItemStack useItem, main, off; public Player(ItemStack main, ItemStack off) { this.main = main; this.off = off; this.useItem = main; }"
 				+ " public ItemStack getMainHandItem() { return main; } public ItemStack getOffhandItem() { return off; }"
@@ -457,6 +465,35 @@ public class ItemChecksTest {
 		((Map<?, ?>) field.get(null)).forEach((type, overrides) -> known.put(((Class<?>) type).getName(), (Boolean) overrides));
 		assertEquals(Map.of(STACK.replace('/', '.'), false, "net.minecraft.world.item.Item", false, "net.minecraft.world.item.ShearsItem", true,
 				"net.minecraft.world.item.FishingRodItem", true, "net.minecraft.world.item.ShieldItem", true, "com.example.Multitool", true, "com.example.Blunt", true), known);
+	}
+
+	/**
+	 * A check of a stack, or of a layer, whose classes were asked of before makes nothing: the answers kept are read first,
+	 * the lookup's arrays made only for a class asked of the first time. The checks run every tick (a fishing hook's) and
+	 * every frame (the elytra layer's).
+	 */
+	@Test
+	void aCheckOfClassesAskedBeforeMakesNothing(@TempDir Path dir) throws Exception {
+		ClassLoader loader = loader(restored(platform(dir, Form.NEOFORGE, false), Form.NEOFORGE, BEEHIVE, LAYER));
+		loader.loadClass("com.example.Hook").getField("quiet").set(null, true);
+		Class<?> loop = loader.loadClass("com.example.Loop"), stackClass = loader.loadClass(STACK.replace('/', '.'));
+		Class<?> layerClass = loader.loadClass(LAYER.replace('/', '.')), living = loader.loadClass("net.minecraft.world.entity.LivingEntity");
+		Object block = loader.loadClass(BEEHIVE.replace('/', '.')).getConstructor().newInstance();
+		Object layer = layerClass.getConstructor().newInstance(), entity = living.getConstructor().newInstance();
+		java.lang.reflect.Method harvest = loop.getMethod("harvest", block.getClass(), stackClass, int.class);
+		java.lang.reflect.Method draw = loop.getMethod("draw", layerClass, living, stackClass, int.class);
+		com.sun.management.ThreadMXBean threads = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+		long thread = Thread.currentThread().threadId();
+		for (String hand : List.of("STICK", "SHEARS")) {
+			Object stack = stack(loader, hand);
+			for (boolean measured : List.of(false, true)) {
+				long before = threads.getThreadAllocatedBytes(thread);
+				harvest.invoke(null, block, stack, 100_000);
+				draw.invoke(null, layer, entity, stack, 100_000);
+				long made = threads.getThreadAllocatedBytes(thread) - before;
+				if (measured) assertTrue(made < 4096, hand + ": 200,000 checks made " + made + " bytes");
+			}
+		}
 	}
 
 	/** Translation reads classes in parallel: every class put back at once is the same, for each platform's form. */

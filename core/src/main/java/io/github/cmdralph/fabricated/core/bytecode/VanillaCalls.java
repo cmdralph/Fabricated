@@ -973,9 +973,8 @@ final class VanillaCalls {
 		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, extension.entry(), extension.entryDesc(), null, null);
 		InsnList code = method.instructions;
 		known(code, owner, extension.field(), holder.type());
-		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, holder.helper(), holder.helperDesc(), false));
+		askedFirst(code, owner, holder.type(), objectAndHolder(owner, holder), ASKED_BOTH);
+		code.add(objectAndHolder(owner, holder));
 		code.add(new LdcInsnNode(Type.getObjectType(extension.stateInterface())));
 		code.add(new LdcInsnNode(Type.getObjectType(extension.blockInterface())));
 		code.add(new LdcInsnNode(extension.name()));
@@ -984,8 +983,40 @@ final class VanillaCalls {
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$keeps", KEEPS, false));
 		code.add(new InsnNode(Opcodes.IRETURN));
 		method.maxStack = 12;
-		method.maxLocals = 1;
+		method.maxLocals = 2;
 		return method;
+	}
+
+	/** Pushes the entry's object and its holder ({@code state.getBlock()}, {@code stack.getItem()}). */
+	private static InsnList objectAndHolder(String owner, Holder holder) {
+		InsnList code = new InsnList();
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, holder.helper(), holder.helperDesc(), false));
+		return code;
+	}
+
+	private static final String ASKED_ONE = "(Ljava/util/Map;Ljava/lang/Object;)I";
+	private static final String ASKED_BOTH = "(Ljava/util/Map;Ljava/lang/Object;Ljava/lang/Object;)I";
+
+	/**
+	 * After {@link #known}, the store on the stack: the answer kept for the classes of the objects {@code objects} pushes,
+	 * where each was asked of before ({@link KeepsDefault#asked}), returned with nothing made; else the store again, kept in
+	 * local 1, for the lookup's code after.
+	 */
+	private static void askedFirst(InsnList code, String owner, String param, InsnList objects, String askedDesc) {
+		LabelNode ask = new LabelNode();
+		code.add(new InsnNode(Opcodes.DUP));
+		code.add(new VarInsnNode(Opcodes.ASTORE, 1));
+		code.add(objects);
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$asked", askedDesc, false));
+		code.add(new InsnNode(Opcodes.DUP));
+		code.add(new JumpInsnNode(Opcodes.IFLT, ask));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		code.add(ask);
+		code.add(new FrameNode(Opcodes.F_NEW, 2, new Object[] {param, "java/util/Map"}, 1, new Object[] {Opcodes.INTEGER}));
+		code.add(new InsnNode(Opcodes.POP));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 1));
 	}
 
 	/**
@@ -996,6 +1027,7 @@ final class VanillaCalls {
 		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KEEPS_LAYER, "(Ljava/lang/Object;)Z", null, null);
 		InsnList code = method.instructions;
 		known(code, owner, KNOWN_LAYER, "java/lang/Object");
+		askedFirst(code, owner, "java/lang/Object", parameter(), ASKED_ONE);
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		code.add(new LdcInsnNode(Type.getObjectType(base)));
 		code.add(new LdcInsnNode(shouldRender.name()));
@@ -1003,7 +1035,7 @@ final class VanillaCalls {
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$keepsMethod", KEEPS_METHOD, false));
 		code.add(new InsnNode(Opcodes.IRETURN));
 		method.maxStack = 9;
-		method.maxLocals = 1;
+		method.maxLocals = 2;
 		return method;
 	}
 
@@ -1015,6 +1047,7 @@ final class VanillaCalls {
 		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KEEPS_PLAYER, "(" + PLAYER + ")Z", null, null);
 		InsnList code = method.instructions;
 		known(code, owner, KNOWN_PLAYER, PLAYER_CLASS);
+		askedFirst(code, owner, PLAYER_CLASS, parameter(), ASKED_ONE);
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		code.add(new LdcInsnNode(Type.getObjectType(PLAYER_CLASS)));
 		code.add(new LdcInsnNode(HAS_CORRECT_TOOL.name(srg)));
@@ -1022,8 +1055,14 @@ final class VanillaCalls {
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$keepsMethod", KEEPS_METHOD, false));
 		code.add(new InsnNode(Opcodes.IRETURN));
 		method.maxStack = 9;
-		method.maxLocals = 1;
+		method.maxLocals = 2;
 		return method;
+	}
+
+	private static InsnList parameter() {
+		InsnList code = new InsnList();
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		return code;
 	}
 
 	/** Pushes the class's store of answers in {@code field}, made the first time; the method's one parameter is of {@code param}. */
@@ -1085,7 +1124,7 @@ final class VanillaCalls {
 
 	/**
 	 * {@link KeepsDefault}'s methods, as javac wrote them, made the class's own private helpers: {@code fabricated$keeps},
-	 * {@code fabricated$keepsMethod}, {@code fabricated$overrides} and {@code fabricated$declares}, their calls of each other
+	 * {@code fabricated$keepsMethod}, {@code fabricated$asked}, {@code fabricated$overrides} and {@code fabricated$declares}, their calls of each other
 	 * the class's. They name only the JDK's classes. Read afresh for each class: a tree shared between threads isn't safe to
 	 * copy (ASM's {@code MethodNode.accept} resets and sets its labels' state as it goes), and translation reads classes in
 	 * parallel.
