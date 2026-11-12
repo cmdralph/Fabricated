@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-12: Vanilla's harvest check put back where the platform's code makes it (SEAM-4), returns picked by ordinal read against vanilla's code (VANILLA-5)
+## 2026-11-12: Vanilla's harvest check put back where the platform's code makes it (SEAM-4), returns picked by ordinal read against vanilla's code (VANILLA-5), native mixins read through their refmaps (SEAM-5)
 
 - **SEAM-4** (P1), fixed: NeoForge and Forge ask the block state's `canHarvestBlock` in the server's `destroyBlock`, and
   a hook of theirs in `BlockBehaviour.getDestroyProgress`, where vanilla asks `player.hasCorrectToolForDrops(state)`, so
@@ -26,6 +26,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   returns, is now pointed at the return in the place of vanilla's, as pre-flight reads it against vanilla's code
   (VANILLA-1), and the report says so. Where the patch merges one of vanilla's returns with another, the hook would run
   on both paths, and stays as it was (BetterNether's mushroom hook in `MushroomBlock.canSurvive`).
+- **SEAM-5** (P2), fixed: on Forge 47, whose mods name the game's methods by Mojang's names that their refmaps map to
+  SRG's, a Forge mod's mixin of a method of `PistonStructureResolver`, the server's game mode or `BlockBehaviour` kept
+  the class as Forge has it, whatever it hooked, as the seam conflict check read its strings as written. It now reads
+  them as the mixin's refmap maps them, as Mixin does, the refmap read only for a mixin that may concern such a class.
 - Pre-flight's view of the classes it puts calls back in now reads only the methods it rewrites, and checks the members
   they name once for all of them: NeoForge 26.1.2's server game mode and `BlockBehaviour` together cost 5.1 MB as first
   read, where the game mode alone cost 4.0 MB before; the client's game mode 2.8 MB, from 3.9 MB.

@@ -277,6 +277,11 @@ public class VanillaCallsTest {
 		return sources(Form.FORGE, server(Form.FORGE), client(Form.FORGE, "level"));
 	}
 
+	/** Forge 47's game classes, under SRG's names, as the fixtures have them. */
+	public static Map<String, String> forge47Sources() {
+		return sources(Form.FORGE_47, server(Form.FORGE_47), client(Form.FORGE_47, "level"));
+	}
+
 	private static Map<String, byte[]> platform(Path dir, Form form) throws Exception {
 		return TestSources.compileWithLocals(dir, sources(form, server(form), client(form, "level")));
 	}

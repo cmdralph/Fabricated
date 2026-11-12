@@ -129,6 +129,12 @@ class SeamConflictsTest {
 	/** As {@link #breaking(Path, Map, String, String)}, for the game's class {@code gameClass}. */
 	private static SeamConflicts.Conflict conflict(Path dir, Map<String, String> gameSources, String nativeMembers, String nativeTarget, String gameClass)
 			throws Exception {
+		return conflict(dir, gameSources, nativeMembers, nativeTarget, gameClass, null);
+	}
+
+	/** As {@link #conflict(Path, Map, String, String, String)}, the mixin's config naming {@code refmap} (null for none). */
+	private static SeamConflicts.Conflict conflict(Path dir, Map<String, String> gameSources, String nativeMembers, String nativeTarget, String gameClass,
+			InstalledClasses.RefmapFile refmap) throws Exception {
 		Map<String, String> sources = new HashMap<>(gameSources);
 		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value();"
 				+ " String target() default \"\"; }");
@@ -146,7 +152,8 @@ class SeamConflictsTest {
 		Map<String, byte[]> classes = new HashMap<>(TestSources.compile(dir, TestSources.MIXIN_ANNOTATIONS, sources));
 		ClassBytesSource game = classes::get;
 		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("breaker", classes::containsKey, classes::get,
-				() -> List.of("com/moon/NativeBreak"))));
+				() -> new InstalledClasses.Listing(List.of("com/moon/NativeBreak"), List.of(), refmap == null ? Map.of() : Map.of("com/moon/NativeBreak", refmap)),
+				false, null)));
 		return SeamConflicts.find(game.readNode(gameClass, 0), installed);
 	}
 
@@ -219,6 +226,51 @@ class SeamConflictsTest {
 		assertEquals(expected, breaking(dir.resolve("bypassed"), head.formatted("removeBlock*"), gameMode));
 		assertEquals(expected, breaking(dir.resolve("bypassed-desc"), described.formatted("removeBlock"), gameMode));
 		assertEquals(expected, breaking(dir.resolve("unknown"), head.formatted("m_9280_*"), gameMode));
+	}
+
+	/**
+	 * Forge 47's mods name the game's methods by Mojang's names, which their refmaps map to the SRG names the game runs
+	 * with: a native mixin's strings are read as its config's refmap maps them. One selecting the server's destroyBlock
+	 * at its start lets the calls be put back; one at vanilla's call the rewrite adds there, by the name its refmap maps,
+	 * keeps the class; one whose refmap fails to read too, unread.
+	 */
+	@Test
+	void aNativeMixinsStringsAreReadThroughItsRefmap(@TempDir Path dir) throws Exception {
+		Map<String, String> forge47 = VanillaCallsTest.forge47Sources();
+		String gameMode = "net.minecraft.server.level.ServerPlayerGameMode";
+		String internal = "net/minecraft/server/level/ServerPlayerGameMode";
+		SeamConflicts.Conflict expected = new SeamConflicts.Conflict("breaker", "com/moon/NativeBreak", true);
+		String head = " @Inject(method = \"destroyBlock\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		// As written, Forge 47's class has no destroyBlock: what the mixin hooks can't be told.
+		assertEquals(expected, conflict(dir.resolve("unmapped"), forge47, head, gameMode, internal));
+		assertNull(conflict(dir.resolve("mapped"), forge47, head, gameMode, internal, refmap(Map.of("destroyBlock", "m_9280_(Lnet/minecraft/core/BlockPos;)Z"))));
+		String target = "Lnet/minecraft/server/level/ServerPlayer;hasCorrectToolForDrops(Lnet/minecraft/world/level/block/state/BlockState;)Z";
+		String call = " @Inject(method = \"destroyBlock\", at = @At(value = \"INVOKE\", target = \"" + target + "\")) private void call(CallbackInfo ci) { }";
+		assertEquals(expected, conflict(dir.resolve("call"), forge47, call, gameMode, internal, refmap(Map.of("destroyBlock", "m_9280_(Lnet/minecraft/core/BlockPos;)Z",
+				target, target.replace("hasCorrectToolForDrops", "m_36298_")))));
+		// Forge's Player: another of its methods, by the name its refmap maps, leaves the class to be put back; its harvest check doesn't.
+		String player = "net.minecraft.world.entity.player.Player";
+		String tick = " @Inject(method = \"tick\", at = @At(\"HEAD\")) private void tick(CallbackInfo ci) { }";
+		assertNull(conflict(dir.resolve("player-tick"), forge47, tick, player, internal, refmap(Map.of("tick", "m_8119_()V"))));
+		String check = " @Inject(method = \"hasCorrectToolForDrops\", at = @At(\"HEAD\")) private void check(CallbackInfo ci) { }";
+		assertEquals(expected, conflict(dir.resolve("player-check"), forge47, check, player, internal,
+				refmap(Map.of("hasCorrectToolForDrops", "m_36298_(Lnet/minecraft/world/level/block/state/BlockState;)Z"))));
+		InstalledClasses.RefmapFile failing = new InstalledClasses.RefmapFile("breaker.refmap.json", path -> {
+			throw new IOException("EIO");
+		});
+		assertEquals(new SeamConflicts.Conflict("breaker", "com/moon/NativeBreak", false), conflict(dir.resolve("failing"), forge47, head, gameMode, internal, failing));
+		// A refmap the jar hasn't, or that doesn't parse, maps nothing, as Mixin then reads the strings as they are.
+		assertEquals(expected, conflict(dir.resolve("absent"), forge47, head, gameMode, internal, new InstalledClasses.RefmapFile("breaker.refmap.json", path -> null)));
+		assertEquals(expected, conflict(dir.resolve("broken"), forge47, head, gameMode, internal, new InstalledClasses.RefmapFile("breaker.refmap.json",
+				path -> "{\"mappings\": {".getBytes(StandardCharsets.UTF_8))));
+	}
+
+	/** A refmap mapping NativeBreak's strings as {@code mappings} says. */
+	private static InstalledClasses.RefmapFile refmap(Map<String, String> mappings) {
+		StringBuilder json = new StringBuilder("{\"mappings\": {\"com.moon.NativeBreak\": {");
+		mappings.forEach((from, to) -> json.append(json.charAt(json.length() - 1) == '{' ? "" : ", ").append('"').append(from).append("\": \"").append(to).append('"'));
+		String text = json.append("}}, \"data\": {}}").toString();
+		return new InstalledClasses.RefmapFile("breaker.refmap.json", path -> path.equals("breaker.refmap.json") ? text.getBytes(StandardCharsets.UTF_8) : null);
 	}
 
 	@Test

@@ -35,12 +35,13 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * Read from the mixins the installed native mods' configs list ({@link InstalledClasses#nativeMixins}), their annotations
  * only. A mixin into the class conflicts where any of its injectors (Mixin's and MixinExtras', expressions among them):
  * names a moved call in any string of its annotations, or uses a wildcard target; selects methods by a pattern of names
- * (Mixin's {@code *} alone, a regex) or a name pre-flight can't find in the class (a development name a refmap maps,
- * say), whatever it hooks there, a name with a quantifier ({@code tick*}) or a descriptor annotation ({@code @Desc})
- * selecting that name's methods; or selects a method holding moved calls with a point the move may shift (any but the method's start
+ * (Mixin's {@code *} alone, a regex) or a name pre-flight can't find in the class, whatever it hooks there, a name with
+ * a quantifier ({@code tick*}) or a descriptor annotation ({@code @Desc}) selecting that name's methods; or selects a method holding moved calls with a point the move may shift (any but the method's start
  * and returns, a call, a field access, a construction or a constant, or one shifted by instructions); or where it
- * overwrites a method holding moved calls. A mixin that can't be read conflicts too: pre-flight can't tell what it
- * hooks.
+ * overwrites a method holding moved calls. Its annotations' strings are read as its config's refmap maps them, as
+ * Mixin reads them (Forge 47's mods name the game's methods by Mojang's names, which their refmaps map to the SRG names
+ * the game runs with), and as written. A mixin that can't be read, or whose refmap fails to read, conflicts too:
+ * pre-flight can't tell what it hooks.
  * <p>
  * Where vanilla's calls are put back for the blocks keeping an extension's default (SEAM-3), a mixin conflicts too where
  * any of its injectors selects a method no longer reached for those blocks (the platform's private {@code removeBlock}),
@@ -155,9 +156,17 @@ public final class SeamConflicts {
 			} catch (RuntimeException e) {
 				return new Found(new Conflict(listed.owner(), listed.mixin(), false), true);
 			}
+			// What its annotations' strings are read as: through its config's refmap, Forge 47's mods' development names
+			// the game's SRG names.
+			Map<String, String> mapped;
+			try {
+				mapped = listed.refmap() == null ? Map.of() : listed.refmap().of(listed.mixin());
+			} catch (IOException | RuntimeException e) {
+				return kept(rewrite, new Conflict(listed.owner(), listed.mixin(), false), false);
+			}
 			List<String> targets = InstalledClasses.mixinTargets(mixin);
-			if (targets.contains(internal) && hooks(mixin, platformClass.get(), rewrite.get())
-					|| rewrite.get().others().entrySet().stream().anyMatch(d -> targets.contains(d.getKey()) && hooksMethod(mixin, d.getValue()))) {
+			if (targets.contains(internal) && hooks(mixin, platformClass.get(), rewrite.get(), mapped)
+					|| rewrite.get().others().entrySet().stream().anyMatch(d -> targets.contains(d.getKey()) && hooksMethod(mixin, d.getValue(), mapped))) {
 				return new Found(new Conflict(listed.owner(), listed.mixin(), true), true);
 			}
 		}
@@ -306,16 +315,19 @@ public final class SeamConflicts {
 				+ e.getValue().mixin() + (e.getValue().readable() ? "" : " unread")).collect(Collectors.joining(", ", "seams kept: ", ""));
 	}
 
-	/** Whether the mixin, which targets {@code target}, hooks what the rewrite moves or shifts. */
-	private static boolean hooks(ClassNode mixin, ClassNode target, VanillaSeams.Rewrite rewrite) {
+	/**
+	 * Whether the mixin, which targets {@code target}, hooks what the rewrite moves or shifts; {@code mapped}, what its
+	 * refmap reads its annotations' strings as.
+	 */
+	private static boolean hooks(ClassNode mixin, ClassNode target, VanillaSeams.Rewrite rewrite, Map<String, String> mapped) {
 		for (MethodNode method : mixin.methods) {
 			for (AnnotationNode ann : annotations(method)) {
 				if (ann.desc.equals(OVERWRITE) && (rewrite.holders().contains(method.name + method.desc) || rewrite.bypassed().contains(method.name + method.desc))) return true;
 				if (INJECTORS.stream().noneMatch(ann.desc::startsWith)) continue;
-				if (names(ann, rewrite.movedCalls())) return true;
-				Selected selected = selected(ann, target, rewrite);
+				if (names(ann, rewrite.movedCalls(), mapped)) return true;
+				Selected selected = selected(ann, target, rewrite, mapped);
 				if (selected == Selected.UNKNOWN || selected == Selected.BYPASSED || selected == Selected.HOLDER && shiftable(ann)) return true;
-				if (selected == Selected.HOLDER && names(ann, rewrite.added())) return true;
+				if (selected == Selected.HOLDER && names(ann, rewrite.added(), mapped)) return true;
 				if (selected == Selected.HOLDER && rewrite.constants() && (ann.desc.equals(MODIFY_CONSTANT) || points(ann, "CONSTANT"))) return true;
 			}
 		}
@@ -326,12 +338,12 @@ public final class SeamConflicts {
 	 * Whether the mixin, which targets a class whose method of one of the {@code names} is called otherwise (an extension's
 	 * default, bypassed; Forge's {@code Level.removeBlock}, newly called), hooks it.
 	 */
-	private static boolean hooksMethod(ClassNode mixin, Set<String> names) {
+	private static boolean hooksMethod(ClassNode mixin, Set<String> names, Map<String, String> mapped) {
 		for (MethodNode method : mixin.methods) {
 			for (AnnotationNode ann : annotations(method)) {
 				if (ann.desc.equals(OVERWRITE) && names.contains(method.name)) return true;
 				if (INJECTORS.stream().noneMatch(ann.desc::startsWith) || ann.desc.startsWith("Lcom/llamalad7/mixinextras/expression/")) continue;
-				for (Selector selector : selectors(ann)) {
+				for (Selector selector : selectors(ann, mapped)) {
 					if (selector == null || names.contains(selector.name())) return true;
 				}
 			}
@@ -347,19 +359,25 @@ public final class SeamConflicts {
 	}
 
 	/**
-	 * Whether a string among the annotation's values names one of the members ({@code owner;name(desc)} or
-	 * {@code owner;name:desc}), or is a wildcard target of an {@code @At}.
+	 * Whether a string among the annotation's values, as written or as its refmap reads it ({@code mapped}), names one of
+	 * the members ({@code owner;name(desc)} or {@code owner;name:desc}), or is a wildcard target of an {@code @At}.
 	 */
-	private static boolean names(Object value, Set<String> members) {
+	private static boolean names(Object value, Set<String> members, Map<String, String> mapped) {
 		if (value instanceof AnnotationNode ann) {
 			for (int i = 0; ann.values != null && i + 1 < ann.values.size(); i += 2) {
-				if (names(ann.values.get(i + 1), members)) return true;
+				if (names(ann.values.get(i + 1), members, mapped)) return true;
 				if (ann.desc.equals(AT) && "target".equals(ann.values.get(i)) && ann.values.get(i + 1) instanceof String target && fuzzy(target)) return true;
 			}
 			return false;
 		}
-		if (value instanceof List<?> list) return list.stream().anyMatch(v -> names(v, members));
+		if (value instanceof List<?> list) return list.stream().anyMatch(v -> names(v, members, mapped));
 		if (!(value instanceof String text)) return false;
+		String read = mapped.get(text);
+		return namesMember(text, members) || read != null && namesMember(read, members);
+	}
+
+	/** Whether the string names one of the members ({@link #names}). */
+	private static boolean namesMember(String text, Set<String> members) {
 		for (String moved : members) {
 			String member = moved.substring(moved.indexOf(';') + 1);
 			int end = member.indexOf('(') >= 0 ? member.indexOf('(') : member.indexOf(':');
@@ -384,10 +402,10 @@ public final class SeamConflicts {
 	 * can't be told by a wildcard, a name the class doesn't have or a descriptor annotation ({@code target}). An injector
 	 * selecting none (MixinExtras' {@code @Definition}, whose {@code method} names a member it matches) selects nothing.
 	 */
-	private static Selected selected(AnnotationNode ann, ClassNode target, VanillaSeams.Rewrite rewrite) {
+	private static Selected selected(AnnotationNode ann, ClassNode target, VanillaSeams.Rewrite rewrite, Map<String, String> mapped) {
 		if (ann.desc.startsWith("Lcom/llamalad7/mixinextras/expression/")) return Selected.OTHER;
 		Selected selected = Selected.OTHER;
-		for (Selector selector : selectors(ann)) {
+		for (Selector selector : selectors(ann, mapped)) {
 			Selected one = selector == null ? Selected.UNKNOWN : selects(selector, target, rewrite);
 			if (one == Selected.UNKNOWN || one == Selected.BYPASSED) return one;
 			if (one == Selected.HOLDER) selected = one;
@@ -448,14 +466,15 @@ public final class SeamConflicts {
 	}
 
 	/**
-	 * The methods an injector selects, by its {@code method} strings and its {@code target} descriptor annotations
-	 * ({@code @Desc}), each null where it picks them by a pattern of names or can't be read.
+	 * The methods an injector selects, by its {@code method} strings, as its refmap reads them ({@code mapped}), and its
+	 * {@code target} descriptor annotations ({@code @Desc}), each null where it picks them by a pattern of names or can't
+	 * be read.
 	 */
-	private static List<Selector> selectors(AnnotationNode ann) {
+	private static List<Selector> selectors(AnnotationNode ann, Map<String, String> mapped) {
 		List<Selector> selectors = new ArrayList<>();
 		Object methods = value(ann, "method");
 		for (Object o : methods instanceof List<?> list ? list : methods instanceof String one ? List.of(one) : List.of()) {
-			selectors.add(o instanceof String selector ? selector(selector) : null);
+			selectors.add(o instanceof String selector ? selector(mapped.getOrDefault(selector, selector)) : null);
 		}
 		if (value(ann, "target") instanceof List<?> descs) {
 			// @Desc's value is the method's name; its arguments, which narrow it, are left aside: any method of the name.

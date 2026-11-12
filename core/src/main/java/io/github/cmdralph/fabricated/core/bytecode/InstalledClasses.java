@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.bytecode;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -21,6 +22,8 @@ import org.objectweb.asm.tree.MethodNode;
 
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
+import io.github.cmdralph.fabricated.core.json.Json;
+import io.github.cmdralph.fabricated.core.json.JsonException;
 
 /**
  * The classes of the jars installed next to a Fabric mod (NeoForge mods, Fabricated's own Fabric API, and on 26.x the
@@ -72,23 +75,109 @@ public final class InstalledClasses implements ClassBytesSource {
 	 * them, not a file the jar hasn't or one that doesn't parse, which are as the platform finds them): where any did,
 	 * what they list is unknown.
 	 *
-	 * @param mixins the mixin classes, by internal name, in order
-	 * @param unread the paths of the files that failed to read: a mods.toml, a manifest, a mixin config
+	 * @param mixins  the mixin classes, by internal name, in order
+	 * @param unread  the paths of the files that failed to read: a mods.toml, a manifest, a mixin config
+	 * @param refmaps the refmap the config listing a mixin names, by the mixin's internal name: those of mixins whose
+	 *                config names one
 	 */
-	public record Listing(List<String> mixins, List<String> unread) {
+	public record Listing(List<String> mixins, List<String> unread, Map<String, RefmapFile> refmaps) {
 		/** None, every file read. */
 		public static final Listing NONE = new Listing(List.of(), List.of());
 
 		public Listing {
 			mixins = List.copyOf(mixins);
 			unread = List.copyOf(unread);
+			refmaps = Map.copyOf(refmaps);
+		}
+
+		/** Mixins whose configs name no refmap. */
+		public Listing(List<String> mixins, List<String> unread) {
+			this(mixins, unread, Map.of());
 		}
 
 		/** This, with {@code path} among the files that failed to read. */
 		public Listing withUnread(String path) {
 			List<String> all = new ArrayList<>(unread);
 			all.add(path);
-			return new Listing(mixins, all);
+			return new Listing(mixins, all, refmaps);
+		}
+	}
+
+	/** A jar's files, by path: a file's bytes, or null where the jar has none. */
+	@FunctionalInterface
+	public interface JarFiles {
+		byte[] read(String path) throws IOException;
+	}
+
+	/**
+	 * A refmap a jar's mixin config names, read the first time a mixin it maps is asked of: by mixin class, what Mixin
+	 * reads each string of its annotations as, a method's development name (Forge 47's mods are built with Mojang's)
+	 * the game's (SRG's). Two are the same where they are the same file of the jar.
+	 */
+	public static final class RefmapFile {
+		/** Refmaps of large mods exceed 1 MiB; the archive limits still cap the entry. */
+		private static final int MAX_LENGTH = 16 << 20;
+
+		private final String path;
+		private final JarFiles files;
+		private volatile Map<String, Map<String, String>> mappings;
+
+		public RefmapFile(String path, JarFiles files) {
+			this.path = path;
+			this.files = files;
+		}
+
+		public String path() {
+			return path;
+		}
+
+		/**
+		 * What the refmap maps the mixin's (internal name) strings to, as Mixin reads its {@code mappings}: empty where
+		 * it maps none of them, the jar hasn't the file or it doesn't parse, as Mixin then reads them as they are.
+		 *
+		 * @throws IOException where the file failed to read, which the next launch may not
+		 */
+		public Map<String, String> of(String mixin) throws IOException {
+			Map<String, Map<String, String>> read = mappings;
+			if (read == null) {
+				read = read(files.read(path));
+				mappings = read;
+			}
+			return read.getOrDefault(mixin, Map.of());
+		}
+
+		private static Map<String, Map<String, String>> read(byte[] data) {
+			if (data == null || data.length > MAX_LENGTH) return Map.of();
+			try {
+				if (!(Json.parseObject(new String(data, StandardCharsets.UTF_8), MAX_LENGTH).get("mappings") instanceof Map<?, ?> classes)) return Map.of();
+				Map<String, Map<String, String>> mappings = new HashMap<>();
+				for (Map.Entry<?, ?> c : classes.entrySet()) {
+					if (!(c.getValue() instanceof Map<?, ?> entries)) continue;
+					Map<String, String> mapped = new HashMap<>();
+					for (Map.Entry<?, ?> e : entries.entrySet()) {
+						if (e.getValue() instanceof String to) mapped.put(String.valueOf(e.getKey()), to);
+					}
+					mappings.put(String.valueOf(c.getKey()).replace('.', '/'), Map.copyOf(mapped));
+				}
+				return Map.copyOf(mappings);
+			} catch (JsonException | RuntimeException e) {
+				return Map.of();
+			}
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			return o instanceof RefmapFile other && other.path.equals(path);
+		}
+
+		@Override
+		public int hashCode() {
+			return path.hashCode();
+		}
+
+		@Override
+		public String toString() {
+			return "RefmapFile[" + path + "]";
 		}
 	}
 
@@ -116,8 +205,13 @@ public final class InstalledClasses implements ClassBytesSource {
 	 * A mixin class a jar's configs list, with the name of the mod the jar belongs to.
 	 *
 	 * @param classes the jar's classes, to read the mixin from
+	 * @param refmap  the refmap its config names; null where it names none
 	 */
-	public record ListedMixin(String owner, String mixin, ClassBytesSource classes) {
+	public record ListedMixin(String owner, String mixin, ClassBytesSource classes, RefmapFile refmap) {
+		/** One whose config names no refmap. */
+		public ListedMixin(String owner, String mixin, ClassBytesSource classes) {
+			this(owner, mixin, classes, null);
+		}
 	}
 
 	private static final String MIXIN = "Lorg/spongepowered/asm/mixin/Mixin;";
@@ -221,7 +315,7 @@ public final class InstalledClasses implements ClassBytesSource {
 		for (Jar jar : jars) {
 			if (jar.fabric()) continue;
 			Listing listing = jar.listing().get();
-			for (String mixin : listing.mixins()) mixins.add(new ListedMixin(jar.owner(), mixin, jar.classes()));
+			for (String mixin : listing.mixins()) mixins.add(new ListedMixin(jar.owner(), mixin, jar.classes(), listing.refmaps().get(mixin)));
 			for (String path : listing.unread()) unread.add(new UnreadList(jar.owner(), path));
 		}
 		return new NativeListing(List.copyOf(mixins), List.copyOf(unread));

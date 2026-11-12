@@ -2026,8 +2026,8 @@ What else differs on Forge, for Fabric mods in general:
   vanilla's order. Where a Forge mod's mixin hooks the resolver's `isStickyBlock` or `canStickTo` calls, or a place
   putting the methods back would shift, they aren't put back, and the Fabric mods' hooks of them find nothing, as on
   NeoForge with Moonlight's NeoForge build (its Forge builds not read). On Forge 47 a Forge mod's mixin names the
-  resolver's methods by the development names its refmap maps, which pre-flight doesn't read, so any Forge mod's mixin of
-  the resolver naming one of its methods keeps them from being put back.
+  game's methods by the development names its refmap maps to SRG's, and pre-flight reads them as the refmap maps them,
+  as Mixin does, for every class seams are put back in (SEAM-5); one whose refmap fails to read keeps the class.
 - **Block breaking hooks:** Forge 47 to 66's `destroyBlock`, the server's and the client's, breaks a block through the
   block state's `onDestroyedByPlayer`, whose default calls `playerWillDestroy` and sets the fluid's block, where vanilla
   calls `removeBlock` and `destroy` (server) or `playerWillDestroy` and `setBlock` (client) itself. Where a Fabric mod's
