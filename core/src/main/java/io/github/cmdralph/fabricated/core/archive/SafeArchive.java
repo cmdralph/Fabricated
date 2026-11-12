@@ -3,9 +3,11 @@ package io.github.cmdralph.fabricated.core.archive;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +27,8 @@ import java.util.zip.ZipFile;
  * <p>The underlying file is opened read-only and never modified.
  */
 public final class SafeArchive implements Closeable {
+	/** What {@link #copy} reads at a time. */
+	private static final int COPY_BUFFER = 64 << 10;
 
 	private final Path path;
 	private final ArchiveLimits limits;
@@ -196,20 +200,84 @@ public final class SafeArchive implements Closeable {
 		long limit = Math.min(limits.maxEntryBytes(), limits.maxTotalUncompressedBytes() - totalRead);
 		long budget = entry.getSize() >= 0 ? Math.min(entry.getSize(), limit) : limit;
 		try (InputStream in = zip.getInputStream(entry)) {
-			// Reading one byte past the budget detects oversized entries whatever their headers claim; the trailing
-			// read() also rejects entries too large for a Java array when the budget is above that.
-			byte[] data = in.readNBytes((int) Math.min(budget + 1, Integer.MAX_VALUE - 8));
-			if (data.length > budget || in.read() >= 0) {
-				throw new ArchiveException("Entry '" + name + "' " + (budget < limit ? "holds more bytes than its header declares"
-						: "exceeds the decompression limit"));
+			byte[] data;
+			if (budget == entry.getSize() && presized(entry)) {
+				// Into one array of the size it declares: readNBytes reads into buffers of its own, then copies them.
+				data = new byte[(int) budget];
+				int read = in.readNBytes(data, 0, data.length);
+				if (read < data.length) data = Arrays.copyOf(data, read);
+			} else {
+				// Reading one byte past the budget detects oversized entries whatever their headers claim; the trailing
+				// read() also rejects entries too large for a Java array when the budget is above that.
+				data = in.readNBytes((int) Math.min(budget + 1, Integer.MAX_VALUE - 8));
 			}
+			if (data.length > budget || in.read() >= 0) throw oversized(name, budget, limit);
 			totalRead += data.length;
 			return data;
 		} catch (ArchiveException e) {
 			throw e;
 		} catch (IOException e) {
-			throw new ArchiveException("Failed to read entry '" + name + "': " + e.getMessage(), e);
+			throw failed(name, e);
 		}
+	}
+
+	/**
+	 * Copies an entry to {@code out} with the limits {@link #read} enforces, without holding it in memory: for an entry
+	 * only written elsewhere (a server bundler's game jar, extracted to the cache). On a failure, what was copied before
+	 * it is the caller's to discard.
+	 *
+	 * @return whether the entry exists (a directory doesn't count)
+	 * @throws ArchiveException where reading the entry fails or exceeds the limits
+	 * @throws IOException      where writing to {@code out} fails, as {@code out} threw it
+	 */
+	public synchronized boolean copy(String name, OutputStream out) throws IOException {
+		ZipEntry entry = entries.get(name);
+		if (entry == null || entry.isDirectory()) return false;
+		long limit = Math.min(limits.maxEntryBytes(), limits.maxTotalUncompressedBytes() - totalRead);
+		long budget = entry.getSize() >= 0 ? Math.min(entry.getSize(), limit) : limit;
+		long copied = 0;
+		byte[] buffer = new byte[COPY_BUFFER];
+		InputStream opened;
+		try {
+			opened = zip.getInputStream(entry);
+		} catch (IOException e) {
+			throw failed(name, e);
+		}
+		try (InputStream in = opened) {
+			for (int n; (n = readSome(in, buffer, name)) > 0; copied += n) {
+				if (n > budget - copied) throw oversized(name, budget, limit);
+				out.write(buffer, 0, n);
+			}
+		}
+		totalRead += copied;
+		return true;
+	}
+
+	private static int readSome(InputStream in, byte[] buffer, String name) throws ArchiveException {
+		try {
+			return in.read(buffer);
+		} catch (IOException e) {
+			throw failed(name, e);
+		}
+	}
+
+	private static ArchiveException failed(String name, IOException e) {
+		return new ArchiveException("Failed to read entry '" + name + "': " + e.getMessage(), e);
+	}
+
+	/**
+	 * Whether {@link #read} may make the array for an entry from the size it declares, before reading it: only a small
+	 * one ({@link ArchiveLimits#RATIO_CHECK_THRESHOLD}), as a header declaring more than the entry holds then costs at
+	 * most that. Both sizes in an archive's headers are its author's to write: a compressed size bounds nothing the
+	 * archive's own length doesn't, so a larger entry is read into buffers as it arrives, costing what it holds.
+	 */
+	private static boolean presized(ZipEntry entry) {
+		return entry.getSize() <= ArchiveLimits.RATIO_CHECK_THRESHOLD;
+	}
+
+	private static ArchiveException oversized(String name, long budget, long limit) {
+		return new ArchiveException("Entry '" + name + "' " + (budget < limit ? "holds more bytes than its header declares"
+				: "exceeds the decompression limit"));
 	}
 
 	/** Reads an entry as UTF-8 text, or returns {@code null} if absent. */

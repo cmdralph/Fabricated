@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.core.translate;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
 import org.objectweb.asm.ClassReader;
@@ -9,6 +8,8 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+
+import io.github.cmdralph.fabricated.core.bytecode.ClassFiles;
 
 /**
  * Points the lookups a Fabric mod's code makes as from an unnamed module, where Fabric runs mods, at Fabricated's
@@ -41,9 +42,8 @@ final class ResourceLookups {
 
 	/** {@code classFile} with those calls pointed at Fabricated's helpers, or null when it makes none. */
 	static byte[] apply(byte[] classFile) {
-		String text = new String(classFile, StandardCharsets.ISO_8859_1);
-		boolean resources = text.contains("getResource") && text.contains("java/lang/Class");
-		boolean bundles = text.contains("getBundle") && text.contains("ResourceBundle$Control");
+		boolean resources = ClassFiles.contains(classFile, "getResource") && ClassFiles.contains(classFile, "java/lang/Class");
+		boolean bundles = ClassFiles.contains(classFile, "getBundle") && ClassFiles.contains(classFile, "ResourceBundle$Control");
 		if (!resources && !bundles) return null;
 		boolean[] changed = {false};
 		ClassReader reader = new ClassReader(classFile);

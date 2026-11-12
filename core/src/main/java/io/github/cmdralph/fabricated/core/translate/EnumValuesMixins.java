@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.core.translate;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -35,6 +34,7 @@ import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
+import io.github.cmdralph.fabricated.core.bytecode.ClassFiles;
 
 /**
  * Turns a Fabric enum mixin into one of NeoForge's extensible enums that its enum extension file can't carry (ENUM-5:
@@ -346,7 +346,7 @@ final class EnumValuesMixins {
 	 * {@code holder}'s fields instead; null when it has none.
 	 */
 	static byte[] withHeldConstants(byte[] data, String target, Collection<String> constants, String holder) {
-		if (!new String(data, StandardCharsets.ISO_8859_1).contains(target)) return null;
+		if (!ClassFiles.contains(data, target)) return null;
 		String enumDesc = "L" + target + ";";
 		ClassNode node = new ClassNode();
 		new ClassReader(data).accept(node, 0);
