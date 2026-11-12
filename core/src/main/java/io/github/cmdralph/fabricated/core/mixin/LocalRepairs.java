@@ -337,6 +337,64 @@ final class LocalRepairs extends PreflightPart {
 	}
 
 	/**
+	 * Names by its slot the local a {@code @ModifyVariable} at an {@code INVOKE_ASSIGN} modifies, the one the call's result
+	 * is stored in, where it picks it by its type alone (no ordinal, slot or name) and the running Mixin keeps locals of
+	 * that type at the point once their scope has ended (PRE-30, as PRE-26 for an {@code @Local},
+	 * {@link MixinPreflight#keptLocalTypes}): Porting Lib's friction hook modifies the friction vanilla's
+	 * {@code LivingEntity.travel} stores from {@code Block.getFriction()}, the one float in scope there; where Fabricated
+	 * puts that call back on Forge 47 (SEAM-8), Forge 47's Mixin also keeps the float of the elytra branch before it, and a
+	 * Forge 47 server with Create stopped ("Found 2 candidate variables"). Mixin's point is the instruction after the store,
+	 * where it must keep the stored local of that type; the slot must be the same at every instruction the point picks,
+	 * within its slice (Porting Lib's, from the call of {@code getBlockPosBelowThatAffectsMyMovement}). Only for an
+	 * injector with one unshifted {@code @At}. Returns a description of the change.
+	 */
+	List<String> keptVariableRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!keepsLocalsPastScope || !injector.desc.equals(MixinNames.MODIFY_VARIABLE)
+				|| Boolean.TRUE.equals(Annotations.value(injector, "argsOnly")) || Annotations.value(injector, "name") != null
+				|| Annotations.value(injector, "index") != null || Annotations.value(injector, "ordinal") != null) return List.of();
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.size() != 1) return List.of();
+		AnnotationNode at = ats.get(0);
+		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		if (!point.equals("INVOKE_ASSIGN") || !(Annotations.value(at, "target") instanceof String raw) || Annotations.value(at, "shift") != null
+				|| Annotations.value(at, "by") != null) return List.of();
+		Type type = Type.getReturnType(handler.desc);
+		if (MemberRef.parse(ctx.resolve(raw)).fuzzy() || type.getSort() == Type.VOID) return List.of();
+		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
+		int pointOrdinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		int opcode = Annotations.value(at, "opcode") instanceof Integer o ? o : -1;
+		AnnotationNode slice = InjectionPoints.sliceFor(at, Annotations.list(Annotations.value(injector, "slice")));
+		String desc = type.getDescriptor();
+		int slot = -1;
+		int most = 0;
+		for (MethodNode m : methods) {
+			MethodNode framed = classes.withFrames(target.name, m);
+			if (framed == null || framed.localVariables == null || framed.localVariables.isEmpty()) return List.of();
+			List<Integer> positions = InjectionPoints.indexes(point, ctx.resolve(raw), pointOrdinal, opcode,
+					slice == null ? InjectionPoints.Range.ALL : InjectionPoints.sliceRange(slice, framed, ctx), framed);
+			if (positions == null) return List.of();
+			for (int p : positions) {
+				// Mixin's point: the instruction after the call, or after the store just after it.
+				AbstractInsnNode next = framed.instructions.get(p).getNext();
+				if (!(next instanceof VarInsnNode store) || store.getOpcode() != type.getOpcode(Opcodes.ISTORE) || store.getNext() == null) return List.of();
+				String[] kept = MixinPreflight.keptLocalTypes(framed, target.name, framed.instructions.indexOf(store.getNext()));
+				if (!desc.equals(kept[store.var]) || slot >= 0 && slot != store.var) return List.of();
+				slot = store.var;
+				int candidates = 0;
+				for (int s = (framed.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1; s < kept.length; s++) {
+					if (desc.equals(kept[s]) || s != store.var && MixinPreflight.UNTOLD.equals(kept[s])) candidates++;
+				}
+				most = Math.max(most, candidates);
+			}
+		}
+		if (slot < 0 || most < 2) return List.of();
+		Annotations.put(injector, "index", slot);
+		return List.of("the local of type " + type.getClassName() + " the call's result is stored in, by its type, of which " + loader + "'s Mixin finds more"
+				+ " than one in " + methods.get(0).name + " in " + target.name.replace('/', '.') + " there, keeping those whose scope ended before; the"
+				+ " injector takes it by its slot, " + slot);
+	}
+
+	/**
 	 * Gives a {@code @ModifyVariable} picking its local by an ordinal among those of its type ({@code ordinal}, no name or
 	 * slot) the ordinal vanilla's local has in this game build's code, where the platform's patch declares one of the type
 	 * before or after it (PRE-25: Apoli's {@code modifyEffectiveTool} modifies vanilla's second boolean in scope at the

@@ -3,6 +3,47 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-12: Vanilla's calls of a block state or a stack put back where the platform asks an extension of it (SEAM-8)
+
+- **SEAM-8** (P1), fixed: where vanilla asks a block state or a stack itself, NeoForge and Forge ask an extension of it
+  taking more, whose default leads back to vanilla's code: the block's friction (`getFriction(level, pos, entity)`) in
+  the movement of living entities, items, experience orbs, boats and flying mobs; the state's sound type
+  (`getSoundType(level, pos, entity)`) in a block's placing, an entity's step and fall sounds, a horse's steps, a
+  sniffer's digging and, on the client, a block's hit and break sounds; the piglin's check of gold (1.20.1, 1.21.1) or
+  safe armour (`makesPiglinsNeutral`); the sweep attack's box (`getSweepHitBox`); and on NeoForge an item's enchantment
+  level (`getEnchantmentLevel`, whose default posts NeoForge's level event). Fabric mods' hooks of vanilla's calls found
+  nothing there and were left out: FrozenLib's friction API (Wilder Wild's), Artifacts' snowshoes, Spell Engine's and
+  Porting Lib's friction hooks, Wilder Wild's snowlogged placing sound, BetterNether's piglin-neutral armour, Pehkui's
+  scaled sweep attacks and Apoli's enchantment level power. Where a Fabric mod's mixin hooks such a call, vanilla's code
+  now goes back for the objects whose classes keep the platform's defaults, which make that code, the platform's level
+  event following vanilla's enchantment level as its default posts it; a block or item overriding the extension (a
+  NeoForge or Forge mod's) is asked as the platform has it, without the hook. Forge's sound type default asks the block
+  where vanilla asks the state, so there a state class declaring vanilla's `getSoundType` again keeps the platform's
+  call; 1.21.1's piglin defaults compare the material with gold's by identity where vanilla asks `Holder.is`, so the
+  check goes back only where the two agree (every material but gold's under another holder). A call's result stored at
+  once is stored in both branches, so Porting Lib's `INVOKE_ASSIGN` hooks of vanilla's friction find it. A class names
+  neither platform's extension there (NeoForge's `FlyingMob`): the check finds it as it runs. A NeoForge or Forge mod's
+  mixin of the platform's code there, or of the extensions' defaults, keeps the class as the platform has it. A hook of
+  vanilla's friction in `Leashable.angularFriction` (1.21.11 on), an interface's method, stays out, a known limit the
+  report names; NeoForge 21.11 on makes the sweep's box in `attack` for an overload of its own, which isn't put back. The
+  test mod wraps vanilla's friction in an item's movement and slides an item over stone, packed ice and a block of the
+  platform's kind overriding the extension (`vanilla-friction`: every server run beside Forgified Fabric API's, on both
+  platforms); Forge 65 and 66 slow an item on the ground by the air drag once more than vanilla, which the check reads
+  from stone. Beside Forgified Fabric API on NeoForge 1.21.1 and Forge 47 `LivingEntity` keeps the platform's calls: its
+  entity events mixin there lists a method name the class doesn't have, which the seam conflict check can't tell from
+  what moves.
+- **PRE-30** (P0), fixed: with vanilla's friction back in `LivingEntity.travel`, Porting Lib's friction hook, a
+  `@ModifyVariable` at its `INVOKE_ASSIGN` taking the float by its type, stopped the Forge 47 corpus server ("Found 2
+  candidate variables"): Forge 47's Mixin keeps the elytra branch's float there past its scope, through same frames, as
+  PRE-26 found for an `@Local`. Where the running Mixin is SpongePowered's, such a hook now takes the stored local by its
+  slot, and SEAM-8's put-backs name that local from vanilla's store on, as from the platform's.
+- Pre-flight's view reads a class whose put-backs are all SEAM-8's (`LivingEntity`, `Entity`, `BlockItem`...) by the
+  rows' methods alone and writes it with its other methods copied as they are; a class naming no row's call by its
+  descriptor (NeoForge 26.x's `Entity`) isn't parsed; the rewrite's states share their unchanged locals and stack.
+- Verified: core's tests, CI's script tests and the inventory; the rewrite of every class concerned, read in NeoForge
+  21.1.265's, 21.11.45's and 26.1.2.116's and Forge 47.4.28's (under SRG's names), 52.1.21's, 61.2.4's, 64.1.5's,
+  65.1.5's and 66.1.0's classes, passes ASM's analyzer and the JVM's verifier.
+
 ## 2026-11-12: Vanilla's item checks put back where the platform asks the stack's actions (SEAM-6), a default bridge no longer taken for an override (SEAM-7)
 
 - **SEAM-6** (P1), fixed: NeoForge and Forge ask the stack's `canPerformAction` of an action where vanilla asks

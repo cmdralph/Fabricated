@@ -5,8 +5,8 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * Whether a block keeps the platform's default of an extension method, for the calls SEAM-3 and SEAM-4 put back
- * ({@link VanillaCalls}), and whether an object's class keeps a vanilla class's method (SEAM-4: Forge's
+ * Whether a block keeps the platform's default of an extension method, for the calls SEAM-3, SEAM-4, SEAM-6 and SEAM-8
+ * put back ({@link VanillaCalls}), and whether an object's class keeps a vanilla class's method (SEAM-4: Forge's
  * {@code Player.hasCorrectToolForDrops}). Its methods are copied into the game class put back in, as private helpers, so
  * they name only the JDK's classes. Each class of the object, its superclasses below the one whose method it asks of and
  * the interfaces they implement that extend the extension's interface are asked whether they declare the method
@@ -36,6 +36,55 @@ final class KeepsDefault {
 		} catch (RuntimeException | LinkageError e) {
 			return false;
 		}
+	}
+
+	/**
+	 * {@link #keepsDefault}, and the state's class keeps {@code base}'s {@code baseName} too: where the platform's default
+	 * asks the block for what vanilla's call asks the state (Forge's sound type: vanilla's {@code state.getSoundType()},
+	 * Forge's {@code block.getSoundType(state)}), a state class declaring vanilla's method again answers otherwise (SEAM-8).
+	 * The state's class keeps one answer for both.
+	 */
+	static boolean keepsDefaultAndMethod(Map<Class<?>, Boolean> known, Object state, Object block, Class<?> stateExtension, Class<?> blockExtension,
+			String name, Class<?>[] stateParams, Class<?>[] blockParams, Class<?> base, String baseName, Class<?>[] baseParams) {
+		try {
+			return !overridesEither(known, state.getClass(), stateExtension, name, stateParams, base, baseName, baseParams)
+					&& !overrides(known, block.getClass(), blockExtension, name, blockParams);
+		} catch (RuntimeException | LinkageError e) {
+			return false;
+		}
+	}
+
+	/**
+	 * The extension's interface, by NeoForge's name or, where its loader has none, Forge's: where the game class can't
+	 * tell its platform (SEAM-8: NeoForge's FlyingMob names nothing of NeoForge's), as {@code from}'s loader finds it. Null
+	 * where it finds neither, which the checks then take for an override: the platform's call is made.
+	 */
+	static Class<?> type(Class<?> from, String neoForge, String forge) {
+		ClassLoader loader = from.getClassLoader();
+		try {
+			return Class.forName(neoForge, false, loader);
+		} catch (ClassNotFoundException | LinkageError e) {
+			try {
+				return Class.forName(forge, false, loader);
+			} catch (ClassNotFoundException | LinkageError e2) {
+				return null;
+			}
+		}
+	}
+
+	/** {@link #overrides}, where the class declares either method over its own type; true where it can't tell. */
+	static boolean overridesEither(Map<Class<?>, Boolean> known, Class<?> type, Class<?> extension, String name, Class<?>[] params, Class<?> base,
+			String baseName, Class<?>[] baseParams) {
+		Boolean answer = known.get(type);
+		if (answer == null) {
+			try {
+				answer = declaresOver(type, extension, name, params) || declaresOver(type, base, baseName, baseParams);
+			} catch (RuntimeException | LinkageError e) {
+				answer = true;
+			}
+			known.put(type, answer);
+		}
+		return answer;
 	}
 
 	/** Whether the object's class keeps {@code base}'s method: no class between them declares it again. */

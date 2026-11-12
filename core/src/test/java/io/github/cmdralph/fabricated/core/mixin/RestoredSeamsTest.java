@@ -386,6 +386,32 @@ class RestoredSeamsTest {
 	}
 
 	/**
+	 * SEAM-8: a wrapper of vanilla's friction in a living entity's travel, as FrozenLib's, Artifacts' and Spell Engine's,
+	 * applies, and the class is rewritten for it, on NeoForge and on Forge 47 under SRG's names, its note saying how: the
+	 * block state's call, the same on both platforms, as the note names it.
+	 */
+	@Test
+	void aWrapperOfVanillasFrictionPutBackHasTheClassRewritten(@TempDir Path dir) throws Exception {
+		for (boolean forge47 : List.of(false, true)) {
+			Map<String, String> game = new HashMap<>(forge47 ? io.github.cmdralph.fabricated.core.bytecode.ExtensionCallsTest.forge47Sources()
+					: io.github.cmdralph.fabricated.core.bytecode.ExtensionCallsTest.neoForgeSources());
+			game.put("net/minecraft/server/level/ServerLevel.java", "package net.minecraft.server.level; public class ServerLevel { }");
+			String method = forge47 ? "m_7023_" : "travel", friction = (forge47 ? "m_49958_" : "getFriction") + "()F";
+			String wrap = " @WrapOperation(method = \"" + method + "\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/world/level/block/Block;" + friction + "\"))"
+					+ " private float friction(net.minecraft.world.level.block.Block block, Operation<Float> original) { return original.call(block); }";
+			List<PreflightFinding> findings = new java.util.ArrayList<>();
+			MixinPreflight preflight = checked(dir.resolve("friction-" + forge47), game, "net.minecraft.world.entity.LivingEntity", wrap, null, true, Set.of(), findings,
+					new HashMap<>());
+			assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), findings.toString());
+			assertEquals(Set.of("net/minecraft/world/entity/LivingEntity"), preflight.restoredSeams());
+			assertTrue(findings.stream().anyMatch(f -> f.message().equals("@WrapOperation friction hooks Block." + friction + " in " + method + ", vanilla's call"
+					+ " NeoForge's LivingEntity makes through the block state's getFriction(level, pos, entity) instead; Fabricated puts it back there for the blocks"
+					+ " keeping that method's default, so the hook applies to them, and a block overriding it is asked as the platform has it, without the hook"
+					+ " (SEAM-8)")), findings.toString());
+		}
+	}
+
+	/**
 	 * SEAM-6: a hook of vanilla's shears check in a mob's mobInteract, where the platform shears it from the shears item, and
 	 * one of vanilla's map check in the held item renderer, where the platform asks whether the item is a MapItem, stay out,
 	 * their hints saying why, which the known limits read.

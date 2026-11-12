@@ -281,6 +281,20 @@ Candidates, each waiting for a mod or a report that needs it:
   item is a `MapItem` or a `CrossbowItem`, which other mods' items are too: hooks of vanilla's check there stay left out
   (a known limit: Apoli's held item transforms, Porting Lib's maps in item frames). The client rows (the fishing line's
   hand, the elytra layer) are checked by unit tests only, not in game.
+- Extensions' calls, what SEAM-8 leaves: vanilla's friction, sound type, piglin, sweep and enchantment level calls are
+  put back where the platform asks an extension of the state or the stack, for the objects keeping its defaults; one
+  overriding the extension (a native mod's block or item) is asked as the platform has it, without Fabric mods' hooks.
+  `Leashable.angularFriction` (1.21.11 on) is an interface's method, which can't keep the answers of a block's class:
+  hooks of vanilla's friction there stay left out (a known limit); a helper class holding the answers could take them.
+  From 1.21.11 NeoForge's `attack` makes the sweep's box for an overload of its own and doesn't call vanilla's
+  `doSweepAttack`, whose hooks apply and never run, with no report line. The platforms' own methods making these calls
+  (Forge 47's enchantment loop, the entity's combination and muffled step sounds and the block item's place sound,
+  which take positions, Forge 66's `ClientLevel.playBreakingSound`) and Forge 52 on's camel step check, which asks the
+  sound type where vanilla asks a tag, aren't vanilla's calls and aren't put back; no Fabric mod in the corpora hooks
+  vanilla's there. Beside Forgified Fabric API (NeoForge 21.1, Forge 47) `LivingEntity` keeps the platform's calls:
+  its entity events mixin lists a method name the class doesn't have beside one it has, which the seam conflict check
+  counts as what can't be told; judging such a list by the names the class has would put it back. The client rows
+  (the hit and break sounds) are checked by unit tests only.
 - A locals capture Mixin skips at each of its points is left out with the injectors keeping state with it (SEAM-2);
   rewriting it into MixinExtras `@Local`s, each the local vanilla's order has there, would keep Carpet's chains and
   chests sticking along a push on NeoForge 21.1 to 26.1.2 and Forge 47. It needs the platform's locals matched to

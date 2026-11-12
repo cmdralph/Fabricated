@@ -65,6 +65,13 @@ public final class KnownLimits {
 							+ " asks whether the (?:held|framed) item is a MapItem", Pattern.DOTALL),
 					"NeoForge and Forge ask whether the item is a map (or crossbow) item there, which other mods' items are too, so hooks of vanilla's"
 							+ " check of the vanilla item can't apply there (SEAM-6)"),
+			// A hook of vanilla's friction in Leashable's angularFriction (1.21.11 on), an interface's method, which can't keep the
+			// answers the put-back's check needs: pre-flight's hint says so.
+			new Limit(Set.of("NeoForge", "Forge"), null,
+					Pattern.compile("expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;getFriction\\(\\)F.*Leashable is an interface",
+							Pattern.DOTALL),
+					"NeoForge and Forge ask the block state's friction extension in Leashable's angularFriction, an interface's method, where Fabricated"
+							+ " can't put vanilla's call back, so hooks of vanilla's friction there can't apply (SEAM-8)"),
 			// ForgeRegistry.add, whose maps key a value by its equality: two objects, by their identity hashes, not one object
 			// under two names.
 			new Limit(Set.of(), IllegalArgumentException.class.getName(),

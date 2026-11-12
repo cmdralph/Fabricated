@@ -71,7 +71,7 @@ public final class FabricClassTransforms {
 	 * Strips the other side's members, adds injected interfaces, removes {@code final} from the methods Fabric mods
 	 * override where only the platform's build declares it (FINAL-2; the platform's own access transformers have run by
 	 * then), makes instance handlers of another mod's mixin's static handlers (CORPUS-87) and puts back vanilla's methods
-	 * the platform took out (SEAM-1) and its calls (SEAM-3, SEAM-4, SEAM-6); whether the class changed.
+	 * the platform took out (SEAM-1) and its calls (SEAM-3, SEAM-4, SEAM-6, SEAM-8); whether the class changed.
 	 */
 	public static boolean beforeMixin(FabricatedState state, ClassNode node, BiConsumer<String, String> audit) {
 		boolean changed = false;

@@ -2698,6 +2698,109 @@ class MixinPreflightTest {
 		assertTrue(preflight.apply(full, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
 	}
 
+	/**
+	 * A method storing a float in each branch: the first's scope ends at the second branch, whose frame is of the type
+	 * given, and the second is stored from {@code friction()}, as vanilla's {@code LivingEntity.travel} stores the block's
+	 * friction after its elytra branch.
+	 */
+	private static byte[] travelLike(int frameType) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "travel", "()V", null, null);
+		mv.visitCode();
+		Label start = new Label();
+		Label flying = new Label();
+		Label ground = new Label();
+		Label friction = new Label();
+		Label end = new Label();
+		mv.visitLabel(start);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "flying", "()Z", false);
+		mv.visitJumpInsn(Opcodes.IFEQ, ground);
+		mv.visitInsn(Opcodes.FCONST_1);
+		mv.visitVarInsn(Opcodes.FSTORE, 1);
+		mv.visitLabel(flying);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.FLOAD, 1);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "move", "(F)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitLabel(ground);
+		mv.visitFrame(frameType, frameType == Opcodes.F_SAME ? 0 : 1, frameType == Opcodes.F_SAME ? null : new Object[] {TARGET}, 0, null);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "friction", "()F", false);
+		mv.visitVarInsn(Opcodes.FSTORE, 2);
+		mv.visitLabel(friction);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.FLOAD, 2);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "move", "(F)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitLabel(end);
+		mv.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		mv.visitLocalVariable("f", "F", null, flying, ground, 1);
+		mv.visitLocalVariable("friction", "F", null, friction, end, 2);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * Porting Lib's friction hook: a {@code @ModifyVariable} at the {@code INVOKE_ASSIGN} of {@code friction()F}, the float by
+	 * its type, in a slice from the {@code flying()Z} call.
+	 */
+	private static byte[] slipperiness() {
+		return mixin("com/example/mixin/Slipperiness", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "setSlipperiness", "(F)F", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/ModifyVariable;", true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "travel");
+			methods.visitEnd();
+			AnnotationVisitor slice = ann.visitAnnotation("slice", "Lorg/spongepowered/asm/mixin/injection/Slice;");
+			AnnotationVisitor from = slice.visitAnnotation("from", AT);
+			from.visit("value", "INVOKE");
+			from.visit("target", "L" + TARGET + ";flying()Z");
+			from.visitEnd();
+			slice.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE_ASSIGN");
+			at.visit("target", "L" + TARGET + ";friction()F");
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.FLOAD, 1);
+			mv.visitInsn(Opcodes.FRETURN);
+			mv.visitMaxs(1, 2);
+			mv.visitEnd();
+		});
+	}
+
+	@Test
+	void aVariableAnAssignmentStoresIsNamedByItsSlotWhereForgesMixinKeepsLocalsPastTheirScope() throws Exception {
+		// PRE-30: Porting Lib's friction hook modifies the float LivingEntity.travel stores from Block.getFriction(), by its
+		// type, the one float in scope there. Where Fabricated puts that call back on Forge 47 (SEAM-8), Forge 47's Mixin keeps
+		// the elytra branch's float there too, and the Forge 47 server with Create stopped ("Found 2 candidate variables").
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Slipperiness"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Slipperiness", slipperiness());
+		BiFunction<byte[], Boolean, MixinPreflight> preflight = (target, keeps) -> new MixinPreflight(new ClassIndex(Map.of(TARGET, target)::get),
+				InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge", false,
+				MixinPreflight.ConstructorInjects.RETURNS_ONLY, false, true, false, true, false, false, true, keeps);
+		// Fabric's Mixin finds the one float: nothing changes.
+		assertTrue(preflight.apply(travelLike(Opcodes.F_SAME), false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		// Through a same frame Forge's Mixin keeps the first float, and past a full one it may look it up again: either way
+		// the injector takes the stored float by its slot.
+		for (int frame : new int[] {Opcodes.F_SAME, Opcodes.F_FULL}) {
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = preflight.apply(travelLike(frame), true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+			assertTrue(notes.stream().anyMatch(n -> n.message().contains("@ModifyVariable setSlipperiness modifies the local of type float the call's result is"
+					+ " stored in, by its type, of which Forge's Mixin finds more than one in travel in net.minecraft.world.Thing there, keeping those whose"
+					+ " scope ended before; the injector takes it by its slot, 2")), notes.toString());
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired.get("com/example/mixin/Slipperiness.class")).accept(node, 0);
+			MethodNode handler = node.methods.stream().filter(m -> m.name.equals("setSlipperiness")).findFirst().orElseThrow();
+			assertEquals(2, Annotations.value(Annotations.find(handler, "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;"), "index"));
+		}
+	}
+
 	@Test
 	void aMixinWhoseFieldInitialisersBranchOrStoreArrayElementsHasTheirValuesComputedByMethodsWhereForgesMixinRefusesThem(@TempDir Path dir)
 			throws Exception {
