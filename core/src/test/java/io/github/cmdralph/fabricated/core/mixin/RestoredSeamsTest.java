@@ -219,6 +219,14 @@ class RestoredSeamsTest {
 		Map<String, byte[]> allowing = new HashMap<>();
 		breaking(dir.resolve("allow"), wrap.replace("ordinal = 0))", "ordinal = 0), allow = 1)"), once, allowing);
 		assertEquals(0, ordinal(allowing.get("com/example/mixin/Breaking")));
+
+		// An @Inject after the call, at INVOKE_ASSIGN, the same.
+		List<PreflightFinding> assigned = new java.util.ArrayList<>();
+		Map<String, byte[]> after = new HashMap<>();
+		breaking(dir.resolve("assign"), " @Inject(method = \"destroyBlock\", at = @At(value = \"INVOKE_ASSIGN\", target = \"Lnet/minecraft/server/level/ServerLevel;"
+				+ "removeBlock(Lnet/minecraft/core/BlockPos;Z)Z\", ordinal = 0)) private void removed(BlockPos pos, CallbackInfoReturnable<Boolean> cir) { }", assigned, after);
+		assertTrue(assigned.stream().anyMatch(f -> f.severity() == Severity.INFO && f.message().startsWith("@Inject removed picks the call")), assigned.toString());
+		assertEquals(null, ordinal(after.get("com/example/mixin/Breaking")));
 	}
 
 	/** The ordinal of the first {@code @At} of the class's first method annotated with one, or null. */
