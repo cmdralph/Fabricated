@@ -142,6 +142,15 @@ public final class VanillaSeams {
 	}
 
 	/**
+	 * Why the class's platform never calls its vanilla method {@code method(desc)}, which it keeps, so a hook applying there
+	 * never runs, as pre-flight's note of it says it (SEAM-8: NeoForge 21.11 on makes the sweep attack's box in
+	 * {@code Player.attack} for an overload of {@code doSweepAttack} of its own); null for any other.
+	 */
+	public static String methodNeverCalled(ClassNode target, String method, String desc) {
+		return VanillaCalls.neverCalled(target, method, desc);
+	}
+
+	/**
 	 * In how many places of the method, as read, vanilla's call {@code owner;name(desc)} is put back (SEAM-3, SEAM-4, SEAM-6, SEAM-8): each
 	 * of the platform's calls it stands in for, where vanilla's code makes it once; 0 where it isn't.
 	 */

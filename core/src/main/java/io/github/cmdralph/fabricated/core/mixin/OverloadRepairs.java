@@ -1167,7 +1167,7 @@ final class OverloadRepairs extends PreflightPart {
 		int opcode = Annotations.value(at, "opcode") instanceof Integer o ? o : -1;
 		for (int i = 0; i < method.instructions.size(); i++) {
 			AbstractInsnNode insn = method.instructions.get(i);
-			if ((opcode < 0 || insn.getOpcode() == opcode) && InjectionPoints.matchesInsn(point, ref, insn)) positions.add(i);
+			if (InjectionPoints.hasOpcode(point, opcode, insn) && InjectionPoints.matchesInsn(point, ref, insn)) positions.add(i);
 		}
 		int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
 		if (ordinal >= 0) return ordinal < positions.size() ? List.of(positions.get(ordinal)) : null;

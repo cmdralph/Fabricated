@@ -1072,7 +1072,7 @@ final class VanillaCalls {
 	/**
 	 * The entries of the method's local variable table a store starts: of its slot, from a label between it and the next
 	 * instruction. Mixin finds the local a point after vanilla's store modifies by the table there (SpongePowered's Mixin
-	 * on Forge, which keeps locals once their scope has ended, too: PRE-26), so vanilla's store starts the same local.
+	 * on Forge, which keeps locals once their scope has ended, too: PRE-26, PRE-33), so vanilla's store starts the same local.
 	 */
 	private static List<LocalVariableNode> startedBy(MethodNode method, VarInsnNode store) {
 		if (method.localVariables == null) {
@@ -1965,11 +1965,11 @@ final class VanillaCalls {
 	 * ask the held item's {@code canAttackBlock} (1.21.11 on: the stack's {@code canDestroyBlock}) inside their block break
 	 * event's hook, which pre-cancels the event where the item says no and lets a listener overrule it, where vanilla returns
 	 * before anything else; NeoForge 26.1.2 to 26.3's client too (SEAM-4). NeoForge and Forge 47 to 64 make a sheep's, a
-	 * snow golem's, a bogged's and (NeoForge 21.1, Forge) a mooshroom's {@code mobInteract} ask for no shears: the shears
-	 * item shears a mob through their shearable extension, which posts their events and drops what their loot says. The
-	 * client's held item renderer (NeoForge 21.1 to 26.1.2's, and Forge's crossbow) and item frame renderer ask whether
-	 * the item is a {@code MapItem} or a {@code CrossbowItem}, which other mods' items are too, where vanilla asks whether
-	 * it is the vanilla item (SEAM-6).
+	 * snow golem's, a bogged's and (NeoForge 21.1, Forge) a mooshroom's {@code mobInteract} ask for no shears, nor make the
+	 * mob's {@code shear} call there: the shears item shears a mob through their shearable extension, which posts their
+	 * events and drops what their loot says. The client's held item renderer (NeoForge 21.1 to 26.1.2's, and Forge's
+	 * crossbow) and item frame renderer ask whether the item is a {@code MapItem} or a {@code CrossbowItem}, which other
+	 * mods' items are too, where vanilla asks whether it is the vanilla item (SEAM-6).
 	 */
 	private static final List<NotPutBack> NOT_PUT_BACK = Stream.concat(Stream.of(
 			new NotPutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, WILL_DESTROY.owner(), Set.of(WILL_DESTROY.name(), WILL_DESTROY.srgName()),
@@ -1995,11 +1995,12 @@ final class VanillaCalls {
 					making(STATE, STATE_FRICTION.name()), "Leashable's angularFriction asks the block state's getFriction(level, pos, entity) instead, and"
 							+ " Leashable is an interface, which can't keep what Fabricated's check of a block's class answers, so Fabricated doesn't put"
 							+ " vanilla's call back there (SEAM-8).")),
-			// Each mob's class, before and after 1.21.11 moved them.
+			// Each mob's class, before and after 1.21.11 moved them: its shears check, and the mob's shear call it guards
+			// (Shearable.shear, SRG's m_5851_).
 			Stream.of(ANIMALS + "Sheep", ANIMALS + "sheep/Sheep", ANIMALS + "SnowGolem", ANIMALS + "golem/SnowGolem", ANIMALS + "MushroomCow",
 					ANIMALS + "cow/MushroomCow", "net/minecraft/world/entity/monster/Bogged", "net/minecraft/world/entity/monster/skeleton/Bogged")
-					.map(mob -> new NotPutBack(mob, "mobInteract", "m_6071_", null, STACK_CLASS, Set.of(IS, IS_ITEM.srgName()),
-							(node, method) -> calls(method, STACK_CLASS, CAN_PERFORM.name()).isEmpty(), sheared(mob.substring(mob.lastIndexOf('/') + 1)))))
+					.flatMap(mob -> Stream.of(sheared(mob, STACK_CLASS, Set.of(IS, IS_ITEM.srgName()), "check"),
+							sheared(mob, mob, Set.of("shear", "m_5851_"), "check and its shear call"))))
 			.toList();
 
 	private static String breakEvent(String loader, String gameMode, String check, String hook) {
@@ -2007,10 +2008,12 @@ final class VanillaCalls {
 				+ " so Fabricated doesn't put that check back there (SEAM-4).";
 	}
 
-	private static String sheared(String mob) {
-		return mob + "'s mobInteract asks for no shears here: the platform shears it from the shears item, through its shearable extension (NeoForge's"
-				+ " IShearable, Forge's IForgeShearable), which posts its events and drops what its loot says, so Fabricated doesn't put vanilla's check back there"
-				+ " (SEAM-6).";
+	/** A mob's call in its {@code mobInteract} of vanilla's shearing, {@code what} the hint says isn't put back. */
+	private static NotPutBack sheared(String mob, String callOwner, Set<String> names, String what) {
+		return new NotPutBack(mob, "mobInteract", "m_6071_", null, callOwner, names, (node, method) -> calls(method, STACK_CLASS, CAN_PERFORM.name()).isEmpty(),
+				mob.substring(mob.lastIndexOf('/') + 1) + "'s mobInteract asks for no shears here: the platform shears it from the shears item, through its"
+						+ " shearable extension (NeoForge's IShearable, Forge's IForgeShearable), which posts its events and drops what its loot says, so"
+						+ " Fabricated doesn't put vanilla's " + what + " back there (SEAM-6).");
 	}
 
 	/** The held item renderer's checks, which the platform asks of the item's class: NeoForge the map's and the crossbow's, Forge the crossbow's. */
@@ -2035,6 +2038,44 @@ final class VanillaCalls {
 		for (NotPutBack row : NOT_PUT_BACK) {
 			if (!row.owner().equals(node.name) || !(srg ? row.srgMethod() : row.method()).equals(method) || row.desc() != null && !row.desc().equals(desc)
 					|| !owner.equals(row.callOwner()) || !row.names().contains(name)) continue;
+			int at = indexOf(node, method, desc);
+			if (at >= 0 && node.methods.get(at).instructions != null && row.evidence().test(node, node.methods.get(at))) return row.why();
+		}
+		return null;
+	}
+
+	/**
+	 * A vanilla method the platform keeps in a class but never calls there, with what shows it and why, as pre-flight's note
+	 * of a hook applying in it says it: the hook applies and never runs.
+	 */
+	private record NeverCalled(String owner, String method, BiPredicate<ClassNode, MethodNode> evidence, String why) {
+	}
+
+	/** Whether a method's descriptor takes the sweep attack's box. */
+	private static boolean takesBox(MethodNode method) {
+		return List.of(Type.getArgumentTypes(method.desc)).contains(Type.getObjectType(BOX));
+	}
+
+	/**
+	 * The methods never called. NeoForge 21.11 on makes the sweep attack's box in {@code Player.attack}, through the stack's
+	 * {@code getSweepHitBox}, and hands it to an overload of {@code doSweepAttack} of its own taking it, where vanilla's
+	 * {@code attack} calls vanilla's {@code doSweepAttack}, which makes the box and which NeoForge keeps, calling its overload
+	 * from it (SEAM-8). Forge 61 on asks the extension in vanilla's {@code doSweepAttack}, which goes back.
+	 */
+	private static final List<NeverCalled> NEVER_CALLED = List.of(
+			new NeverCalled(PLAYER_CLASS, "doSweepAttack", (node, method) -> !takesBox(method)
+					&& node.methods.stream().anyMatch(m -> m.name.equals("doSweepAttack") && takesBox(m))
+					&& node.methods.stream().anyMatch(m -> m.name.equals("attack") && m.instructions != null && !calls(m, STACK_CLASS, SWEEP_BOX.name()).isEmpty()),
+					"it makes the sweep attack's box in attack through the stack's getSweepHitBox(player, target) and hands it to an overload of"
+							+ " doSweepAttack of its own, so the hook never runs; Fabricated doesn't put vanilla's call back there (SEAM-8)"));
+
+	/**
+	 * Why the class's platform never calls its vanilla method {@code method(desc)}, which it keeps, so a hook applying there
+	 * never runs, as pre-flight's note says it; null for any other.
+	 */
+	static String neverCalled(ClassNode node, String method, String desc) {
+		for (NeverCalled row : NEVER_CALLED) {
+			if (!row.owner().equals(node.name) || !row.method().equals(method)) continue;
 			int at = indexOf(node, method, desc);
 			if (at >= 0 && node.methods.get(at).instructions != null && row.evidence().test(node, node.methods.get(at))) return row.why();
 		}

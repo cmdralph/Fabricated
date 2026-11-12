@@ -2017,6 +2017,23 @@ public final class MixinPreflight extends PreflightPart {
 				: VanillaSeams.callNotPutBack(target, method.name, method.desc, ref.owner(), ref.name());
 	}
 
+	/**
+	 * The note of an injector whose point is only in vanilla methods the platform keeps in the target and never calls
+	 * there ({@link VanillaSeams#methodNeverCalled}, SEAM-8: NeoForge 21.11 on makes the sweep attack's box in
+	 * {@code Player.attack} for an overload of {@code doSweepAttack} of its own): the hook applies and never runs, which
+	 * the report names as a known limit; null for any other.
+	 */
+	private String neverCalledNote(MethodNode handler, String injectorName, ClassNode target, List<MethodNode> foundIn) {
+		String why = null;
+		for (MethodNode m : foundIn) {
+			String each = VanillaSeams.methodNeverCalled(target, m.name, m.desc);
+			if (each == null || why != null && !why.equals(each)) return null;
+			why = each;
+		}
+		return why == null ? null : injectorName + " " + handler.name + " applies in " + foundIn.get(0).name + foundIn.get(0).desc + ", vanilla's method, which "
+				+ loader + "'s " + target.name.substring(target.name.lastIndexOf('/') + 1) + " never calls: " + why;
+	}
+
 	/** A selector's name and descriptor, as reports print it. */
 	private static String selector(MemberRef ref) {
 		return ref.name() + (ref.desc() != null ? ref.desc() : "");
@@ -2225,16 +2242,20 @@ public final class MixinPreflight extends PreflightPart {
 					ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
-		Ambiguity ambiguous = slices.isEmpty() ? ambiguousLocal(handler, ann, matched, target.name, ctx) : null;
+		Ambiguity ambiguous = slices.isEmpty() ? ambiguousLocal(mixin, handler, ann, matched, target.name, ctx) : null;
+		// Mixin's own discriminator throws as the injector applies, which require doesn't cover (a config that isn't required
+		// survives it), as for unmatchedArgument.
+		int ambiguousRequire = ambiguous != null && ambiguous.modified() ? (ctx.config().required() ? 1 : 0) : require;
+		String takes = ambiguous != null && ambiguous.modified() ? " modifies the local of type " : " captures the local variable of type ";
 		if (ambiguous != null && ambiguous.kept()) {
-			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable of type " + ambiguous.type()
+			ctx.injector(handler, ambiguousRequire, injectorName + " handler " + handler.name + takes + ambiguous.type()
 							+ " by its type, of which " + loader + "'s Mixin finds more than one in " + matched.get(0).name + " in "
 							+ target.name.replace('/', '.') + " there, keeping those whose scope ended before",
 					"The feature this hook serves doesn't work on this " + loader + ".");
 			return;
 		}
 		if (ambiguous != null) {
-			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable of type " + ambiguous.type()
+			ctx.injector(handler, ambiguousRequire, injectorName + " handler " + handler.name + takes + ambiguous.type()
 							+ " by its type, which " + matched.get(0).name + " in " + target.name.replace('/', '.') + " has more than one of there",
 					ctx.changer(true) + " added a local of that type; the mod needs an update or this mixin must be skipped.");
 			return;
@@ -2298,6 +2319,7 @@ public final class MixinPreflight extends PreflightPart {
 			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
 			AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
 			Verdict verdict = Verdict.UNKNOWN;
+			List<MethodNode> foundIn = new ArrayList<>();
 			for (MethodNode m : matched) {
 				Range range = slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx);
 				boolean expression = point.equals("MIXINEXTRAS:EXPRESSION");
@@ -2309,7 +2331,8 @@ public final class MixinPreflight extends PreflightPart {
 					int slot = modifiedSlot(handler, ann, m);
 					Type variable = Type.getReturnType(handler.desc);
 					if (slot >= 0) {
-						v = InjectionPoints.accessesLocal(point.equals("LOAD"), Type.getArgumentTypes(handler.desc)[0], slot, ordinal, range, m) ? Verdict.FOUND : Verdict.MISSING;
+						v = InjectionPoints.accessesLocal(point.equals("LOAD"), Type.getArgumentTypes(handler.desc)[0], slot, opcode, ordinal, range, m)
+								? Verdict.FOUND : Verdict.MISSING;
 					} else if (variable.getSort() != Type.VOID && !InjectionPoints.accessesAnyLocal(point.equals("LOAD"), variable, opcode, ordinal, range, m)) {
 						v = Verdict.MISSING;
 					}
@@ -2324,6 +2347,7 @@ public final class MixinPreflight extends PreflightPart {
 					if (n > 0) with.add(m.name);
 					allowed = n < 0 ? -1 : allowed + n;
 				}
+				if (v == Verdict.FOUND) foundIn.add(m);
 				if (v == Verdict.FOUND) verdict = Verdict.FOUND;
 				else if (v == Verdict.MISSING && verdict == Verdict.UNKNOWN) verdict = Verdict.MISSING;
 			}
@@ -2337,6 +2361,9 @@ public final class MixinPreflight extends PreflightPart {
 								: ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 				return;
 			}
+			String neverCalled = verdict == Verdict.FOUND ? neverCalledNote(handler, injectorName, target, foundIn) : null;
+			if (neverCalled != null) ctx.out().add(new PreflightFinding(Severity.INFO, ctx.configName(), ctx.mixinDotted(), neverCalled, "",
+					handler.name + handler.desc));
 			if (verdict == Verdict.FOUND && ann.desc.equals(MixinNames.WRAP_OPERATION) && rawTarget != null) {
 				String mismatch = InjectionPoints.wrappedArityMismatch(handler, point, ctx.resolve(rawTarget), matched);
 				if (mismatch != null) {
@@ -3135,13 +3162,16 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * A local an {@code @Local} captures by its type alone (no name, index or ordinal) when, at every instruction the
-	 * injector's {@code @At} selects in every target, more than one local of that type is in scope: MixinExtras then can't
-	 * tell which one is meant. Where the running Mixin keeps locals once their scope has ended (PRE-26), those it keeps
-	 * there ({@link #keptLocalTypes}) count too. Null when that can't be shown (no local variable table, an injection point
-	 * other than a call, field access or object creation, ...).
+	 * A local an {@code @Local} captures, or a {@code @ModifyVariable} modifies, by its type alone (no name, index or
+	 * ordinal) when, at an instruction the injector's {@code @At} selects in a target, more than one local of that type is
+	 * in scope past {@code this}: Mixin's discriminator, which MixinExtras' {@code @Local} uses too, looks from the first
+	 * slot past it and throws at the first such instruction ("Found 2 candidate variables but exactly 1 is required").
+	 * Where the running Mixin keeps locals once their scope has ended (PRE-26), those it keeps there
+	 * ({@link #keptLocalTypes}) count too. Null when that can't be shown (no local variable table, an injection point other
+	 * than a call, field access or object creation, ...).
 	 */
-	private Ambiguity ambiguousLocal(MethodNode handler, AnnotationNode injector, List<MethodNode> targets, String owner, Context ctx) {
+	private Ambiguity ambiguousLocal(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<MethodNode> targets, String owner,
+			Context ctx) {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.size() != 1) return null;
 		AnnotationNode at = ats.get(0);
@@ -3152,47 +3182,52 @@ public final class MixinPreflight extends PreflightPart {
 		if (ref.fuzzy()) return null;
 		int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
 		int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+		// The types taken by their type alone: each such @Local's, then a @ModifyVariable's own (PRE-30).
+		List<Type> byType = new ArrayList<>();
 		Type[] params = Type.getArgumentTypes(handler.desc);
 		for (int p = 0; p < params.length; p++) {
 			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
 				if (!local.desc.equals(MixinNames.LOCAL) || Annotations.value(local, "name") != null || Annotations.value(local, "index") != null
 						|| Annotations.value(local, "ordinal") != null || Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))
 						|| params[p].getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) continue;
-				String type = params[p].getDescriptor();
-				boolean judged = false;
-				boolean single = false;
-				boolean singleInScope = false;
-				for (MethodNode target : targets) {
-					if (target.localVariables == null || target.localVariables.isEmpty()) return null;
-					MethodNode framed = keepsLocalsPastScope ? classes.withFrames(owner, target) : null;
-					MethodNode m = framed != null ? framed : target;
-					int seen = 0;
-					for (int i = 0; i < m.instructions.size(); i++) {
-						AbstractInsnNode insn = m.instructions.get(i);
-						if (opcode >= 0 && insn.getOpcode() != opcode || !InjectionPoints.matchesInsn(point, ref, insn)) continue;
-						if (ordinal >= 0 && seen++ != ordinal) continue;
-						judged = true;
-						int inScope = 0;
-						Set<Integer> found = new HashSet<>();
-						for (LocalVariableNode lv : m.localVariables) {
-							if (!lv.desc.equals(type) || m.instructions.indexOf(lv.start) > i || i >= m.instructions.indexOf(lv.end)) continue;
-							inScope++;
-							found.add(lv.index);
-						}
-						singleInScope |= inScope <= 1;
-						if (framed == null) {
-							single |= inScope <= 1;
-							continue;
-						}
+				byType.add(params[p]);
+			}
+		}
+		// Not where the mixin overwrites the method, whose code it replaces.
+		boolean modifiesByType = LocalRepairs.modifiesByType(injector, targets) && !PreflightAsm.overwrites(mixin, targets);
+		if (modifiesByType) byType.add(Type.getReturnType(handler.desc));
+		for (int t = 0; t < byType.size(); t++) {
+			String type = byType.get(t).getDescriptor();
+			// Mixin's discriminator throws at the first instruction where it finds more than one.
+			boolean ambiguous = false;
+			boolean ambiguousInScope = false;
+			for (MethodNode target : targets) {
+				if (target.localVariables == null || target.localVariables.isEmpty()) return null;
+				MethodNode framed = keepsLocalsPastScope ? classes.withFrames(owner, target) : null;
+				MethodNode m = framed != null ? framed : target;
+				// Mixin's discriminator, MixinExtras' too, looks from the first slot past this (baseArgIndex).
+				int base = (m.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+				int seen = 0;
+				for (int i = 0; i < m.instructions.size(); i++) {
+					AbstractInsnNode insn = m.instructions.get(i);
+					if (!InjectionPoints.hasOpcode(point, opcode, insn) || !InjectionPoints.matchesInsn(point, ref, insn)) continue;
+					if (ordinal >= 0 && seen++ != ordinal) continue;
+					Set<Integer> found = new HashSet<>();
+					for (LocalVariableNode lv : m.localVariables) {
+						if (lv.index < base || !lv.desc.equals(type) || m.instructions.indexOf(lv.start) > i || i >= m.instructions.indexOf(lv.end)) continue;
+						found.add(lv.index);
+					}
+					ambiguousInScope |= found.size() > 1;
+					if (framed != null) {
 						String[] kept = keptLocalTypes(framed, owner, i);
-						for (int slot = (framed.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1; slot < kept.length; slot++) {
+						for (int slot = base; slot < kept.length; slot++) {
 							if (type.equals(kept[slot])) found.add(slot);
 						}
-						single |= found.size() <= 1;
 					}
+					ambiguous |= found.size() > 1;
 				}
-				if (judged && !single) return new Ambiguity(params[p].getClassName(), singleInScope);
 			}
+			if (ambiguous) return new Ambiguity(byType.get(t).getClassName(), !ambiguousInScope, modifiesByType && t == byType.size() - 1);
 		}
 		return null;
 	}
@@ -3200,9 +3235,10 @@ public final class MixinPreflight extends PreflightPart {
 	/**
 	 * A local {@link #ambiguousLocal} finds more than one of.
 	 *
-	 * @param kept whether only counting the locals the running Mixin keeps once their scope has ended makes it so (PRE-26)
+	 * @param kept     whether only counting the locals the running Mixin keeps once their scope has ended makes it so (PRE-26)
+	 * @param modified whether it is the local the {@code @ModifyVariable} modifies, rather than one an {@code @Local} captures
 	 */
-	private record Ambiguity(String type, boolean kept) {
+	private record Ambiguity(String type, boolean kept, boolean modified) {
 	}
 
 	/** Whether the targets' local variable tables (where they have one) show no local {@code wanted} accepts. */

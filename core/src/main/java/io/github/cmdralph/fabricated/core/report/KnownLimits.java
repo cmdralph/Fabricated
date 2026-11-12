@@ -20,8 +20,13 @@ public final class KnownLimits {
 	 * @param exception the class of the failure's root cause it matches, or null for a pre-flight finding
 	 * @param pattern   what the finding's or the exception's message holds; one with two groups matches only where they
 	 *                  differ
+	 * @param applied   whether it matches pre-flight's note of a hook that applies and never runs, rather than a finding
+	 *                  leaving one out
 	 */
-	private record Limit(Set<String> loaders, String exception, Pattern pattern, String reason) {
+	private record Limit(Set<String> loaders, String exception, Pattern pattern, String reason, boolean applied) {
+		Limit(Set<String> loaders, String exception, Pattern pattern, String reason) {
+			this(loaders, exception, pattern, reason, false);
+		}
 	}
 
 	private static final List<Limit> LIMITS = List.of(
@@ -51,11 +56,12 @@ public final class KnownLimits {
 							+ ".*asks the held item's (?:canAttackBlock|canDestroyBlock) inside its block break event", Pattern.DOTALL),
 					"NeoForge and Forge ask the held item whether it can break the block inside their block break event, which a listener may"
 							+ " overrule, so hooks of vanilla's check in destroyBlock can't apply there (SEAM-4)"),
-			// A hook of vanilla's shears check in a mob's mobInteract, where the platforms shear the mob from the shears item
-			// through their shearable extension: pre-flight's hint says so (Forge 65 and 66 ask an action there, which goes back).
+			// A hook of vanilla's shears check in a mob's mobInteract, or of the mob's shear call it guards, where the platforms
+			// shear the mob from the shears item through their shearable extension: pre-flight's hint says so (Forge 65 and 66
+			// ask an action there, which goes back).
 			new Limit(Set.of("NeoForge", "Forge"), null,
-					Pattern.compile("expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/world/item/ItemStack;(?:is|m_150930_)\\(.*'s mobInteract asks for no shears"
-							+ " here: the platform shears it from the shears item", Pattern.DOTALL),
+					Pattern.compile("expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/world/(?:item/ItemStack;(?:is|m_150930_)|entity/[\\w/$]+;(?:shear|m_5851_))\\("
+							+ ".*'s mobInteract asks for no shears here: the platform shears it from the shears item", Pattern.DOTALL),
 					"NeoForge and Forge shear a mob from the shears item, through their shearable extension, so hooks of vanilla's shears check in"
 							+ " its mobInteract can't apply there (SEAM-6)"),
 			// A hook of vanilla's map or crossbow check in the client's held item or item frame renderer, where the platforms ask
@@ -72,6 +78,12 @@ public final class KnownLimits {
 							Pattern.DOTALL),
 					"NeoForge and Forge ask the block state's friction extension in Leashable's angularFriction, an interface's method, where Fabricated"
 							+ " can't put vanilla's call back, so hooks of vanilla's friction there can't apply (SEAM-8)"),
+			// A hook in vanilla's doSweepAttack, which NeoForge 21.11 on keeps and never calls, making the sweep attack's box in
+			// attack for an overload of its own: the hook applies and never runs, as pre-flight's note says.
+			new Limit(Set.of("NeoForge"), null,
+					Pattern.compile("applies in doSweepAttack\\([^)]*\\)\\S*, vanilla's method, which NeoForge's Player never calls"),
+					"NeoForge makes the sweep attack's box in attack, for an overload of doSweepAttack of its own, so hooks in vanilla's doSweepAttack"
+							+ " apply there but never run (SEAM-8)", true),
 			// ForgeRegistry.add, whose maps key a value by its equality: two objects, by their identity hashes, not one object
 			// under two names.
 			new Limit(Set.of(), IllegalArgumentException.class.getName(),
@@ -84,12 +96,15 @@ public final class KnownLimits {
 
 	/**
 	 * The known limit a pre-flight finding is on {@code loader}, as the report says it, or null; only a finding that leaves
-	 * its hook out or disables its mod is one, never a warning (a {@code @Group}'s member whose group applies).
+	 * its hook out or disables its mod is one, never a warning (a {@code @Group}'s member whose group applies), and a note
+	 * of a hook that applies and never runs (SEAM-8: NeoForge's sweep attack).
 	 */
 	public static String ofFinding(String loader, PreflightFinding finding) {
-		if (finding.severity() != Severity.LEFT_OUT && finding.severity() != Severity.FAIL) return null;
+		boolean note = finding.severity() == Severity.INFO;
+		if (!note && finding.severity() != Severity.LEFT_OUT && finding.severity() != Severity.FAIL) return null;
 		for (Limit limit : LIMITS) {
-			if (limit.exception() == null && limit.loaders().contains(loader) && matches(limit, finding.message() + "\n" + finding.suggestion())) {
+			if (limit.exception() == null && limit.applied() == note && limit.loaders().contains(loader)
+					&& matches(limit, finding.message() + "\n" + finding.suggestion())) {
 				return "Known limit: " + limit.reason();
 			}
 		}

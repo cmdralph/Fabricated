@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-12: Vanilla's calls of a block state or a stack put back where the platform asks an extension of it (SEAM-8), a stored result taken by its slot on Forge's Mixin (PRE-30)
+## 2026-11-12: Vanilla's calls of a block state or a stack put back where the platform asks an extension of it (SEAM-8), PRE-30's naming of a local by its slot extended to slices and assignments (PRE-33)
 
 - **SEAM-8** (P1), fixed: where vanilla asks a block state or a stack itself, NeoForge and Forge ask an extension of it
   taking more, whose default leads back to vanilla's code: the block's friction (`getFriction(level, pos, entity)`) in
@@ -31,12 +31,16 @@ One entry per working session, newest first: what changed, and how it was verifi
   platforms); Forge 65 and 66 slow an item on the ground by the air drag once more than vanilla, which the check reads
   from stone. Beside Forgified Fabric API on NeoForge 1.21.1 and Forge 47 `LivingEntity` keeps the platform's calls: its
   entity events mixin there lists a method name the class doesn't have, which the seam conflict check can't tell from
-  what moves.
-- **PRE-30** (P0), fixed: with vanilla's friction back in `LivingEntity.travel`, Porting Lib's friction hook, a
-  `@ModifyVariable` at its `INVOKE_ASSIGN` taking the float by its type, stopped the Forge 47 corpus server ("Found 2
-  candidate variables"): Forge 47's Mixin keeps the elytra branch's float there past its scope, through same frames, as
-  PRE-26 found for an `@Local`. Where the running Mixin is SpongePowered's, such a hook now takes the stored local by its
-  slot, and SEAM-8's put-backs name that local from vanilla's store on, as from the platform's.
+  what moves. NeoForge 21.11 on makes the sweep attack's box in `attack` for an overload of `doSweepAttack` of its own,
+  never calling vanilla's: a hook there applies and never runs, which pre-flight notes and the report names as a known
+  limit.
+- **PRE-33** (P0), fixed: with vanilla's friction back in `LivingEntity.travel`, Porting Lib's friction hook, a
+  `@ModifyVariable` at its `INVOKE_ASSIGN` in a slice taking the float by its type, stopped the Forge 47 corpus server
+  ("Found 2 candidate variables"): Forge 47's Mixin keeps the elytra branch's float there past its scope, through same
+  frames, as PRE-26 found for an `@Local`. PRE-30's naming of such a local by its slot judged no slice and no
+  assignment: it now picks the instructions in the slice as Mixin does, and an assignment's as Mixin's `AfterInvoke`
+  does (after the store), its rules as they were, and SEAM-8's put-backs name the stored local from vanilla's store on,
+  as from the platform's. Porting Lib's arrow hook in `BowItem` takes its arrow by its slot too, the one Mixin found.
 - Pre-flight's view reads a class whose put-backs are all SEAM-8's (`LivingEntity`, `Entity`, `BlockItem`...) by the
   rows' methods alone and writes it with its other methods copied as they are; a class naming no row's call by its
   descriptor (NeoForge 26.x's `Entity`) isn't parsed; the rewrite's states share their unchanged locals and stack.
@@ -47,6 +51,35 @@ One entry per working session, newest first: what changed, and how it was verifi
   `vanilla-friction` among them. The corpus servers against runs before the change: NeoForge 1.21.1's and Forge 52's
   advanced corpus apply the hooks named above, Forge 47's corpus Artifacts', Friends & Foes' and Porting Lib's; every
   check as before. Discovery on NeoForge 26.1.2's server with Fabric API allocates 276 to 278 MB (baseline 271 MB).
+
+## 2026-11-12: Pre-flight reads an @At's opcode as Mixin does (PRE-30) and a selector in the refmap without its whitespace (PRE-31); a mob's shear call is SEAM-6's known limit
+
+- **PRE-30** (P1), fixed: pre-flight kept only the instructions of an `@At`'s `opcode`, whatever its point, where Mixin
+  reads one only for a field access (one of the four field opcodes; any other it takes as none), a jump and a local
+  (above 0). A call point with an `opcode` found no call, and its hook was left out though Mixin applies it: Apoli's
+  slipperiness power in Origins 1.13 (`onGround()` with `opcode = 180` in `LivingEntity.travel`) and Wilder Wild's
+  sculk vein hook (`opcode = 0`), on NeoForge 21.1 and Forge 52. One rule now decides it for every point pre-flight
+  reads, and a local point matches plain loads and stores only, as Mixin does, never an int's increment. Apoli's hook
+  takes its float by its type alone; in `travel` as shipped Mixin finds the one, but once another mod's injector there
+  has stored and loaded a local of its own past the method's locals, Mixin brings back the floats the method dropped
+  before (its resurrection of exposed locals), and the Forge 52 server stopped as Mixin applied the hook. A local taken
+  by its type, an `@Local`'s or a `@ModifyVariable`'s, is now judged as Mixin's discriminator finds it: past `this`,
+  ambiguous where any instruction the point picks has more than one, and a `@ModifyVariable` whose method declares
+  others of its type is named by its slot, on every platform, which no other injector can make ambiguous.
+- **PRE-31** (P2), fixed: pre-flight looked a selector up in the mod's refmap as written, where Mixin strips its
+  whitespace first and the refmap's keys are written without it. Modern Industrialization's hook adding the resources
+  of its `generated_resources` folder to a world's packs names `PackRepository.openAllSelected ()` with a space: on
+  Forge 47, where a Fabric mod's refmap maps its names to SRG's, it was left out. The seam conflict check reads a NeoForge
+  or Forge mod's mixin strings the same way now.
+- Hooks of a mob's `shear` call in `mobInteract` are SEAM-6's known limit, as hooks of the shears check guarding it
+  were: NeoForge and Forge 47 to 64 shear a mob from the shears item, through their shearable extension (Ledger's
+  logging of a sheep's and a snow golem's shearing, eight hooks on NeoForge 21.1 and Forge 52).
+- Verified: core's tests (686; each new case failing before its change), CI's script tests and the inventory; NeoForge
+  1.21.1, Forge 52 and Forge 47 build. Against runs before the change, every check as before, and no apply failure in
+  the logs: on the advanced corpus servers of NeoForge 1.21.1 and Forge 52, Apoli's and Wilder Wild's hooks apply and
+  Ledger's shear hooks carry the known limit, and on Forge 47's Apoli's and fzzy_config's hooks apply; Apoli's
+  slipperiness hook, and its death message hook, whose method declares another `String`, are named by their slots; on
+  Forge 47's corpus server Modern Industrialization's hook applies; NeoForge 1.21.1's server part is as before.
 
 ## 2026-11-12: The report says what the platform changed of a method's parameters or a field's type (PRE-32)
 

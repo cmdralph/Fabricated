@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
@@ -17,6 +18,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
+import io.github.cmdralph.fabricated.core.report.KnownLimits;
 import io.github.cmdralph.fabricated.core.testutil.TestSources;
 
 /**
@@ -412,6 +414,33 @@ class RestoredSeamsTest {
 	}
 
 	/**
+	 * SEAM-8: a wrapper of vanilla's sweep box in doSweepAttack, which NeoForge 21.11 on keeps and never calls, making the
+	 * box in attack for an overload of its own: the hook applies, and pre-flight's note says it never runs, which the known
+	 * limits read on NeoForge.
+	 */
+	@Test
+	void aHookInVanillasSweepAttackNeoForgeNeverCallsIsNamed(@TempDir Path dir) throws Exception {
+		Map<String, String> game = new HashMap<>(io.github.cmdralph.fabricated.core.bytecode.ExtensionCallsTest.neoForge26Sources());
+		game.put("net/minecraft/server/level/ServerLevel.java", "package net.minecraft.server.level; public class ServerLevel { }");
+		String wrap = " @WrapOperation(method = \"doSweepAttack\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/world/phys/AABB;inflate(DDD)"
+				+ "Lnet/minecraft/world/phys/AABB;\")) private net.minecraft.world.phys.AABB sweep(net.minecraft.world.phys.AABB box, double x, double y,"
+				+ " double z, Operation<net.minecraft.world.phys.AABB> original) { return original.call(box, x, y, z); }";
+		List<PreflightFinding> findings = new java.util.ArrayList<>();
+		MixinPreflight preflight = checked(dir, game, "net.minecraft.world.entity.player.Player", wrap, null, true, Set.of(), findings, new HashMap<>());
+		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), findings.toString());
+		assertTrue(preflight.restoredSeams().isEmpty(), "nothing is put back for it");
+		PreflightFinding note = findings.stream().filter(f -> f.message().contains("never calls")).findFirst().orElseThrow(() -> new AssertionError(findings));
+		assertEquals(Severity.INFO, note.severity());
+		assertEquals("@WrapOperation sweep applies in doSweepAttack(Lnet/minecraft/world/entity/Entity;FLjava/lang/Object;F)Ljava/lang/String;, vanilla's"
+				+ " method, which NeoForge's Player never calls: it makes the sweep attack's box in attack through the stack's getSweepHitBox(player, target)"
+				+ " and hands it to an overload of doSweepAttack of its own, so the hook never runs; Fabricated doesn't put vanilla's call back there"
+				+ " (SEAM-8)", note.message());
+		assertEquals("Known limit: NeoForge makes the sweep attack's box in attack, for an overload of doSweepAttack of its own, so hooks in vanilla's"
+				+ " doSweepAttack apply there but never run (SEAM-8)", KnownLimits.ofFinding("NeoForge", note));
+		assertNull(KnownLimits.ofFinding("Forge", note));
+	}
+
+	/**
 	 * SEAM-6: a hook of vanilla's shears check in a mob's mobInteract, where the platform shears it from the shears item, and
 	 * one of vanilla's map check in the held item renderer, where the platform asks whether the item is a MapItem, stay out,
 	 * their hints saying why, which the known limits read.
@@ -442,6 +471,25 @@ class RestoredSeamsTest {
 			assertTrue(io.github.cmdralph.fabricated.core.report.KnownLimits.ofFinding("NeoForge", out).endsWith("(SEAM-6)"),
 					String.valueOf(io.github.cmdralph.fabricated.core.report.KnownLimits.ofFinding("NeoForge", out)));
 		}
+	}
+
+	/** SEAM-6: a hook of the shear call vanilla's shears check guards in a mob's mobInteract (Ledger's) stays out the same way. */
+	@Test
+	void aHookOfAMobsShearCallThePlatformDoesntMakeStaysOutSayingWhy(@TempDir Path dir) throws Exception {
+		Map<String, String> game = itemGame(io.github.cmdralph.fabricated.core.bytecode.ItemChecksTest.neoForgeSources());
+		game.put("net/minecraft/world/entity/animal/sheep/Sheep.java", "package net.minecraft.world.entity.animal.sheep; public class Sheep {"
+				+ " public boolean mobInteract(net.minecraft.world.entity.player.Player player) { return player.getMainHandItem().isEmpty(); }"
+				+ " public void shear() { } }");
+		List<PreflightFinding> findings = new java.util.ArrayList<>();
+		checked(dir, game, "net.minecraft.world.entity.animal.sheep.Sheep", " @Inject(method = \"mobInteract\", at = @At(value = \"INVOKE\", target ="
+				+ " \"Lnet/minecraft/world/entity/animal/sheep/Sheep;shear()V\")) private void sheared(CallbackInfoReturnable<Boolean> cir) { }", null, true, Set.of(),
+				findings, new HashMap<>());
+		PreflightFinding out = findings.stream().filter(f -> f.severity() == Severity.LEFT_OUT).findFirst().orElseThrow();
+		assertEquals("Sheep's mobInteract asks for no shears here: the platform shears it from the shears item, through its shearable extension (NeoForge's"
+				+ " IShearable, Forge's IForgeShearable), which posts its events and drops what its loot says, so Fabricated doesn't put vanilla's check and its"
+				+ " shear call back there (SEAM-6).", out.suggestion(), findings.toString());
+		assertTrue(io.github.cmdralph.fabricated.core.report.KnownLimits.ofFinding("NeoForge", out).endsWith("(SEAM-6)"),
+				String.valueOf(io.github.cmdralph.fabricated.core.report.KnownLimits.ofFinding("NeoForge", out)));
 	}
 
 	@Test

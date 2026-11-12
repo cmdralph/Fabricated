@@ -493,7 +493,7 @@ public class ExtensionCallsTest {
 			assertEquals(2, VanillaSeams.putBackPlaces(method(node(restored.get(ENTITY)), form.srg ? "m_7355_" : "playStepSound"), "net/minecraft/world/level/block/state/BlockState",
 					getSound, "()Lnet/minecraft/world/level/block/SoundType;"));
 			// Vanilla's friction, as an INVOKE_ASSIGN point reads it: the call stored to the platform's local, as the platform's is,
-			// and the local named from there on as from the platform's store (PRE-30: Forge's Mixin reads it off the table there).
+			// and the local named from there on as from the platform's store (PRE-33: Forge's Mixin reads it off the table there).
 			MethodNode travel = method(node(restored.get(LIVING)), form.srg ? "m_7023_" : "travel");
 			int stores = 0;
 			for (AbstractInsnNode insn : travel.instructions) {
@@ -601,13 +601,33 @@ public class ExtensionCallsTest {
 		}
 	}
 
-	/** NeoForge 26.x's attack, which makes the sweep's box for an overload of its own, isn't rewritten: vanilla makes the box in doSweepAttack. */
+	/**
+	 * NeoForge 26.x's attack, which makes the sweep's box for an overload of its own, isn't rewritten: vanilla makes the box
+	 * in doSweepAttack, which NeoForge keeps and never calls, so a hook there never runs, as pre-flight's note says; Forge
+	 * 61's doSweepAttack, which asks the extension and goes back, and the forms whose attack makes the box, have no note.
+	 */
 	@Test
 	void neoForge26sSweepStaysAsItIs(@TempDir Path dir) throws Exception {
 		Map<String, byte[]> platform = platform(dir, Form.NEOFORGE_26);
 		ClassNode player = node(platform.get(PLAYER));
 		assertTrue(VanillaCalls.applicable(player).isEmpty());
 		assertTrue(VanillaSeams.restore(player).isEmpty());
+		String sweep = "(L" + ENTITY + ";FLjava/lang/Object;F)Ljava/lang/String;";
+		assertEquals("it makes the sweep attack's box in attack through the stack's getSweepHitBox(player, target) and hands it to an overload of"
+				+ " doSweepAttack of its own, so the hook never runs; Fabricated doesn't put vanilla's call back there (SEAM-8)",
+				VanillaSeams.methodNeverCalled(player, "doSweepAttack", sweep));
+		assertNull(VanillaSeams.methodNeverCalled(player, "doSweepAttack", "(L" + ENTITY + ";FLjava/lang/Object;FLnet/minecraft/world/phys/AABB;)Ljava/lang/String;"));
+		assertNull(VanillaSeams.methodNeverCalled(player, "attack", "(L" + ENTITY + ";)Ljava/lang/String;"));
+		assertNull(VanillaSeams.methodNeverCalled(node(platform(dir.resolve("forge61"), Form.FORGE_61).get(PLAYER)), "doSweepAttack", sweep));
+		for (Form form : List.of(Form.NEOFORGE, Form.FORGE)) {
+			ClassNode other = node(platform(dir.resolve(form.name()), form).get(PLAYER));
+			assertTrue(other.methods.stream().noneMatch(m -> VanillaSeams.methodNeverCalled(other, m.name, m.desc) != null), form.name());
+		}
+	}
+
+	/** NeoForge 26.x's sources, its attack making the sweep's box for an overload of its own. */
+	public static Map<String, String> neoForge26Sources() {
+		return sources(Form.NEOFORGE_26);
 	}
 
 	/**

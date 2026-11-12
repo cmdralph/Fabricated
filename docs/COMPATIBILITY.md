@@ -1469,9 +1469,10 @@ does for every item but vanilla's shears, rod and shield, which override it: an 
 without the hook. On 26.x vanilla's check is `TypedInstance.is(T)`, which the hooks name as `is(Object)`. A NeoForge
 mod's mixin of the `canPerformAction` call, of its defaults or of `ItemStack.is` keeps the class as NeoForge has it.
 NeoForge shears a sheep, a snow golem, a bogged and (1.21.1) a mooshroom from the shears item, through `IShearable`,
-where vanilla's `mobInteract` checks for shears: a Fabric mod's hook of that check is left out, a known limit the report
-names (BCLib's sheep and snow golem hooks; its mooshroom hook wraps the bowl check alone on 1.21.1, and from 1.21.11,
-whose `mobInteract` keeps vanilla's shears check, applies as on Fabric). On the 1.21.1 client the elytra layer asks its
+where vanilla's `mobInteract` checks for shears and then shears the mob: a Fabric mod's hook of that check, or of the
+mob's `shear` call it guards, is left out, a known limit the report names (BCLib's sheep and snow golem hooks, Ledger's
+logging of their shearing; BCLib's mooshroom hook wraps the bowl check alone on 1.21.1, and from 1.21.11, whose
+`mobInteract` keeps vanilla's shears check, applies as on Fabric). On the 1.21.1 client the elytra layer asks its
 own `shouldRender`, whose default is vanilla's `is(Items.ELYTRA)` check: it goes back for the layers whose class keeps
 that method (Apoli's elytra power; checked by unit tests, not in game). The held item renderer asks whether the item is
 a `MapItem` or a `CrossbowItem`, and the 1.21.1 item frame renderer whether it is a `MapItem`, which other mods' items
@@ -1497,7 +1498,7 @@ names `lambda$stopSleeping$9` beside `startSleeping`, and NeoForge 21.1.265's cl
 1.21.11 `Leashable.angularFriction`, an interface's method, asks the state's friction too: a hook of vanilla's call
 there is left out, a known limit the report names. From 1.21.11 NeoForge's `attack` makes the sweep's box for an
 overload of its own, which isn't put back: a hook of vanilla's box in `doSweepAttack` applies there, but vanilla's
-method isn't called.
+method isn't called, which pre-flight notes, a known limit the report names.
 
 Putting the methods back moves the resolver's `isStickyBlock` and `canStickTo` calls into them, so where a NeoForge
 mod's mixin hooks those calls, or a place the move shifts in the methods holding them, they aren't put back: the
@@ -2058,9 +2059,15 @@ What else differs on Forge, for Fabric mods in general:
   return doesn't occur (BetterNether's mushroom hook, on NeoForge 21.1 too).
 - **A local taken by its type where Forge's Mixin keeps others:** Forge's Mixin keeps a local among those it finds at a
   point after the local's scope has ended, where only same frames come between, so a MixinExtras `@Local` taking a local
-  by its type finds more than one where the method has one in scope. Pre-flight names the one in scope by its ordinal
-  among those Mixin keeps, and leaves the hook out where that can't be told (PRE-26: FrozenLib 1.9.3's gravity hook in
-  `AbstractMinecart.tick` on Forge 47, which had stopped a server; checked on a Forge 47 server with FrozenLib 1.9.3).
+  by its type, or a `@ModifyVariable` modifying one so, finds more than one where the method has one in scope.
+  Pre-flight names the one in scope by its ordinal among those Mixin keeps, and leaves the hook out where that can't be
+  told (PRE-26: FrozenLib 1.9.3's gravity hook in `AbstractMinecart.tick` on Forge 47, which had stopped a server;
+  checked on a Forge 47 server with FrozenLib 1.9.3). Mixin also drops a local at the frame chopping it and brings it
+  back once a load past it exposes it, as another mod's injector storing and loading a local of its own past the
+  method's locals does: a `@ModifyVariable` whose method declares other locals of its type is named by its slot, which
+  Mixin's discriminator takes by its type alone, on NeoForge too, whose Mixin does the same (PRE-30: Apoli 2.12's
+  slipperiness power in `LivingEntity.travel`, which had stopped a Forge 52 server once its opcode was read as Mixin
+  reads it; checked on NeoForge 1.21.1, Forge 52 and Forge 47 servers with Origins).
 - **The libraries Fabric's Mixin carries:** Fabric's Mixin carries Guava and Gson in its own package
   (`org.spongepowered.include`), which some Fabric mods name (Wover's item API); Forge's Mixin carries none. A mod's
   references there name the game's own Guava and Gson instead (LIB-3: BetterEnd's, BetterNether's, BCLib's and Wover's
@@ -2121,13 +2128,14 @@ What else differs on Forge, for Fabric mods in general:
   Forge has it, without the hook. Forge 61 to 65's default answers yes only for a sword's and a pickaxe's digging and
   sweeping actions, and Forge 66's only for a sword's sweep: never for these.
   Forge 47 to 64 shear a mob from the shears item, through `IForgeShearable`, where vanilla's `mobInteract` checks for
-  shears: a hook of that check is left out there, a known limit the report names. BCLib 3.0's own hooks for 1.20.1, at
-  the start of those methods and in `ItemStack.is` itself, apply, but Forge 47's code asks `canPerformAction` there, not
-  `is`, unless another Fabric mod's hook has the class rewritten. On the Forge 47 and 52 client the elytra layer asks
-  `shouldRender` (Forge 52's from `IForgeElytraLayer`), whose default is vanilla's `is(Items.ELYTRA)` check: it goes back
-  for the layers keeping it (Apoli's elytra power; unit tests only). The held item renderer asks whether the item is a
-  `CrossbowItem`, and the item frame renderer whether it is a `MapItem`, where vanilla asks for its own crossbow and map:
-  hooks of those checks are left out, a known limit (Porting Lib's custom maps in item frames).
+  shears and then shears the mob: a hook of that check, or of the mob's `shear` call it guards (Ledger's logging of a
+  sheep's and a snow golem's shearing), is left out there, a known limit the report names. BCLib 3.0's own hooks for
+  1.20.1, at the start of those methods and in `ItemStack.is` itself, apply, but Forge 47's code asks `canPerformAction`
+  there, not `is`, unless another Fabric mod's hook has the class rewritten. On the Forge 47 and 52 client the elytra
+  layer asks `shouldRender` (Forge 52's from `IForgeElytraLayer`), whose default is vanilla's `is(Items.ELYTRA)` check:
+  it goes back for the layers keeping it (Apoli's elytra power; unit tests only). The held item renderer asks whether
+  the item is a `CrossbowItem`, and the item frame renderer whether it is a `MapItem`, where vanilla asks for its own
+  crossbow and map: hooks of those checks are left out, a known limit (Porting Lib's custom maps in item frames).
 - **Extensions' calls of a state or a stack:** where vanilla asks a block state or a stack itself, Forge 47 to 66 ask an
   extension taking more, whose default leads back to vanilla's code: the state's `getFriction(level, pos, entity)` (the
   movement of living entities, items, experience orbs, boats and, on Forge 47 and 52, flying mobs) and
@@ -2138,7 +2146,7 @@ What else differs on Forge, for Fabric mods in general:
   Wild's snowlogged placing sound, BetterNether's piglin-neutral armour and Pehkui's scaled sweep on Forge 52), under its
   SRG names on Forge 47; a block or item overriding the extension (a Forge mod's) is asked as Forge has it, without the
   hook. Forge's Mixin keeps a local past its scope through same frames, so Porting Lib's `@ModifyVariable` of the
-  friction `travel` stores, by its type, would find two floats there: it takes the stored one by its slot (PRE-30).
+  friction `travel` stores, by its type, would find two floats there: it takes the stored one by its slot (PRE-33).
   Forge's sound type default asks the block where vanilla asks the state, so a state class declaring vanilla's
   `getSoundType` again keeps Forge's call, and on Forge 52 the piglin's check goes back only where Forge's comparison
   with gold's material by identity and vanilla's `Holder.is` agree. Forge keeps vanilla's enchantment level lookup (Forge

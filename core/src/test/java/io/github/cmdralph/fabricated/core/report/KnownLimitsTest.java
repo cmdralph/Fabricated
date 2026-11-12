@@ -68,6 +68,26 @@ class KnownLimitsTest {
 	}
 
 	@Test
+	void aHookInVanillasSweepAttackNeoForgeNeverCallsIsSeam8() {
+		String message = "@WrapOperation sweep applies in doSweepAttack(Lnet/minecraft/world/entity/Entity;FLnet/minecraft/world/damagesource/DamageSource;F)V,"
+				+ " vanilla's method, which NeoForge's Player never calls: it makes the sweep attack's box in attack through the stack's"
+				+ " getSweepHitBox(player, target) and hands it to an overload of doSweepAttack of its own, so the hook never runs; Fabricated doesn't put"
+				+ " vanilla's call back there (SEAM-8)";
+		PreflightFinding note = new PreflightFinding(Severity.INFO, "mod.mixins.json", "com.example.mixin.SweepMixin", message, "", "sweep()V");
+		assertTrue(KnownLimits.ofFinding("NeoForge", note).endsWith("apply there but never run (SEAM-8)"));
+		assertNull(KnownLimits.ofFinding("Forge", note));
+		// It is a note of a hook that applies: a finding leaving one out with that message is no such limit, nor is another note.
+		assertNull(KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.LEFT_OUT, "mod.mixins.json", "com.example.mixin.SweepMixin", message, "",
+				"sweep()V")));
+		assertNull(KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.INFO, "mod.mixins.json", "com.example.mixin.SweepMixin", "@WrapOperation"
+				+ " sweep hooks AABB.inflate(DDD)Lnet/minecraft/world/phys/AABB; in attack (SEAM-8)", "", "sweep()V")));
+		// Nor is a note a limit of a hook left out.
+		assertNull(KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.INFO, "mod.mixins.json", "com.example.mixin.LeashMixin", "@WrapOperation in"
+				+ " angularFriction expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;getFriction()F\") - Leashable is an interface",
+				"", "handler()V")));
+	}
+
+	@Test
 	void aHookOfTheServersPlayerWillDestroyCallIsSeam3OnForgeOnly() {
 		String message = "@ModifyExpressionValue in m_9280_ expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;"
 				+ "m_5707_(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;"
@@ -101,6 +121,35 @@ class KnownLimitsTest {
 		assertTrue(KnownLimits.ofFinding("NeoForge", client).endsWith("(SEAM-4)"), KnownLimits.ofFinding("NeoForge", client));
 		// The same call left out for another reason, without the hint (NeoForge 21.1's client keeps it), is none.
 		assertNull(KnownLimits.ofFinding("NeoForge", finding(Severity.LEFT_OUT, message)));
+	}
+
+	/**
+	 * Ledger's hooks of a sheep's and a snow golem's shear call in their mobInteract, which the platforms leave to the shears
+	 * item with the shears check guarding it, are SEAM-6 as the hooks of that check are, where pre-flight's hint says so.
+	 */
+	@Test
+	void aHookOfAMobsShearCallIsSeam6WherePreflightsHintSaysThePlatformShearsFromTheShearsItem() {
+		String check = "@WrapOperation in mobInteract expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/item/ItemStack;is(Lnet/minecraft/world/item/Item;)Z\"),"
+				+ " which does not occur in that method";
+		String hint = "%s's mobInteract asks for no shears here: the platform shears it from the shears item, through its shearable extension (NeoForge's"
+				+ " IShearable, Forge's IForgeShearable), which posts its events and drops what its loot says, so Fabricated doesn't put vanilla's %s back"
+				+ " there (SEAM-6).";
+		String limit = KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.LEFT_OUT, "bclib.mixins.common.json",
+				"org.betterx.bclib.mixin.common.shears.SheepMixin", check, String.format(hint, "Sheep", "check"), "handler()V"));
+		assertTrue(limit.endsWith("(SEAM-6)"), limit);
+		// NeoForge 21.1 and Forge 52 under Mojang's names, Forge 47 under SRG's.
+		for (String mob : List.of("Sheep", "SnowGolem")) {
+			String message = "@Inject in mobInteract expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/entity/animal/" + mob
+					+ ";shear(Lnet/minecraft/sounds/SoundSource;)V\"), which does not occur in that method";
+			for (String m : List.of(message, message.replace("mobInteract", "m_6071_").replace(";shear(", ";m_5851_("))) {
+				PreflightFinding shear = new PreflightFinding(Severity.LEFT_OUT, "ledger.mixins.json", "com.github.quiltservertools.ledger.mixin.entities." + mob
+						+ "EntityMixin", m, String.format(hint, mob, "check and its shear call"), "handler()V");
+				assertEquals(limit, KnownLimits.ofFinding("NeoForge", shear), m);
+				assertEquals(limit, KnownLimits.ofFinding("Forge", shear), m);
+			}
+			// Left out for another reason, without the hint (Forge 65 and 66 shear there), it is none.
+			assertNull(KnownLimits.ofFinding("Forge", finding(Severity.LEFT_OUT, message)), message);
+		}
 	}
 
 	@Test
