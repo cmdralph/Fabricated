@@ -36,7 +36,8 @@ import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
  *       their instance targets are made instance handlers, as Mixin reads the mixin through the platform's transformers
  *       ({@link NativeModMixins}, CORPUS-87).</li>
  *   <li>vanilla's methods the platform took out of a game class Fabric mods' mixins target are put back, and its code
- *       calls them where vanilla does, so the mods' hooks of them apply ({@link VanillaSeams}, SEAM-1).</li>
+ *       calls them where vanilla does, so the mods' hooks of them apply ({@link VanillaSeams}, SEAM-1); and vanilla's
+ *       calls the platform makes through its block state's extension, for the blocks keeping its default (SEAM-3).</li>
  * </ul>
  * After Mixin, {@link DefaultBridge}s are declared ({@link #declareDefaultBridges}). A platform where nothing of
  * Fabricated's runs after Mixin on every class (NeoForge 21.1's ModLauncher) declares them before Mixin too, for the
@@ -76,7 +77,7 @@ public final class FabricClassTransforms {
 	 * Strips the other side's members, adds injected interfaces, removes {@code final} from the methods Fabric mods
 	 * override where only the platform's build declares it (FINAL-2; the platform's own access transformers have run by
 	 * then), makes instance handlers of another mod's mixin's static handlers (CORPUS-87) and puts back vanilla's methods
-	 * the platform took out (SEAM-1); whether the class changed.
+	 * the platform took out (SEAM-1) and its calls (SEAM-3); whether the class changed.
 	 */
 	public static boolean beforeMixin(FabricatedState state, ClassNode node, BiConsumer<String, String> audit) {
 		boolean changed = false;
@@ -113,8 +114,9 @@ public final class FabricClassTransforms {
 			// All or nothing, never failing the class's loading: the class keeps its own code where the rewrite fails.
 			VanillaSeams.Restoring seams = VanillaSeams.restoreWhole(node);
 			if (seams.failure() != null) {
-				LOGGER.error("Fabricated couldn't put vanilla's methods back in {} (SEAM-1): the class loads as the platform has it, so Fabric"
-						+ " mods' hooks of them find nothing there", node.name.replace('/', '.'), seams.failure());
+				LOGGER.error("Fabricated couldn't put vanilla's {} back in {} ({}): the class loads as the platform has it, so Fabric mods' hooks of"
+						+ " them find nothing there", VanillaSeams.putsBackCalls(node.name) ? "calls" : "methods", node.name.replace('/', '.'),
+						VanillaSeams.putsBackCalls(node.name) ? "SEAM-3" : "SEAM-1", seams.failure());
 			} else if (!seams.restored().isEmpty()) {
 				audit.accept("fabricated:vanilla_seam", String.join(", ", seams.restored()));
 				changed = true;

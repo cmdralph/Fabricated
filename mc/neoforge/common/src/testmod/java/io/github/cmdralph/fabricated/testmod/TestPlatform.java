@@ -14,6 +14,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.CommonHooks;
@@ -73,5 +75,10 @@ final class TestPlatform {
 	/** The id an id names in the registry, an alias resolved. */
 	static <T> Identifier resolve(Registry<T> registry, Identifier id) {
 		return registry.resolve(id);
+	}
+
+	/** A block overriding the platform's extension for a player's break (SEAM-3): it leaves amethyst ({@link BreakOverride}). */
+	static Block breakOverride(BlockBehaviour.Properties properties) {
+		return new BreakOverride(properties);
 	}
 }
