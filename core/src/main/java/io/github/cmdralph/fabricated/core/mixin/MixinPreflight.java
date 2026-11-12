@@ -1621,8 +1621,7 @@ public final class MixinPreflight extends PreflightPart {
 				} else if (addedByAMixin(fieldName)) {
 					ctx.info("@Shadow field " + fieldName + " is not in " + targetDotted + "; another mod's mixin may add it, so it was not verified");
 				} else {
-					ctx.classLevel("@Shadow field " + fieldName + " (" + desc + ") does not exist in " + targetDotted,
-							ctx.changer(true) + " changed " + targetDotted + "; the mod needs an update.");
+					ctx.classLevel("@Shadow field " + fieldName + " (" + desc + ") does not exist in " + targetDotted, retypedFieldHint(target, fieldName, desc, ctx));
 				}
 			}
 		}
@@ -1652,8 +1651,9 @@ public final class MixinPreflight extends PreflightPart {
 					} else if (addedByAMixin(methodName)) {
 						ctx.info("@Shadow method " + methodName + " is not in " + targetDotted + "; another mod's mixin may add it, so it was not verified");
 					} else if (inherited == ClassIndex.Resolution.MISSING) {
+						String retyped = retypedMethodHint(target, methodName, desc, ctx);
 						ctx.classLevel("@Shadow method " + methodName + desc + " does not exist in " + targetDotted,
-								ctx.changer(true) + " changed " + targetDotted + "; the mod needs an update.");
+								retyped != null ? retyped : ctx.changer(true) + " changed " + targetDotted + "; the mod needs an update.");
 					} else {
 						ctx.classLevel("@Shadow method " + methodName + desc + " is not declared in " + targetDotted + (inherited == ClassIndex.Resolution.FOUND
 										? ", which inherits it," : " (a supertype pre-flight can't read may have it),")
@@ -1841,7 +1841,7 @@ public final class MixinPreflight extends PreflightPart {
 		ctx.accessorMember(method, nameExists
 						? "@Accessor target field " + fieldName + " in " + target.name.replace('/', '.') + " has a different type than " + desc
 						: "@Accessor target field " + fieldName + " does not exist in " + target.name.replace('/', '.'),
-				nameExists ? ctx.changer(true) + " changed the field's type." : "The field was renamed or removed by " + ctx.changer(false) + ".");
+				nameExists ? retypedFieldHint(target, fieldName, desc, ctx) : "The field was renamed or removed by " + ctx.changer(false) + ".");
 	}
 
 	/** The field type an accessor reads or writes: a getter's return type or a setter's only parameter. */
@@ -1861,8 +1861,9 @@ public final class MixinPreflight extends PreflightPart {
 		String methodName = ref.nameOr(name);
 		String desc = ref.methodDescOr(method.desc);
 		if (PreflightAsm.declares(target, methodName, desc)) return;
+		String retyped = retypedMethodHint(target, methodName, desc, ctx);
 		ctx.accessorMember(method, "@Invoker target method " + methodName + desc + " does not exist in " + target.name.replace('/', '.'),
-				"The method was renamed or removed by " + ctx.changer(false) + ".");
+				retyped != null ? retyped : "The method was renamed or removed by " + ctx.changer(false) + ".");
 	}
 
 	/** The field an {@code @Accessor} without a value names, as Mixin infers it from the method's name; null when none. */
@@ -1923,6 +1924,9 @@ public final class MixinPreflight extends PreflightPart {
 		for (MemberRef ref : named) {
 			if (hint == null) hint = replacedHint(target, ref.name(), ref.desc());
 		}
+		for (MemberRef ref : named) {
+			if (hint == null && ref.desc() != null) hint = retypedMethodHint(target, ref.name(), ref.desc(), ctx);
+		}
 		ctx.injector(handler, require, injectorName + (selectors.size() == 1 ? " targets method " + selectors.get(0) + ", which does not exist in "
 						: " targets methods " + String.join(", ", selectors) + ", none of which exists in ") + targetDotted,
 				hint != null ? hint : "The method was renamed or removed by " + ctx.changer(false) + ".");
@@ -1943,6 +1947,64 @@ public final class MixinPreflight extends PreflightPart {
 		return replaced == null ? null : loader + " replaced that private method with " + replaced.named() + ", which " + replaced.caller().name
 				+ " calls in its place; only an @Inject at its call or its start, or at its end where that method returns as vanilla's does, moves there"
 				+ " (STRUCT-1).";
+	}
+
+	/**
+	 * What a report says of a method the target has under that name but not with {@code desc}: what it takes, or returns
+	 * where only that differs, so that the line says what changed rather than that the method is gone (PRE-32: Polymer's
+	 * hooks of {@code ServerEntity.sendPairingData}, whose consumer NeoForge 21.1 made its own acceptor, and Carpet's of
+	 * {@code CustomPacketPayload.codec}, which NeoForge gave the protocol and the flow). Null where it has none of that name.
+	 */
+	static String retypedMethodHint(ClassNode target, String name, String desc, Context ctx) {
+		List<MethodNode> others = new ArrayList<>();
+		for (MethodNode m : target.methods) {
+			if (m.name.equals(name) && !m.desc.equals(desc) && (m.access & Opcodes.ACC_SYNTHETIC) == 0) others.add(m);
+		}
+		if (others.isEmpty()) return null;
+		String owner = target.name.substring(target.name.lastIndexOf('/') + 1).replace('$', '.');
+		String what = name.equals("<init>") ? owner + "'s constructor" : owner + "." + name;
+		if (others.size() == 1) {
+			String other = others.get(0).desc;
+			if (Arrays.equals(Type.getArgumentTypes(other), Type.getArgumentTypes(desc))) {
+				return ctx.changer(true) + " changed what it returns: " + what + " returns " + readable(Type.getReturnType(other)) + "; the mod needs an update.";
+			}
+			return ctx.changer(true) + " changed its parameters: " + what + " takes " + readableParameters(other) + "; the mod needs an update.";
+		}
+		List<String> taken = new ArrayList<>();
+		for (MethodNode m : others.subList(0, Math.min(others.size(), 4))) taken.add(readableParameters(m.desc));
+		return ctx.changer(true) + " changed its parameters, or removed this one of its overloads: "
+				+ (name.equals("<init>") ? owner + "'s constructors" : owner + "'s " + name + " methods") + " take " + String.join(" and ", taken)
+				+ (others.size() > 4 ? " and " + (others.size() - 4) + " more" : "") + "; the mod needs an update.";
+	}
+
+	/**
+	 * What a report says of a field the target doesn't have with {@code desc}: the type it has under that name
+	 * (PRE-32: Debugify's shadow of {@code RangedBowAttackGoal.mob}, a {@code Mob} on NeoForge and Forge where vanilla's is
+	 * a {@code Monster}), or that the platform changed the class where it has none of that name.
+	 */
+	static String retypedFieldHint(ClassNode target, String name, String desc, Context ctx) {
+		for (FieldNode f : target.fields) {
+			if (f.name.equals(name) && !f.desc.equals(desc)) {
+				return ctx.changer(true) + " changed the field's type to " + readable(Type.getType(f.desc)) + "; the mod needs an update.";
+			}
+		}
+		return ctx.changer(true) + " changed " + target.name.replace('/', '.') + "; the mod needs an update.";
+	}
+
+	/** A method's parameters as reports print them: {@code (ServerPlayer, PacketAndPayloadAcceptor)}. */
+	static String readableParameters(String methodDesc) {
+		List<String> names = new ArrayList<>();
+		for (Type t : Type.getArgumentTypes(methodDesc)) names.add(readable(t));
+		return "(" + String.join(", ", names) + ")";
+	}
+
+	/** A type as reports print it: the class's simple name ({@code Outer.Inner} for a nested one), {@code []} for each dimension. */
+	static String readable(Type type) {
+		return switch (type.getSort()) {
+			case Type.ARRAY -> readable(type.getElementType()) + "[]".repeat(type.getDimensions());
+			case Type.OBJECT -> type.getInternalName().substring(type.getInternalName().lastIndexOf('/') + 1).replace('$', '.');
+			default -> type.getClassName();
+		};
 	}
 
 	/**

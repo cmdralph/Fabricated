@@ -1531,6 +1531,19 @@ What this can't match of Fabric, seen in a reference pack (2026-10-28):
   class in a package a module has only in that module, so OneConfig's Mod Menu API shim, in a package of OneConfig's
   own, doesn't load; Fabricated provides Mod Menu's API itself. Fabric Loader's `loadIntoTarget`, which OneConfig
   loads it with, is provided.
+- **A method's parameters or a field's type NeoForge changed.** A Fabric mod's hook written for vanilla's types is left
+  out, and the report says what the method takes or what the field is now (PRE-32). In the advanced corpus:
+  - Polymer's hooks of `ServerEntity.sendPairingData` on 1.21.1, where NeoForge passes its own
+    `PacketAndPayloadAcceptor` in place of vanilla's packet consumer. Polymer's wrapping of the packets that start an
+    entity's tracking, for the player they go to, is left out; what that changes for Polymer's entities is
+    unverified. Cobblemon's Fabric build hooks the same method, and its hook is left out too. NeoForge 1.21.11 and
+    26.x pass vanilla's consumer.
+  - Carpet's hook adding its own payload type to `CustomPacketPayload.codec`, which NeoForge gives the connection's
+    protocol and direction (every version). The hook calls vanilla's two-parameter method, which NeoForge doesn't
+    have, so it can't move to NeoForge's. Carpet's own packets between its client and server aren't in the codec;
+    how a Carpet client fares on NeoForge is unverified.
+  - Debugify's fix for MC-121706 in `RangedBowAttackGoal`, whose mob NeoForge types as any `Mob`, where vanilla's is
+    a `Monster` (every version; Forge too).
 
 ### What this means for Fabric mods
 
@@ -2259,6 +2272,9 @@ instead.
   itself, so a Fabric mod's wrapper of the screen's render call is left out: Architectury's screen render events,
   FancyMenu's and SpruceUI's hooks around drawing a screen. An `@Inject` at the call applies, and on Forge 61 and 64
   Architectury's and FancyMenu's wrappers apply at Forge's hook. Use NeoForge, or the mod's Forge build (SCREEN-2).
+- **Fields and parameters Forge retyped** (every Forge version). Forge types `RangedBowAttackGoal`'s mob as any
+  `Mob`, so Debugify's fix for MC-121706, written for vanilla's `Monster`, is left out. The report names what the
+  field or the method's parameters are now (PRE-32).
 - **Two equal registry entries.** Forge's registries tell entries apart by equality, so a mod registering two equal
   objects under two names fails at the second: Wover Story's main entrypoint on Forge 66 (two equal point-of-interest
   types), and the mod is marked as failed. On Fabric and NeoForge they are two entries. Use NeoForge, or the mod's

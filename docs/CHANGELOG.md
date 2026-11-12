@@ -44,6 +44,31 @@ One entry per working session, newest first: what changed, and how it was verifi
   21.1.265's, 21.11.45's and 26.1.2.116's and Forge 47.4.28's (under SRG's names), 52.1.21's, 61.2.4's, 64.1.5's,
   65.1.5's and 66.1.0's classes, passes ASM's analyzer and the JVM's verifier.
 
+## 2026-11-12: The report says what the platform changed of a method's parameters or a field's type (PRE-32)
+
+- **PRE-32** (P3), fixed: where NeoForge or Forge changed the parameters of a method a Fabric mod's mixin hooks, or the
+  type of a field it reads, the report said the method was renamed or removed, or that the platform changed the class.
+  It now names what the method takes or what the field is ("NeoForge or this Minecraft version changed its
+  parameters: ServerEntity.sendPairingData takes (ServerPlayer, PacketAndPayloadAcceptor)"). The hooks stay left out,
+  known limits now listed in the compatibility notes: Polymer's entity tracking hooks on NeoForge 1.21.1, Carpet's
+  payload codec hook on NeoForge, Debugify's MC-121706 fix on NeoForge and Forge.
+- Verified: core tests, CI's script tests and the mixin inventory; on a NeoForge 1.21.1 advanced corpus server the
+  report names the types for Polymer's, Cobblemon's, Carpet's, Debugify's and Ledger's left-out hooks, and its checks
+  and other lines are as before.
+
+## 2026-11-12: CI's clients stay in their world until the integrated server has had as long there (CI-15)
+
+- **CI-15** (P3, CI only), fixed: mc-runtime-test quits once the client's player has ticked 100 times, whatever the
+  integrated server did meanwhile, and a server more than two seconds behind skips the ticks it missed. Forge 26.3's
+  client with Fabric API once missed `frapi-moving-block-outline` with its server 78 ticks behind: a falling block is
+  sent to the client as it spawns, its glowing flag only with the server's next tick. The test mod now holds
+  mc-runtime-test's tick hook, the extension point its controller class offers, from the tick its count is up until
+  the server has run 100 ticks with the player, 60 seconds at most, and logs how the hold ended, which the new gating
+  `client-hold` check reads to tell the hold ran. A server that kept up is there first and nothing waits; a check that
+  never logs still fails, the checks waiting on the server deciding where the hold gave up.
+- Verified: CI's script tests and the mixin inventory; the test mods build for NeoForge 1.21.1, 1.21.11 and 26.1.2.
+  No client ran: none can start here (no display or GPU).
+
 ## 2026-11-12: Vanilla's item checks put back where the platform asks the stack's actions (SEAM-6), a default bridge no longer taken for an override (SEAM-7)
 
 - **SEAM-6** (P1), fixed: NeoForge and Forge ask the stack's `canPerformAction` of an action where vanilla asks
