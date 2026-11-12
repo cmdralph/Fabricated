@@ -1,8 +1,7 @@
 package io.github.cmdralph.fabricated.core.bytecode;
 
-import java.util.Collections;
-import java.util.Map;
-import java.util.WeakHashMap;
+import java.lang.invoke.MethodHandles;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Whether a block keeps the platform's default of an extension method, for the calls SEAM-3, SEAM-4, SEAM-6 and SEAM-8
@@ -17,19 +16,41 @@ import java.util.WeakHashMap;
  * override it, and the platform's call is made. The answer is asked once for each class: the game class keeps the
  * answers ({@link #known}), one store for each method it asks of, as a lookup that fails throws. Once the classes were
  * asked of, the game class reads their answers first ({@link #asked}), so a check makes nothing: the lookup's arrays
- * only where a class is new.
+ * only where a class is new. The store is a {@link ClassValue}, read without a lock (the server's and the client's
+ * threads ask at once, every tick) and kept no longer than each class.
  */
 final class KeepsDefault {
 	private KeepsDefault() {
 	}
 
-	/** A store of the answers by class, for the game class to keep: its keys weak, so it keeps no class from unloading. */
-	static Map<Class<?>, Boolean> known() {
-		return Collections.synchronizedMap(new WeakHashMap<>());
+	/**
+	 * A store of the answers by class, for the game class to keep: a {@link ClassValue} giving each class a slot its answer
+	 * goes into once asked, read without a lock or anything made, and kept no longer than the class. A class can't be a
+	 * {@code ClassValue}'s and name only the JDK's classes, so {@code slots}, that subclass's bytes in the game class's
+	 * package (ISO-8859-1), is defined beside it, a hidden class. Null where it can't be: each check then asks again.
+	 */
+	@SuppressWarnings("unchecked")
+	static ClassValue<Object[]> known(String slots) {
+		try {
+			Class<?> type = MethodHandles.lookup().defineHiddenClass(slots.getBytes(StandardCharsets.ISO_8859_1), true).lookupClass();
+			return (ClassValue<Object[]>) type.getDeclaredConstructor().newInstance();
+		} catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+			return null;
+		}
+	}
+
+	/** The answer kept for the class: whether it declares the method; null where it wasn't asked of yet. */
+	private static Boolean answer(ClassValue<Object[]> known, Class<?> type) {
+		return known == null ? null : (Boolean) known.get(type)[0];
+	}
+
+	/** Keeps the class's answer; two threads asking at once keep the same one. */
+	private static void keep(ClassValue<Object[]> known, Class<?> type, Boolean overrides) {
+		if (known != null) known.get(type)[0] = overrides;
 	}
 
 	/** Whether neither the state's class nor the block's declares {@code name} over the extensions' interfaces. */
-	static boolean keepsDefault(Map<Class<?>, Boolean> known, Object state, Object block, Class<?> stateExtension, Class<?> blockExtension, String name,
+	static boolean keepsDefault(ClassValue<Object[]> known, Object state, Object block, Class<?> stateExtension, Class<?> blockExtension, String name,
 			Class<?>[] stateParams, Class<?>[] blockParams) {
 		try {
 			return !overrides(known, state.getClass(), stateExtension, name, stateParams) && !overrides(known, block.getClass(), blockExtension, name, blockParams);
@@ -44,7 +65,7 @@ final class KeepsDefault {
 	 * Forge's {@code block.getSoundType(state)}), a state class declaring vanilla's method again answers otherwise (SEAM-8).
 	 * The state's class keeps one answer for both.
 	 */
-	static boolean keepsDefaultAndMethod(Map<Class<?>, Boolean> known, Object state, Object block, Class<?> stateExtension, Class<?> blockExtension,
+	static boolean keepsDefaultAndMethod(ClassValue<Object[]> known, Object state, Object block, Class<?> stateExtension, Class<?> blockExtension,
 			String name, Class<?>[] stateParams, Class<?>[] blockParams, Class<?> base, String baseName, Class<?>[] baseParams) {
 		try {
 			return !overridesEither(known, state.getClass(), stateExtension, name, stateParams, base, baseName, baseParams)
@@ -73,22 +94,22 @@ final class KeepsDefault {
 	}
 
 	/** {@link #overrides}, where the class declares either method over its own type; true where it can't tell. */
-	static boolean overridesEither(Map<Class<?>, Boolean> known, Class<?> type, Class<?> extension, String name, Class<?>[] params, Class<?> base,
+	static boolean overridesEither(ClassValue<Object[]> known, Class<?> type, Class<?> extension, String name, Class<?>[] params, Class<?> base,
 			String baseName, Class<?>[] baseParams) {
-		Boolean answer = known.get(type);
+		Boolean answer = answer(known, type);
 		if (answer == null) {
 			try {
 				answer = declaresOver(type, extension, name, params) || declaresOver(type, base, baseName, baseParams);
 			} catch (RuntimeException | LinkageError e) {
 				answer = true;
 			}
-			known.put(type, answer);
+			keep(known, type, answer);
 		}
 		return answer;
 	}
 
 	/** Whether the object's class keeps {@code base}'s method: no class between them declares it again. */
-	static boolean keepsMethod(Map<Class<?>, Boolean> known, Object object, Class<?> base, String name, Class<?>[] params) {
+	static boolean keepsMethod(ClassValue<Object[]> known, Object object, Class<?> base, String name, Class<?>[] params) {
 		try {
 			return !overrides(known, object.getClass(), base, name, params);
 		} catch (RuntimeException | LinkageError e) {
@@ -100,7 +121,7 @@ final class KeepsDefault {
 	 * {@link #keepsDefault}'s answer from the answers kept for the classes of the state and its block, told without making
 	 * a lookup's arrays: 1 where both keep the default, 0 where one doesn't, -1 where one wasn't asked of yet.
 	 */
-	static int asked(Map<Class<?>, Boolean> known, Object state, Object block) {
+	static int asked(ClassValue<Object[]> known, Object state, Object block) {
 		int answer = asked(known, state);
 		return answer != 1 ? answer : asked(known, block);
 	}
@@ -109,21 +130,21 @@ final class KeepsDefault {
 	 * {@link #keepsMethod}'s answer from the one kept for the object's class: 1 where it keeps the method, 0 where it
 	 * overrides it, -1 where it wasn't asked of yet.
 	 */
-	static int asked(Map<Class<?>, Boolean> known, Object object) {
-		Boolean overrides = known.get(object.getClass());
+	static int asked(ClassValue<Object[]> known, Object object) {
+		Boolean overrides = answer(known, object.getClass());
 		return overrides == null ? -1 : overrides ? 0 : 1;
 	}
 
 	/** {@link #declaresOver}, from {@code known} where it was asked for the class before; true where it can't tell. */
-	static boolean overrides(Map<Class<?>, Boolean> known, Class<?> type, Class<?> extension, String name, Class<?>[] params) {
-		Boolean answer = known.get(type);
+	static boolean overrides(ClassValue<Object[]> known, Class<?> type, Class<?> extension, String name, Class<?>[] params) {
+		Boolean answer = answer(known, type);
 		if (answer == null) {
 			try {
 				answer = declaresOver(type, extension, name, params);
 			} catch (RuntimeException | LinkageError e) {
 				answer = true;
 			}
-			known.put(type, answer);
+			keep(known, type, answer);
 		}
 		return answer;
 	}

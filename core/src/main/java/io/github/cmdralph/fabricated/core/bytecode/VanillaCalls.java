@@ -982,10 +982,12 @@ final class VanillaCalls {
 	 * ({@link OnReceiver}), or the other operands and the platform's call as before. The object's code runs once, as it did,
 	 * and the other operands only for the platform's call, as vanilla's code makes none of them. Where the result is stored
 	 * just after the call, vanilla's branch stores it there too, so a point after vanilla's call (an {@code INVOKE_ASSIGN}'s,
-	 * Porting Lib's friction hooks) finds the value stored, then loads it again for the platform's store, where the branches
-	 * meet just before it, so no frame of the rewrite's comes between that store and the code after it (PRE-33); where a
-	 * jump's target follows the store (AbstractHorse's second step sound), vanilla's branch goes there, its frame already
-	 * the branches'. Null where a place isn't so ({@link #site}; an operand vanilla's code loads again that isn't plain).
+	 * Porting Lib's friction hooks) finds the value stored, each branch storing it once (a hook of the store or of a load of
+	 * the local runs once a call), and the branches meet after the platform's store, where the local it starts is in scope
+	 * (PRE-33); where a jump's target follows the store (AbstractHorse's second step sound), vanilla's branch goes there,
+	 * its frame already the branches'. A single store both branches reach can't be the instruction just after vanilla's
+	 * call, as Mixin's {@code INVOKE_ASSIGN} needs: their meeting's label comes before it. Null where a place isn't so
+	 * ({@link #site}; an operand vanilla's code loads again that isn't plain).
 	 */
 	private static Rewritten receivers(ClassNode owner, MethodNode method, PutBack row, boolean srg, List<MethodInsnNode> places,
 			Map<AbstractInsnNode, State> frames) {
@@ -1054,20 +1056,22 @@ final class VanillaCalls {
 				for (LocalVariableNode local : startedBy(method, place.store())) {
 					method.localVariables.add(new LocalVariableNode(local.name, local.desc, local.signature, stored, platform, local.index));
 				}
-				// Vanilla's branch hands the value it stored to the platform's store too, where the branches meet before it: the
-				// platform's code then keeps no frame of the rewrite's between its store and what follows, where Mixin and
-				// pre-flight read the local from that store (PRE-33: Apoli's slipperiness hook after the friction on Forge 52).
-				if (place.join() == null) code.add(new VarInsnNode(result.getOpcode(Opcodes.ILOAD), place.store().var));
 			}
 			code.add(new JumpInsnNode(Opcodes.GOTO, end));
 			code.add(platform);
 			code.add(frameOf(place.mid().locals(), place.mid().stack()));
 			method.instructions.insertBefore(place.split(), code);
 			if (place.join() != null) continue;
+			// Each branch stores once: the branches meet after the platform's store, past the labels that follow it, so the
+			// frame there is where the local the store starts is in scope, which Mixin looks it up at (PRE-33).
+			AbstractInsnNode last = place.store() != null ? place.store() : site.call();
+			while (place.store() != null && last.getNext() instanceof LabelNode || place.store() != null && last.getNext() instanceof LineNumberNode) {
+				last = last.getNext();
+			}
 			List<Object> after = new ArrayList<>(site.under());
-			after.add(frameType(result));
-			method.instructions.insert(site.call(), frameOf(place.mid().locals(), after));
-			method.instructions.insert(site.call(), end);
+			if (place.store() == null) after.add(frameType(result));
+			method.instructions.insert(last, frameOf(place.store() != null ? place.after().locals() : place.mid().locals(), after));
+			method.instructions.insert(last, end);
 		}
 		method.maxStack = Math.max(method.maxStack, found.stream().mapToInt(p -> slots(p.mid().stack())).max().orElse(0) + 8);
 		return new Rewritten(List.copyOf(putBack), found.size());
@@ -1464,7 +1468,7 @@ final class VanillaCalls {
 	private static void addHelpers(ClassNode node, PutBack row, boolean srg, String layerBase, List<MethodNode> keepsHelpers) {
 		Extension extension = row.extension();
 		if (extension != null && indexOf(node, extension.entry(), extension.entryDesc()) < 0) {
-			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, extension.field(), "Ljava/util/Map;", null, null));
+			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, extension.field(), "Ljava/lang/ClassValue;", null, null));
 			node.methods.add(keepsDefault(extension, node.name, srg));
 		}
 		if (row.form() == OnReceiver.GOLD_HOLDER && indexOf(node, GOLD_AGREES, "(" + ITEM + ")Z") < 0) node.methods.add(goldAgrees());
@@ -1473,11 +1477,11 @@ final class VanillaCalls {
 			if (indexOf(node, ENCHANTMENT_EVENT, enchantmentEventDesc(instance)) < 0) node.methods.add(enchantmentEvent(instance));
 		}
 		if (layerBase != null && indexOf(node, KEEPS_LAYER, "(Ljava/lang/Object;)Z") < 0) {
-			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KNOWN_LAYER, "Ljava/util/Map;", null, null));
+			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KNOWN_LAYER, "Ljava/lang/ClassValue;", null, null));
 			node.methods.add(keepsLayer(node.name, layerBase, row.platform()));
 		}
 		if (row.code().keepingPlayer() >= 0 && indexOf(node, KEEPS_PLAYER, "(" + PLAYER + ")Z") < 0) {
-			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KNOWN_PLAYER, "Ljava/util/Map;", null, null));
+			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KNOWN_PLAYER, "Ljava/lang/ClassValue;", null, null));
 			node.methods.add(keepsPlayer(node.name, srg));
 		}
 		if (checks(row) && indexOf(node, "fabricated$keeps", KEEPS) < 0) node.methods.addAll(keepsHelpers);
@@ -1620,8 +1624,8 @@ final class VanillaCalls {
 		return code;
 	}
 
-	private static final String ASKED_ONE = "(Ljava/util/Map;Ljava/lang/Object;)I";
-	private static final String ASKED_BOTH = "(Ljava/util/Map;Ljava/lang/Object;Ljava/lang/Object;)I";
+	private static final String ASKED_ONE = "(Ljava/lang/ClassValue;Ljava/lang/Object;)I";
+	private static final String ASKED_BOTH = "(Ljava/lang/ClassValue;Ljava/lang/Object;Ljava/lang/Object;)I";
 
 	/**
 	 * After {@link #known}, the store on the stack: the answer kept for the classes of the objects {@code objects} pushes,
@@ -1638,7 +1642,7 @@ final class VanillaCalls {
 		code.add(new JumpInsnNode(Opcodes.IFLT, ask));
 		code.add(new InsnNode(Opcodes.IRETURN));
 		code.add(ask);
-		code.add(new FrameNode(Opcodes.F_NEW, 2, new Object[] {param, "java/util/Map"}, 1, new Object[] {Opcodes.INTEGER}));
+		code.add(new FrameNode(Opcodes.F_NEW, 2, new Object[] {param, "java/lang/ClassValue"}, 1, new Object[] {Opcodes.INTEGER}));
 		code.add(new InsnNode(Opcodes.POP));
 		code.add(new VarInsnNode(Opcodes.ALOAD, 1));
 	}
@@ -1689,18 +1693,47 @@ final class VanillaCalls {
 		return code;
 	}
 
+	/**
+	 * The bytes, as ISO-8859-1, of the {@code ClassValue} giving each class a slot for its answer ({@link KeepsDefault#known}),
+	 * a class of the owner's package, which the game class defines beside it, hidden: {@code computeValue} makes an empty
+	 * {@code Object[1]}.
+	 */
+	private static String slots(String owner) {
+		String pkg = owner.lastIndexOf('/') < 0 ? "" : owner.substring(0, owner.lastIndexOf('/') + 1);
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER | Opcodes.ACC_SYNTHETIC, pkg + "fabricated$Slots",
+				"Ljava/lang/ClassValue<[Ljava/lang/Object;>;", "java/lang/ClassValue", null);
+		org.objectweb.asm.MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		init.visitCode();
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/ClassValue", "<init>", "()V", false);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(0, 0);
+		init.visitEnd();
+		org.objectweb.asm.MethodVisitor compute = cw.visitMethod(Opcodes.ACC_PROTECTED, "computeValue", "(Ljava/lang/Class;)Ljava/lang/Object;", null, null);
+		compute.visitCode();
+		compute.visitInsn(Opcodes.ICONST_1);
+		compute.visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/Object");
+		compute.visitInsn(Opcodes.ARETURN);
+		compute.visitMaxs(0, 0);
+		compute.visitEnd();
+		cw.visitEnd();
+		return new String(cw.toByteArray(), StandardCharsets.ISO_8859_1);
+	}
+
 	/** Pushes the class's store of answers in {@code field}, made the first time; the method's one parameter is of {@code param}. */
 	private static void known(InsnList code, String owner, String field, String param) {
 		LabelNode known = new LabelNode();
-		code.add(new FieldInsnNode(Opcodes.GETSTATIC, owner, field, "Ljava/util/Map;"));
+		code.add(new FieldInsnNode(Opcodes.GETSTATIC, owner, field, "Ljava/lang/ClassValue;"));
 		code.add(new InsnNode(Opcodes.DUP));
 		code.add(new JumpInsnNode(Opcodes.IFNONNULL, known));
 		code.add(new InsnNode(Opcodes.POP));
-		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$known", "()Ljava/util/Map;", false));
+		code.add(new LdcInsnNode(slots(owner)));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$known", "(Ljava/lang/String;)Ljava/lang/ClassValue;", false));
 		code.add(new InsnNode(Opcodes.DUP));
-		code.add(new FieldInsnNode(Opcodes.PUTSTATIC, owner, field, "Ljava/util/Map;"));
+		code.add(new FieldInsnNode(Opcodes.PUTSTATIC, owner, field, "Ljava/lang/ClassValue;"));
 		code.add(known);
-		code.add(new FrameNode(Opcodes.F_NEW, 1, new Object[] {param}, 1, new Object[] {"java/util/Map"}));
+		code.add(new FrameNode(Opcodes.F_NEW, 1, new Object[] {param}, 1, new Object[] {"java/lang/ClassValue"}));
 	}
 
 	/**
@@ -1740,10 +1773,10 @@ final class VanillaCalls {
 		}
 	}
 
-	private static final String KEEPS = "(Ljava/util/Map;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/String;"
+	private static final String KEEPS = "(Ljava/lang/ClassValue;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/String;"
 			+ "[Ljava/lang/Class;[Ljava/lang/Class;)Z";
-	private static final String KEEPS_METHOD = "(Ljava/util/Map;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/Class;)Z";
-	private static final String KEEPS_AND_METHOD = "(Ljava/util/Map;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/String;"
+	private static final String KEEPS_METHOD = "(Ljava/lang/ClassValue;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/Class;)Z";
+	private static final String KEEPS_AND_METHOD = "(Ljava/lang/ClassValue;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/String;"
 			+ "[Ljava/lang/Class;[Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/Class;)Z";
 	private static final String KEEPS_OWNER = Type.getInternalName(KeepsDefault.class);
 	private static volatile byte[] keepsClass;

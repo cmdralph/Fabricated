@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,6 +20,7 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
@@ -509,7 +511,28 @@ public class ExtensionCallsTest {
 			}
 			assertEquals(1, stores, form.name());
 			assertEquals(2, travel.localVariables.stream().filter(local -> local.name.equals("friction")).count(), form.name());
+			// A hook of the friction's store or of a load of it (a @ModifyVariable at STORE or LOAD) meets each once a call, in
+			// either branch: vanilla's branch stores it and jumps past the platform's store, and nothing loads it more.
+			MethodNode before = method(node(platform.get(LIVING)), form.srg ? "m_7023_" : "travel");
+			int slot = travel.localVariables.stream().filter(local -> local.name.equals("friction")).findFirst().orElseThrow().index;
+			assertEquals(2, accesses(travel, Opcodes.FSTORE, slot), form.name());
+			assertEquals(accesses(before, Opcodes.FLOAD, slot), accesses(travel, Opcodes.FLOAD, slot), form.name());
+			AbstractInsnNode vanillaStore = Arrays.stream(travel.instructions.toArray()).filter(insn -> insn instanceof MethodInsnNode call && call.name.equals(getFriction)
+					&& call.desc.equals("()F")).findFirst().orElseThrow().getNext();
+			AbstractInsnNode jump = vanillaStore.getNext();
+			while (jump.getOpcode() < 0) jump = jump.getNext();
+			assertEquals(Opcodes.GOTO, jump.getOpcode(), form.name());
+			AbstractInsnNode join = ((JumpInsnNode) jump).label;
+			AbstractInsnNode platformStore = join.getPrevious();
+			while (platformStore.getOpcode() < 0) platformStore = platformStore.getPrevious();
+			assertTrue(platformStore instanceof VarInsnNode var && var.getOpcode() == Opcodes.FSTORE && var.var == slot, form + ": the branches meet before the"
+					+ " platform's store");
 		}
+	}
+
+	/** How many of the method's instructions are the opcode's access of the slot. */
+	private static long accesses(MethodNode method, int opcode, int slot) {
+		return Arrays.stream(method.instructions.toArray()).filter(insn -> insn instanceof VarInsnNode var && var.getOpcode() == opcode && var.var == slot).count();
 	}
 
 	/** Each item case of the item sites, by site. */

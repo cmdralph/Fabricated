@@ -2242,7 +2242,7 @@ public final class MixinPreflight extends PreflightPart {
 					ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
-		Ambiguity ambiguous = slices.isEmpty() ? ambiguousLocal(mixin, handler, ann, matched, target.name, ctx) : null;
+		Ambiguity ambiguous = ambiguousLocal(mixin, handler, ann, matched, target.name, ctx);
 		// Mixin's own discriminator throws as the injector applies, which require doesn't cover (a config that isn't required
 		// survives it), as for unmatchedArgument.
 		int ambiguousRequire = ambiguous != null && ambiguous.modified() ? (ctx.config().required() ? 1 : 0) : require;
@@ -2821,17 +2821,31 @@ public final class MixinPreflight extends PreflightPart {
 	 * same frame changes nothing, so a local stays once its scope has ended, until the slot is stored or loaded again (Forge
 	 * 47's {@code AbstractMinecart.tick} keeps the three doubles of its client branch at the first {@code Vec3.add} call
 	 * after it). Any other frame may look a slot up again, and Mixin looks a slot no entry covers up in a table of its own,
-	 * so such a slot is {@link #UNTOLD} until it is stored or loaded again. Null for a slot holding none.
+	 * so such a slot is {@link #UNTOLD} until it is stored or loaded again; but where the frame comes just after a store
+	 * (labels and lines alone between) and lists the stored slot with a type (from the start for a full frame, among its
+	 * new locals for an append), Mixin looks the slot up from the entry covering the frame, the one the store's local
+	 * is: the slot keeps it (PRE-33: where SEAM-8's put-back's branches meet after the platform's store). Null for a slot
+	 * holding none.
 	 */
 	static String[] keptLocalTypes(MethodNode method, String owner, int point) {
 		String[] kept = new String[method.maxLocals];
+		// The width of each local the last frame states, as the frames' types read them (the method's own at its start).
+		List<Integer> widths = new ArrayList<>();
 		int slot = 0;
-		if ((method.access & Opcodes.ACC_STATIC) == 0) kept[slot++] = Type.getObjectType(owner).getDescriptor();
+		if ((method.access & Opcodes.ACC_STATIC) == 0) {
+			kept[slot++] = Type.getObjectType(owner).getDescriptor();
+			widths.add(1);
+		}
 		for (Type arg : Type.getArgumentTypes(method.desc)) {
 			if (slot < kept.length) kept[slot] = arg.getDescriptor();
 			slot += arg.getSize();
+			widths.add(arg.getSize());
 		}
+		boolean widthsKnown = true;
 		VarInsnNode store = null;
+		// The slot of the store just before, labels and lines alone since, and what it holds; -1 for none.
+		int justStored = -1;
+		String justStoredType = null;
 		for (int i = 0; i <= point && i < method.instructions.size(); i++) {
 			AbstractInsnNode insn = method.instructions.get(i);
 			if (store != null) {
@@ -2840,10 +2854,40 @@ public final class MixinPreflight extends PreflightPart {
 				if (store.var + 1 < kept.length && (stored.equals(UNTOLD) || Type.getType(stored).getSize() == 2)) {
 					kept[store.var + 1] = stored.equals(UNTOLD) ? UNTOLD : null;
 				}
+				justStored = stored.equals(UNTOLD) ? -1 : store.var;
+				justStoredType = stored;
 				store = null;
 			}
+			if (insn.getOpcode() >= 0) justStored = -1;
 			if (insn instanceof FrameNode frame && frame.type != Opcodes.F_SAME && frame.type != Opcodes.F_SAME1) {
 				Arrays.fill(kept, UNTOLD);
+				int stored = justStored;
+				justStored = -1;
+				List<Object> listed = frame.local == null ? List.of() : frame.local;
+				int from;
+				if (frame.type == Opcodes.F_FULL || frame.type == Opcodes.F_NEW) {
+					widths.clear();
+					widthsKnown = true;
+					from = 0;
+				} else if (frame.type == Opcodes.F_APPEND && widthsKnown) {
+					from = widths.stream().mapToInt(Integer::intValue).sum();
+				} else {
+					// A chop, or an append past one: what each listed local's slot is isn't followed further.
+					if (frame.type == Opcodes.F_CHOP) for (int c = 0; c < listed.size() && !widths.isEmpty(); c++) widths.remove(widths.size() - 1);
+					if (frame.type == Opcodes.F_APPEND) widthsKnown = false;
+					continue;
+				}
+				int at = from;
+				for (Object type : listed) {
+					int width = type == Opcodes.LONG || type == Opcodes.DOUBLE ? 2 : 1;
+					widths.add(width);
+					boolean typed = type instanceof String || type == Opcodes.INTEGER || type == Opcodes.FLOAT || type == Opcodes.LONG || type == Opcodes.DOUBLE;
+					if (at == stored && typed && justStoredType.equals(coveringType(method, i, at))) {
+						kept[at] = justStoredType;
+						if (width == 2 && at + 1 < kept.length) kept[at + 1] = null;
+					}
+					at += width;
+				}
 			} else if (insn instanceof VarInsnNode var) {
 				if (var.getOpcode() >= Opcodes.ILOAD && var.getOpcode() <= Opcodes.ALOAD) {
 					kept[var.var] = coveringType(method, i, var.var);
@@ -3167,8 +3211,10 @@ public final class MixinPreflight extends PreflightPart {
 	 * in scope past {@code this}: Mixin's discriminator, which MixinExtras' {@code @Local} uses too, looks from the first
 	 * slot past it and throws at the first such instruction ("Found 2 candidate variables but exactly 1 is required").
 	 * Where the running Mixin keeps locals once their scope has ended (PRE-26), those it keeps there
-	 * ({@link #keptLocalTypes}) count too. Null when that can't be shown (no local variable table, an injection point other
-	 * than a call, field access or object creation, ...).
+	 * ({@link #keptLocalTypes}) count too. The instructions are Mixin's ({@link LocalRepairs#mixinPoints}): in the
+	 * injector's slice, and for a call's assignment ({@code INVOKE_ASSIGN}) the one after the call or its store (PRE-33).
+	 * Null when that can't be shown (no local variable table, an injection point other than a call, its assignment, a
+	 * field access or object creation, a slice that can't be worked out, ...).
 	 */
 	private Ambiguity ambiguousLocal(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<MethodNode> targets, String owner,
 			Context ctx) {
@@ -3176,12 +3222,10 @@ public final class MixinPreflight extends PreflightPart {
 		if (ats.size() != 1) return null;
 		AnnotationNode at = ats.get(0);
 		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
-		if (!point.equals("INVOKE") && !point.equals("FIELD") && !point.equals("NEW")
+		if (!point.equals("INVOKE") && !point.equals("INVOKE_ASSIGN") && !point.equals("FIELD") && !point.equals("NEW")
 				|| !(Annotations.value(at, "target") instanceof String raw)) return null;
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 		if (ref.fuzzy()) return null;
-		int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
-		int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
 		// The types taken by their type alone: each such @Local's, then a @ModifyVariable's own (PRE-30).
 		List<Type> byType = new ArrayList<>();
 		Type[] params = Type.getArgumentTypes(handler.desc);
@@ -3207,11 +3251,9 @@ public final class MixinPreflight extends PreflightPart {
 				MethodNode m = framed != null ? framed : target;
 				// Mixin's discriminator, MixinExtras' too, looks from the first slot past this (baseArgIndex).
 				int base = (m.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
-				int seen = 0;
-				for (int i = 0; i < m.instructions.size(); i++) {
-					AbstractInsnNode insn = m.instructions.get(i);
-					if (!InjectionPoints.hasOpcode(point, opcode, insn) || !InjectionPoints.matchesInsn(point, ref, insn)) continue;
-					if (ordinal >= 0 && seen++ != ordinal) continue;
+				List<Integer> points = LocalRepairs.mixinPoints(injector, m, ctx);
+				if (points == null) return null;
+				for (int i : points) {
 					Set<Integer> found = new HashSet<>();
 					for (LocalVariableNode lv : m.localVariables) {
 						if (lv.index < base || !lv.desc.equals(type) || m.instructions.indexOf(lv.start) > i || i >= m.instructions.indexOf(lv.end)) continue;

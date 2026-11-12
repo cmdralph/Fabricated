@@ -19,7 +19,6 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.LocalVariableNode;
-import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
@@ -676,10 +675,11 @@ final class LocalRepairs extends PreflightPart {
 	 * call's assignment ({@code INVOKE_ASSIGN}, unshifted): Mixin's {@code AfterInvoke} takes the instruction after each
 	 * call that returns a value, or the one after the store just after it (read in 0.8.5, 0.8.7 and Fabric's 0.17.4). In
 	 * the {@code @At}'s slice where it has one, its {@code ordinal} counting the calls there, as Mixin's slice of the method
-	 * reads them ({@link InjectionPoints#sliceRange}), an instruction a point takes past the slice's end being none it can
-	 * be told (PRE-33). Null for any other point, several, a fuzzy target or a slice that can't be worked out.
+	 * reads them ({@link InjectionPoints#sliceRange}), the instruction after one at the slice's end being that one, as
+	 * Mixin's {@code nextNode} has it ({@link InjectionPoints#afterInvoke}, PRE-33). Null for any other point, several, a
+	 * fuzzy target or a slice that can't be worked out.
 	 */
-	private static List<Integer> mixinPoints(AnnotationNode injector, MethodNode method, Context ctx) {
+	static List<Integer> mixinPoints(AnnotationNode injector, MethodNode method, Context ctx) {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.size() != 1) return null;
 		AnnotationNode at = ats.get(0);
@@ -698,11 +698,8 @@ final class LocalRepairs extends PreflightPart {
 		int last = Math.min(range.end(), method.instructions.size() - 1);
 		List<Integer> after = new ArrayList<>();
 		for (int i : picked) {
-			if (!(method.instructions.get(i) instanceof MethodInsnNode call) || Type.getReturnType(call.desc).getSort() == Type.VOID) continue;
-			int node = i + 1;
-			if (node <= last && method.instructions.get(node) instanceof VarInsnNode var && var.getOpcode() >= Opcodes.ISTORE) node++;
-			if (node > last) return null;
-			after.add(node);
+			int node = InjectionPoints.afterInvoke(method, i, last);
+			if (node >= 0) after.add(node);
 		}
 		return after;
 	}

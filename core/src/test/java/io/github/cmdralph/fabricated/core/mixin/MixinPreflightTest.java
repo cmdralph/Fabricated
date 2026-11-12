@@ -3143,6 +3143,63 @@ class MixinPreflightTest {
 		});
 	}
 
+	/**
+	 * A {@code @ModifyVariable} of a float in {@code travel} by its type, at {@code point} of {@code target}, in a slice from
+	 * the call {@code from} where it isn't null.
+	 */
+	private static byte[] floatModifier(String point, String target, String from) {
+		return mixin("com/example/mixin/Slippery", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "modify", "(F)F", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "travel");
+			methods.visitEnd();
+			if (from != null) {
+				AnnotationVisitor slice = ann.visitAnnotation("slice", "Lorg/spongepowered/asm/mixin/injection/Slice;");
+				AnnotationVisitor bound = slice.visitAnnotation("from", AT);
+				bound.visit("value", "INVOKE");
+				bound.visit("target", from);
+				bound.visitEnd();
+				slice.visitEnd();
+			}
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", point);
+			at.visit("target", target);
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.FLOAD, 1);
+			mv.visitInsn(Opcodes.FRETURN);
+			mv.visitMaxs(1, 2);
+			mv.visitEnd();
+		});
+	}
+
+	@Test
+	void aVariableModifiedByTypeInASliceOrAnAssignmentWithTwoOfItsTypeThereStaysOut() throws Exception {
+		// PRE-33: the check reads the instructions Mixin injects at, in the injector's slice and after a call's assignment,
+		// where it judged neither before: two floats in scope there, which the repair can't name one of, and Forge's Mixin
+		// would throw as it applied the injector ("Found 2 candidate variables but exactly 1 is required").
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Slippery"));
+		byte[] travel = assignedFloats(Opcodes.F_SAME, true);
+		Map<String, byte[]> sliced = Map.of("com/example/mixin/Slippery", floatModifier("INVOKE", "L" + TARGET + ";move(F)V", "L" + TARGET + ";friction()F"));
+		Map<String, byte[]> assigned = Map.of("com/example/mixin/Slippery", floatModifier("INVOKE_ASSIGN", "L" + TARGET + ";friction()F", null));
+		for (Map<String, byte[]> mod : List.of(sliced, assigned)) {
+			for (boolean keeps : new boolean[] {false, true}) {
+				assertNull(namedSlot(variablePreflight(travel, mod, keeps).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>())));
+				List<PreflightFinding> found = variablePreflight(travel, mod, keeps).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+				assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.message().equals("@ModifyVariable handler modify modifies the local"
+						+ " of type float by its type, which travel in net.minecraft.world.Thing has more than one of there")), found.toString());
+			}
+		}
+		// With one float in scope there, they apply.
+		byte[] one = assignedFloats(Opcodes.F_SAME, false);
+		for (Map<String, byte[]> mod : List.of(sliced, assigned)) {
+			assertTrue(variablePreflight(one, mod, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+					.noneMatch(f -> f.severity() != Severity.INFO));
+		}
+	}
+
 	@Test
 	void aVariableAnAssignmentStoresInItsSliceIsNamedByItsSlot() throws Exception {
 		// PRE-33: Porting Lib's friction hook modifies the float LivingEntity.travel stores from Block.getFriction(), by its
