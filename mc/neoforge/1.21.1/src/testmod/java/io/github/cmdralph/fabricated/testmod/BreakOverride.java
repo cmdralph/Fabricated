@@ -6,6 +6,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -13,8 +14,10 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 
 /**
- * A block of the platform's kind for the vanilla block breaking check ({@link VanillaBreakTest}, SEAM-3): it overrides
- * NeoForge's {@code onDestroyedByPlayer} (NeoForge 21.1's, without the tool), leaving amethyst where a player breaks it.
+ * A block of the platform's kind for the vanilla block breaking and harvest checks ({@link VanillaBreakTest}, SEAM-3;
+ * {@link VanillaHarvestTest}, SEAM-4): it overrides NeoForge's {@code onDestroyedByPlayer} (NeoForge 21.1's, without
+ * the tool), leaving amethyst where a player breaks it, and {@code canHarvestBlock}, answering its harvest check
+ * itself.
  */
 final class BreakOverride extends Block {
 	BreakOverride(Properties properties) {
@@ -24,6 +27,12 @@ final class BreakOverride extends Block {
 	@Override
 	public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player, boolean willHarvest, FluidState fluid) {
 		return level.setBlock(pos, Blocks.AMETHYST_BLOCK.defaultBlockState(), 3);
+	}
+
+	// The platform's harvest check, answered by the block itself (SEAM-4): vanilla's call isn't put back for it.
+	@Override
+	public boolean canHarvestBlock(BlockState state, BlockGetter level, BlockPos pos, Player player) {
+		return VanillaHarvestTest.overridingAnswer();
 	}
 
 	// Compile-time only: javac sees Fabric's and NeoForge's getAppearance defaults on Block and needs a subclass written
