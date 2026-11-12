@@ -53,7 +53,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   26.1.2 and Forge 47, 52 and 66 (Forge from trial merges into `forge` and `forge-legacy`): every check passes,
   `vanilla-friction` among them. The corpus servers against runs before the change: NeoForge 1.21.1's and Forge 52's
   advanced corpus apply the hooks named above, Forge 47's corpus Artifacts', Friends & Foes' and Porting Lib's; every
-  check as before. Discovery on NeoForge 26.1.2's server with Fabric API allocates 276 to 278 MB (baseline 271 MB).
+  check as before. Discovery on NeoForge 26.1.2's server with Fabric API allocates 276 to 280 MB (baseline 271 MB).
 
 ## 2026-11-12: Pre-flight reads an @At's opcode as Mixin does (PRE-30) and a selector in the refmap without its whitespace (PRE-31); a mob's shear call is SEAM-6's known limit
 
