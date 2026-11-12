@@ -347,6 +347,77 @@ class RestoredSeamsTest {
 		}
 	}
 
+	/** The item checks' game classes (SEAM-6) in a form, with what the mixins compiled by {@link #checked} import. */
+	private static Map<String, String> itemGame(Map<String, String> form) {
+		Map<String, String> game = new HashMap<>(form);
+		game.put("net/minecraft/core/BlockPos.java", "package net.minecraft.core; public record BlockPos(int x) { }");
+		game.put("net/minecraft/server/level/ServerLevel.java", "package net.minecraft.server.level; public class ServerLevel { }");
+		game.put("com/llamalad7/mixinextras/injector/ModifyExpressionValue.java", "package com.llamalad7.mixinextras.injector;"
+				+ " public @interface ModifyExpressionValue { String[] method(); org.spongepowered.asm.mixin.injection.At[] at(); }");
+		return game;
+	}
+
+	/**
+	 * SEAM-6: a wrapper of vanilla's shears check in the tripwire's playerWillDestroy, as BCLib's and Porting Lib's, applies,
+	 * and the class is rewritten for it, on NeoForge and on Forge 47 under SRG's names, its note saying how.
+	 */
+	@Test
+	void aWrapperOfVanillasItemCheckPutBackHasTheClassRewritten(@TempDir Path dir) throws Exception {
+		for (boolean forge47 : List.of(false, true)) {
+			Map<String, String> game = itemGame(forge47 ? io.github.cmdralph.fabricated.core.bytecode.ItemChecksTest.forge47Sources()
+					: io.github.cmdralph.fabricated.core.bytecode.ItemChecksTest.neoForgeSources());
+			String method = forge47 ? "m_5707_" : "playerWillDestroy";
+			String is = (forge47 ? "m_150930_" : "is") + "(Lnet/minecraft/world/item/Item;)Z";
+			String wrap = " @WrapOperation(method = \"" + method + "\", at = @At(value = \"INVOKE\", target = \"Lnet/minecraft/world/item/ItemStack;" + is + "\"))"
+					+ " private boolean shears(net.minecraft.world.item.ItemStack stack, net.minecraft.world.item.Item item, Operation<Boolean> original) {"
+					+ " return original.call(stack, item); }";
+			List<PreflightFinding> findings = new java.util.ArrayList<>();
+			MixinPreflight preflight = checked(dir.resolve("tripwire-" + forge47), game, "net.minecraft.world.level.block.TripWireBlock", wrap, null, true, Set.of(),
+					findings, new HashMap<>());
+			assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), findings.toString());
+			assertEquals(Set.of("net/minecraft/world/level/block/TripWireBlock"), preflight.restoredSeams());
+			// The class is named by the pre-flight's platform (here always NeoForge's), the note by the row's.
+			String loader = forge47 ? "Forge" : "NeoForge";
+			assertTrue(findings.stream().anyMatch(f -> f.message().equals("@WrapOperation shears hooks ItemStack." + is + " in " + method + ", vanilla's call"
+					+ " NeoForge's TripWireBlock makes through the item's " + (forge47 ? "IForgeItem" : "IItemExtension") + ".canPerformAction instead; Fabricated"
+					+ " puts it back there for the items keeping that method's default, so the hook applies to their check, and an item overriding it (vanilla's"
+					+ " shears among them) is checked as " + loader + " has it, without the hook (SEAM-6)")), findings.toString());
+		}
+	}
+
+	/**
+	 * SEAM-6: a hook of vanilla's shears check in a mob's mobInteract, where the platform shears it from the shears item, and
+	 * one of vanilla's map check in the held item renderer, where the platform asks whether the item is a MapItem, stay out,
+	 * their hints saying why, which the known limits read.
+	 */
+	@Test
+	void aHookOfAnItemCheckThePlatformDoesntMakeStaysOutSayingWhy(@TempDir Path dir) throws Exception {
+		Map<String, String> game = itemGame(io.github.cmdralph.fabricated.core.bytecode.ItemChecksTest.neoForgeSources());
+		game.put("net/minecraft/world/entity/animal/sheep/Sheep.java", "package net.minecraft.world.entity.animal.sheep; public class Sheep {"
+				+ " public boolean mobInteract(net.minecraft.world.entity.player.Player player) { return player.getMainHandItem().isEmpty(); } }");
+		game.put("net/minecraft/world/item/MapItem.java", "package net.minecraft.world.item; public class MapItem extends Item { public MapItem() { super(\"map\"); } }");
+		game.put("net/neoforged/neoforge/client/ClientHooks.java", "package net.neoforged.neoforge.client; public class ClientHooks { public static void hand() { } }");
+		game.put("net/minecraft/client/renderer/ItemInHandRenderer.java", "package net.minecraft.client.renderer; public class ItemInHandRenderer {"
+				+ " public boolean renderArmWithItem(net.minecraft.world.item.ItemStack stack) { net.neoforged.neoforge.client.ClientHooks.hand();"
+				+ " return stack.getItem() instanceof net.minecraft.world.item.MapItem; } }");
+		String hook = " @com.llamalad7.mixinextras.injector.ModifyExpressionValue(method = \"%s\", at = @At(value = \"INVOKE\", target ="
+				+ " \"Lnet/minecraft/world/item/ItemStack;is(Lnet/minecraft/world/item/Item;)Z\")) private boolean check(boolean original) { return original; }";
+		Map<String, String> cases = Map.of("net.minecraft.world.entity.animal.sheep.Sheep", "mobInteract", "net.minecraft.client.renderer.ItemInHandRenderer",
+				"renderArmWithItem");
+		for (Map.Entry<String, String> e : cases.entrySet()) {
+			List<PreflightFinding> findings = new java.util.ArrayList<>();
+			checked(dir.resolve(e.getValue()), game, e.getKey(), String.format(hook, e.getValue()), null, true, Set.of(), findings, new HashMap<>());
+			PreflightFinding out = findings.stream().filter(f -> f.severity() == Severity.LEFT_OUT).findFirst().orElseThrow();
+			assertEquals(e.getValue().equals("mobInteract") ? "Sheep's mobInteract asks for no shears here: the platform shears it from the shears item,"
+					+ " through its shearable extension (NeoForge's IShearable, Forge's IForgeShearable), which posts its events and drops what its loot says, so"
+					+ " Fabricated doesn't put vanilla's check back there (SEAM-6)." : "NeoForge's ItemInHandRenderer asks whether the held item is a MapItem or a"
+					+ " CrossbowItem instead, which other mods' map and crossbow items are too, so Fabricated doesn't put vanilla's check back there (SEAM-6).",
+					out.suggestion(), findings.toString());
+			assertTrue(io.github.cmdralph.fabricated.core.report.KnownLimits.ofFinding("NeoForge", out).endsWith("(SEAM-6)"),
+					String.valueOf(io.github.cmdralph.fabricated.core.report.KnownLimits.ofFinding("NeoForge", out)));
+		}
+	}
+
 	@Test
 	void aMixinHookingNoSeamLeavesTheClassAsThePlatformHasIt(@TempDir Path dir) throws Exception {
 		// As Lithium's: a redirect of another call of the resolver's.
