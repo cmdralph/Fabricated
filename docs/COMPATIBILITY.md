@@ -2078,13 +2078,14 @@ What else differs on Forge, for Fabric mods in general:
   (Porting Lib's break event hook, and its experience hook with it).
 - **Item checks:** Forge 47 to 66 ask the stack's `canPerformAction` of a tool action where vanilla asks
   `stack.is(Items.SHEARS)` (the beehive's harvest, the pumpkin's carving, the tripwire's disarming; on Forge 65 and 66
-  a sheep's, a snow golem's and a mooshroom's shearing too), `stack.is(Items.FISHING_ROD)` (the fishing hook's check of
+  a sheep's, a snow golem's, a mooshroom's and a bogged's shearing too), `stack.is(Items.FISHING_ROD)` (the fishing hook's check of
   the player's hands, and on Forge 47 and 52 the client's line) or, on Forge 47 and 52, `stack.is(Items.SHIELD)` (a
   player's shield damage, a piglin's shield). Where a Fabric mod's mixin hooks one, vanilla's check is put back for the
   stacks whose classes keep Forge's default (SEAM-6: Porting Lib's tool action hooks in Create, BCLib's shears hooks,
   and on Forge 66 Fabric API 0.164's hook counting any `FishingRodItem` as the rod in the fishing hook's check), under
   its SRG names on Forge 47; an item overriding `canPerformAction` (vanilla's tools, Forge mods' tools) is asked as
-  Forge has it, without the hook. Forge 61 to 66's default answers yes only for a sword's and a pickaxe's own actions.
+  Forge has it, without the hook. Forge 61 to 65's default answers yes only for a sword's and a pickaxe's digging and
+  sweeping actions, and Forge 66's only for a sword's sweep: never for these.
   Forge 47 to 64 shear a mob from the shears item, through `IForgeShearable`, where vanilla's `mobInteract` checks for
   shears: a hook of that check is left out there, a known limit the report names. BCLib 3.0's own hooks for 1.20.1, at
   the start of those methods and in `ItemStack.is` itself, apply, but Forge 47's code asks `canPerformAction` there, not

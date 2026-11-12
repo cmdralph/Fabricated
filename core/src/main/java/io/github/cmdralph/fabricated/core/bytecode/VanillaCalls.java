@@ -338,6 +338,7 @@ final class VanillaCalls {
 			itemChecks(ANIMALS + "sheep/Sheep", "mobInteract", "m_6071_", SHEARS, "SHEARS_HARVEST", false),
 			itemChecks(ANIMALS + "golem/SnowGolem", "mobInteract", "m_6071_", SHEARS, "SHEARS_HARVEST", false),
 			itemChecks(ANIMALS + "cow/MushroomCow", "mobInteract", "m_6071_", SHEARS, "SHEARS_HARVEST", false),
+			itemChecks("net/minecraft/world/entity/monster/skeleton/Bogged", "mobInteract", "m_6071_", SHEARS, "SHEARS_HARVEST", false),
 			itemChecks("net/minecraft/world/entity/projectile/FishingHook", "shouldStopFishing", "m_37136_", FISHING_ROD, "FISHING_ROD_CAST", true),
 			// The client's line, from the hand holding the rod: 1.21.1's getPlayerHandPos, 1.20.1's render (SRG's m_7392_).
 			itemChecks("net/minecraft/client/renderer/entity/FishingHookRenderer", "getPlayerHandPos", "m_7392_", FISHING_ROD, "FISHING_ROD_CAST", true),
@@ -1360,7 +1361,7 @@ final class VanillaCalls {
 					breakEvent("NeoForge", "ServerPlayerGameMode", "canDestroyBlock", "CommonHooks.fireBlockBreak")),
 			new NotPutBack(CLIENT_GAME_MODE, "destroyBlock", "m_105267_", DESTROY_BLOCK, STACK_CLASS, Set.of("canDestroyBlock"), making(COMMON_HOOKS, "fireBlockBreak"),
 					breakEvent("NeoForge", "MultiPlayerGameMode", "canDestroyBlock", "CommonHooks.fireBlockBreak")),
-			heldItems(NEOFORGE, "NeoForge"), heldItems(FORGE, "Forge"),
+			heldItems(NEOFORGE, "NeoForge", "a MapItem or a CrossbowItem", "map and crossbow items"), heldItems(FORGE, "Forge", "a CrossbowItem", "crossbow items"),
 			new NotPutBack("net/minecraft/client/renderer/entity/ItemFrameRenderer", "getFrameModelResourceLoc", "m_174212_", null, STACK_CLASS,
 					Set.of(IS, IS_ITEM.srgName()), asking(NEOFORGE, MAP_ITEM), mapItem("NeoForge")),
 			new NotPutBack("net/minecraft/client/renderer/entity/ItemFrameRenderer", "getFrameModelResourceLoc", "m_174212_", null, STACK_CLASS,
@@ -1383,11 +1384,11 @@ final class VanillaCalls {
 				+ " (SEAM-6).";
 	}
 
-	private static NotPutBack heldItems(String platform, String loader) {
+	/** The held item renderer's checks, which the platform asks of the item's class: NeoForge the map's and the crossbow's, Forge the crossbow's. */
+	private static NotPutBack heldItems(String platform, String loader, String asked, String items) {
 		return new NotPutBack("net/minecraft/client/renderer/ItemInHandRenderer", "renderArmWithItem", "m_109371_", null, STACK_CLASS, Set.of(IS, IS_ITEM.srgName()),
-				asking(platform, MAP_ITEM, CROSSBOW_ITEM), loader + "'s ItemInHandRenderer asks whether"
-						+ " the held item is a MapItem or a CrossbowItem instead, which other mods' map and crossbow items are too, so Fabricated doesn't put vanilla's"
-						+ " check back there (SEAM-6).");
+				asking(platform, MAP_ITEM, CROSSBOW_ITEM), loader + "'s ItemInHandRenderer asks whether the held item is " + asked + " instead, which other mods' "
+						+ items + " are too, so Fabricated doesn't put vanilla's check back there (SEAM-6).");
 	}
 
 	private static String mapItem(String loader) {

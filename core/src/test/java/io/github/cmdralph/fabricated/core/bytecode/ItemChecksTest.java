@@ -256,6 +256,14 @@ public class ItemChecksTest {
 		return check.equals("fishing") ? own + 1 : own;
 	}
 
+	/** Each mob whose mobInteract Forge 65 and 66 make ask the shears action has a row, the bogged among them. */
+	@Test
+	void eachMobAskingTheShearsActionHasARow() {
+		for (String mob : List.of("animal/sheep/Sheep", "animal/golem/SnowGolem", "animal/cow/MushroomCow", "monster/skeleton/Bogged")) {
+			assertTrue(VanillaCalls.CLASSES.contains("net/minecraft/world/entity/" + mob), mob);
+		}
+	}
+
 	@Test
 	void vanillasItemChecksArePutBackWhereTheItemKeepsThePlatformsDefault(@TempDir Path dir) throws Exception {
 		Map<String, String> success = Map.of("tripwire", "disarmed", "beehive", "answer harvested", "carving", "answer harvested", "fishing", "rod true true",

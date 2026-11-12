@@ -7,7 +7,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 
 - **SEAM-6** (P1), fixed: NeoForge and Forge ask the stack's `canPerformAction` of an action where vanilla asks
   whether the item is its shears (the beehive's harvest, the pumpkin's carving, the tripwire's disarming; on Forge 65
-  and 66 a sheep's, a snow golem's and a mooshroom's shearing too), its fishing rod (the fishing hook's check of the
+  and 66 a sheep's, a snow golem's, a mooshroom's and a bogged's shearing too), its fishing rod (the fishing hook's check of the
   player's hands, and on the 1.20.1 and 1.21.1 client which hand the line comes from) or, up to 1.21.1, its shield (a
   player's shield damage, a piglin's shield). Fabric mods' hooks of vanilla's check found nothing there and were left
   out, or wrapped another check: BCLib's shears hooks, which let the items of the common shears tag act as shears,
