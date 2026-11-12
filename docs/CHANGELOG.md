@@ -3,6 +3,31 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-12: Pre-flight reads an @At's opcode as Mixin does (PRE-30) and a selector in the refmap without its whitespace (PRE-31); a mob's shear call is SEAM-6's known limit
+
+- **PRE-30** (P1), fixed: pre-flight kept only the instructions of an `@At`'s `opcode`, whatever its point, where Mixin
+  reads one only for a field access (one of the four field opcodes; any other it takes as none), a jump and a local
+  (above 0). A call point with an `opcode` found no call, and its hook was left out though Mixin applies it: Apoli's
+  slipperiness power in Origins 1.13 (`onGround()` with `opcode = 180` in `LivingEntity.travel`) and Wilder Wild's
+  sculk vein hook (`opcode = 0`), on NeoForge 21.1 and Forge 52. One rule now decides it for every point pre-flight
+  reads. Apoli's hook takes its float by its type alone, where Forge 52's Mixin also finds three floats whose scope
+  ended, and once let through it stopped the Forge 52 server as Mixin applied it: a `@ModifyVariable`'s local taken by
+  its type is now judged as an `@Local`'s is (PRE-26), left out where Mixin finds more than one, and on Forge named by
+  its slot where the method declares others of its type, so the power works there too.
+- **PRE-31** (P2), fixed: pre-flight looked a selector up in the mod's refmap as written, where Mixin strips its
+  whitespace first and the refmap's keys are written without it. Modern Industrialization's hook adding the resources
+  of its `generated_resources` folder to a world's packs names `PackRepository.openAllSelected ()` with a space: on
+  Forge 47, where a Fabric mod's refmap maps its names to SRG's, it was left out.
+- Hooks of a mob's `shear` call in `mobInteract` are SEAM-6's known limit, as hooks of the shears check guarding it
+  were: NeoForge and Forge 47 to 64 shear a mob from the shears item, through their shearable extension (Ledger's
+  logging of a sheep's and a snow golem's shearing, eight hooks on NeoForge 21.1 and Forge 52).
+- Verified: core's tests (680; each new case failing before its change), CI's script tests and the inventory; NeoForge
+  1.21.1, Forge 52 and Forge 47 build. Against runs before the change, every check as before, and no apply failure in
+  the logs: on NeoForge 1.21.1's and Forge 52's advanced corpus servers Apoli's and Wilder Wild's hooks apply and
+  Ledger's shear hooks carry the known limit; on Forge 52 Apoli's slipperiness hook, and its death message hook, whose
+  method declares another `String`, are named by their slots; on Forge 47's corpus server Modern Industrialization's
+  hook applies; NeoForge 1.21.1's server part is as before.
+
 ## 2026-11-12: Vanilla's item checks put back where the platform asks the stack's actions (SEAM-6), a default bridge no longer taken for an override (SEAM-7)
 
 - **SEAM-6** (P1), fixed: NeoForge and Forge ask the stack's `canPerformAction` of an action where vanilla asks
