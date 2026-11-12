@@ -36,7 +36,8 @@ import org.objectweb.asm.tree.VarInsnNode;
  * Vanilla's methods a platform took out of a game class, asking its own extension methods where vanilla called them, put
  * back so that Fabric mods' hooks of them apply (SEAM-1); and vanilla's calls a platform makes through its block state's
  * or its item stack's extension or a hook of its own, put back where the platform's code then does what vanilla's does
- * (SEAM-3's block breaking, SEAM-4's harvest checks, SEAM-6's item checks, {@link VanillaCalls}, the table's second
+ * (SEAM-3's block breaking, SEAM-4's harvest checks, SEAM-6's item checks, SEAM-8's friction, sound type, piglin, sweep and
+ * enchantment level calls, {@link VanillaCalls}, the table's second
  * shape). Each {@link Seam} is a row: the
  * vanilla method, and the
  * platform's code at the places vanilla calls it, calls of the method's parameters joined by {@code &&}. Where a class
@@ -116,7 +117,7 @@ public final class VanillaSeams {
 	private VanillaSeams() {
 	}
 
-	/** Whether what the table puts back in the class (internal name) is vanilla's calls (SEAM-3, SEAM-4, SEAM-6), not its methods. */
+	/** Whether what the table puts back in the class (internal name) is vanilla's calls (SEAM-3, SEAM-4, SEAM-6, SEAM-8), not its methods. */
 	public static boolean putsBackCalls(String internalName) {
 		return VanillaCalls.CLASSES.contains(internalName);
 	}
@@ -141,7 +142,16 @@ public final class VanillaSeams {
 	}
 
 	/**
-	 * In how many places of the method, as read, vanilla's call {@code owner;name(desc)} is put back (SEAM-3, SEAM-4, SEAM-6): each
+	 * Why the class's platform never calls its vanilla method {@code method(desc)}, which it keeps, so a hook applying there
+	 * never runs, as pre-flight's note of it says it (SEAM-8: NeoForge 21.11 on makes the sweep attack's box in
+	 * {@code Player.attack} for an overload of {@code doSweepAttack} of its own); null for any other.
+	 */
+	public static String methodNeverCalled(ClassNode target, String method, String desc) {
+		return VanillaCalls.neverCalled(target, method, desc);
+	}
+
+	/**
+	 * In how many places of the method, as read, vanilla's call {@code owner;name(desc)} is put back (SEAM-3, SEAM-4, SEAM-6, SEAM-8): each
 	 * of the platform's calls it stands in for, where vanilla's code makes it once; 0 where it isn't.
 	 */
 	public static int putBackPlaces(MethodNode method, String owner, String name, String desc) {
@@ -339,6 +349,7 @@ public final class VanillaSeams {
 		// isn't parsed: nothing goes back there.
 		if (!VanillaCalls.mayApply(internalName, data)) return data;
 		try {
+			if (VanillaCalls.receiversOnly(internalName)) return rewrittenLight(data, game, members);
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, 0);
 			if (restore(node).isEmpty()) return data;
@@ -353,6 +364,64 @@ public final class VanillaSeams {
 			failed.accept(internalName, e);
 			return data;
 		}
+	}
+
+	/**
+	 * {@link #rewritten} of a class whose rows are all extensions' calls of their objects (SEAM-8: LivingEntity, Entity,
+	 * BlockItem...), large classes most mods' mixins target: only its methods of the rows' names are read whole, the others
+	 * as their names alone, which is all the rows ask of them (no platform's package is looked for in their code); the
+	 * class is written with its other methods copied as they are, the rewritten ones in their places and the helpers after,
+	 * as {@link #restoreWhole} leaves the class. The class's methods aren't changed in place, so the copy kept of them
+	 * before is the class as the platform has it.
+	 */
+	private static byte[] rewrittenLight(byte[] data, ClassBytesSource game, ClassIndex members) {
+		ClassReader reader = new ClassReader(data);
+		Set<String> names = VanillaCalls.methodNames(reader.getClassName());
+		ClassNode node = new ClassNode();
+		reader.accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, node) {
+			@Override
+			public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+				if (names.contains(name)) return super.visitMethod(access, name, descriptor, signature, exceptions);
+				node.methods.add(new MethodNode(access, name, descriptor, signature, exceptions));
+				return null;
+			}
+		}, 0);
+		ClassNode platform = new ClassNode();
+		platform.version = node.version;
+		platform.access = node.access;
+		platform.name = node.name;
+		platform.superName = node.superName;
+		platform.interfaces = new ArrayList<>(node.interfaces);
+		platform.methods = new ArrayList<>(node.methods);
+		int fields = node.fields.size();
+		if (restore(node).isEmpty()) return data;
+		if (!VanillaCalls.resolves(VanillaCalls.added(platform, node), members, VanillaCalls.copied(platform, game))) return data;
+		Map<String, MethodNode> replaced = new java.util.HashMap<>();
+		List<MethodNode> appended = new ArrayList<>();
+		for (int i = 0; i < node.methods.size(); i++) {
+			MethodNode method = node.methods.get(i);
+			if (i >= platform.methods.size()) appended.add(method);
+			else if (method != platform.methods.get(i)) replaced.put(method.name + method.desc, method);
+		}
+		List<org.objectweb.asm.tree.FieldNode> added = node.fields.subList(fields, node.fields.size());
+		ClassWriter writer = new ClassWriter(reader, 0);
+		reader.accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, writer) {
+			@Override
+			public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+				MethodNode method = replaced.get(name + descriptor);
+				if (method == null) return super.visitMethod(access, name, descriptor, signature, exceptions);
+				method.accept(writer);
+				return null;
+			}
+
+			@Override
+			public void visitEnd() {
+				for (org.objectweb.asm.tree.FieldNode field : added) field.accept(writer);
+				for (MethodNode method : appended) method.accept(writer);
+				super.visitEnd();
+			}
+		}, 0);
+		return writer.toByteArray();
 	}
 
 	/**

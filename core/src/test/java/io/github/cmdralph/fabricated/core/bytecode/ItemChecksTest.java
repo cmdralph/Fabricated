@@ -469,12 +469,17 @@ public class ItemChecksTest {
 			pool.shutdownNow();
 		}
 		assertEquals(0, wrong.get());
+		// The answers kept, by class, in the ClassValue's slots, read without a lock.
 		java.lang.reflect.Field field = beehive.getDeclaredField("fabricated$overridingAction");
 		field.setAccessible(true);
+		ClassValue<?> store = (ClassValue<?>) field.get(null);
+		Map<String, Boolean> expectedAnswers = Map.of(STACK.replace('/', '.'), false, "net.minecraft.world.item.Item", false, "net.minecraft.world.item.ShearsItem", true,
+				"net.minecraft.world.item.FishingRodItem", true, "net.minecraft.world.item.ShieldItem", true, "com.example.Multitool", true, "com.example.Blunt", true);
 		Map<String, Boolean> known = new HashMap<>();
-		((Map<?, ?>) field.get(null)).forEach((type, overrides) -> known.put(((Class<?>) type).getName(), (Boolean) overrides));
-		assertEquals(Map.of(STACK.replace('/', '.'), false, "net.minecraft.world.item.Item", false, "net.minecraft.world.item.ShearsItem", true,
-				"net.minecraft.world.item.FishingRodItem", true, "net.minecraft.world.item.ShieldItem", true, "com.example.Multitool", true, "com.example.Blunt", true), known);
+		for (String name : expectedAnswers.keySet()) known.put(name, (Boolean) ((Object[]) store.get(loader.loadClass(name)))[0]);
+		assertEquals(expectedAnswers, known);
+		// A class never asked of has no answer kept.
+		assertEquals(null, ((Object[]) store.get(Object.class))[0]);
 	}
 
 	/**
