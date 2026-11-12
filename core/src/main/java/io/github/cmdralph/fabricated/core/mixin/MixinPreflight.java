@@ -2312,7 +2312,8 @@ public final class MixinPreflight extends PreflightPart {
 					int slot = modifiedSlot(handler, ann, m);
 					Type variable = Type.getReturnType(handler.desc);
 					if (slot >= 0) {
-						v = InjectionPoints.accessesLocal(point.equals("LOAD"), Type.getArgumentTypes(handler.desc)[0], slot, ordinal, range, m) ? Verdict.FOUND : Verdict.MISSING;
+						v = InjectionPoints.accessesLocal(point.equals("LOAD"), Type.getArgumentTypes(handler.desc)[0], slot, opcode, ordinal, range, m)
+								? Verdict.FOUND : Verdict.MISSING;
 					} else if (variable.getSort() != Type.VOID && !InjectionPoints.accessesAnyLocal(point.equals("LOAD"), variable, opcode, ordinal, range, m)) {
 						v = Verdict.MISSING;
 					}
@@ -3139,11 +3140,12 @@ public final class MixinPreflight extends PreflightPart {
 
 	/**
 	 * A local an {@code @Local} captures, or a {@code @ModifyVariable} modifies, by its type alone (no name, index or
-	 * ordinal) when, at every instruction the injector's {@code @At} selects in every target, more than one local of that
-	 * type is in scope: MixinExtras then can't tell which one is meant, and Mixin's discriminator throws as the injector
-	 * applies ("Found 2 candidate variables but exactly 1 is required"). Where the running Mixin keeps locals once their
-	 * scope has ended (PRE-26), those it keeps there ({@link #keptLocalTypes}) count too. Null when that can't be shown (no
-	 * local variable table, an injection point other than a call, field access or object creation, ...).
+	 * ordinal) when, at an instruction the injector's {@code @At} selects in a target, more than one local of that type is
+	 * in scope past {@code this}: Mixin's discriminator, which MixinExtras' {@code @Local} uses too, looks from the first
+	 * slot past it and throws at the first such instruction ("Found 2 candidate variables but exactly 1 is required").
+	 * Where the running Mixin keeps locals once their scope has ended (PRE-26), those it keeps there
+	 * ({@link #keptLocalTypes}) count too. Null when that can't be shown (no local variable table, an injection point other
+	 * than a call, field access or object creation, ...).
 	 */
 	private Ambiguity ambiguousLocal(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<MethodNode> targets, String owner,
 			Context ctx) {
@@ -3169,43 +3171,40 @@ public final class MixinPreflight extends PreflightPart {
 			}
 		}
 		// Not where the mixin overwrites the method, whose code it replaces.
-		boolean modifiesByType = LocalRepairs.modifiesByType(injector) && !PreflightAsm.overwrites(mixin, targets);
+		boolean modifiesByType = LocalRepairs.modifiesByType(injector, targets) && !PreflightAsm.overwrites(mixin, targets);
 		if (modifiesByType) byType.add(Type.getReturnType(handler.desc));
 		for (int t = 0; t < byType.size(); t++) {
 			String type = byType.get(t).getDescriptor();
-			boolean judged = false;
-			boolean single = false;
-			boolean singleInScope = false;
+			// Mixin's discriminator throws at the first instruction where it finds more than one.
+			boolean ambiguous = false;
+			boolean ambiguousInScope = false;
 			for (MethodNode target : targets) {
 				if (target.localVariables == null || target.localVariables.isEmpty()) return null;
 				MethodNode framed = keepsLocalsPastScope ? classes.withFrames(owner, target) : null;
 				MethodNode m = framed != null ? framed : target;
+				// Mixin's discriminator, MixinExtras' too, looks from the first slot past this (baseArgIndex).
+				int base = (m.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
 				int seen = 0;
 				for (int i = 0; i < m.instructions.size(); i++) {
 					AbstractInsnNode insn = m.instructions.get(i);
 					if (!InjectionPoints.hasOpcode(point, opcode, insn) || !InjectionPoints.matchesInsn(point, ref, insn)) continue;
 					if (ordinal >= 0 && seen++ != ordinal) continue;
-					judged = true;
-					int inScope = 0;
 					Set<Integer> found = new HashSet<>();
 					for (LocalVariableNode lv : m.localVariables) {
-						if (!lv.desc.equals(type) || m.instructions.indexOf(lv.start) > i || i >= m.instructions.indexOf(lv.end)) continue;
-						inScope++;
+						if (lv.index < base || !lv.desc.equals(type) || m.instructions.indexOf(lv.start) > i || i >= m.instructions.indexOf(lv.end)) continue;
 						found.add(lv.index);
 					}
-					singleInScope |= inScope <= 1;
-					if (framed == null) {
-						single |= inScope <= 1;
-						continue;
+					ambiguousInScope |= found.size() > 1;
+					if (framed != null) {
+						String[] kept = keptLocalTypes(framed, owner, i);
+						for (int slot = base; slot < kept.length; slot++) {
+							if (type.equals(kept[slot])) found.add(slot);
+						}
 					}
-					String[] kept = keptLocalTypes(framed, owner, i);
-					for (int slot = (framed.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1; slot < kept.length; slot++) {
-						if (type.equals(kept[slot])) found.add(slot);
-					}
-					single |= found.size() <= 1;
+					ambiguous |= found.size() > 1;
 				}
 			}
-			if (judged && !single) return new Ambiguity(byType.get(t).getClassName(), singleInScope, modifiesByType && t == byType.size() - 1);
+			if (ambiguous) return new Ambiguity(byType.get(t).getClassName(), !ambiguousInScope, modifiesByType && t == byType.size() - 1);
 		}
 		return null;
 	}

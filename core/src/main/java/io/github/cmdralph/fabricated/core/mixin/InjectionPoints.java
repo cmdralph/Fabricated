@@ -11,7 +11,6 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.FieldInsnNode;
-import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
@@ -257,17 +256,17 @@ final class InjectionPoints {
 
 	/**
 	 * Whether a {@code LOAD} or {@code STORE} point of a local of {@code type} in {@code slot} picks an instruction in the
-	 * slice: a load or store of that type into the slot (an int's increment counts as a store), the ordinal-th of them
-	 * with an ordinal, as Mixin's {@code BeforeLoadLocal} and {@code AfterStoreLocal} match them.
+	 * slice: a load or store of the type's opcode (or the point's {@code opcode} where it is above 0) into the slot, the
+	 * ordinal-th of them with an ordinal, as Mixin's {@code BeforeLoadLocal} and {@code AfterStoreLocal} match them: plain
+	 * loads and stores only, an int's increment never (read in 0.8.5, 0.8.7 and Fabric's 0.17.4).
 	 */
-	static boolean accessesLocal(boolean load, Type type, int slot, int ordinal, Range range, MethodNode method) {
-		int opcode = type.getOpcode(load ? Opcodes.ILOAD : Opcodes.ISTORE);
+	static boolean accessesLocal(boolean load, Type type, int slot, int opcode, int ordinal, Range range, MethodNode method) {
+		int wanted = opcode > 0 ? opcode : type.getOpcode(load ? Opcodes.ILOAD : Opcodes.ISTORE);
 		int seen = 0;
 		int last = Math.min(range.end(), method.instructions.size() - 1);
 		for (int i = Math.max(range.start(), 0); i <= last; i++) {
 			AbstractInsnNode insn = method.instructions.get(i);
-			boolean match = insn instanceof VarInsnNode var && var.getOpcode() == opcode && var.var == slot
-					|| !load && opcode == Opcodes.ISTORE && insn instanceof IincInsnNode inc && inc.var == slot;
+			boolean match = insn instanceof VarInsnNode var && var.getOpcode() == wanted && var.var == slot;
 			if (match && (ordinal < 0 || seen++ == ordinal)) return true;
 		}
 		return false;
@@ -279,15 +278,15 @@ final class InjectionPoints {
 	 * with that type's opcode (or the point's {@code opcode} where it is above 0, as Mixin's
 	 * {@code InjectionPointData.getOpcode} reads it, PRE-30), so a slice with no more of them than the point's ordinal
 	 * can't match (PRE-17: Puzzles Lib's break speed hook modifies a float where {@code Player.getDestroySpeed} loads it,
-	 * a method Forge 47 reduced to a call of {@code getDigSpeed}, which has no float). An int's increment counts as a store.
+	 * a method Forge 47 reduced to a call of {@code getDigSpeed}, which has no float). An int's increment is no store to
+	 * them.
 	 */
 	static boolean accessesAnyLocal(boolean load, Type type, int opcode, int ordinal, Range range, MethodNode method) {
 		int wanted = opcode > 0 ? opcode : type.getOpcode(load ? Opcodes.ILOAD : Opcodes.ISTORE);
 		int seen = 0;
 		int last = Math.min(range.end(), method.instructions.size() - 1);
 		for (int i = Math.max(range.start(), 0); i <= last; i++) {
-			AbstractInsnNode insn = method.instructions.get(i);
-			if (insn.getOpcode() == wanted || !load && wanted == Opcodes.ISTORE && insn instanceof IincInsnNode) seen++;
+			if (method.instructions.get(i) instanceof VarInsnNode var && var.getOpcode() == wanted) seen++;
 		}
 		return seen > Math.max(ordinal, 0);
 	}

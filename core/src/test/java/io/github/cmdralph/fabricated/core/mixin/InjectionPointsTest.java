@@ -15,6 +15,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -106,6 +107,26 @@ class InjectionPointsTest {
 			assertEquals(2, InjectionPoints.count("FIELD", FALL_DISTANCE, -1, none, Range.ALL, travel), "opcode " + none);
 			assertEquals(List.of(10, 14), PreflightAsm.matching(travel, "FIELD", MemberRef.parse(FALL_DISTANCE), none), "opcode " + none);
 		}
+	}
+
+	/**
+	 * Mixin's {@code BeforeLoadLocal} and {@code AfterStoreLocal} match plain loads and stores of the point's opcode only
+	 * (read in 0.8.5, 0.8.7 and Fabric's 0.17.4): an int's increment is no store, and a slot's opcode is honoured too.
+	 */
+	@Test
+	void aLocalPointMatchesPlainLoadsAndStoresOfItsOpcodeOnly() {
+		MethodNode count = new MethodNode(Opcodes.ACC_PUBLIC, "count", "()V", null, null);
+		count.instructions.add(new InsnNode(Opcodes.ICONST_0));
+		count.instructions.add(new VarInsnNode(Opcodes.ISTORE, 1));
+		count.instructions.add(new IincInsnNode(1, 1));
+		count.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+		count.instructions.add(new InsnNode(Opcodes.POP));
+		count.instructions.add(new InsnNode(Opcodes.RETURN));
+		assertTrue(InjectionPoints.accessesLocal(false, Type.INT_TYPE, 1, -1, 0, Range.ALL, count), "the store");
+		assertFalse(InjectionPoints.accessesLocal(false, Type.INT_TYPE, 1, -1, 1, Range.ALL, count), "the increment is no second store");
+		assertFalse(InjectionPoints.accessesAnyLocal(false, Type.INT_TYPE, -1, 1, Range.ALL, count), "the increment is no second store");
+		assertTrue(InjectionPoints.accessesLocal(true, Type.INT_TYPE, 1, 0, -1, Range.ALL, count), "an opcode of 0 is the type's");
+		assertFalse(InjectionPoints.accessesLocal(true, Type.INT_TYPE, 1, Opcodes.FLOAD, -1, Range.ALL, count), "a float's load is none of the int's");
 	}
 
 	/** A local's point with {@code opcode = 0} looks for its type's loads, as Mixin's {@code InjectionPointData.getOpcode} gives them for 0. */

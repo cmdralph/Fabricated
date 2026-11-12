@@ -2763,72 +2763,307 @@ class MixinPreflightTest {
 		return cw.toByteArray();
 	}
 
+	/**
+	 * A {@code @ModifyVariable} of a local of {@code type} in {@code tick} at the call {@code target}, by its type unless
+	 * {@code extra} (the annotation's further values, in pairs; a {@code String[]} an array) says otherwise.
+	 */
+	private static byte[] variableModifier(String type, String target, Object... extra) {
+		Type t = Type.getType(type);
+		return mixin("com/example/mixin/Slippery", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "modify", "(" + type + ")" + type, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "tick");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", target);
+			at.visitEnd();
+			for (int i = 0; i < extra.length; i += 2) {
+				if (extra[i + 1] instanceof String[] values) {
+					AnnotationVisitor array = ann.visitArray((String) extra[i]);
+					for (String v : values) array.visit(null, v);
+					array.visitEnd();
+				} else {
+					ann.visit((String) extra[i], extra[i + 1]);
+				}
+			}
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(t.getOpcode(Opcodes.ILOAD), 1);
+			mv.visitInsn(t.getOpcode(Opcodes.IRETURN));
+			mv.visitMaxs(2, 3);
+			mv.visitEnd();
+		});
+	}
+
+	/** Pre-flight on {@code target} as {@link #TARGET}, for Forge's Mixin ({@code keeps}: keeping locals past their scope) or Fabric's. */
+	private static MixinPreflight variablePreflight(byte[] target, Map<String, byte[]> mod, boolean keeps) {
+		return new MixinPreflight(new ClassIndex(Map.of(TARGET, target)::get), InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true,
+				ClassBytesSource.EMPTY, keeps ? "Forge" : "NeoForge", false, MixinPreflight.ConstructorInjects.RETURNS_ONLY, false, true, false, true, false,
+				false, true, keeps);
+	}
+
+	/** The {@code index} the repairs give the test mixin's {@code @ModifyVariable}, or null where they leave it. */
+	private static Object namedSlot(Map<String, byte[]> repaired) {
+		byte[] bytes = repaired.get("com/example/mixin/Slippery.class");
+		if (bytes == null) return null;
+		ClassNode node = new ClassNode();
+		new ClassReader(bytes).accept(node, 0);
+		return Annotations.value(Annotations.find(node.methods.stream().filter(m -> m.name.equals("modify")).findFirst().orElseThrow(), MODIFY_VARIABLE),
+				"index");
+	}
+
 	@Test
-	void aVariableModifiedByTypeIsNamedByItsSlotWhereForgesMixinKeepsOthersPastTheirScope() throws Exception {
-		// PRE-30 let Apoli's slipperiness hook through: it modifies the float in scope at the third onGround() call in
-		// LivingEntity.travel by its type, where Forge 52's Mixin finds three more, and the Forge 52 server stopped as Mixin
-		// applied it ("Found 4 candidate variables but exactly 1 is required").
+	void aVariableModifiedByTypeIsNamedByItsSlotWhereTheMethodDeclaresOthersOfItsType() throws Exception {
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Slippery"));
 		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Slippery", doubleModifier()));
-		BiFunction<byte[], Boolean, MixinPreflight> preflight = (target, keeps) -> new MixinPreflight(new ClassIndex(Map.of(TARGET, target)::get),
-				InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge", false,
-				MixinPreflight.ConstructorInjects.RETURNS_ONLY, false, true, false, true, false, false, true, keeps);
 		byte[] cart = cartLike(Opcodes.F_SAME);
 
 		// Fabric's Mixin, as pre-flight judges it, finds the one double in scope; Forge's keeps the client branch's two.
-		assertTrue(preflight.apply(cart, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().noneMatch(f -> f.severity() != Severity.INFO));
-		assertTrue(preflight.apply(cart, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
-		List<PreflightFinding> found = preflight.apply(cart, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(variablePreflight(cart, mod, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+				.noneMatch(f -> f.severity() != Severity.INFO));
+		List<PreflightFinding> found = variablePreflight(cart, mod, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.message().contains("@ModifyVariable handler modify modifies the local"
 				+ " of type double by its type, of which Forge's Mixin finds more than one in tick in net.minecraft.world.Thing there, keeping those whose"
 				+ " scope ended before")), found.toString());
 
-		// The double in scope is in slot 5: the injector names it so.
-		List<PreflightFinding> notes = new ArrayList<>();
-		Map<String, byte[]> repaired = preflight.apply(cart, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
-		assertTrue(notes.stream().anyMatch(n -> n.message().contains("@ModifyVariable modify modifies the local of type double by its type, of which Forge's"
-				+ " Mixin may find more than one in tick in net.minecraft.world.Thing there, keeping those whose scope ended before; the one in scope there is"
-				+ " in slot 5, and the injector names it by its slot")), notes.toString());
-		ClassNode node = new ClassNode();
-		new ClassReader(repaired.get("com/example/mixin/Slippery.class")).accept(node, 0);
-		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("modify")).findFirst().orElseThrow();
-		assertEquals(5, Annotations.value(Annotations.find(handler, MODIFY_VARIABLE), "index"));
-		mod.put("com/example/mixin/Slippery", repaired.get("com/example/mixin/Slippery.class"));
-		List<PreflightFinding> after = preflight.apply(cart, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
-		assertTrue(after.stream().noneMatch(f -> f.severity() != Severity.INFO), after.toString());
+		// The double in scope is in slot 5 and the method declares two more: on either Mixin the injector names it by its slot.
+		for (boolean keeps : new boolean[] {false, true}) {
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = variablePreflight(cart, mod, keeps).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+			assertTrue(notes.stream().anyMatch(n -> n.message().contains("@ModifyVariable modify modifies the local of type double by its type, of which tick"
+					+ " in net.minecraft.world.Thing declares more than one, so " + (keeps ? "Forge" : "NeoForge") + "'s Mixin may find others there, their"
+					+ " scope ended, once other injectors change the method; the one in scope there is in slot 5, and the injector names it by its slot")),
+					notes.toString());
+			assertEquals(5, namedSlot(repaired));
+			Map<String, byte[]> after = new HashMap<>(Map.of("com/example/mixin/Slippery", repaired.get("com/example/mixin/Slippery.class")));
+			List<PreflightFinding> checked = variablePreflight(cart, after, keeps).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(checked.stream().noneMatch(f -> f.severity() != Severity.INFO), checked.toString());
+		}
 
-		// Past a frame of another kind, which Mixin may look the slots up again at, what it keeps can't be told: the check
-		// can't show Mixin finds more than one, and the slot is named all the same, as the method declares other doubles.
-		mod.put("com/example/mixin/Slippery", doubleModifier());
+		// Past a frame of another kind what Mixin keeps can't be told: the check can't show Mixin finds more than one, and the
+		// slot is named all the same, as the method declares other doubles.
 		byte[] full = cartLike(Opcodes.F_FULL);
-		assertTrue(preflight.apply(full, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().noneMatch(f -> f.severity() != Severity.INFO));
-		Map<String, byte[]> named = preflight.apply(full, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>());
-		ClassNode namedNode = new ClassNode();
-		new ClassReader(named.get("com/example/mixin/Slippery.class")).accept(namedNode, 0);
-		assertEquals(5, Annotations.value(Annotations.find(namedNode.methods.stream().filter(m -> m.name.equals("modify")).findFirst().orElseThrow(),
-				MODIFY_VARIABLE), "index"));
+		assertTrue(variablePreflight(full, mod, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+				.noneMatch(f -> f.severity() != Severity.INFO));
+		assertEquals(5, namedSlot(variablePreflight(full, mod, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>())));
 
-		// Where the method has no other slot that may hold a double, nothing changes; nor where the mixin overwrites the method.
-		mod.put("com/example/mixin/Slippery", doubleModifier());
-		assertTrue(preflight.apply(doublesAtPush(1), true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
-		mod.put("com/example/mixin/Slippery", doubleModifier(true));
-		assertTrue(preflight.apply(cart, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
-		assertTrue(preflight.apply(cart, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+		// Where the method declares no other double, nothing changes; nor where the mixin overwrites the method.
+		assertNull(namedSlot(variablePreflight(doublesAtPush(1), mod, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>())));
+		Map<String, byte[]> overwriting = Map.of("com/example/mixin/Slippery", doubleModifier(true));
+		assertNull(namedSlot(variablePreflight(cart, overwriting, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>())));
+		assertTrue(variablePreflight(cart, overwriting, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
 				.noneMatch(f -> f.message().contains("by its type")), "the check doesn't judge a method the mixin overwrites");
+	}
+
+	/**
+	 * {@link #TARGET} with {@code tick()V} as {@code LivingEntity.travel} has it around Apoli's slipperiness hook: a branch
+	 * storing two floats (slots 1 and 2), whose scope ends at the frame chopping them, then the float in scope (slot 3)
+	 * passed to {@code push(F)V}. With {@code injected}, as another mod's injector leaves the method before the hook
+	 * applies: a local of its own past the method's {@code maxLocals} (slot 4), stored and loaded before the call.
+	 */
+	private static byte[] travelLike(boolean injected) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+		mv.visitCode();
+		Label start = new Label();
+		Label a = new Label();
+		Label b = new Label();
+		Label after = new Label();
+		Label friction = new Label();
+		Label end = new Label();
+		mv.visitLabel(start);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "flying", "()Z", false);
+		mv.visitJumpInsn(Opcodes.IFEQ, after);
+		mv.visitInsn(Opcodes.FCONST_1);
+		mv.visitVarInsn(Opcodes.FSTORE, 1);
+		mv.visitLabel(a);
+		mv.visitInsn(Opcodes.FCONST_2);
+		mv.visitVarInsn(Opcodes.FSTORE, 2);
+		mv.visitLabel(b);
+		mv.visitFrame(Opcodes.F_APPEND, 2, new Object[] {Opcodes.FLOAT, Opcodes.FLOAT}, 0, null);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.FLOAD, 1);
+		mv.visitVarInsn(Opcodes.FLOAD, 2);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "glide", "(FF)V", false);
+		mv.visitLabel(after);
+		mv.visitFrame(Opcodes.F_CHOP, 2, null, 0, null);
+		mv.visitInsn(Opcodes.FCONST_0);
+		mv.visitVarInsn(Opcodes.FSTORE, 3);
+		mv.visitLabel(friction);
+		if (injected) {
+			mv.visitInsn(Opcodes.ICONST_0);
+			mv.visitVarInsn(Opcodes.ISTORE, 4);
+			mv.visitVarInsn(Opcodes.ILOAD, 4);
+			mv.visitInsn(Opcodes.POP);
+		}
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.FLOAD, 3);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "push", "(F)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitLabel(end);
+		mv.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		mv.visitLocalVariable("a", "F", null, a, after, 1);
+		mv.visitLocalVariable("b", "F", null, b, after, 2);
+		mv.visitLocalVariable("friction", "F", null, friction, end, 3);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * PRE-30: Apoli's slipperiness hook takes the float in scope at its call by its type. Mixin drops the branch's floats at
+	 * the frame chopping them, as zombies, and finds the one in the method as shipped; another injector's local past
+	 * {@code maxLocals}, loaded before the call, exposes the zombies, which Mixin brings back (RESURRECT_EXPOSED_ON_LOAD),
+	 * and its discriminator found three floats there ("Found 4 candidate variables" on the Forge 52 server, where more
+	 * injectors had run). The check finds the one in either shape of the method, and on either Mixin the injector names
+	 * its slot, which Mixin's discriminator takes by the slot's type alone.
+	 */
+	@Test
+	void aVariableModifiedByTypeIsNamedByItsSlotWhereAnotherInjectorsLocalBringsTheMethodsOthersBack() throws Exception {
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Slippery"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Slippery", variableModifier("F", "L" + TARGET + ";push(F)V"));
+		for (boolean injected : new boolean[] {false, true}) {
+			for (boolean keeps : new boolean[] {false, true}) {
+				byte[] travel = travelLike(injected);
+				String what = (injected ? "after another injector" : "as shipped") + (keeps ? " on Forge" : " on NeoForge");
+				assertTrue(variablePreflight(travel, mod, keeps).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+						.noneMatch(f -> f.severity() != Severity.INFO), what);
+				assertEquals(3, namedSlot(variablePreflight(travel, mod, keeps).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>())),
+						what);
+			}
+		}
 	}
 
 	/** Where two locals of the type are in scope at the point, Mixin's discriminator finds both on any platform: the injector stays out. */
 	@Test
 	void aVariableModifiedByTypeWithTwoOfItsTypeInScopeStaysOut() throws Exception {
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Slippery"));
+		String push = "L" + TARGET + ";push(DD)V";
+		String twoInScope = "@ModifyVariable handler modify modifies the local of type double by its type, which tick in net.minecraft.world.Thing has more"
+				+ " than one of there";
 		List<PreflightFinding> found = preflight(new ClassIndex(Map.of(TARGET, doublesAtPush(2))::get), Map.of("com/example/mixin/Slippery",
-				doubleModifier())::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", MixinConfigFile.parse(config(true, "Slippery")), Refmap.EMPTY,
-				Set.of());
-		assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.message().equals("@ModifyVariable handler modify modifies the local of"
-				+ " type double by its type, which tick in net.minecraft.world.Thing has more than one of there")), found.toString());
+				doubleModifier())::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.message().equals(twoInScope)), found.toString());
 		List<PreflightFinding> one = preflight(new ClassIndex(Map.of(TARGET, doublesAtPush(1))::get), Map.of("com/example/mixin/Slippery",
-				doubleModifier())::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", MixinConfigFile.parse(config(true, "Slippery")), Refmap.EMPTY,
-				Set.of());
+				doubleModifier())::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertTrue(one.stream().noneMatch(f -> f.severity() != Severity.INFO), one.toString());
+		// An index of 0 in an instance method and an empty name are none to Mixin, which takes the local by its type then; with
+		// print Mixin prints the locals and swallows its discriminator's throw, so the injector stays in.
+		for (Object[] extra : List.of(new Object[] {"index", 0}, new Object[] {"name", new String[0]})) {
+			List<PreflightFinding> implicit = preflight(new ClassIndex(Map.of(TARGET, doublesAtPush(2))::get), Map.of("com/example/mixin/Slippery",
+					variableModifier("D", push, extra))::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(implicit.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.message().equals(twoInScope)), extra[0] + ": " + implicit);
+		}
+		List<PreflightFinding> printed = preflight(new ClassIndex(Map.of(TARGET, doublesAtPush(2))::get), Map.of("com/example/mixin/Slippery",
+				variableModifier("D", push, "print", true))::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(printed.stream().noneMatch(f -> f.message().contains("by its type")), printed.toString());
+	}
+
+	/**
+	 * Mixin's discriminator throws at the first instruction its point picks where it finds more than one local of the type:
+	 * one double in scope at the first {@code push(DD)V} call and two at the second leave the injector out, and its slot
+	 * isn't named, as the one in scope isn't the same at both.
+	 */
+	@Test
+	void aVariableModifiedByTypeWithTwoOfItsTypeAtOneOfItsPointsStaysOut() throws Exception {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+		mv.visitCode();
+		Label start = new Label();
+		Label x = new Label();
+		Label y = new Label();
+		Label end = new Label();
+		mv.visitLabel(start);
+		mv.visitInsn(Opcodes.DCONST_1);
+		mv.visitVarInsn(Opcodes.DSTORE, 1);
+		mv.visitLabel(x);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.DLOAD, 1);
+		mv.visitVarInsn(Opcodes.DLOAD, 1);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "push", "(DD)V", false);
+		mv.visitInsn(Opcodes.DCONST_0);
+		mv.visitVarInsn(Opcodes.DSTORE, 3);
+		mv.visitLabel(y);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.DLOAD, 1);
+		mv.visitVarInsn(Opcodes.DLOAD, 3);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "push", "(DD)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitLabel(end);
+		mv.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		mv.visitLocalVariable("x", "D", null, x, end, 1);
+		mv.visitLocalVariable("y", "D", null, y, end, 3);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Slippery"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Slippery", doubleModifier());
+		for (boolean keeps : new boolean[] {false, true}) {
+			List<PreflightFinding> found = variablePreflight(cw.toByteArray(), mod, keeps).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.message().equals("@ModifyVariable handler modify modifies the local"
+					+ " of type double by its type, which tick in net.minecraft.world.Thing has more than one of there")), found.toString());
+			assertNull(namedSlot(variablePreflight(cw.toByteArray(), mod, keeps).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>())));
+		}
+	}
+
+	/**
+	 * Mixin's discriminator looks for a local taken by its type past {@code this}, MixinExtras' {@code @Local} too: in
+	 * {@code tick(Thing other)} the one {@code Thing} is the argument, so a {@code @ModifyVariable} of it and an
+	 * {@code @Local} capturing it stay in.
+	 */
+	@Test
+	void aLocalTakenByItsTypeIsLookedForPastThis() throws Exception {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "(L" + TARGET + ";)V", null, null);
+		mv.visitCode();
+		Label start = new Label();
+		Label end = new Label();
+		mv.visitLabel(start);
+		mv.visitVarInsn(Opcodes.ALOAD, 1);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "()V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitLabel(end);
+		mv.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		mv.visitLocalVariable("other", "L" + TARGET + ";", null, start, end, 1);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		byte[] target = cw.toByteArray();
+		String helper = "L" + TARGET + ";helper()V";
+		byte[] captures = mixin("com/example/mixin/Slippery", false, m -> {
+			MethodVisitor h = m.visitMethod(Opcodes.ACC_PRIVATE, "capture", "(" + CALLBACK_INFO + "L" + TARGET + ";)V", null, null);
+			AnnotationVisitor ann = h.visitAnnotation(INJECT, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "tick");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", helper);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			h.visitParameterAnnotation(1, LOCAL, false).visitEnd();
+			h.visitCode();
+			h.visitInsn(Opcodes.RETURN);
+			h.visitMaxs(0, 3);
+			h.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Slippery"));
+		for (byte[] mixin : List.of(variableModifier("L" + TARGET + ";", helper), captures)) {
+			for (boolean keeps : new boolean[] {false, true}) {
+				List<PreflightFinding> found = variablePreflight(target, Map.of("com/example/mixin/Slippery", mixin), keeps).check("test.mixins.json", config,
+						Refmap.EMPTY, Set.of());
+				assertTrue(found.stream().noneMatch(f -> f.message().contains("by its type")), found.toString());
+			}
+		}
 	}
 
 	@Test
