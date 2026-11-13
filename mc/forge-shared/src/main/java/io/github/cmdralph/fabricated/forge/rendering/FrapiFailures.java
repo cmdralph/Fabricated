@@ -1,10 +1,6 @@
 package io.github.cmdralph.fabricated.forge.rendering;
 
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -15,9 +11,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.runtime.ThrowSite;
+import io.github.cmdralph.fabricated.forge.ForgeModList;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import net.minecraftforge.fml.ModContainer;
-import net.minecraftforge.fml.ModList;
 
 /**
  * FRAPI rule 8 on Forge: a Fabric block model that throws while Fabric's renderer draws it fails alone. Upstream's own
@@ -248,20 +244,10 @@ public final class FrapiFailures {
 		}
 	}
 
-	/**
-	 * {@code ModList.getModContainerById} as {@code (String)Optional}: Forge 64 and later (Minecraft 26.x) made
-	 * {@code ModList}'s methods static, where Forge 47 and 61 reach them through {@code ModList.get()} (as
-	 * {@code ModMenuBridge} finds it).
-	 */
+	/** {@code ModList.getModContainerById} ({@link ForgeModList#containerById}), or null. */
 	private static @Nullable MethodHandle containerById() {
 		try {
-			MethodHandles.Lookup lookup = MethodHandles.publicLookup();
-			Method byId = ModList.class.getMethod("getModContainerById", String.class);
-			MethodHandle handle = lookup.unreflect(byId);
-			if (!Modifier.isStatic(byId.getModifiers())) {
-				handle = MethodHandles.collectArguments(handle, 0, lookup.unreflect(ModList.class.getMethod("get")));
-			}
-			return handle.asType(MethodType.methodType(Optional.class, String.class));
+			return ForgeModList.containerById();
 		} catch (ReflectiveOperationException | RuntimeException e) {
 			LOGGER.warn("Forge's ModList has no public getModContainerById: rendering failures name modules, not mods ({})", e.toString());
 			return null;
