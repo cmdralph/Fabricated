@@ -106,7 +106,8 @@ final class EnumValuesMixins {
 
 	/**
 	 * @param mixin   the enum mixin, with code
-	 * @param target  the enum it names, one of NeoForge's extensible enums
+	 * @param target  the enum it names: one of NeoForge's extensible enums, or any enum where the running Mixin applies no
+	 *                enum mixins (ENUM-7)
 	 * @param classes the mod's classes by internal name, or null (a constant's body is a class of its own)
 	 * @param game    the game's classes by internal name, with code, or null (what Forge's {@code init} calls)
 	 * @param bodies  the internal name to number the delegate classes from

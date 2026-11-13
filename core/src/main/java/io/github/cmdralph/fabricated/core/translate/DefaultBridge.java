@@ -86,13 +86,13 @@ public record DefaultBridge(String target, String owner, String name, String des
 	static List<DefaultBridge> of(String target, Collection<String> added, Function<String, ClassNode> classes) {
 		ClassNode node = classes.apply(target);
 		if (node == null || added.isEmpty()) return List.of();
+		boolean isClass = (node.access & Opcodes.ACC_INTERFACE) == 0;
+		List<ClassNode> superclasses = isClass ? superclasses(node, classes) : List.of();
 		// A method the class (or, for a class, a superclass) declares wins over any default.
 		Set<String> declared = new HashSet<>();
 		for (MethodNode m : node.methods) declared.add(m.name + m.desc);
-		if ((node.access & Opcodes.ACC_INTERFACE) == 0) {
-			for (ClassNode sup = superclass(node, classes); sup != null; sup = superclass(sup, classes)) {
-				for (MethodNode m : sup.methods) declared.add(m.name + m.desc);
-			}
+		for (ClassNode sup : superclasses) {
+			for (MethodNode m : sup.methods) declared.add(m.name + m.desc);
 		}
 		Map<String, String> addedDefaults = new HashMap<>();
 		Set<String> addedHierarchy = new HashSet<>();
@@ -117,11 +117,11 @@ public record DefaultBridge(String target, String owner, String name, String des
 				bridges.add(new DefaultBridge(target, direct, key.substring(0, paren), key.substring(paren)));
 			}
 		}
-		if ((node.access & Opcodes.ACC_INTERFACE) == 0 && node.superName != null) {
+		if (isClass && node.superName != null) {
 			// The defaults the class has through its superclasses' interfaces, reached through its superclass (DEFAULT-1).
 			Map<String, String> inherited = new HashMap<>();
 			Set<String> hierarchy = new HashSet<>();
-			for (ClassNode sup = superclass(node, classes); sup != null; sup = superclass(sup, classes)) {
+			for (ClassNode sup : superclasses) {
 				for (String itf : sup.interfaces) defaults(itf, classes, inherited, hierarchy);
 			}
 			for (Map.Entry<String, String> e : inherited.entrySet()) {
@@ -140,6 +140,20 @@ public record DefaultBridge(String target, String owner, String name, String des
 
 	static ClassNode superclass(ClassNode node, Function<String, ClassNode> classes) {
 		return node.superName == null ? null : classes.apply(node.superName);
+	}
+
+	/**
+	 * The class's superclasses that can be read, nearest first. A chain that comes back round, which only a broken jar's
+	 * classes have (the mod's own are read too), ends where it would repeat, so the walk ends.
+	 */
+	private static List<ClassNode> superclasses(ClassNode node, Function<String, ClassNode> classes) {
+		List<ClassNode> superclasses = new ArrayList<>();
+		Set<String> seen = new HashSet<>();
+		seen.add(node.name);
+		for (ClassNode sup = superclass(node, classes); sup != null && seen.add(sup.name); sup = superclass(sup, classes)) {
+			superclasses.add(sup);
+		}
+		return superclasses;
 	}
 
 	/** Collects the default methods of {@code itf} and its superinterfaces, each where it is declared first going up. */
