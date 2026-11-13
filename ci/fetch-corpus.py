@@ -27,8 +27,6 @@ FABRIC_API = "P7dR8mSH"
 HEADERS = {"User-Agent": "cmdralph/Fabricated CI (github.com/cmdralph/Fabricated)"}
 MAX_BYTES = 256 << 20
 IMMUTABLE = re.compile(r"^(https://api\.modrinth\.com/v2/version/[A-Za-z0-9]+|https://cdn\.modrinth\.com/.+)$")
-
-
 ATTEMPTS = 7
 
 
