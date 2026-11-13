@@ -130,6 +130,7 @@ jobs:
         with:
           name: unit-test-reports-${{ needs.plan.outputs.platforms }}
           path: |
+            api/build/reports/tests
             core/build/reports/tests
             fabric-loader-api/build/reports/tests
           if-no-files-found: ignore
