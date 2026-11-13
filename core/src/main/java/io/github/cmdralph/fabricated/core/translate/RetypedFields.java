@@ -149,7 +149,7 @@ final class RetypedFields {
 			}
 			AnnotationNode mixin = Annotations.find(node.invisibleAnnotations, node.visibleAnnotations, MIXIN);
 			if (mixin == null) continue;
-			List<String> targets = mixinTargets(mixin);
+			List<String> targets = ModTranslator.mixinTargets(mixin);
 			for (Retype r : active) {
 				if (targets.stream().noneMatch(t -> reaches(t, r.owner(), supers))) continue;
 				for (FieldNode f : node.fields) {
@@ -216,18 +216,6 @@ final class RetypedFields {
 			}
 		}
 		return notes;
-	}
-
-	/** The classes a mixin names as its targets, internal names. */
-	private static List<String> mixinTargets(AnnotationNode mixin) {
-		List<String> targets = new ArrayList<>();
-		if (Annotations.value(mixin, "value") instanceof List<?> types) {
-			for (Object t : types) if (t instanceof Type type) targets.add(type.getInternalName());
-		}
-		if (Annotations.value(mixin, "targets") instanceof List<?> names) {
-			for (Object t : names) if (t instanceof String s) targets.add(s.replace('.', '/'));
-		}
-		return targets;
 	}
 
 	/** An accessor's selector as the mod's refmaps resolve it for that mixin, else as written. */

@@ -117,9 +117,7 @@ public final class MixinCompat {
 	public static String clampForNeoForge(String behaviorVersion, String runtimeMixinVersion, String lowestBehavior) {
 		Version requested = parse(behaviorVersion);
 		Version lowest = parse(lowestBehavior);
-		String runtimeCore = runtimeMixinVersion.contains("+")
-				? runtimeMixinVersion.substring(0, runtimeMixinVersion.indexOf('+'))
-				: runtimeMixinVersion;
+		String runtimeCore = withoutBuild(runtimeMixinVersion);
 		Version highest = parse(runtimeCore);
 		if (requested.compareTo(lowest) < 0) return lowestBehavior;
 		if (requested.compareTo(highest) > 0) return runtimeCore;
@@ -133,8 +131,7 @@ public final class MixinCompat {
 
 	/** Whether the running Mixin (e.g. {@code 0.17.4+mixin.0.8.7}) applies enum extensions, which came with 0.17.1. */
 	public static boolean supportsEnumExtensions(String runtimeMixinVersion) {
-		int plus = runtimeMixinVersion.indexOf('+');
-		return parse(plus >= 0 ? runtimeMixinVersion.substring(0, plus) : runtimeMixinVersion).compareTo(ENUM_EXTENSIONS) >= 0;
+		return parse(withoutBuild(runtimeMixinVersion)).compareTo(ENUM_EXTENSIONS) >= 0;
 	}
 
 	/**
@@ -146,9 +143,8 @@ public final class MixinCompat {
 	 */
 	public static boolean readsLocalTypes(String runtimeMixinVersion) {
 		if (runtimeMixinVersion == null) return false;
-		int plus = runtimeMixinVersion.indexOf('+');
 		try {
-			return parse((plus >= 0 ? runtimeMixinVersion.substring(0, plus) : runtimeMixinVersion).trim()).compareTo(LOCAL_TYPES_UNREAD) < 0;
+			return parse(withoutBuild(runtimeMixinVersion).trim()).compareTo(LOCAL_TYPES_UNREAD) < 0;
 		} catch (IllegalArgumentException e) {
 			return false;
 		}
@@ -354,6 +350,12 @@ public final class MixinCompat {
 		} catch (VersionParsingException e) {
 			return false;
 		}
+	}
+
+	/** A version without its build metadata (from its {@code +}): {@code 0.17.4} for Fabric's Mixin {@code 0.17.4+mixin.0.8.7}. */
+	private static String withoutBuild(String version) {
+		int plus = version.indexOf('+');
+		return plus >= 0 ? version.substring(0, plus) : version;
 	}
 
 	private static Version parse(String s) {
