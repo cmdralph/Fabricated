@@ -106,33 +106,9 @@ public final class InterfaceInjects {
 	static String mark(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, UnaryOperator<String> resolve,
 			int defaultRequire) {
 		try {
-			for (AnnotationNode other : Annotations.all(handler)) {
-				if (other != injector && (PreflightAsm.isInjector(other.desc) || other.desc.equals(MixinNames.GROUP))) {
-					throw new Refused("it is also annotated @" + PreflightAsm.simpleName(other.desc));
-				}
-			}
-			AnnotationNode resolved = new AnnotationNode(injector.desc);
-			injector.accept(resolved);
-			resolveSelectors(resolved, resolve);
-			Injector parsed = Injector.of(resolved);
+			AnnotationNode resolved = checked(mixin, handler, injector, targets, resolve, defaultRequire);
 			int require = Annotations.value(injector, "require") instanceof Integer r && r >= 0 ? r : defaultRequire;
-			int allow = Annotations.value(injector, "allow") instanceof Integer a ? a : -1;
-			for (ClassNode target : targets) {
-				Map<MethodNode, List<AbstractInsnNode>> sites = sites(target, handler, parsed);
-				if (sites.isEmpty()) throw new Refused("it targets no method of " + dotted(target));
-				int injections = 0;
-				for (Map.Entry<MethodNode, List<AbstractInsnNode>> e : sites.entrySet()) {
-					if (e.getValue().isEmpty()) throw new Refused("it finds no " + parsed.describe() + " in " + where(e.getKey(), target));
-					injections += e.getValue().size();
-				}
-				if (injections < require) throw new Refused("it injects " + injections + " time(s) in " + dotted(target) + ", where it requires " + require);
-				if (allow >= 0 && injections > allow) throw new Refused("it injects " + injections + " time(s) in " + dotted(target) + ", where it allows " + allow);
-			}
-			String name = "fabricated$" + mixin.name.substring(mixin.name.lastIndexOf('/') + 1) + "$" + handler.name;
-			for (MethodNode m : mixin.methods) {
-				if (m != handler && m.name.equals(name) && m.desc.equals(handler.desc)) throw new Refused("the mixin already declares " + name + handler.desc);
-			}
-			rename(mixin, handler, name);
+			rename(mixin, handler, markedName(mixin, handler));
 			if (handler.visibleAnnotations != null) handler.visibleAnnotations.remove(injector);
 			if (handler.invisibleAnnotations != null) handler.invisibleAnnotations.remove(injector);
 			if (handler.invisibleAnnotations == null) handler.invisibleAnnotations = new ArrayList<>();
@@ -145,6 +121,53 @@ public final class InterfaceInjects {
 		} catch (Refused e) {
 			return e.getMessage();
 		}
+	}
+
+	/** Why {@link #mark} can't make the handler one Fabricated applies, or null where it can; nothing changes. */
+	static String refusal(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, UnaryOperator<String> resolve,
+			int defaultRequire) {
+		try {
+			checked(mixin, handler, injector, targets, resolve, defaultRequire);
+			return null;
+		} catch (Refused e) {
+			return e.getMessage();
+		}
+	}
+
+	/** The injector with its selectors resolved, where Fabricated can apply it at each target as {@link #mark} would. */
+	private static AnnotationNode checked(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, UnaryOperator<String> resolve,
+			int defaultRequire) throws Refused {
+		for (AnnotationNode other : Annotations.all(handler)) {
+			if (other != injector && (PreflightAsm.isInjector(other.desc) || other.desc.equals(MixinNames.GROUP))) {
+				throw new Refused("it is also annotated @" + PreflightAsm.simpleName(other.desc));
+			}
+		}
+		AnnotationNode resolved = new AnnotationNode(injector.desc);
+		injector.accept(resolved);
+		resolveSelectors(resolved, resolve);
+		Injector parsed = Injector.of(resolved);
+		int require = Annotations.value(injector, "require") instanceof Integer r && r >= 0 ? r : defaultRequire;
+		int allow = Annotations.value(injector, "allow") instanceof Integer a ? a : -1;
+		for (ClassNode target : targets) {
+			Map<MethodNode, List<AbstractInsnNode>> sites = sites(target, handler, parsed);
+			if (sites.isEmpty()) throw new Refused("it targets no method of " + dotted(target));
+			int injections = 0;
+			for (Map.Entry<MethodNode, List<AbstractInsnNode>> e : sites.entrySet()) {
+				if (e.getValue().isEmpty()) throw new Refused("it finds no " + parsed.describe() + " in " + where(e.getKey(), target));
+				injections += e.getValue().size();
+			}
+			if (injections < require) throw new Refused("it injects " + injections + " time(s) in " + dotted(target) + ", where it requires " + require);
+			if (allow >= 0 && injections > allow) throw new Refused("it injects " + injections + " time(s) in " + dotted(target) + ", where it allows " + allow);
+		}
+		String name = markedName(mixin, handler);
+		for (MethodNode m : mixin.methods) {
+			if (m != handler && m.name.equals(name) && m.desc.equals(handler.desc)) throw new Refused("the mixin already declares " + name + handler.desc);
+		}
+		return resolved;
+	}
+
+	private static String markedName(ClassNode mixin, MethodNode handler) {
+		return "fabricated$" + mixin.name.substring(mixin.name.lastIndexOf('/') + 1) + "$" + handler.name;
 	}
 
 	/** Whether the method is a handler {@link #mark} made, which Fabricated applies once Mixin has merged it. */

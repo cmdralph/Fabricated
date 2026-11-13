@@ -1709,9 +1709,16 @@ public final class MixinPreflight extends PreflightPart {
 					injector = true;
 					// One Fabricated applies is checked as a class mixin's is (INTERFACE-1).
 					if (itf && !interfaceInjectors && !InterfaceInjects.marked(method)) {
+						// Why Fabricated doesn't apply it either: one of the kinds it applies whose point this game's code
+						// lacks is left out for that, as a class mixin's would be (Fabric API's recipe remainder hooks,
+						// whose calls Forge 47 replaced).
+						String refused = InterfaceInjects.refusal(mixin, method, ann, List.of(target), ctx::resolve, ctx.config().defaultRequire());
 						ctx.injector(method, 1, "@" + PreflightAsm.simpleName(ann.desc) + " handler " + method.name + " is an injector in an interface mixin, which "
-										+ loader + "'s Mixin doesn't apply (Mixin does from 0.8.6), so it would drop the whole mixin",
-								"The feature this hook serves doesn't work on this " + loader + ".");
+										+ loader + "'s Mixin doesn't apply (Mixin does from 0.8.6)" + (refused == null ? "" : ", and Fabricated, which applies "
+										+ InterfaceInjects.APPLIED + " there itself, doesn't apply this one: " + refused) + ", so it would drop the whole mixin",
+								refused != null && refused.startsWith("it finds no ")
+										? ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped."
+										: "The feature this hook serves doesn't work on this " + loader + ".");
 						break;
 					}
 					checkInjector(mixin, method, ann, target, ctx);
@@ -1853,7 +1860,7 @@ public final class MixinPreflight extends PreflightPart {
 		return null;
 	}
 
-	private static void checkInvoker(MethodNode method, AnnotationNode ann, ClassNode target, Context ctx) {
+	private void checkInvoker(MethodNode method, AnnotationNode ann, ClassNode target, Context ctx) {
 		String explicit = Annotations.value(ann, "value") instanceof String s && !s.isEmpty() ? s : null;
 		String name = explicit != null ? explicit : inferInvokerName(method.name);
 		if (name == null || name.equals("<init>")) return;
@@ -1862,8 +1869,13 @@ public final class MixinPreflight extends PreflightPart {
 		String desc = ref.methodDescOr(method.desc);
 		if (PreflightAsm.declares(target, methodName, desc)) return;
 		String retyped = retypedMethodHint(target, methodName, desc, ctx);
-		ctx.accessorMember(method, "@Invoker target method " + methodName + desc + " does not exist in " + target.name.replace('/', '.'),
-				retyped != null ? retyped : "The method was renamed or removed by " + ctx.changer(false) + ".");
+		ReplacedMethods.Replaced replaced = retyped == null ? replacedMethods.replaced(target, methodName, desc) : null;
+		// Supplementaries' invoker of FireBlock.checkBurnOut, which Forge 47 replaced with tryCatchFire taking the side the
+		// fire comes from too: no method of the platform's takes what the invoker is given (STRUCT-2).
+		String hint = retyped != null ? retyped : replaced != null ? loader + " replaced that private method with " + replaced.named() + ", "
+				+ replaced.where() + ", and has no method taking vanilla's parameters for the invoker to call; a call of it fails."
+				: "The method was renamed or removed by " + ctx.changer(false) + ".";
+		ctx.accessorMember(method, "@Invoker target method " + methodName + desc + " does not exist in " + target.name.replace('/', '.'), hint);
 	}
 
 	/** The field an {@code @Accessor} without a value names, as Mixin infers it from the method's name; null when none. */
@@ -1933,6 +1945,25 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/** {@link #replacedHint(ClassNode, String, String)} for a point's call of a method of the target. */
+	/**
+	 * Why an injector's point is missing where vanilla's own method lacks it too (VANILLA-1's classes): no change of the
+	 * platform's, but code another Minecraft version or another mod has there (Supplementaries' hook of Arclight's creeper
+	 * explosion, a call vanilla 1.20.1's {@code explodeCreeper} doesn't make). Null where vanilla's method has it, where
+	 * either can't be read, or where a slice bounds the point.
+	 */
+	private String vanillaLacksHint(ClassNode target, List<MethodNode> matched, String point, String resolved, int ordinal, int opcode, AnnotationNode slice,
+			Context ctx) {
+		boolean plain = !point.equals("CONSTANT") && !point.equals("MIXINEXTRAS:EXPRESSION");
+		ClassNode vanilla = plain && ctx.owner() == null && slice == null && resolved != null ? vanillaClass(target.name) : null;
+		if (vanilla == null) return null;
+		for (MethodNode m : matched) {
+			MethodNode was = PreflightAsm.declared(vanilla, m.name, m.desc);
+			if (was == null || was.instructions == null || InjectionPoints.evaluate(point, resolved, ordinal, opcode, Range.ALL, was) != Verdict.MISSING) return null;
+		}
+		return "Vanilla's own " + matched.get(0).name + " doesn't have it either, so " + loader + " didn't change it: the hook is for another Minecraft version's"
+				+ " code or another mod's, and would find nothing on Fabric with this Minecraft version either.";
+	}
+
 	private String replacedHint(ClassNode target, String rawTarget, Context ctx) {
 		MemberRef ref = rawTarget == null ? null : MemberRef.parse(ctx.resolve(rawTarget));
 		return ref == null || ref.fuzzy() || !target.name.equals(ref.owner()) ? null : replacedHint(target, ref.name(), ref.desc());
@@ -1944,9 +1975,11 @@ public final class MixinPreflight extends PreflightPart {
 	 */
 	private String replacedHint(ClassNode target, String name, String desc) {
 		ReplacedMethods.Replaced replaced = name == null ? null : replacedMethods.replaced(target, name, desc);
-		return replaced == null ? null : loader + " replaced that private method with " + replaced.named() + ", which " + replaced.caller().name
-				+ " calls in its place; only an @Inject at its call or its start, or at its end where that method returns as vanilla's does, moves there"
-				+ " (STRUCT-1).";
+		if (replaced == null) return null;
+		return loader + " replaced that private method with " + replaced.named() + ", " + replaced.where() + "; only an @Inject at "
+				+ (replaced.oneCall() ? "its call, its start" : "its start") + ", a call or field access in it that method makes in its place,"
+				+ " or its end where that method returns as vanilla's does, moves there"
+				+ (replaced.oneCall() ? "" : ", one taking vanilla's parameters only where each call gives them alike") + " (" + replaced.finding() + ").";
 	}
 
 	/**
@@ -2358,6 +2391,8 @@ public final class MixinPreflight extends PreflightPart {
 								+ (ordinal >= 0 ? ", ordinal=" + ordinal : "") + "), which does not occur in that method",
 						replacedHint(target, rawTarget, ctx) != null ? replacedHint(target, rawTarget, ctx)
 								: notPutBackHint(target, matched.get(0), rawTarget, ctx) != null ? notPutBackHint(target, matched.get(0), rawTarget, ctx)
+								: vanillaLacksHint(target, matched, point, rawTarget == null ? null : ctx.resolve(rawTarget), ordinal, opcode, slice, ctx) != null
+										? vanillaLacksHint(target, matched, point, ctx.resolve(rawTarget), ordinal, opcode, slice, ctx)
 								: ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 				return;
 			}
