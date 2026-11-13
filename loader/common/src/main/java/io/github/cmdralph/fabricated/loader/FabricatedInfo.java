@@ -69,7 +69,7 @@ public record FabricatedInfo(String fabricatedVersion, String minecraftVersion, 
 				: family(minecraftVersion).equals(family(runningMinecraftVersion));
 	}
 
-	static String family(String version) {
+	private static String family(String version) {
 		String[] parts = version.split("\\.");
 		return parts.length >= 2 ? parts[0] + "." + parts[1] : version;
 	}
