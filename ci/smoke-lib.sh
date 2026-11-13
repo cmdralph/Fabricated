@@ -32,6 +32,12 @@ cached_install() {
 	fi
 }
 
+# retrying_curl <curl arguments...>: how the harness and the adapters download: failing on an HTTP error, a dropped
+# connection or a server's error tried again for up to five minutes.
+retrying_curl() {
+	curl -fsSL --retry 8 --retry-max-time 300 "$@"
+}
+
 # download <url> <file>: a pinned download, kept in the cache's downloads folder by its URL. A failed one, which may
 # have left part of the file, fails and is not cached: smoke.sh, which runs without errexit, reads the status.
 download() {
@@ -41,7 +47,7 @@ download() {
 		cp "$cached" "$2"
 		return
 	fi
-	curl -fsSL --retry 8 --retry-max-time 300 -o "$2" "$1" || return
+	retrying_curl -o "$2" "$1" || return
 	if [ -n "$SMOKE_CACHE" ]; then
 		mkdir -p "$SMOKE_CACHE/downloads"
 		cp "$2" "$cached"
