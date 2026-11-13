@@ -291,10 +291,10 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		}
 		result.runtime().install();
 		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric,
-		// or another jar's copy of Fabric Loader is left out for the empty jar it nests.
-		boolean addGameMod = gameModJar != null && (!result.mods().isEmpty() || inGameMod);
-		boolean gameModLoads = devGameMod.isPresent() || addGameMod;
-		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), gameModLoads);
+		// or another jar's copy of Fabric Loader is left out for the empty jar it nests (the jar is extracted only then).
+		boolean addGameMod = gameModJar != null;
+		boolean entrypointsRun = devGameMod.isPresent() || addGameMod;
+		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), entrypointsRun);
 		FabricatedState state = new FabricatedState(result, logsDir, api);
 		FabricatedState.set(state);
 		ApiHolder.install(api);
@@ -302,10 +302,10 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		if (!result.mods().isEmpty()) ForgeStack.registerInjectionPoints();
 		// Fabric mods' handlers in a registry's freeze, and their hooks into the game's options, wait for their main
 		// entrypoints, as on Fabric (REG-8, ENTRY-2): Forge's client creates the options before it loads mods.
-		if (gameModLoads) EarlyFreeze.holdUntilMainEntrypoints();
+		if (entrypointsRun) EarlyFreeze.holdUntilMainEntrypoints();
 		// Before any Fabric mod's code runs: the property FML sets for no log marker, which Fabric mods can't read (CORPUS-60,
 		// Ledger's configuration).
-		if (gameModLoads && PlatformProperties.dropEmptyLogMarker()) {
+		if (entrypointsRun && PlatformProperties.dropEmptyLogMarker()) {
 			result.report().line("Launch", "Removed the system property " + PlatformProperties.EMPTY_LOG_MARKER + ", which FML sets for an empty"
 					+ " log marker and nothing reads; a Fabric mod reading every system property as a dotted path stops on it");
 		}
