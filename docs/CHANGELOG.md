@@ -3,6 +3,22 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-13: Why Ledger's campfire and explosion fire logging are left out on 1.21.1 (LOCAL-6, PRE-34)
+
+- **LOCAL-6** (P1), open: Ledger's logging of an item put on a campfire is left out on NeoForge 21.1 and Forge 52.
+  Their `CampfireBlock.useItemOn` tests the block entity as a campfire and uses its slot again before the player's stat
+  is awarded, where Ledger's hook takes it (`@Local BlockEntity`): no local holds it there. It isn't Mixin's count of
+  the method's frames, which Fabricated records again on Forge (CORPUS-79) and which FRAME-2 tracks on NeoForge: Mixin
+  finds the same locals there with the frames recorded expanded.
+- **PRE-34** (P1), open: Ledger's logging of the fire an explosion starts is left out on both too, though Mixin would
+  find the fire loop's iterator it takes in `Explosion.finalizeExplosion`: pre-flight reads a local taken by its type
+  from the method's local variable table alone, which doesn't name a loop's iterator.
+- FRAME-1, fixed (`FINDINGS.md`), is no longer listed among the roadmap's open findings.
+- Verified: the local computation (`Locals.getLocalsAt`) of Fabric's Mixin 0.16.4, which NeoForge 21.1 runs, and of
+  SpongePowered's 0.8.7, which Forge 52 runs, run on NeoForge 21.1.265's, Forge 52.1.21's and vanilla 1.21.1's
+  `CampfireBlock` and `Explosion` with the frames recorded compressed and expanded; core's tests, CI's script tests and
+  the inventory.
+
 ## 2026-11-12: Vanilla's calls of a block state or a stack put back where the platform asks an extension of it (SEAM-8), PRE-30's naming of a local by its slot extended to slices and assignments (PRE-33)
 
 - **SEAM-8** (P1), fixed: where vanilla asks a block state or a stack itself, NeoForge and Forge ask an extension of it
