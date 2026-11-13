@@ -86,15 +86,16 @@ public final class FabricatedMod {
 			LOGGER.warn("Fabricated's discovery did not run; Fabric mods are not loaded");
 			return;
 		}
-		for (String text : ForgeLoaderHooks.notLoaded()) {
-			ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
-		}
+		IModInfo self = context.getContainer().getModInfo();
+		Consumer<String> warning = text -> ModLoader.get().addWarning(new ModLoadingWarning(self, ModLoadingStage.CONSTRUCT, AS_IS, text));
+		for (String text : ForgeLoaderHooks.notLoaded()) warning.accept(text);
 		// What discovery tells the player from now on: a Fabric mod's jar proposed for the class path (DOWNLOAD-1).
-		ForgeLoaderHooks.warnings(text -> ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text)));
+		ForgeLoaderHooks.warnings(warning);
+		boolean client = !FMLLoader.getDist().isDedicatedServer();
 		// /fabricated, in the server's commands and, on a client, in its own, which only its player runs.
 		MinecraftForge.EVENT_BUS.addListener(EventPriority.NORMAL, false, RegisterCommandsEvent.class,
 				event -> FabricatedCommands.register(event.getDispatcher(), state, false));
-		if (!FMLLoader.getDist().isDedicatedServer()) {
+		if (client) {
 			MinecraftForge.EVENT_BUS.addListener(EventPriority.NORMAL, false, RegisterClientCommandsEvent.class,
 					event -> FabricatedCommands.register(event.getDispatcher(), state, true));
 		}
@@ -110,12 +111,11 @@ public final class FabricatedMod {
 		// leaves the in-game mod with the module when another mod provides it.
 		if (ours(state, "fabric-loot-tables-v1")) new LootTablesV1Init().onInitialize();
 		// Fabric mods' config screens in Forge's mod list, once their initializers ran.
-		if (!FMLLoader.getDist().isDedicatedServer()) ClientSupport.init(state);
+		if (client) ClientSupport.init(state);
 		// Fabric mods' key bindings, registered with Forge's key mapping event after the client entrypoints (KEYMAP-3).
-		if (!FMLLoader.getDist().isDedicatedServer() && ours(state, "fabric-key-binding-api-v1")) KeyMappingBridge.register(context.getModEventBus());
+		if (client && ours(state, "fabric-key-binding-api-v1")) KeyMappingBridge.register(context.getModEventBus());
 		// Fabric mods' built-in packs enabled by default, once their initializers registered them (see FabricDefaultPacks).
-		if (!FMLLoader.getDist().isDedicatedServer() && ours(state, FabricDefaultPacks.MODULE)) state.api().afterEntrypoints(FabricDefaultPacks::apply);
-		IModInfo self = context.getContainer().getModInfo();
+		if (client && ours(state, FabricDefaultPacks.MODULE)) state.api().afterEntrypoints(FabricDefaultPacks::apply);
 		// Each entrypoint runs with a context class loader that finds Fabric mods' directories, as on Fabric (SCAN-1).
 		EntrypointRunner runner = new EntrypointRunner(state.runtime(), ModDirectoryClassLoader.contextHook(state.runtime()));
 		List<EntrypointRunner.Failure> preLaunch = runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch);
@@ -126,8 +126,7 @@ public final class FabricatedMod {
 				attributesRegistered = true;
 			} else if (attributesRegistered) {
 				initialized = true;
-				initialize(state, runner, event.getForgeRegistry(), preLaunch,
-						text -> ModLoader.get().addWarning(new ModLoadingWarning(self, ModLoadingStage.CONSTRUCT, AS_IS, text)));
+				initialize(state, runner, event.getForgeRegistry(), preLaunch, warning);
 			}
 		});
 	}
