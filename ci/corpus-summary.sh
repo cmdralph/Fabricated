@@ -13,8 +13,8 @@ label="${2:-$1}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 report="$dir/logs/fabric-bridge-report.txt"
 log="$dir/logs/latest.log"
-# A section of the report: its lines up to the next blank line.
-section() { awk -v head="== $1" 'index($0, head) == 1 { show = 1; next } /^$/ { show = 0 } show' "$report"; }
+# shellcheck source=ci/corpus-lib.sh
+source "$root/ci/corpus-lib.sh"
 
 echo "== $label"
 if [ -f "$report" ]; then
@@ -39,9 +39,7 @@ for crash in "$dir"/crash-reports/*.txt; do
 done
 if [ -f "$log" ]; then
 	python3 -I "$root/ci/log-digest.py" "$log" || true
-	# A server's "Done", or mc-runtime-test's line as a client joins its world: "Successfully finished." where it runs no
-	# game tests, "Running game tests..." first where it does (Forge 47's clients), as smoke-client.sh reads it.
-	if grep -q -E 'Done \([0-9.]+s\)!|Successfully finished\.|Running game tests\.\.\.' "$log"; then
+	if started "$log"; then
 		echo "-- the game started"
 	else
 		echo "-- the game didn't start, or the client reached no world; the log's last lines:"

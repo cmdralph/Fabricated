@@ -5,10 +5,11 @@ plugins {
 
 apply from: rootProject.file('mc/mc.gradle')
 
+// The nullness annotations the shared sources use, which NeoForge ships from 21.11 on: compile-time only, as a missing
+// annotation class is no error at runtime.
+def jspecify = "org.jspecify:jspecify:${jspecify_version}"
 dependencies {
-    // The nullness annotations the shared sources use, which NeoForge ships from 21.11 on: compile-time only, as a
-    // missing annotation class is no error at runtime.
-    compileOnly 'org.jspecify:jspecify:1.0.0'
-    testmodCompileOnly 'org.jspecify:jspecify:1.0.0'
-    testmodfrapiCompileOnly 'org.jspecify:jspecify:1.0.0'
+    compileOnly jspecify
+    testmodCompileOnly jspecify
+    testmodfrapiCompileOnly jspecify
 }

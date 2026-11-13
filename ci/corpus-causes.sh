@@ -18,6 +18,8 @@ set -uo pipefail
 dir="$1"
 console="$2"
 label="${3:-$1}"
+# shellcheck source=ci/corpus-lib.sh
+source "$(dirname "$0")/corpus-lib.sh"
 
 # What both readers of exception chains below know of a line: an exception's first line, the outermost one's (an
 # uncaught one's after the JVM's "Exception in thread") or a cause's or suppressed exception's, which Java indents
@@ -96,11 +98,10 @@ for fatal in "$dir"/hs_err_pid*.log "$(dirname "$dir")"/hs_err_pid*.log; do
 done
 # Without a crash report, what ended the game is the console's last exception chain: one that ends a launch is printed
 # there alone, uncaught, as the JVM exits (Forge 47's Mixin failing to apply FrozenLib's hook, CI-12). A game that
-# started (a server's "Done", mc-runtime-test's lines as a client joins its world, as ci/corpus-summary.sh reads them)
-# was stopped by the run, and an exception as it stops is no stop.
+# started (ci/corpus-lib.sh) was stopped by the run, and an exception as it stops is no stop.
 start=
 if [ -z "$found" ] && [ -f "$console" ]; then
-	if grep -q -E 'Done \([0-9.]+s\)!|Successfully finished\.|Running game tests\.\.\.' "$console"; then
+	if started "$console"; then
 		echo "-- the game started, and the run stopped it"
 	elif read -r start end < <(last_chain "$console"); then
 		echo "-- the console's last exception chain before the game ended"
@@ -115,7 +116,6 @@ fi
 report="$dir/logs/fabric-bridge-report.txt"
 if [ -f "$report" ]; then
 	echo "-- Fabricated's report: entrypoint failures"
-	section() { awk -v head="== $1" 'index($0, head) == 1 { show = 1; next } /^$/ { show = 0 } show' "$report"; }
 	section 'Entrypoint failures' | head -n 60 | cut -c1-400
 	# Which Fabric API modules this game left out or took from another mod, and their mixins pre-flight left out: what a
 	# mod's mixin that shadows or calls into one of them meets (MoreCulling's into Fabric's renderer state, CORPUS-74).

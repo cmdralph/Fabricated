@@ -3,7 +3,6 @@ package io.github.cmdralph.fabricated.core.remap;
 import java.io.IOException;
 import java.io.Reader;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
@@ -111,17 +110,12 @@ public final class OfficialClasses implements ClassBytesSource {
 	/** The superclass and interfaces of a vanilla class, by obfuscated name; none for a class the jar doesn't have. */
 	private List<String> supertypes(String type) {
 		return supertypes.computeIfAbsent(type, t -> {
-			List<String> found = new ArrayList<>();
 			try {
 				byte[] data = official.read(t);
-				if (data == null) return found;
-				ClassReader reader = new ClassReader(data);
-				if (reader.getSuperName() != null) found.add(reader.getSuperName());
-				found.addAll(List.of(reader.getInterfaces()));
+				return data == null ? List.of() : Supertypes.of(new ClassReader(data));
 			} catch (IOException | RuntimeException e) {
-				// An unreadable class ends the walk there.
+				return List.of(); // an unreadable class ends the walk there
 			}
-			return found;
 		});
 	}
 }

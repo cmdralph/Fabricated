@@ -3,9 +3,9 @@
 lines the same way (a mod that gives up on something often only warns), the exceptions it names (count), and the first
 occurrence of each of the most frequent errors with its stack, so a mod that loads but fails when its code runs shows
 why, and the first of each linkage error (an AbstractMethodError, a NoSuchMethodError, ...) with its stack however
-rare: one is often what stops the game, and names the classes translation joined. Leaves out the errors every CI run has: the narrator's, the offline account's (Realms included), the missing
-audio devices', an empty server.properties field's, the test mod that fails on purpose, and Cardinal Components'
-first-run config.
+rare: one is often what stops the game, and names the classes translation joined. Leaves out the errors every CI run
+has: the narrator's, the offline account's (Realms included), the missing audio devices', an empty server.properties
+field's, the test mod that fails on purpose, and Cardinal Components' first-run config.
 
 Usage: ci/log-digest.py <latest.log>
 """

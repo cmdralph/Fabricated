@@ -9,8 +9,9 @@ platform="$1"
 mc="$2"
 shift 2
 cd "$(dirname "$0")/.."
-# shellcheck disable=SC2154 # loader comes from ci/plan.py target
-eval "$(python3 -I ci/plan.py target "$platform" "$mc")"
+# The version's pins, as shell assignments: taken apart from eval, which would hide plan.py's failure.
+assignments=$(python3 -I ci/plan.py target "$platform" "$mc")
+eval "$assignments"
 side=build
 work=
 # shellcheck source=ci/smoke-lib.sh

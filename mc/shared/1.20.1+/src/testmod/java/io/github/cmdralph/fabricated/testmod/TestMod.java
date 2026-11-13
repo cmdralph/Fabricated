@@ -47,8 +47,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 /**
- * Fabric test mod used by Fabricated's CI smoke test. Every check logs a {@code FABRICATED-TEST} marker
- * that the CI script looks for in the server log.
+ * Fabric test mod of Fabricated's CI game runs, on servers and clients (ci/runs.tsv). Every check logs a
+ * {@code FABRICATED-TEST} line, {@code <check> OK} where it holds, which ci/check-log.py looks for as ci/checks.tsv says.
  */
 public final class TestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-testmod";

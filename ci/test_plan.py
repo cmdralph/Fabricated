@@ -1,5 +1,7 @@
 """Tests of ci/plan.py: python3 -B -m unittest discover -s ci -p 'test_*.py'."""
 import json
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -90,6 +92,19 @@ class TargetsTest(unittest.TestCase):
         (self.root / "mc/neoforge/26.1.2/gradle.properties").write_text("neoforge_version=1;rm -rf /\njava_version=25\n")
         with self.assertRaises(SystemExit):
             plan.target(self.root, "neoforge", "26.1.2")
+
+    def test_a_version_or_platform_the_tree_lacks_is_named(self):
+        for platform, version in (("neoforge", "9.9"), ("fabric", "26.1.2")):
+            with self.assertRaisesRegex(SystemExit, f"mc/{platform}/{version}: "):
+                plan.target(self.root, platform, version)
+
+    def test_the_scripts_stop_where_plan_py_fails(self):
+        # Before the pins are read: an eval of plan.py's output would hide its failure.
+        for script in ("build.sh", "smoke.sh"):
+            result = subprocess.run(["bash", str(plan.HERE / script), "neoforge", "9.9", "server"], capture_output=True,
+                                    text=True, env=dict(os.environ, SMOKE_WORK=tempfile.mkdtemp()))
+            self.assertEqual((result.returncode, result.stderr.strip()), (1, "mc/neoforge/9.9: no such version in this tree"),
+                             script)
 
     def test_a_folder_that_isnt_a_version_is_refused(self):
         (self.root / "mc/neoforge/$(x)").mkdir()

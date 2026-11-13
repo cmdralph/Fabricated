@@ -19,7 +19,7 @@ import java.util.zip.ZipFile;
 /**
  * Read-only view of an untrusted jar that validates every entry before anything is read.
  *
- * <p>Checks performed when opening: archive size, entry count, entry names (no absolute paths,
+ * <p>Checks performed when opening: archive size, entry count, entry names (no absolute paths, empty,
  * {@code ..} or {@code .} segments, backslashes, drive letters, control characters or duplicates, but for a
  * directory's empty entry repeated), declared entry sizes and compression ratios. Reads additionally count the actual decompressed
  * bytes, so archives that lie about sizes in their headers are still bounded.
