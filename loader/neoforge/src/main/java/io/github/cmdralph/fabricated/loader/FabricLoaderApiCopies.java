@@ -39,7 +39,8 @@ final class FabricLoaderApiCopies {
 	static final String MARKER = ConflictingJars.FABRICATED_MARKER;
 	/** The most a jar's copy without the API may hold ({@link #store}); a larger one is left to FML. */
 	static final long MAX_COPY_BYTES = 64L << 20;
-	private static final String SERVICES = "META-INF/services/";
+	/** Where a jar's service files are. */
+	static final String SERVICES = "META-INF/services/";
 	/** What was left out of which jar, for the report; FML may read a nested jar more than once. */
 	private static final Set<String> NOTES = new CopyOnWriteArraySet<>();
 

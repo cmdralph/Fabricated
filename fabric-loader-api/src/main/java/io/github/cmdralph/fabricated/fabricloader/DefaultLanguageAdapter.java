@@ -18,7 +18,7 @@ import net.fabricmc.loader.api.ModContainer;
 /**
  * The {@code default} language adapter. Supported entrypoint notations:
  * <ul>
- *   <li>{@code pkg.Type} - instantiated through its public no-arg constructor;</li>
+ *   <li>{@code pkg.Type} - instantiated through its no-arg constructor (of any access);</li>
  *   <li>{@code pkg.Type::FIELD} - value of a static field;</li>
  *   <li>{@code pkg.Type::method} - a method adapted to the requested functional interface. Non-static
  *       methods are bound to a new instance created through the no-arg constructor.</li>

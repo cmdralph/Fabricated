@@ -75,12 +75,13 @@ final class NeoForgeMods {
 						List.of(file.getFilePath())));
 			}
 			mods.addAll(declared);
-			if (!infos.isEmpty() && infos.stream().noneMatch(mod -> GAME.contains(mod.getModId()) || mod.getModId().equals(ModIds.FABRICATED))) {
+			if (nested && !infos.isEmpty()
+					&& infos.stream().noneMatch(mod -> GAME.contains(mod.getModId()) || mod.getModId().equals(ModIds.FABRICATED))) {
 				jars.add(new InstalledClasses.Jar(infos.getFirst().getDisplayName(), name -> Fml.contains(file, name + ".class"),
 						name -> Fml.read(file, name + ".class"),
 						() -> listedMixins(file, clientSide), false,
 						InstalledClasses.fingerprint(file.getFilePath(), "")));
-				if (nested && !declared.isEmpty()) {
+				if (!declared.isEmpty()) {
 					providers.add(new NativeModules.Provider(declared.getFirst(), file.getFileName(), PlatformMods.internal(Fml.packages(file))));
 				}
 			}
@@ -156,9 +157,8 @@ final class NeoForgeMods {
 	private static Map<String, List<String>> provides(IModFile file, TomlParser parser) {
 		Map<String, List<String>> provides = new LinkedHashMap<>();
 		try {
-			byte[] toml = Fml.read(file, NestedNeoForgeJars.MODS_TOML);
-			if (toml == null || toml.length > NestedNeoForgeJars.MAX_TEXT_BYTES) return provides;
-			if (!(parser.parse(new String(toml, StandardCharsets.UTF_8)).get("mods") instanceof List<?> declared)) return provides;
+			String toml = readToml(file);
+			if (toml == null || !(parser.parse(toml).get("mods") instanceof List<?> declared)) return provides;
 			for (Object entry : declared) {
 				if (entry instanceof UnmodifiableConfig mod && mod.get("modId") instanceof String id) {
 					provides.put(id, PlatformMods.strings(mod.get("provides")));
