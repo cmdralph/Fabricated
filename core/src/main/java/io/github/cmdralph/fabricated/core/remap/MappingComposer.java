@@ -53,9 +53,9 @@ public final class MappingComposer {
 		final Map<String, String> classes = new HashMap<>();
 		/** mojang class → official class. */
 		final Map<String, String> mojangToOfficial = new HashMap<>();
-		/** "officialOwner.officialName:mojangDesc" for fields, before descriptor conversion. */
+		/** officialOwner → "officialName:mojangType" → mojang name, for fields, before the types become descriptors. */
 		final Map<String, Map<String, String>> rawFields = new HashMap<>();
-		/** officialOwner → list of (officialName, mojangDesc, mojangName). */
+		/** officialOwner → list of (officialName, mojang argument types, mojang return type, mojangName), as ProGuard writes the types. */
 		final Map<String, List<String[]>> rawMethods = new HashMap<>();
 		/** officialOwner + "." + officialName + officialDesc → mojang name. */
 		final Map<String, String> fields = new HashMap<>();
@@ -79,7 +79,7 @@ public final class MappingComposer {
 	 */
 	public static MappingTable compose(Reader intermediaryTiny, Reader mojangMappings, FieldDescriptors fieldDescriptors)
 			throws IOException, MappingException {
-		return compose(intermediaryTiny, readMojang(mojangMappings, fieldDescriptors));
+		return compose(intermediaryTiny, readMojang(mojangMappings, fieldDescriptors), false);
 	}
 
 	/**
@@ -104,12 +104,9 @@ public final class MappingComposer {
 		return compose(intermediaryTiny, srg, true);
 	}
 
-	/** Joins Intermediary with runtime names keyed by official ones. */
-	private static MappingTable compose(Reader intermediaryTiny, Proguard pg) throws IOException, MappingException {
-		return compose(intermediaryTiny, pg, false);
-	}
-
 	/**
+	 * Joins Intermediary with runtime names keyed by official ones.
+	 *
 	 * @param plain whether the runtime renames methods Intermediary leaves under their official names, as SRG does (PLAIN-1):
 	 *              their official name, which Fabric mods use, is then joined to the runtime one too
 	 */
