@@ -32,7 +32,8 @@ cached_install() {
 	fi
 }
 
-# download <url> <file>: a pinned download, kept in the cache's downloads folder by its URL.
+# download <url> <file>: a pinned download, kept in the cache's downloads folder by its URL. A failed one, which may
+# have left part of the file, fails and is not cached: smoke.sh, which runs without errexit, reads the status.
 download() {
 	local cached
 	cached="$SMOKE_CACHE/downloads/$(printf '%s' "$1" | sha256sum | cut -c1-32)"
@@ -40,7 +41,7 @@ download() {
 		cp "$cached" "$2"
 		return
 	fi
-	curl -fsSL --retry 8 --retry-max-time 300 -o "$2" "$1"
+	curl -fsSL --retry 8 --retry-max-time 300 -o "$2" "$1" || return
 	if [ -n "$SMOKE_CACHE" ]; then
 		mkdir -p "$SMOKE_CACHE/downloads"
 		cp "$2" "$cached"
