@@ -22,7 +22,7 @@ import net.minecraftforge.fml.ModContainer;
  * the rest of the session. The failure is logged once and listed in the report, naming the mod the class belongs to. A
  * throw is put down to the model whose code threw, not to one wrapping it ({@link #putDown}): a mod whose models wrap
  * others (Continuity's) keeps its own drawing when a model it wraps is broken. As NeoForge's, in Forge's terms; shared
- * by Forge 47 and Forge 61 to 66.
+ * by Forge 47, 52 and 61 to 66.
  *
  * <p>Each version keeps a {@link ModelClass} per model class (in a {@code ClassValue}), so the healthy path reads a final
  * field and, for a Fabric model, a volatile one. A composite model (multipart, weighted) keeps its answer for one

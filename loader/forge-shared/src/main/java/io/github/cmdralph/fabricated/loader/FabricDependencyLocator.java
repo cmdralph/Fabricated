@@ -64,12 +64,12 @@ import net.minecraftforge.forgespi.locating.ModFileFactory;
  * files found so far, before its own jar-in-jar locator. It runs Fabricated's discovery pipeline over the Fabric jars in
  * the mods folder and hands Forge every translated Fabric mod as a mod file, the jar remapped to the names Forge runs the
  * game with ({@link IntermediaryMappings}) and overlaid with the generated descriptor ({@link ForgeStack#descriptor}),
- * and Fabricated's in-game mod nested in its jar. What Forge 47 does otherwise than Forge 61 to 66 below the game is in
- * {@link ForgeStack}, of which each has its own (mc/mc.gradle's {@code loader_variant}). Forge's only error path here
- * stops the game, so anything that goes wrong is logged and Fabric support is off for the launch; the Fabric mods that
- * weren't loaded are in the log, Fabricated's report and Forge's loading warnings (which the in-game mod adds, as Forge
- * reads them after loading: on the server in its log, on the client on its warnings screen). In a development
- * workspace, where the in-game mod is a mod of its own, it isn't handed over again.
+ * and Fabricated's in-game mod nested in its jar. What Forge 47 does otherwise than Forge 52 and 61 to 66 below the
+ * game is in {@link ForgeStack}, of which each has its own (mc/mc.gradle's {@code loader_variant}). Forge's only error
+ * path here stops the game, so anything that goes wrong is logged and Fabric support is off for the launch; the Fabric
+ * mods that weren't loaded are in the log, Fabricated's report and Forge's loading warnings (which the in-game mod
+ * adds, as Forge reads them after loading: on the server in its log, on the client on its warnings screen). In a
+ * development workspace, where the in-game mod is a mod of its own, it isn't handed over again.
  */
 public final class FabricDependencyLocator extends ForgeModProvider implements IDependencyLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -195,9 +195,9 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		List<SafeArchive> vanillaJars = new ArrayList<>();
 		// Closed once the pipeline is done with it, however it ends.
 		try (SafeArchive archive = gameModJar == null ? null : SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS)) {
-			// Forge 61 and later offer their jar-in-jar locator MixinExtras from their own libraries (Forge 47 ships none), and
-			// the in-game mod nests a newer one: the locator, which reads the files handed to it here too, adds the newest of
-			// those and of the copies other files nest, once a file declares mixin configs.
+			// Forge 61 and later offer their jar-in-jar locator MixinExtras from their own libraries (Forge 47 and 52 ship
+			// none), and the in-game mod nests a newer one: the locator, which reads the files handed to it here too, adds the
+			// newest of those and of the copies other files nest, once a file declares mixin configs.
 			String mixinExtras = newest(newest(mixinExtrasVersion(loadedMods), archive == null ? null : nestedMixinExtras(archive)),
 					offeredMixinExtras());
 			if (archive != null) {

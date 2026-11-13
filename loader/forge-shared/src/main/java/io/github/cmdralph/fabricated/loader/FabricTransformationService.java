@@ -27,10 +27,10 @@ import net.minecraftforge.fml.loading.LoadingModList;
 import net.minecraftforge.forgespi.locating.IModFile;
 
 /**
- * Fabricated's transformation service on Forge 61 to 66 and Forge 47, whose ModLauncher 10.0 has the same API and asks
- * for transformers after the scan too (docs/PORTING.md §4.1, F3 step 4). ModLauncher loads it from the Fabricated jar
- * in the mods folder (its service file) into the service layer, next to the locators, and asks it for transformers once
- * FML's mod scan, and so Fabricated's discovery, is done: it gives one that applies
+ * Fabricated's transformation service on Forge 52 and 61 to 66 and on Forge 47, whose ModLauncher 10.0 has the same API
+ * and asks for transformers after the scan too (docs/PORTING.md §4.1, F3 step 4). ModLauncher loads it from the
+ * Fabricated jar in the mods folder (its service file) into the service layer, next to the locators, and asks it for
+ * transformers once FML's mod scan, and so Fabricated's discovery, is done: it gives one that applies
  * {@link FabricClassTransforms#beforeMixin} to the classes discovery named (Fabric mods' classes with {@code @Environment}
  * members, and the targets of {@code inject-interface} directives), and declares their default bridges. ModLauncher's
  * transformers run before Mixin, a launch plugin, and no transformer from the mods folder runs after it: where Mixin
@@ -84,10 +84,10 @@ public final class FabricTransformationService implements ITransformationService
 	 * A module of the game layer for the packages Mixin generates classes into, where the running Mixin adds none
 	 * (CORPUS-68): Forge 47's Mixin 0.8.5 doesn't, so a game class naming the class Mixin generates for a
 	 * {@code @ModifyArgs} ({@code Args$N}) found no module of the layer holding its package and stopped the game
-	 * ({@code NoClassDefFoundError} as the target loaded), while Mixin 0.8.7 (Forge 61 to 66) adds a module of its own for
-	 * them, as here. The module has no files: ModLauncher's class loader offers a class it has no bytes for to the launch
-	 * plugins, and Mixin's generates it. Only when Fabric mods are loaded, and not when a mod file already holds one of the
-	 * packages, as two modules of a layer can't.
+	 * ({@code NoClassDefFoundError} as the target loaded), while Mixin 0.8.7 (Forge 52 and 61 to 66) adds a module of its
+	 * own for them, as here. The module has no files: ModLauncher's class loader offers a class it has no bytes for to the
+	 * launch plugins, and Mixin's generates it. Only when Fabric mods are loaded, and not when a mod file already holds
+	 * one of the packages, as two modules of a layer can't.
 	 */
 	@Override
 	public List<Resource> completeScan(IModuleLayerManager layerManager) {
