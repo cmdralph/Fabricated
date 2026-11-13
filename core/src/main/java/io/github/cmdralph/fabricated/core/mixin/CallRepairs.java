@@ -495,7 +495,7 @@ final class CallRepairs extends PreflightPart {
 		Type[] hookArgs = Type.getArgumentTypes(hook.desc);
 		long ofType = java.util.Arrays.stream(hookArgs).filter(value::equals).count();
 		if (Annotations.value(injector, "index") != null || ofType != 1) Annotations.put(injector, "index", parameter);
-		return List.of("the call " + raw + " in vanilla's code, which " + loader + "'s patch makes inside its hook " + hook.owner.replace('/', '.') + "." + hook.name
+		return List.of("the call " + ctx.resolve(raw) + " in vanilla's code, which " + loader + "'s patch makes inside its hook " + hook.owner.replace('/', '.') + "." + hook.name
 				+ hook.desc + ", called in its place, which passes its parameter " + parameter + " on to it unchanged as that argument; the injection point is"
 				+ " pointed at the hook's call, at that parameter");
 	}
