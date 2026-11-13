@@ -97,7 +97,7 @@ public final class TranslationCache {
 		this.verify = verify;
 		// Cleanup deletes inside these, so they must not lead out of the game directory either.
 		for (String dir : new String[] {"entries", "nested", "tmp", "blobs"}) createRealDirectory(root.resolve(dir));
-		this.launch = loadIndex() + 1;
+		this.launch = readIndex(false) + 1;
 		cleanTmp();
 	}
 
@@ -144,8 +144,13 @@ public final class TranslationCache {
 	/** Directory-safe entry name: {@code <modid>-<first 40 hex of key>}. */
 	public static String entryName(String modId, String keyHash) {
 		String name = (modId + "-" + keyHash.substring(0, Math.min(40, keyHash.length()))).toLowerCase(java.util.Locale.ROOT);
-		if (!SAFE_NAME.matcher(name).matches()) throw new IllegalArgumentException("Unsafe cache entry name " + name);
+		requireSafe(name, "cache entry");
 		return name;
+	}
+
+	/** Refuses a name that could be no file of the cache's own (a path, a link's name), saying what it names. */
+	private static void requireSafe(String name, String what) {
+		if (!SAFE_NAME.matcher(name).matches()) throw new IllegalArgumentException("Unsafe " + what + " name " + name);
 	}
 
 	/** A file's SHA-256, valid while its {@code stamp} (size, times, file key) is unchanged. */
@@ -283,19 +288,19 @@ public final class TranslationCache {
 	/** Stores a nested jar content-addressed by SHA-256 and returns its path. */
 	public Path storeNested(byte[] data) throws IOException {
 		String sha = Hashing.sha256(data);
-		Path target = root.resolve("nested").resolve(sha + ".jar");
-		if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || (verify && !sha256(target).equals(sha))) {
+		Path target = nestedJar(sha);
+		if (!intactNested(target, sha)) {
 			AtomicFiles.writeAtomically(target, data, root.resolve("tmp"));
 			remember(target, sha);
 		}
-		lastUsed.put("nested/" + sha + ".jar", launch);
+		lastUsed.put(nestedUse(sha), launch);
 		return target;
 	}
 
 	/** {@link #storeNested(byte[])}, remembering that {@code entry} of the jar hashed {@code parentSha} holds it. */
 	public Path storeNested(byte[] data, String parentSha, String entry) throws IOException {
 		Path target = storeNested(data);
-		nestedIndex.put(parentSha + "!/" + entry, new NestedRef(nestedSha(target), launch));
+		nestedIndex.put(nestedRef(parentSha, entry), new NestedRef(nestedSha(target), launch));
 		return target;
 	}
 
@@ -318,13 +323,13 @@ public final class TranslationCache {
 				content.writeTo(out);
 			}
 			String sha = HexFormat.of().formatHex(digest.digest());
-			Path target = root.resolve("nested").resolve(sha + ".jar");
-			if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || (verify && !sha256(target).equals(sha))) {
+			Path target = nestedJar(sha);
+			if (!intactNested(target, sha)) {
 				AtomicFiles.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
 				remember(target, sha);
 			}
-			lastUsed.put("nested/" + sha + ".jar", launch);
-			nestedIndex.put(parentSha + "!/" + entry, new NestedRef(sha, launch));
+			lastUsed.put(nestedUse(sha), launch);
+			nestedIndex.put(nestedRef(parentSha, entry), new NestedRef(sha, launch));
 			return target;
 		} finally {
 			deleteQuietly(tmp);
@@ -336,10 +341,10 @@ public final class TranslationCache {
 	 * in the cache (and intact, when verifying): the parent's content decides the nested jar's, so it needn't be read.
 	 */
 	public Optional<Path> nested(String parentSha, String entry) throws IOException {
-		NestedRef ref = nestedIndex.get(parentSha + "!/" + entry);
+		NestedRef ref = nestedIndex.get(nestedRef(parentSha, entry));
 		if (ref == null) return Optional.empty();
 		Optional<Path> target = storedNested(ref.sha256());
-		if (target.isPresent()) nestedIndex.put(parentSha + "!/" + entry, new NestedRef(ref.sha256(), launch));
+		if (target.isPresent()) nestedIndex.put(nestedRef(parentSha, entry), new NestedRef(ref.sha256(), launch));
 		return target;
 	}
 
@@ -349,10 +354,30 @@ public final class TranslationCache {
 	 */
 	public Optional<Path> storedNested(String sha) throws IOException {
 		if (!reuse || !SHA256.matcher(sha).matches()) return Optional.empty();
-		Path target = root.resolve("nested").resolve(sha + ".jar");
-		if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || (verify && !sha256(target).equals(sha))) return Optional.empty();
-		lastUsed.put("nested/" + sha + ".jar", launch);
+		Path target = nestedJar(sha);
+		if (!intactNested(target, sha)) return Optional.empty();
+		lastUsed.put(nestedUse(sha), launch);
 		return Optional.of(target);
+	}
+
+	/** Where the nested jar with the SHA-256 {@code sha} is stored. */
+	private Path nestedJar(String sha) {
+		return root.resolve("nested").resolve(sha + ".jar");
+	}
+
+	/** The nested jar's name in {@link #lastUsed}, as cleanup finds it. */
+	private static String nestedUse(String sha) {
+		return "nested/" + sha + ".jar";
+	}
+
+	/** {@link #nestedIndex}'s key for {@code entry} of the jar hashed {@code parentSha}. */
+	private static String nestedRef(String parentSha, String entry) {
+		return parentSha + "!/" + entry;
+	}
+
+	/** Whether the nested jar stored at {@code target} is there and, when verifying, holds what its hash says. */
+	private boolean intactNested(Path target, String sha) throws IOException {
+		return Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) && (!verify || sha256(target).equals(sha));
 	}
 
 	/** The SHA-256 of a jar stored by {@link #storeNested}, which is its file name. */
@@ -366,7 +391,7 @@ public final class TranslationCache {
 	 * it came from, not what it holds, so the file starts with the SHA-256 of its content for {@link #readBlob}.
 	 */
 	public Path storeBlob(String fileName, byte[] data) throws IOException {
-		if (!SAFE_NAME.matcher(fileName).matches()) throw new IllegalArgumentException("Unsafe blob name " + fileName);
+		requireSafe(fileName, "blob");
 		Path target = root.resolve("blobs").resolve(fileName);
 		byte[] file = new byte[BLOB_HASH_LENGTH + data.length];
 		System.arraycopy(Hashing.sha256Digest().digest(data), 0, file, 0, BLOB_HASH_LENGTH);
@@ -381,13 +406,13 @@ public final class TranslationCache {
 	 * PERF-2), which cleanup would otherwise take for unused.
 	 */
 	public void keepBlob(String fileName) {
-		if (!SAFE_NAME.matcher(fileName).matches()) throw new IllegalArgumentException("Unsafe blob name " + fileName);
+		requireSafe(fileName, "blob");
 		lastUsed.put("blobs/" + fileName, launch);
 	}
 
 	/** Reads a blob stored with {@link #storeBlob}, or empty if absent, damaged (then deleted) or reuse is disabled. */
 	public Optional<byte[]> readBlob(String fileName) throws IOException {
-		if (!SAFE_NAME.matcher(fileName).matches()) throw new IllegalArgumentException("Unsafe blob name " + fileName);
+		requireSafe(fileName, "blob");
 		lastUsed.put("blobs/" + fileName, launch);
 		if (!reuse) return Optional.empty();
 		Path file = root.resolve("blobs").resolve(fileName);
@@ -412,7 +437,7 @@ public final class TranslationCache {
 	 * SHA-256 of a file, memoised across launches so unchanged mods are not re-hashed. The memo is keyed by path,
 	 * size, modification time, creation time and, where the file system has them, change time and file key (inode):
 	 * copying a jar over another with its old timestamp kept ({@code cp -p}, a restored backup) still changes the change
-	 * time. Windows has neither, so there the creation time is added, which a jar copied in as a new file gets; one
+	 * time. Windows has neither, so there the creation time tells, which a jar copied in as a new file gets; one
 	 * written over the old file in place may keep that file's (FC-5). A file changed with all of them kept, its size
 	 * included, isn't seen: the cache trusts its files' metadata as the game trusts the mods folder, rather than read
 	 * every translated jar again on each launch.
@@ -553,10 +578,6 @@ public final class TranslationCache {
 		} catch (IOException e) {
 			notes.add("Cache cleanup of " + dir + " failed: " + e.getMessage());
 		}
-	}
-
-	private long loadIndex() {
-		return readIndex(false);
 	}
 
 	/**

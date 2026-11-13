@@ -1565,6 +1565,10 @@ What this can't match of Fabric, seen in a reference pack (2026-10-28):
     how a Carpet client fares on NeoForge is unverified.
   - Debugify's fix for MC-121706 in `RangedBowAttackGoal`, whose mob NeoForge types as any `Mob`, where vanilla's is
     a `Monster` (every version; Forge too).
+- **Sinking in water.** NeoForge moves vanilla's `goDownInWater` speed into the fluid type's `sinkInFluid`, which every
+  fluid type uses. A Fabric mod's hook of vanilla's water constant there would also act in other mods' fluids, unlike
+  on Fabric, so it is left out: Additional Entity Attributes' water-speed attribute (with Apoli and Origins) doesn't
+  change how fast an entity sinks in water. Forge 52 to 66 do the same.
 
 ### What this means for Fabric mods
 
@@ -2303,6 +2307,19 @@ instead.
 - **Fields and parameters Forge retyped** (every Forge version). Forge types `RangedBowAttackGoal`'s mob as any
   `Mob`, so Debugify's fix for MC-121706, written for vanilla's `Monster`, is left out. The report names what the
   field or the method's parameters are now (PRE-32).
+- **Sinking in water** (Forge 52 to 66). As on NeoForge, vanilla's water sinking speed is the fluid type's
+  `sinkInFluid`, which every fluid uses, so a hook of vanilla's water constant is left out: Additional Entity
+  Attributes' water-speed attribute doesn't apply.
+- **Reach Entity Attributes** (Forge 47). Forge 47 works out reach from its own attributes (`ForgeMod.BLOCK_REACH` and
+  `ENTITY_REACH`). The constants Reach Entity Attributes' hooks change are gone from the methods it hooks, and its
+  container checks are interface mixins Forge 47's Mixin doesn't apply, so its reach attributes don't change reach. A
+  Fabric mod that gives reach through it gives none there.
+- **Porting Lib's ports of Forge's hooks** (Forge 47). About 45 of Porting Lib's hooks (in Create and Farmer's Delight
+  Refabricated) are left out on Forge 47. They port hooks Forge's own code makes there, where vanilla's code they
+  hook is now Forge's, and call Porting Lib's own block and entity interfaces (`CustomFrictionBlock.getFriction`,
+  `LightEmissiveBlock`, `EntityDestroyBlock`, `BeaconColorMultiplierBlock` and others). Those interfaces' methods carry
+  Forge's extension names and descriptors, so a block implementing one also overrides Forge's extension method, and
+  Forge's own calls reach it (read in the hooks, not checked in game). The report lists each hook as left out.
 - **Two equal registry entries.** Forge's registries tell entries apart by equality, so a mod registering two equal
   objects under two names fails at the second: Wover Story's main entrypoint on Forge 66 (two equal point-of-interest
   types), and the mod is marked as failed. On Fabric and NeoForge they are two entries. Use NeoForge, or the mod's

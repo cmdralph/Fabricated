@@ -19,6 +19,8 @@ import io.github.cmdralph.fabricated.core.remap.LazyMappingTable;
  * @param namespace           namespace Fabric mods for this version are compiled against
  * @param runtimeMixinVersion running Mixin version, e.g. {@code 0.17.4+mixin.0.8.7}
  * @param mixinExtrasVersion  running MixinExtras version, e.g. {@code 0.5.3}, or {@code null} when unknown
+ * @param lowestMixinBehavior the lowest Mixin behaviour version the platform's loader accepts in a {@code [[mixins]]}
+ *                            entry, which a mod's lower one is raised to ({@link MixinCompat#clampForNeoForge})
  * @param fabricatedBuild     Fabricated's version and the digest of its code and data (part of cache keys: a
  *                            translation is reused only by the build that made it)
  * @param mappings            intermediary table, loaded when a translation first needs it, or {@code null} when

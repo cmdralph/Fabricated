@@ -110,8 +110,9 @@ public final class PackageGuard {
 
 	/** Whether a package (internal form) is among the platform loader's own ({@link #providedPackages}). */
 	private boolean ownedByLoader(String name) {
+		String path = name + "/";
 		for (String prefix : providedPackages) {
-			if ((name + "/").startsWith(prefix)) return true;
+			if (path.startsWith(prefix)) return true;
 		}
 		return false;
 	}

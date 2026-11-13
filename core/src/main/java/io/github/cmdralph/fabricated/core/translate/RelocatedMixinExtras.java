@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.core.translate;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -12,6 +11,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+import io.github.cmdralph.fabricated.core.bytecode.ClassFiles;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 
 import org.objectweb.asm.ClassReader;
@@ -39,7 +39,7 @@ final class RelocatedMixinExtras {
 	private static final Pattern API = Pattern.compile("((?:[A-Za-z_$][A-Za-z0-9_$]*/)+)mixinextras/((?:injector|sugar|expression)/[A-Za-z0-9_$/]+)");
 	/** The same, in MixinExtras' own package, as a descriptor names it. */
 	private static final Pattern OWN_IN_DESCRIPTOR = Pattern.compile("L" + OWN + "mixinextras/((?:injector|sugar|expression)/[A-Za-z0-9_$/]+);");
-	private static final byte[] MARK = "mixinextras/".getBytes(StandardCharsets.US_ASCII);
+	private static final String MARK = "mixinextras/";
 
 	/** The relocated package prefix each class read with MixinExtras' own names had, by its internal name. */
 	private final Map<String, String> prefixes = new ConcurrentHashMap<>();
@@ -54,7 +54,7 @@ final class RelocatedMixinExtras {
 	 * copy's own classes stay as they are.
 	 */
 	byte[] canonical(String internalName, byte[] bytes) {
-		if (bytes == null || internalName.contains("mixinextras/") || indexOf(bytes, MARK) < 0) return bytes;
+		if (bytes == null || internalName.contains(MARK) || !ClassFiles.contains(bytes, MARK)) return bytes;
 		Set<String> relocated = new HashSet<>();
 		boolean[] own = {false};
 		Remapper toOwn = new Remapper() {
@@ -135,16 +135,5 @@ final class RelocatedMixinExtras {
 		ClassWriter writer = new ClassWriter(0);
 		new ClassReader(bytes).accept(new ClassRemapper(writer, remapper), 0);
 		return writer.toByteArray();
-	}
-
-	private static int indexOf(byte[] data, byte[] needle) {
-		outer:
-		for (int i = 0; i <= data.length - needle.length; i++) {
-			for (int j = 0; j < needle.length; j++) {
-				if (data[i + j] != needle[j]) continue outer;
-			}
-			return i;
-		}
-		return -1;
 	}
 }
