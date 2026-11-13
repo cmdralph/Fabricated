@@ -20,9 +20,9 @@ import net.fabricmc.loader.api.metadata.ModDependency;
  *
  * <p>NeoForge treats an unmet required dependency as a fatal error for the whole game. Fabricated
  * instead disables just the affected mod (and, transitively, the mods that depend on it) and explains
- * why. Providers are, in order: other active Fabric candidates (by id or {@code provides}), built-ins
- * ({@code minecraft}, {@code java}, {@code fabricloader}, native Fabric API modules), and NeoForge mods
- * (matched by exact id or by the Fabric id with {@code -} replaced by {@code _}).
+ * why. Providers are, in order: other active Fabric candidates by id, built-ins ({@code minecraft}, {@code java},
+ * {@code fabricloader}, native Fabric API modules), the ids active candidates provide ({@code provides}, and aliases
+ * from the config), and NeoForge mods (matched by exact id or by the Fabric id with {@code -} replaced by {@code _}).
  */
 public final class DependencyResolver {
 	/** Something that can satisfy a dependency. */

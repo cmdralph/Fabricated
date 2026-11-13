@@ -600,7 +600,7 @@ public final class ModTranslator {
 			Set<String> constructors = new TreeSet<>();
 			byte[] renamed = renames.apply(data, constructors);
 			if (!constructors.isEmpty()) {
-				notes.add(name.substring(0, name.length() - ".class".length()).replace('/', '.') + " calls vanilla's constructor of "
+				notes.add(binaryName(name) + " calls vanilla's constructor of "
 						+ String.join(", ", constructors) + ", which " + env.descriptor().loaderName() + " replaced with one taking a name too; the calls"
 						+ " give it none, as " + env.descriptor().loaderName() + "'s builder does (LOOT-3)");
 			} else if (renamed != null) {
@@ -608,7 +608,7 @@ public final class ModTranslator {
 			}
 			byte[] made = statics.apply(renamed != null ? renamed : data);
 			if (made != null) {
-				notes.add(name.substring(0, name.length() - ".class".length()).replace('/', '.') + " calls methods of " + env.descriptor().loaderName()
+				notes.add(binaryName(name) + " calls methods of " + env.descriptor().loaderName()
 						+ "'s loader through an accessor that is private here, where they are static; the calls are made static");
 				renamed = made;
 			}
@@ -616,14 +616,14 @@ public final class ModTranslator {
 			if (adapted != null) renamed = adapted;
 			byte[] unshaded = shaded.apply(renamed != null ? renamed : data);
 			if (unshaded != null) {
-				notes.add(name.substring(0, name.length() - ".class".length()).replace('/', '.') + " names the libraries Fabric's Mixin carries in its"
+				notes.add(binaryName(name) + " names the libraries Fabric's Mixin carries in its"
 						+ " own package (" + ShadedLibraries.SHADED.replace('/', '.') + "), which " + env.descriptor().loaderName() + "'s Mixin doesn't;"
 						+ " the references name the game's own (LIB-3)");
 				renamed = unshaded;
 			}
 			byte[] configured = addedConfigsNeedEnvironment ? AddedMixinConfigs.withEnvironment(renamed != null ? renamed : data) : null;
 			if (configured != null) {
-				notes.add(name.substring(0, name.length() - ".class".length()).replace('/', '.') + " adds mixin configs to Mixin by their names"
+				notes.add(binaryName(name) + " adds mixin configs to Mixin by their names"
 						+ " alone, which " + env.descriptor().loaderName() + "'s Mixin gives no environment; the calls give the default one, as"
 						+ " Fabric's Mixin does (LOADER-6)");
 				renamed = configured;
@@ -631,6 +631,11 @@ public final class ModTranslator {
 			if (renamed != null) target.put(name, renamed);
 		}
 		return count;
+	}
+
+	/** A class file's entry name ({@code a/b/C.class}) as the class's binary name ({@code a.b.C}). */
+	private static String binaryName(String classFile) {
+		return classFile.substring(0, classFile.length() - ".class".length()).replace('/', '.');
 	}
 
 	/** Reads an entry of the mod being translated (remapped when applicable). */
@@ -912,7 +917,7 @@ public final class ModTranslator {
 			byte[] data = files.read(name);
 			AddedMixinConfigs.Added added = data == null ? null : AddedMixinConfigs.added(data);
 			if (added == null) continue;
-			String dotted = name.substring(0, name.length() - ".class".length()).replace('/', '.');
+			String dotted = binaryName(name);
 			for (String config : added.names()) adders.putIfAbsent(config, dotted);
 			if (added.computed()) {
 				findings.add(new PreflightFinding(Severity.WARN, "Mixins.addConfiguration", dotted, "Adds mixin configs to Mixin by names its code"
@@ -1005,7 +1010,7 @@ public final class ModTranslator {
 			AccessorShapedMixins.Result shaped = before == null ? null : AccessorShapedMixins.ofRepaired(before, e.getValue());
 			out.put(e.getKey(), shaped == null ? e.getValue() : shaped.bytes());
 			if (shaped != null && shaped.note() != null) {
-				String dotted = e.getKey().substring(0, e.getKey().length() - ".class".length()).replace('/', '.');
+				String dotted = binaryName(e.getKey());
 				findings.add(new PreflightFinding(Severity.INFO, configName, dotted, shaped.note(), ""));
 			}
 		}
@@ -1032,7 +1037,7 @@ public final class ModTranslator {
 			byte[] without = withoutMembers(mixin, h.getValue(), new HashSet<>());
 			AccessorShapedMixins.Result shaped = AccessorShapedMixins.of(mixin, without, listed);
 			overlay.put(h.getKey(), shaped.bytes());
-			String dotted = h.getKey().substring(0, h.getKey().length() - ".class".length()).replace('/', '.');
+			String dotted = binaryName(h.getKey());
 			if (shaped.outcome() == AccessorShapedMixins.Outcome.LEAVE_OUT) whole.add(dotted);
 			if (shaped.note() != null) findings.add(new PreflightFinding(Severity.INFO, configName, dotted, shaped.note(), ""));
 		}
@@ -2098,8 +2103,12 @@ public final class ModTranslator {
 	/** The classes a mixin's {@code @Mixin} names, as internal names. */
 	static List<String> mixinTargets(ClassNode mixin) {
 		AnnotationNode ann = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
+		return ann == null ? new ArrayList<>() : mixinTargets(ann);
+	}
+
+	/** The classes a {@code @Mixin} annotation names, as internal names. */
+	static List<String> mixinTargets(AnnotationNode ann) {
 		List<String> targets = new ArrayList<>();
-		if (ann == null) return targets;
 		if (Annotations.value(ann, "value") instanceof List<?> types) {
 			for (Object t : types) if (t instanceof Type type) targets.add(type.getInternalName());
 		}
