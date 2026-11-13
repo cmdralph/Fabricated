@@ -23,7 +23,7 @@ import net.neoforged.neoforgespi.locating.ModFileDiscoveryAttributes;
  * out, so FML is handed a copy of the jar without them ({@link FabricLoaderApiCopies#store}), of the same type.
  */
 public final class FabricLoaderApiReader implements IModFileReader {
-	private static final String SERVICES = "META-INF/services/";
+	private static final String SERVICES = FabricLoaderApiCopies.SERVICES;
 
 	@Override
 	public int getPriority() {

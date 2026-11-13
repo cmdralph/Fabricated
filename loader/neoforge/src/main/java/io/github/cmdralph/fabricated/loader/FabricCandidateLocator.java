@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
 
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
+import io.github.cmdralph.fabricated.core.resolve.CandidateScanner;
 import io.github.cmdralph.fabricated.core.resolve.ConflictingJars;
 import io.github.cmdralph.fabricated.core.resolve.MultiLoaderJars;
 import net.neoforged.fml.loading.FMLPaths;
@@ -93,7 +94,7 @@ public final class FabricCandidateLocator implements IModFileCandidateLocator {
 		try (ZipFile zip = new ZipFile(jar.toFile())) {
 			if (zip.getEntry(ConflictingJars.FABRICATED_MARKER) != null) return Kind.FABRICATED;
 			ZipEntry modsToml = zip.getEntry(MultiLoaderJars.MODS_TOML);
-			if (zip.getEntry("fabric.mod.json") == null) return modsToml != null && isConnector(zip, modsToml) ? Kind.CONNECTOR : Kind.OTHER;
+			if (zip.getEntry(CandidateScanner.FABRIC_MOD_JSON) == null) return modsToml != null && isConnector(zip, modsToml) ? Kind.CONNECTOR : Kind.OTHER;
 			if (modsToml == null) return Kind.FABRIC;
 		} catch (IOException | RuntimeException e) {
 			// Not a zip or unreadable: leave it to NeoForge, which reports broken files itself.

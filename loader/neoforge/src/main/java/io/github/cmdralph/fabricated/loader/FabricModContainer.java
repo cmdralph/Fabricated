@@ -31,11 +31,11 @@ public final class FabricModContainer extends ModContainer {
 				.build();
 		String moduleName = Fml.moduleName(info.getOwningFile().getFile());
 		ClassLoader loader = layer.findModule(moduleName).map(Module::getClassLoader)
-				.orElseThrow(() -> new ModLoadingException(ModLoadingIssue.error("§e[Fabricated]§r {0}",
+				.orElseThrow(() -> new ModLoadingException(ModLoadingIssue.error(FabricDependencyLocator.MESSAGE,
 						"Module " + moduleName + " for Fabric mod " + info.getModId() + " is not in the game layer").withAffectedMod(info)));
 		state.fabricContainer(info.getModId()).ifPresent(container -> state.runtime().setClassLoader(container, loader));
 		ProposedJars.install(loader, Fml.gameFallback(loader), Fml.gameDir(),
-				text -> ModLoader.addLoadingIssue(ModLoadingIssue.warning("§e[Fabricated]§r {0}", text)));
+				text -> ModLoader.addLoadingIssue(ModLoadingIssue.warning(FabricDependencyLocator.MESSAGE, text)));
 	}
 
 	@Override
