@@ -26,11 +26,13 @@ def scan(name, data, wanted, depth, hits):
         if entry.endswith(".jar") and depth < MAX_DEPTH:
             scan(name + "!/" + entry, archive.read(info), wanted, depth + 1, hits)
             continue
+        content = None
         for cls in wanted:
             if entry == cls + ".class":
                 hits.append(f"{name}!/{entry}: the class itself")
             elif entry.endswith((".json", ".class")):
-                content = archive.read(info)
+                if content is None:
+                    content = archive.read(info)
                 package = cls.rsplit("/", 1)[0]
                 # Fabric API keeps a module's mixins next to its implementation: impl/x -> mixin/x.
                 for pkg in (package, package.replace("/impl/", "/mixin/")):

@@ -27,8 +27,6 @@ FABRIC_API = "P7dR8mSH"
 HEADERS = {"User-Agent": "cmdralph/Fabricated CI (github.com/cmdralph/Fabricated)"}
 MAX_BYTES = 256 << 20
 IMMUTABLE = re.compile(r"^(https://api\.modrinth\.com/v2/version/[A-Za-z0-9]+|https://cdn\.modrinth\.com/.+)$")
-
-
 ATTEMPTS = 7
 
 
@@ -49,6 +47,15 @@ def get(url):
         os.replace(path + ".part", path)
         return data
     return fetch(url)
+
+
+def forget(url):
+    """Drops the cached copy of a file that failed its checks, so the next run downloads it again."""
+    cache = os.environ.get("MODRINTH_CACHE")
+    if cache and IMMUTABLE.match(url):
+        path = os.path.join(cache, hashlib.sha256(url.encode()).hexdigest())
+        if os.path.isfile(path):
+            os.remove(path)
 
 
 def fetch(url):
@@ -116,8 +123,10 @@ def download(version, out):
         raise ValueError(f"not a jar: {name}")
     data = get(file["url"])
     if len(data) > MAX_BYTES:
+        forget(file["url"])
         raise ValueError(f"{name} is too large")
     if hashlib.sha512(data).hexdigest() != file["hashes"]["sha512"]:
+        forget(file["url"])
         raise ValueError(f"{name} does not match Modrinth's SHA-512")
     with open(os.path.join(out, name), "wb") as f:
         f.write(data)

@@ -217,6 +217,8 @@ def main(args):
         if name not in args:
             return None if has_value else False
         i = args.index(name)
+        if has_value and i + 1 == len(args):
+            raise SystemExit(f"{name} needs a value")
         value = args[i + 1] if has_value else True
         del args[i:i + 1 + has_value]
         return value

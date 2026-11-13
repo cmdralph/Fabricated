@@ -59,7 +59,7 @@ jobs:
           MAIN_REF: ${{ inputs.main_ref || 'main' }}
           FORGE_REF: ${{ inputs.forge_ref || 'forge' }}
           FORGE_LEGACY_REF: ${{ inputs.forge_legacy_ref || 'forge-legacy' }}
-          CURSEFORGE_SET: ${{ vars.CURSEFORGE_PROJECT_ID != '' && secrets.CURSEFORGE_TOKEN != '' }}
+          CURSEFORGE_SET: ${{ secrets.CURSEFORGE_PROJECT_ID != '' && secrets.CURSEFORGE_TOKEN != '' }}
         run: |
           set -euo pipefail
           api() { gh api "repos/$GITHUB_REPOSITORY/$1" "${@:2}"; }
@@ -74,7 +74,7 @@ jobs:
             ! api "git/ref/tags/$TAG" > /dev/null 2>&1 || fail "The tag $TAG exists already"
           fi
           [ "$MODE" != publish ] || [ "$CURSEFORGE_SET" = true ] ||
-            fail "Publishing uploads to CurseForge: set the variable CURSEFORGE_PROJECT_ID and the secret CURSEFORGE_TOKEN"
+            fail "Publishing uploads to CurseForge: set the secrets CURSEFORGE_PROJECT_ID and CURSEFORGE_TOKEN"
           # A full SHA is taken as given; anything else is a branch, resolved once so every job tests and releases the
           # same commit.
           ref() { if [[ $1 =~ ^[0-9a-f]{40}$ ]]; then echo "$1"; else echo "heads/$1"; fi; }
@@ -246,7 +246,8 @@ jobs:
       - name: ${{ needs.pin.outputs.mode == 'publish' && 'Upload the jars' || 'Show what would be uploaded' }}
         env:
           MODE: ${{ needs.pin.outputs.mode }}
-          CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          # A secret, not a variable: a step's environment is listed in its log, and only secrets are masked there.
+          CURSEFORGE_PROJECT_ID: ${{ secrets.CURSEFORGE_PROJECT_ID }}
           CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
         run: |
           set -euo pipefail

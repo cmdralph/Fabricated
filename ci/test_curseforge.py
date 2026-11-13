@@ -279,6 +279,18 @@ class Uploads(unittest.TestCase):
         self.assertIn("Invalid game version ID", str(failure.exception))
         self.assertNotIn("123456", str(failure.exception))
 
+    def test_an_error_whose_body_is_cut_off_is_still_a_failure(self):
+        class CutOff(io.BytesIO):
+            def read(self, *args):
+                raise http.client.IncompleteRead(b"{")
+
+        error = urllib.error.HTTPError("https://minecraft.curseforge.com/x", 400, "Bad Request", {}, CutOff())
+        client = curseforge.CurseForge(TOKEN)
+        with mock.patch.object(curseforge.urllib.request, "urlopen", mock.Mock(side_effect=[error])), \
+                self.assertRaises(Failure) as failure:
+            client.upload("123456", self.jars[0], {})
+        self.assertIn("HTTP 400 from CurseForge: Bad Request", str(failure.exception))
+
     def test_token_never_printed(self):
         env = {"CURSEFORGE_TOKEN": TOKEN, "CURSEFORGE_PROJECT_ID": "123456"}
         echoing = [
