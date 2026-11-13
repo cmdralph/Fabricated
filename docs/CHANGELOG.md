@@ -17,7 +17,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   check of its code proves; otherwise it stays out as before.
 - FrozenLib's registry hook taking the new entry's id by its type on NeoForge 1.21.11 and 26.1.2 was checked: it applies
   there, taking NeoForge's copy of the id.
-- @@VERIFYCL@@
+- Verified: core's tests and CI's script tests; NeoForge 1.21.1's, 1.21.11's and 26.1.2's and Forge 52's advanced corpus servers
+  against runs before the change: the two hooks apply where the platform moved the code, with no Mixin error, and nothing
+  else in the reports or the checks changes.
 
 ## 2026-11-12: Vanilla's calls of a block state or a stack put back where the platform asks an extension of it (SEAM-8), PRE-30's naming of a local by its slot extended to slices and assignments (PRE-33)
 
