@@ -286,16 +286,18 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			closeAll(vanillaJars);
 		}
 		result.runtime().install();
-		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric.
-		boolean addGameMod = gameModJar != null && (!result.mods().isEmpty() || !fabricJars.isEmpty());
-		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), devGameMod.isPresent() || addGameMod);
+		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything
+		// Fabric (the jar is extracted only then).
+		boolean addGameMod = gameModJar != null;
+		boolean entrypointsRun = devGameMod.isPresent() || addGameMod;
+		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), entrypointsRun);
 		FabricatedState state = new FabricatedState(result, logsDir, api, mixinFailures);
 		FabricatedState.set(state);
 		ApiHolder.install(api);
 		// Fabric mods' handlers in a registry's freeze wait for their main entrypoints, as on Fabric (REG-8).
-		if (devGameMod.isPresent() || addGameMod) EarlyFreeze.holdUntilMainEntrypoints();
+		if (entrypointsRun) EarlyFreeze.holdUntilMainEntrypoints();
 		// Before any Fabric mod's code runs: the property FML sets for no log marker, which Fabric mods can't read (CORPUS-60).
-		if ((devGameMod.isPresent() || addGameMod) && PlatformProperties.dropEmptyLogMarker()) {
+		if (entrypointsRun && PlatformProperties.dropEmptyLogMarker()) {
 			result.report().line("Launch", "Removed the system property " + PlatformProperties.EMPTY_LOG_MARKER + ", which FML sets for an empty"
 					+ " log marker and nothing reads; a Fabric mod reading every system property as a dotted path stops on it");
 		}
