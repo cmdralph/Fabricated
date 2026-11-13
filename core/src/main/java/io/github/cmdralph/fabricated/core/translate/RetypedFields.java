@@ -77,11 +77,14 @@ final class RetypedFields {
 		return active.isEmpty();
 	}
 
-	/** An accessor of a retyped field: its interface, name and descriptor, whether it sets the field, and the field. */
+	/** An accessor of a retyped field: its interface, name and descriptor. */
 	private record AccessorKey(String owner, String name, String desc) {
 	}
 
-	/** {@code target}: the mixin's one target, which the method of vanilla's descriptor calls the accessor on; null for none. */
+	/**
+	 * What an accessor of a retyped field reaches: the field, whether it sets it, its selector as the mixin writes it, and
+	 * {@code target}, the mixin's one target, which the method of vanilla's descriptor calls the accessor on (null for none).
+	 */
 	private record Accessor(Retype field, boolean setter, String selector, String target) {
 		String newDesc() {
 			return setter ? "(" + field.platformDesc() + ")V" : "()" + field.platformDesc();

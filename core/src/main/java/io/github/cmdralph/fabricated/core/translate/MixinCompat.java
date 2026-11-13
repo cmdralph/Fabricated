@@ -21,7 +21,7 @@ import net.fabricmc.loader.api.metadata.version.VersionInterval;
  *
  * <p>Fabric Loader derives the level from the lowest {@code fabricloader} version a mod accepts. NeoForge
  * exposes the same knob as {@code [[mixins]] behaviorVersion} and accepts values between its default
- * (0.16.5) and the running Mixin version, so the result is clamped into that range.
+ * (0.16.5 on FML 10, 0.17.1 on FML 11 and 12) and the running Mixin version, so the result is clamped into that range.
  */
 public final class MixinCompat {
 	private record Row(Version minLoader, String behavior) {

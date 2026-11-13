@@ -53,9 +53,9 @@ public final class MappingComposer {
 		final Map<String, String> classes = new HashMap<>();
 		/** mojang class → official class. */
 		final Map<String, String> mojangToOfficial = new HashMap<>();
-		/** "officialOwner.officialName:mojangDesc" for fields, before descriptor conversion. */
+		/** officialOwner → "officialName:mojangType" → mojang name, for fields, before the types become descriptors. */
 		final Map<String, Map<String, String>> rawFields = new HashMap<>();
-		/** officialOwner → list of (officialName, mojangDesc, mojangName). */
+		/** officialOwner → list of (officialName, mojang argument types, mojang return type, mojangName), as ProGuard writes the types. */
 		final Map<String, List<String[]>> rawMethods = new HashMap<>();
 		/** officialOwner + "." + officialName + officialDesc → mojang name. */
 		final Map<String, String> fields = new HashMap<>();
