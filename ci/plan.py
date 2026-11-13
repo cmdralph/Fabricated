@@ -100,6 +100,8 @@ def touched(root, paths):
 
 def target(root, platform, version):
     folder = root / "mc" / platform / version
+    if platform not in PLATFORMS or not (folder / "gradle.properties").is_file():
+        raise SystemExit(f"mc/{platform}/{version}: no such version in this tree")
     props = properties(folder / "gradle.properties")
     plan = folder / FABRIC_API_PLAN
     fabric_api = json.loads(plan.read_text(encoding="utf-8")).get("fabricApiVersion", "") if plan.is_file() else ""

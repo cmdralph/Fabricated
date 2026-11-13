@@ -1,7 +1,9 @@
 package io.github.cmdralph.fabricated.core.translate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -90,6 +92,17 @@ class DefaultBridgeTest {
 		add("mod/FabricExtension", true, "java/lang/Object", List.of(), "box" + BOX);
 		assertEquals(List.of(), bridges("game/Declaring", "mod/FabricExtension"), "the target declares the method itself");
 		assertEquals(List.of(), bridges("game/Absent", "mod/FabricExtension"), "an absent target");
+	}
+
+	@Test
+	void aSuperclassChainThatComesBackRoundEnds() {
+		// Only a broken jar's classes extend each other, but a mod's classes are read too, and translation must not hang.
+		add("neo/Extension", true, "java/lang/Object", List.of(), "box" + BOX);
+		add("mod/Loop", false, "mod/Back", List.of("neo/Extension"));
+		add("mod/Back", false, "mod/Loop", List.of());
+		add("mod/FabricExtension", true, "java/lang/Object", List.of(), "box" + BOX);
+		List<DefaultBridge> found = assertTimeoutPreemptively(Duration.ofSeconds(10), () -> bridges("mod/Loop", "mod/FabricExtension"));
+		assertEquals(List.of(new DefaultBridge("mod/Loop", "neo/Extension", "box", BOX)), found);
 	}
 
 	/**
