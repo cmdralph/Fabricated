@@ -6,8 +6,8 @@
 #
 # Run it in a checkout of a working branch made from the platform branch, with main fetched. It makes a merge commit
 # (no rebase, no force): the branch's own files are kept as they are, the files only main has are left out, the files
-# the branch no longer needs are deleted, and every shared file is main's. Then push
-# the working branch and open a pull request into the platform branch, whose full matrix checks the merge.
+# the branch no longer needs are deleted, and every shared file is main's. Then push the working branch and open a pull
+# request into the platform branch, whose full matrix checks the merge.
 #
 # Usage: scripts/sync-platform-branch.sh <forge|forge-legacy> [<main ref, default origin/main>]
 set -euo pipefail
@@ -36,6 +36,8 @@ gone+=(".github/workflows/build-$platform.yml" "ci/$platform/smoke-server.sh" "c
 # What only main has: NeoForge's platform and the release workflow, which builds every platform from main.
 mains=(loader/neoforge mc/neoforge mc/platform-neoforge.gradle ci/neoforge .github/workflows/release.yml)
 
+# The paths below are the repository's: what is removed and checked out is named from its root, wherever this is run.
+cd "$(git rev-parse --show-toplevel)"
 if [ -n "$(git status --porcelain)" ]; then
 	echo "The working tree has changes; commit or stash them first." >&2
 	exit 1
@@ -71,5 +73,5 @@ for path in "${mains[@]}" "${gone[@]}"; do
 	git rm -r -q --cached --ignore-unmatch -- "$path"
 	rm -rf -- "$path"
 done
-git commit -q --no-edit -m "chore: sync $platform with main" -m "Merges $(git rev-parse "$base")."
+git commit -q --no-edit -m "chore: sync $platform with main" -m "Merges $base_commit."
 git log --oneline -1

@@ -51,7 +51,7 @@ class NestedNeoForgeJarsTest {
 				.bytes("META-INF/jarjar/unlisted.jar", mod)
 				.write(dir.resolve("sodium-neoforge.jar"));
 
-		List<NestedNeoForgeJars.ModsToml> found = NestedNeoForgeJars.read(service, ArchiveLimits.DEFAULTS);
+		List<NestedNeoForgeJars.ModsToml> found = NestedNeoForgeJars.readAll(service, ArchiveLimits.DEFAULTS).mods();
 
 		assertEquals(List.of("sodium-neoforge.jar!/META-INF/jarjar/sodium-mod.jar",
 				"sodium-neoforge.jar!/META-INF/jarjar/sodium-mod.jar!/META-INF/jarjar/deep.jar"), found.stream().map(NestedNeoForgeJars.ModsToml::origin).toList());
@@ -98,7 +98,6 @@ class NestedNeoForgeJarsTest {
 
 		assertEquals(Set.of("kotlin", "kotlin/collections", "kotlinx/coroutines"), contents.libraryPackages(), "a mod jar's packages are its mod's");
 		assertEquals(List.of("kotlinforforge-all.jar!/META-INF/jarjar/mod.jar"), contents.mods().stream().map(NestedNeoForgeJars.ModsToml::origin).toList());
-		assertEquals(contents.mods(), NestedNeoForgeJars.read(root, ArchiveLimits.DEFAULTS));
 	}
 
 	/**
@@ -126,7 +125,6 @@ class NestedNeoForgeJarsTest {
 		assertEquals(List.of("forgified-fabric-api.jar!/META-INF/jarjar/module.jar"), contents.mods().stream().map(NestedNeoForgeJars.ModsToml::origin).toList());
 		assertEquals(Set.of("net/fabricmc/fabric/api/event/Event"), contents.mods().get(0).classes());
 		assertEquals(Set.of("other"), contents.libraryPackages());
-		assertEquals(contents.mods(), NestedNeoForgeJars.read(root, ArchiveLimits.DEFAULTS, "META-INF/mods.toml"));
 	}
 
 	@Test
@@ -138,8 +136,8 @@ class NestedNeoForgeJarsTest {
 				.write(dir.resolve("root.jar"));
 		ArchiveLimits oneLevel = new ArchiveLimits(256L << 20, 64L << 20, 512L << 20, 65_536, 100, 1);
 
-		assertEquals(1, NestedNeoForgeJars.read(root, oneLevel).size());
-		assertEquals(2, NestedNeoForgeJars.read(root, ArchiveLimits.DEFAULTS).size());
+		assertEquals(1, NestedNeoForgeJars.readAll(root, oneLevel).mods().size());
+		assertEquals(2, NestedNeoForgeJars.readAll(root, ArchiveLimits.DEFAULTS).mods().size());
 	}
 
 	@Test
@@ -151,13 +149,13 @@ class NestedNeoForgeJarsTest {
 				.write(dir.resolve("root.jar"));
 		ArchiveLimits small = new ArchiveLimits(256L << 20, 1024, 512L << 20, 65_536, 100, 3);
 
-		IOException e = assertThrows(IOException.class, () -> NestedNeoForgeJars.read(root, small));
+		IOException e = assertThrows(IOException.class, () -> NestedNeoForgeJars.readAll(root, small));
 		assertTrue(e.getMessage().contains("root.jar!/META-INF/jarjar/big.jar is larger than 1024 bytes"), e.getMessage());
 	}
 
 	@Test
 	void aFileWithoutNestedJarsHasNone(@TempDir Path dir) throws Exception {
 		Path plain = TestJars.create().text("META-INF/neoforge.mods.toml", TOML.formatted("plain")).write(dir.resolve("plain.jar"));
-		assertEquals(List.of(), NestedNeoForgeJars.read(plain, ArchiveLimits.DEFAULTS));
+		assertEquals(List.of(), NestedNeoForgeJars.readAll(plain, ArchiveLimits.DEFAULTS).mods());
 	}
 }

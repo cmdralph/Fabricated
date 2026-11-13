@@ -7,8 +7,8 @@
 # file: what it reads, relative to the run: out (the console), log (the game log, or the console without one), report
 #   (fabric-bridge-report.txt), report#<section> (a section of it), debug (debug.log), crash (crash reports), status
 #   (the server's start, or the client's exit status), failures (mixin-failures.json), warm and warm-report (the
-#   console and the report of a second launch), mods (the mods folder's listing), linkage (ci/forge-shared/standin-linkage.py's output); several,
-#   comma-separated.
+#   console and the report of a second launch), mods (the mods folder's listing), linkage
+#   (ci/forge-shared/standin-linkage.py's output); several, comma-separated.
 # pattern: a regular expression a line must match; !<pattern> one no line may match; #<n> <pattern> exactly n lines,
 #   #<n>+ at least n; <file,...> before it reads other files; conditions join with && and ||, && binding first.
 #   {minecraft}, {platform} and {loader} are the run's. A missing "<check> OK" line with "<check> SKIPPED: <why>" in
@@ -62,7 +62,7 @@ payloads-to-neoforge	server	*	yes	*			out	Registered [0-9]* Fabric payload type	
 late-payload-type	server	*	yes	*	*	1.21.1	out	FABRICATED-TEST late payload type registration OK			native networking: a payload type registered as the server starts (Ledger, NET-3)	forge-legacy 1.20.1: 1.20.1's packets are a channel's buffer, with no payload types to register
 reload-listener	server	*	yes	*	*	*	out	FABRICATED-TEST resource reload listener OK \(2 data file			native resource loader: listener, shared state and built-in pack data	
 resource-loader-state	server	*	yes	*	*	*	out	resource loader state: order=true, store=2, builtinPackEnabled=true			native resource loader: ordering, data store and built-in pack	
-reload-again	server	*	yes	*	*	1.21.1	out	#2+ FABRICATED-TEST resource reload listener OK			native resource loader: listener runs again on /reload	forge-legacy 1.20.1: Forge's adapter doesn't reload the server's data packs (server_reload=0, ci/forge-shared/platform.sh)
+reload-again	server	*	yes	*	*	*	out	#2+ FABRICATED-TEST resource reload listener OK	!<log>BiomeBootstrapContextImpl\.prepareTags		native resource loader: listener runs again on /reload	when: Wover's biome tag hook (BetterNether's and BetterEnd's library) throws on /reload, its own code on any loader: the bootstrap context it reads is set only as the world loads and cleared once read, so Minecraft keeps the old data
 registry-sync-custom	server	*	yes	*	*	*	out	FABRICATED-TEST registry sync: custom registry OK			native registry sync: custom registry, entry callback, attributes, NeoForge sync flag	
 registry-sync-tracked	server	*	yes	*	*	*	out	FABRICATED-TEST registry sync: tracked registry OK			a registry NeoForge tracks, made in a Fabric initializer after NeoForge's NewRegistryEvent, as Forgified Fabric API's builder makes one (PROVIDER-6)	
 registry-sync-state	server	*	yes	*	*	*	out	registry sync state: alias=true, dynamic=1, setupCallback=1	!FABRICATED-TEST .* SKIPPED: fabric-registry-sync-v0 is another mod's	registry-sync-state	native registry sync: alias, synced dynamic registry, setup callback	when: fabric-registry-sync-v0 is another mod's, which gets no alias from the test mod (the row below, PROVIDER-9)

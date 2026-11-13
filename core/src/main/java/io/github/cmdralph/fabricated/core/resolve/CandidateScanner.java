@@ -186,7 +186,8 @@ public final class CandidateScanner {
 				}
 				if (mixins.size() > metadata.mixins().size()) metadata = metadata.withMixins(mixins);
 			}
-			for (String name : archive.classEntryNames()) {
+			List<String> classes = archive.classEntryNames();
+			for (String name : classes) {
 				int slash = name.lastIndexOf('/');
 				packages.add(slash < 0 ? "" : name.substring(0, slash));
 			}
@@ -197,7 +198,7 @@ public final class CandidateScanner {
 			// A library's own jar under another id (Loom's, for MixinExtras' Fabric jar, which Origins nests three jars deep):
 			// its classes are all left out for the platform's, and its mixin configs, which can only name them, would still be
 			// found by name, MixinExtras' init config before the platform's of the same name, which Mixin then never runs.
-			if (!metadata.mixins().isEmpty() && PlatformLibraries.onlyLibraryClasses(archive.classEntryNames())) {
+			if (!metadata.mixins().isEmpty() && PlatformLibraries.onlyLibraryClasses(classes)) {
 				notes.add(origin + " bundles " + metadata.getId() + ", a copy of a library " + loader + " already provides, with mixin configs"
 						+ " naming its classes; the bundled copy is not loaded (PLAT-7)");
 				return null;

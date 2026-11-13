@@ -49,12 +49,7 @@ public final class MappingTable {
 	private volatile Map<String, String> byNameAndDesc;
 
 	public MappingTable(Map<String, String> classes, Map<String, String> flatMembers, Map<String, String> qualifiedMembers) {
-		this(classes, flatMembers, qualifiedMembers, Map.of());
-	}
-
-	public MappingTable(Map<String, String> classes, Map<String, String> flatMembers, Map<String, String> qualifiedMembers,
-			Map<String, String> plainMembers) {
-		this(classes, flatMembers, qualifiedMembers, plainMembers, Map.of());
+		this(classes, flatMembers, qualifiedMembers, Map.of(), Map.of());
 	}
 
 	private MappingTable(Map<String, String> classes, Map<String, String> flatMembers, Map<String, String> qualifiedMembers,
