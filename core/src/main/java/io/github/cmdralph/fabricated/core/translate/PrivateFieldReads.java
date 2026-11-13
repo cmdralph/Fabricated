@@ -127,12 +127,13 @@ final class PrivateFieldReads {
 		if (reads.isEmpty()) return List.of();
 		List<String> names = new ArrayList<>();
 		entries.forEach(names::add);
+		List<byte[]> fieldNames = reads.values().stream().map(r -> r.name().getBytes(StandardCharsets.UTF_8)).toList();
 		Map<String, Set<String>> readers = new TreeMap<>();
 		for (String name : names) {
 			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
 			byte[] data = target.containsKey(name) ? target.get(name) : read.read(name);
 			// Only a class naming a field's name can read it.
-			if (data == null || reads.values().stream().noneMatch(r -> Annotations.mentions(data, r.name().getBytes(StandardCharsets.UTF_8)))) continue;
+			if (data == null || fieldNames.stream().noneMatch(field -> Annotations.mentions(data, field))) continue;
 			ClassNode node = new ClassNode();
 			try {
 				new ClassReader(data).accept(node, 0);

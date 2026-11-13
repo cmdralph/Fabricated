@@ -109,6 +109,7 @@ final class RetypedFields {
 			}
 		};
 		// Only classes naming a retyped field's name can reach it or declare an accessor of it.
+		List<byte[]> fieldNames = active.stream().map(r -> r.name().getBytes(StandardCharsets.UTF_8)).toList();
 		List<String> candidates = new ArrayList<>();
 		Map<String, String> supers = new HashMap<>();
 		for (String name : names) {
@@ -122,7 +123,7 @@ final class RetypedFields {
 				continue;
 			}
 			if (reader.getSuperName() != null) supers.put(reader.getClassName(), reader.getSuperName());
-			if (active.stream().anyMatch(r -> Annotations.mentions(data, r.name().getBytes(StandardCharsets.UTF_8)))) candidates.add(name);
+			if (fieldNames.stream().anyMatch(field -> Annotations.mentions(data, field))) candidates.add(name);
 		}
 		if (candidates.isEmpty()) return List.of();
 
@@ -174,11 +175,12 @@ final class RetypedFields {
 		if (!accessors.isEmpty()) {
 			Set<String> owners = new HashSet<>();
 			accessors.keySet().forEach(k -> owners.add(k.owner()));
+			List<byte[]> ownerNames = owners.stream().map(o -> o.getBytes(StandardCharsets.UTF_8)).toList();
 			Set<String> done = new HashSet<>(candidates);
 			for (String name : names) {
 				if (!name.endsWith(".class") || name.startsWith("META-INF/") || done.contains(name)) continue;
 				byte[] data = current.apply(name);
-				if (data != null && owners.stream().anyMatch(o -> Annotations.mentions(data, o.getBytes(StandardCharsets.UTF_8)))) callers.add(name);
+				if (data != null && ownerNames.stream().anyMatch(owner -> Annotations.mentions(data, owner))) callers.add(name);
 			}
 		}
 		// A setter a method reference names keeps vanilla's type (its lambda would pass that), and with it the mixin's
