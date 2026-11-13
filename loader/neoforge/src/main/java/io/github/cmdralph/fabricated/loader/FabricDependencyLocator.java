@@ -75,7 +75,8 @@ import net.neoforged.neoforgespi.locating.ModFileDiscoveryAttributes;
 public final class FabricDependencyLocator implements IDependencyLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	private static final String GAME_MOD_RESOURCE = "game-mod.jar";
-	private static final String MESSAGE = "§e[Fabricated]§r {0}";
+	/** A loading issue's text ({@code {0}}), as Fabricated's issues on NeoForge's screens show it. */
+	static final String MESSAGE = "§e[Fabricated]§r {0}";
 	private static final Pattern VERSION_IN_NAME = Pattern.compile("\\d+\\.\\d+\\.\\d+");
 
 	@Override
