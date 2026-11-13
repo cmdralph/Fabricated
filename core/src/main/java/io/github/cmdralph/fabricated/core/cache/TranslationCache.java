@@ -97,7 +97,7 @@ public final class TranslationCache {
 		this.verify = verify;
 		// Cleanup deletes inside these, so they must not lead out of the game directory either.
 		for (String dir : new String[] {"entries", "nested", "tmp", "blobs"}) createRealDirectory(root.resolve(dir));
-		this.launch = loadIndex() + 1;
+		this.launch = readIndex(false) + 1;
 		cleanTmp();
 	}
 
@@ -553,10 +553,6 @@ public final class TranslationCache {
 		} catch (IOException e) {
 			notes.add("Cache cleanup of " + dir + " failed: " + e.getMessage());
 		}
-	}
-
-	private long loadIndex() {
-		return readIndex(false);
 	}
 
 	/**

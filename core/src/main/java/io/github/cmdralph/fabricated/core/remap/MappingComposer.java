@@ -79,7 +79,7 @@ public final class MappingComposer {
 	 */
 	public static MappingTable compose(Reader intermediaryTiny, Reader mojangMappings, FieldDescriptors fieldDescriptors)
 			throws IOException, MappingException {
-		return compose(intermediaryTiny, readMojang(mojangMappings, fieldDescriptors));
+		return compose(intermediaryTiny, readMojang(mojangMappings, fieldDescriptors), false);
 	}
 
 	/**
@@ -104,12 +104,9 @@ public final class MappingComposer {
 		return compose(intermediaryTiny, srg, true);
 	}
 
-	/** Joins Intermediary with runtime names keyed by official ones. */
-	private static MappingTable compose(Reader intermediaryTiny, Proguard pg) throws IOException, MappingException {
-		return compose(intermediaryTiny, pg, false);
-	}
-
 	/**
+	 * Joins Intermediary with runtime names keyed by official ones.
+	 *
 	 * @param plain whether the runtime renames methods Intermediary leaves under their official names, as SRG does (PLAIN-1):
 	 *              their official name, which Fabric mods use, is then joined to the runtime one too
 	 */
