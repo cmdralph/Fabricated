@@ -11303,8 +11303,8 @@ class MixinPreflightTest {
 					withVanilla ? vanilla::get : ClassBytesSource.EMPTY, "Forge").check("test.mixins.json", MixinConfigFile.parse(config(true, "Elsewhere")), Refmap.EMPTY, Set.of());
 			assertEquals(1, findings.size(), findings.toString());
 			assertTrue(findings.getFirst().message().endsWith("target=\"L" + TARGET + ";gone()V\"), which does not occur in that method"), findings.toString());
-			assertEquals(withVanilla ? "Vanilla's own tick doesn't have it either, so Forge didn't change it: the hook is for another Minecraft version's code or"
-					+ " another mod's, and would find nothing on Fabric with this Minecraft version either."
+			assertEquals(withVanilla ? "Vanilla's own tick doesn't have it either, so Forge didn't change it: the hook is for another Minecraft version's, another"
+					+ " platform's or another mod's code, and would find nothing on Fabric with this Minecraft version either."
 					: "Forge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.", findings.getFirst().suggestion());
 		}
 	}

@@ -1947,9 +1947,10 @@ public final class MixinPreflight extends PreflightPart {
 	/** {@link #replacedHint(ClassNode, String, String)} for a point's call of a method of the target. */
 	/**
 	 * Why an injector's point is missing where vanilla's own method lacks it too (VANILLA-1's classes): no change of the
-	 * platform's, but code another Minecraft version or another mod has there (Supplementaries' hook of Arclight's creeper
-	 * explosion, a call vanilla 1.20.1's {@code explodeCreeper} doesn't make). Null where vanilla's method has it, where
-	 * either can't be read, or where a slice bounds the point.
+	 * platform's, but code another Minecraft version, another platform or another mod has there (Supplementaries' hook of
+	 * Arclight's creeper explosion, a call vanilla 1.20.1's {@code explodeCreeper} doesn't make; owo-lib's of Quilt
+	 * Loader's server hook). Null where vanilla's method has it, where either can't be read, or where a slice bounds the
+	 * point.
 	 */
 	private String vanillaLacksHint(ClassNode target, List<MethodNode> matched, String point, String resolved, int ordinal, int opcode, AnnotationNode slice,
 			Context ctx) {
@@ -1960,8 +1961,8 @@ public final class MixinPreflight extends PreflightPart {
 			MethodNode was = PreflightAsm.declared(vanilla, m.name, m.desc);
 			if (was == null || was.instructions == null || InjectionPoints.evaluate(point, resolved, ordinal, opcode, Range.ALL, was) != Verdict.MISSING) return null;
 		}
-		return "Vanilla's own " + matched.get(0).name + " doesn't have it either, so " + loader + " didn't change it: the hook is for another Minecraft version's"
-				+ " code or another mod's, and would find nothing on Fabric with this Minecraft version either.";
+		return "Vanilla's own " + matched.get(0).name + " doesn't have it either, so " + loader + " didn't change it: the hook is for another Minecraft version's,"
+				+ " another platform's or another mod's code, and would find nothing on Fabric with this Minecraft version either.";
 	}
 
 	private String replacedHint(ClassNode target, String rawTarget, Context ctx) {
