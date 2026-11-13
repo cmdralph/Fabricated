@@ -3,6 +3,22 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-13: Apoli's sleep and drop hooks follow vanilla's code into NeoForge's lambda and the platforms' toss hook (LAMBDA-13, OVERLOAD-4)
+
+- **LAMBDA-13** (P2), fixed: on NeoForge 1.21.1, Origins' power preventing sleep didn't: NeoForge runs a player's sleep
+  checks in a lambda whose result its sleep event gets, and Apoli's hook there cancels the sleep, which Fabricated didn't
+  move into the lambda. A hook taking MixinExtras' `@Cancellable` now follows a call into such a lambda where cancelling
+  there returns what vanilla's code there returns: the lambda's code is vanilla's, and the value the hook sets is built
+  as vanilla's returns there are and as none of the platform's own (a problem, not "no problem"). Otherwise it stays
+  out as before.
+- **OVERLOAD-4** (P2), fixed: on NeoForge 1.21.1 and Forge 1.21.1 (52), Origins' powers changing the item a player drops
+  didn't run: both platforms drop it through their toss event hook, which makes vanilla's drop call itself. A
+  `@ModifyArg` of such a call is now pointed at the hook's call where the hook passes the value on unchanged, as a
+  check of its code proves; otherwise it stays out as before.
+- FrozenLib's registry hook taking the new entry's id by its type on NeoForge 1.21.11 and 26.1.2 was checked: it applies
+  there, taking NeoForge's copy of the id.
+- @@VERIFYCL@@
+
 ## 2026-11-12: Vanilla's calls of a block state or a stack put back where the platform asks an extension of it (SEAM-8), PRE-30's naming of a local by its slot extended to slices and assignments (PRE-33)
 
 - **SEAM-8** (P1), fixed: where vanilla asks a block state or a stack itself, NeoForge and Forge ask an extension of it

@@ -378,6 +378,242 @@ final class CallRepairs extends PreflightPart {
 		return moved;
 	}
 
+	/** Mixin's {@code @ModifyArg}. */
+	private static final String MODIFY_ARG = "Lorg/spongepowered/asm/mixin/injection/ModifyArg;";
+	/** MixinExtras' {@code @Cancellable}. */
+	private static final String CANCELLABLE = "Lcom/llamalad7/mixinextras/sugar/Cancellable;";
+
+	/**
+	 * Points a {@code @ModifyArg} at a call vanilla's method makes, which the platform's patch makes inside a hook of its
+	 * own instead, at the hook's call, and at the hook's parameter the hook passes on as that argument (OVERLOAD-4).
+	 * NeoForge 21.1 and Forge 52 drop the selected stack in {@code ServerPlayer.drop(boolean)} through
+	 * {@code onPlayerTossEvent(player, stack, true)}, which drops it with {@code player.drop(stack, false, includeName)}
+	 * and then fires the toss event; Apoli's hook modifying the stack vanilla's call drops found no call there.
+	 * <p>
+	 * The value the hook's call gets there must be the one the call inside gets, which an analysis of the stack tells
+	 * ({@link OverloadRepairs#pushedBy}):
+	 * <ul>
+	 * <li>vanilla's call (VANILLA-1) is gone from the method, and in its place, as an alignment of the two methods' code
+	 * tells ({@link PatchAlignment#replacementOf}), the patch calls one static method of the platform's (in its classes),
+	 * nowhere else; with the point's ordinal, the call in the place of vanilla's with that ordinal;</li>
+	 * <li>that hook makes the call once, on every way through it (no jump, switch, return, throw or try block, and no
+	 * label a jump leads to, from its start to the call): the call of vanilla's method, or, on the same object, of the
+	 * method it overrides;</li>
+	 * <li>the argument is a plain load of one of the hook's parameters, of the argument's type, which the hook loads
+	 * nowhere else and never stores into, so the value the handler returns is the one the call gets, and nothing else
+	 * of the hook's sees it;</li>
+	 * <li>the call's receiver, where it has one, is a parameter of the hook the hook never stores into, which the method
+	 * passes {@code this}, as vanilla's call was made on {@code this}.</li>
+	 * </ul>
+	 * The handler takes the argument alone (Mixin's single argument form), and MixinExtras' {@code @Share} or
+	 * {@code @Cancellable} sugar, which don't depend on the code around the point: it stays in the method, at the place
+	 * of vanilla's call, and runs before the hook's code ahead of the call (Forge's and NeoForge's capture of the drops).
+	 * A point with a slice, a shift or an opcode isn't judged. Returns a description of each move.
+	 */
+	List<String> hookArgumentRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!injector.desc.equals(MODIFY_ARG) || Annotations.value(injector, "slice") != null || (mixin.access & Opcodes.ACC_INTERFACE) != 0) return List.of();
+		// The single argument form: the argument alone, then sugar that doesn't read the method's locals.
+		Type value = Type.getReturnType(handler.desc);
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		List<Type> args = new ArrayList<>();
+		for (int i = 0; i < params.length; i++) {
+			boolean sugar = false;
+			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
+				if (!a.desc.equals(MixinNames.SHARE) && !a.desc.equals(CANCELLABLE)) return List.of();
+				sugar = true;
+			}
+			if (!sugar) args.add(params[i]);
+		}
+		if (value.getSort() == Type.VOID || !args.equals(List.of(value))) return List.of();
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.size() != 1) return List.of();
+		AnnotationNode at = ats.get(0);
+		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw) || Annotations.value(at, "shift") != null
+				|| Annotations.value(at, "by") != null || Annotations.value(at, "opcode") != null || Annotations.value(at, "slice") != null) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null || ref.name().startsWith("<")) return List.of();
+		ClassNode original = vanillaClass(target.name);
+		List<MethodNode> methods = original == null ? List.of() : PreflightAsm.selectedMethods(injector, target, ctx);
+		if (methods.size() != 1) return List.of();
+		MethodNode patched = methods.get(0);
+		MethodNode before = PreflightAsm.declared(original, patched.name, patched.desc);
+		if (before == null || (before.access & Opcodes.ACC_STATIC) != (patched.access & Opcodes.ACC_STATIC) || !PreflightAsm.matching(patched, point, ref, -1).isEmpty()) {
+			return List.of();
+		}
+		// The argument the handler modifies: by its index, or the call's one argument of its type, as Mixin finds it.
+		Type[] callArgs = Type.getArgumentTypes(ref.desc());
+		int argument = Annotations.value(injector, "index") instanceof Integer n ? n : -1;
+		if (argument < 0) {
+			for (int i = 0; i < callArgs.length; i++) {
+				if (!callArgs[i].equals(value)) continue;
+				if (argument >= 0) return List.of();
+				argument = i;
+			}
+		}
+		if (argument < 0 || argument >= callArgs.length || !callArgs[argument].equals(value)) return List.of();
+		List<Integer> inVanilla = PreflightAsm.matching(before, point, ref, -1);
+		int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		if (inVanilla.isEmpty() || ordinal >= inVanilla.size()) return List.of();
+		PatchAlignment alignment = PatchAlignment.of(before, patched);
+		if (alignment == null) return List.of();
+		boolean staticCall = before.instructions.get(inVanilla.get(0)).getOpcode() == Opcodes.INVOKESTATIC;
+		// The hook's call in the place of each of vanilla's calls the point picks.
+		MethodInsnNode hook = null;
+		int[] passed = null;
+		List<MethodInsnNode> placed = new ArrayList<>();
+		for (int k = 0; k < inVanilla.size(); k++) {
+			if (ordinal >= 0 && k != ordinal) continue;
+			int vanillaCall = inVanilla.get(k);
+			int[] range = alignment.replacementOf(vanillaCall);
+			if (alignment.placeOf(vanillaCall) != -1 || range == null) return List.of();
+			MethodInsnNode found = null;
+			for (int i = range[0]; i < range[1]; i++) {
+				if (!(patched.instructions.get(i) instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC || !MixinNames.isPlatformCode(call.owner)) continue;
+				if (found != null) return List.of();
+				found = call;
+			}
+			if (found == null || hook != null && !(hook.owner.equals(found.owner) && hook.name.equals(found.name) && hook.desc.equals(found.desc))) return List.of();
+			if (hook == null) {
+				passed = passedThrough(found, ref, argument, staticCall);
+				if (passed == null) return List.of();
+			}
+			if (!staticCall && !(receivedAsThis(before, vanillaCall, 0) && receivedAsThis(patched, patched.instructions.indexOf(found), passed[1]))) return List.of();
+			hook = found;
+			placed.add(found);
+		}
+		// The hook's calls in the method: those, and with no ordinal no others, where the hook would modify more.
+		List<MethodInsnNode> hookCalls = new ArrayList<>();
+		for (AbstractInsnNode insn : patched.instructions) {
+			if (insn instanceof MethodInsnNode call && call.owner.equals(hook.owner) && call.name.equals(hook.name) && call.desc.equals(hook.desc)) hookCalls.add(call);
+		}
+		if (ordinal < 0 ? !hookCalls.equals(placed) : !hookCalls.contains(placed.get(0))) return List.of();
+		Annotations.put(at, "target", "L" + hook.owner + ";" + hook.name + hook.desc);
+		if (ordinal >= 0) Annotations.put(at, "ordinal", hookCalls.indexOf(placed.get(0)));
+		// The hook's parameter, which Mixin finds by its type too where the hook takes one of that type alone.
+		int parameter = passed[0];
+		Type[] hookArgs = Type.getArgumentTypes(hook.desc);
+		long ofType = java.util.Arrays.stream(hookArgs).filter(value::equals).count();
+		if (Annotations.value(injector, "index") != null || ofType != 1) Annotations.put(injector, "index", parameter);
+		return List.of("the call " + raw + " in vanilla's code, which " + loader + "'s patch makes inside its hook " + hook.owner.replace('/', '.') + "." + hook.name
+				+ hook.desc + ", called in its place, which passes its parameter " + parameter + " on to it unchanged as that argument; the injection point is"
+				+ " pointed at the hook's call, at that parameter");
+	}
+
+	/**
+	 * The parameters of {@code hookCall}'s static hook, the platform's, that it passes on, unchanged, to the one call of
+	 * {@code ref} it makes, on every way through it, before anything else of its own could leave it or loop
+	 * ({@link #hookArgumentRepairs}): the one it passes as argument {@code argument}, which it loads there alone, and the
+	 * call's receiver (-1 for a static call). Null otherwise.
+	 */
+	private int[] passedThrough(MethodInsnNode hookCall, MemberRef ref, int argument, boolean staticCall) {
+		Code code = declaration(hookCall.owner, hookCall.name, hookCall.desc);
+		if (code == null || !code.owner().equals(hookCall.owner) || (code.method().access & Opcodes.ACC_STATIC) == 0) return null;
+		MethodNode hook = code.method();
+		MethodInsnNode made = null;
+		for (AbstractInsnNode insn : hook.instructions) {
+			if (!(insn instanceof MethodInsnNode call) || !call.name.equals(ref.name()) || !call.desc.equals(ref.desc())) continue;
+			// Vanilla's method, or, called on the same object, the one it overrides.
+			boolean same = staticCall ? call.getOpcode() == Opcodes.INVOKESTATIC && call.owner.equals(ref.owner())
+					: (call.getOpcode() == Opcodes.INVOKEVIRTUAL || call.getOpcode() == Opcodes.INVOKEINTERFACE)
+							&& (call.owner.equals(ref.owner()) || isSubtype(ref.owner(), call.owner));
+			if (!same) continue;
+			if (made != null) return null;
+			made = call;
+		}
+		if (made == null || !reachedOnEveryWay(hook, made)) return null;
+		AbstractInsnNode[] pushed = OverloadRepairs.pushedBy(hook, made);
+		if (pushed == null) return null;
+		int offset = staticCall ? 0 : 1;
+		int parameter = parameterLoaded(hook, pushed[offset + argument], Type.getArgumentTypes(ref.desc())[argument]);
+		int receiver = staticCall ? -1 : parameterLoaded(hook, pushed[0], null);
+		if (parameter < 0 || !staticCall && receiver < 0) return null;
+		int slot = parameterSlot(hook, parameter);
+		int loads = 0;
+		for (AbstractInsnNode insn : hook.instructions) {
+			if (insn instanceof VarInsnNode var && var.var == slot && var.getOpcode() >= Opcodes.ILOAD && var.getOpcode() <= Opcodes.ALOAD) loads++;
+		}
+		return loads == 1 ? new int[] {parameter, receiver} : null;
+	}
+
+	/**
+	 * The index of the parameter of {@code method} that {@code insn} loads, of {@code type} (any reference type where it
+	 * is null), when the method never stores into its slot; -1 otherwise.
+	 */
+	private static int parameterLoaded(MethodNode method, AbstractInsnNode insn, Type type) {
+		if (!(insn instanceof VarInsnNode load) || load.getOpcode() < Opcodes.ILOAD || load.getOpcode() > Opcodes.ALOAD) return -1;
+		Type[] params = Type.getArgumentTypes(method.desc);
+		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		for (int i = 0; i < params.length; i++) {
+			if (slot == load.var) {
+				boolean fits = type == null ? params[i].getSort() == Type.OBJECT || params[i].getSort() == Type.ARRAY : params[i].equals(type);
+				return fits && load.getOpcode() == params[i].getOpcode(Opcodes.ILOAD) && !storesInto(method, slot) ? i : -1;
+			}
+			slot += params[i].getSize();
+		}
+		return -1;
+	}
+
+	/** The local variable slot of {@code method}'s parameter at {@code index}. */
+	private static int parameterSlot(MethodNode method, int index) {
+		Type[] params = Type.getArgumentTypes(method.desc);
+		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		for (int i = 0; i < index; i++) slot += params[i].getSize();
+		return slot;
+	}
+
+	/** Whether {@code method} stores into, or increments, the local variable in {@code slot}. */
+	private static boolean storesInto(MethodNode method, int slot) {
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof VarInsnNode var && var.getOpcode() >= Opcodes.ISTORE && var.getOpcode() <= Opcodes.ASTORE && var.var == slot
+					|| insn instanceof org.objectweb.asm.tree.IincInsnNode inc && inc.var == slot) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Whether every way through {@code method} reaches {@code call}, once: from the method's start to it, no instruction
+	 * jumps, switches, returns or throws, no try block starts, and no label one of the method's jumps, switches or
+	 * exception handlers leads to comes.
+	 */
+	private static boolean reachedOnEveryWay(MethodNode method, MethodInsnNode call) {
+		Set<LabelNode> entered = new HashSet<>();
+		Set<LabelNode> tried = new HashSet<>();
+		for (TryCatchBlockNode block : method.tryCatchBlocks) {
+			entered.add(block.handler);
+			tried.add(block.start);
+		}
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof JumpInsnNode jump) entered.add(jump.label);
+			if (insn instanceof TableSwitchInsnNode table) {
+				entered.add(table.dflt);
+				entered.addAll(table.labels);
+			}
+			if (insn instanceof LookupSwitchInsnNode lookup) {
+				entered.add(lookup.dflt);
+				entered.addAll(lookup.labels);
+			}
+		}
+		for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn instanceof LabelNode label && (entered.contains(label) || tried.contains(label))) return false;
+			if (insn == call) return true;
+			int op = insn.getOpcode();
+			if (insn instanceof JumpInsnNode || insn instanceof TableSwitchInsnNode || insn instanceof LookupSwitchInsnNode
+					|| op >= Opcodes.IRETURN && op <= Opcodes.RETURN || op == Opcodes.ATHROW) return false;
+		}
+		return false;
+	}
+
+	/**
+	 * Whether the value {@code method}'s call at {@code index} takes as its {@code value}-th (its receiver first) is
+	 * {@code this}: a load of slot 0 in an instance method that never stores into it ({@link OverloadRepairs#pushedBy}).
+	 */
+	private static boolean receivedAsThis(MethodNode method, int index, int value) {
+		if ((method.access & Opcodes.ACC_STATIC) != 0 || !(method.instructions.get(index) instanceof MethodInsnNode call) || storesInto(method, 0)) return false;
+		AbstractInsnNode[] pushed = OverloadRepairs.pushedBy(method, call);
+		return pushed != null && value < pushed.length && pushed[value] instanceof VarInsnNode load && load.getOpcode() == Opcodes.ALOAD && load.var == 0;
+	}
+
 	/** Whether an injector handler's last parameter is its {@code CallbackInfo}: it takes no locals or sugar after it. */
 	private static boolean takesOnlyItsCallback(MethodNode handler) {
 		Type[] params = Type.getArgumentTypes(handler.desc);

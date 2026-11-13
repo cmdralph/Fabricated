@@ -26,9 +26,12 @@ import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 /**
@@ -647,13 +650,16 @@ final class LambdaRepairs extends PreflightPart {
 	 * build runs vanilla's code from an {@code Optional} callback (FrozenLib's registry call in
 	 * {@code RegistryDataLoader.loadElementFromResource}, on 1.21.11; LAMBDA-2). The handler takes the instruction's own
 	 * receiver, arguments or result, which are the same in the lambda; one that takes MixinExtras sugar (the method's
-	 * locals), isn't static where the lambda is, or whose point has an ordinal or a slice, isn't moved. Returns a
-	 * description of each lambda added.
+	 * locals), isn't static where the lambda is, or whose point has an ordinal or a slice, isn't moved. A handler taking
+	 * MixinExtras' {@code @Cancellable} callback alone of the sugar, which returns from the lambda where it returned from
+	 * the method, moves only where that is the return vanilla's code makes there ({@link #cancelsAsVanilla}: Apoli's
+	 * sleep hook in {@code ServerPlayer.startSleepInBed}, whose checks NeoForge 21.1 runs in a lambda whose result its
+	 * sleep event gets; LAMBDA-13). Returns a description of each lambda added.
 	 */
-	static List<String> lambdaCallRepairs(AnnotationNode injector, MethodNode handler, ClassNode target, Context ctx) {
+	List<String> lambdaCallRepairs(AnnotationNode injector, MethodNode handler, ClassNode target, Context ctx) {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
-		if (!CALL_SITE_INJECTORS.contains(injector.desc) || Annotations.value(injector, "slice") != null || ats.size() != 1
-				|| annotatedParameters(handler.visibleParameterAnnotations) || annotatedParameters(handler.invisibleParameterAnnotations)
+		int cancellable = cancellableParameter(handler);
+		if (!CALL_SITE_INJECTORS.contains(injector.desc) || Annotations.value(injector, "slice") != null || ats.size() != 1 || cancellable == -2
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
 		AnnotationNode at = ats.get(0);
 		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
@@ -675,10 +681,13 @@ final class LambdaRepairs extends PreflightPart {
 				only = lambda;
 			}
 			if (only == null || (only.access & Opcodes.ACC_STATIC) != 0 && (handler.access & Opcodes.ACC_STATIC) == 0) continue;
+			if (cancellable >= 0 && !cancelsAsVanilla(handler, cancellable, target, method, only, point, MemberRef.parse(resolved), opcode)) continue;
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
 			values.add(only.name + only.desc);
 			added.add(MemberRef.parse(resolved).name() + " in " + method.name + ", which this game build makes in its lambda " + only.name
+					+ (cancellable >= 0 ? ", vanilla's code there, whose returns the lambda makes as vanilla's method made them; a cancelled callback returns"
+							+ " from the lambda the value it sets, built as vanilla's returns there are built" : "")
 					+ "; the lambda is added to its methods");
 		}
 		return added;
@@ -701,6 +710,141 @@ final class LambdaRepairs extends PreflightPart {
 			if (annotations != null && !annotations.isEmpty()) return true;
 		}
 		return false;
+	}
+
+	/** MixinExtras' {@code @Cancellable}. */
+	private static final String CANCELLABLE ="Lcom/llamalad7/mixinextras/sugar/Cancellable;";
+	private static final String RETURNABLE = "org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable";
+
+	/**
+	 * The index of the handler's one annotated parameter where it is MixinExtras' {@code @Cancellable} returnable
+	 * callback info; -1 where none is annotated, -2 where another is, or the callback isn't returnable.
+	 */
+	private static int cancellableParameter(MethodNode handler) {
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		int found = -1;
+		for (int i = 0; i < params.length; i++) {
+			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
+				if (!a.desc.equals(CANCELLABLE) || found != -1 || !params[i].getInternalName().equals(RETURNABLE)) return -2;
+				found = i;
+			}
+		}
+		return found;
+	}
+
+	/**
+	 * Whether a {@code @Cancellable} callback info the handler takes as its parameter {@code parameter}, at the point
+	 * {@code ref} names in {@code lambda}, cancels as it cancels at vanilla's: returning from the lambda the value it
+	 * sets, which {@code method}'s code then takes as it takes the returns vanilla's code there makes, where it returned
+	 * from vanilla's method (LAMBDA-13). So:
+	 * <ul>
+	 * <li>{@code method} creates the lambda once, and the lambda returns the type it returns, a reference;</li>
+	 * <li>the lambda's code is vanilla's method's there, as an alignment of the two tells with certainty
+	 * ({@link PatchAlignment}): each instruction the point picks in vanilla's method, as many as the lambda has, is
+	 * placed at one the point picks in the lambda, and each of vanilla's returns is placed at one of the lambda's, or
+	 * has no place;</li>
+	 * <li>each value the handler sets is built by a call of the one static method that builds the value of each of
+	 * vanilla's returns placed in the lambda, and builds none of the lambda's other returns, each built by a static call
+	 * too: the platform tells what vanilla's code returns from what its own code returns by how each is built
+	 * ({@code Either.left} for a problem, {@code Either.right} for none, as NeoForge's sleep checks have it), and a value
+	 * built another way could be taken as the platform's own;</li>
+	 * <li>the handler only sets the callback's return value, with {@code setReturnValue}, loading the callback for that
+	 * alone and never storing into it: {@code cancel()} alone would return null, and the callback passed on could be
+	 * cancelled anywhere.</li>
+	 * </ul>
+	 * Where the method returns the lambda's result unchanged, this is no stronger than needed; nothing else is told.
+	 */
+	private boolean cancelsAsVanilla(MethodNode handler, int parameter, ClassNode target, MethodNode method, MethodNode lambda, String point, MemberRef ref,
+			int opcode) {
+		Type value = Type.getReturnType(lambda.desc);
+		if (!value.equals(Type.getReturnType(method.desc)) || value.getSort() != Type.OBJECT && value.getSort() != Type.ARRAY || ref.fuzzy() || ref.desc() == null
+				|| !point.equals("INVOKE") && !point.equals("INVOKE_ASSIGN")) return false;
+		int created = 0;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof InvokeDynamicInsnNode indy) {
+				for (Object arg : indy.bsmArgs) {
+					if (arg instanceof Handle h && h.getName().equals(lambda.name) && h.getDesc().equals(lambda.desc)) created++;
+				}
+			}
+		}
+		ClassNode vanilla = vanillaClass(target.name);
+		MethodNode original = vanilla == null ? null : PreflightAsm.declared(vanilla, method.name, method.desc);
+		PatchAlignment alignment = created != 1 || original == null ? null : PatchAlignment.of(original, lambda);
+		if (alignment == null) return false;
+		// The point's instructions: vanilla's, each placed at one of the lambda's.
+		List<Integer> before = PreflightAsm.matching(original, point, ref, opcode);
+		List<Integer> after = PreflightAsm.matching(lambda, point, ref, opcode);
+		if (before.isEmpty() || before.size() != after.size()) return false;
+		for (int index : before) {
+			if (!after.contains(alignment.placeOf(index))) return false;
+		}
+		// How the values of vanilla's returns in the lambda are built, and how those of the lambda's own returns are. A
+		// return of vanilla's is in the lambda where it and the call building its value both are placed there.
+		Set<Integer> vanillasReturns = new HashSet<>();
+		Set<String> vanillaBuilds = new HashSet<>();
+		for (int i = 0; i < original.instructions.size(); i++) {
+			if (original.instructions.get(i).getOpcode() != Opcodes.ARETURN) continue;
+			int place = alignment.placeOf(i);
+			int builder = builtBy(original, i);
+			if (builder >= 0 && (place == PatchAlignment.UNCERTAIN || alignment.placeOf(builder) == PatchAlignment.UNCERTAIN)) return false;
+			if (place < 0 || builder < 0 || alignment.placeOf(builder) < 0 || builtBy(lambda, place) != alignment.placeOf(builder)) continue;
+			vanillasReturns.add(place);
+			vanillaBuilds.add(PatchAlignment.token(original.instructions.get(builder)));
+		}
+		if (vanillaBuilds.size() != 1) return false;
+		for (int i = 0; i < lambda.instructions.size(); i++) {
+			if (lambda.instructions.get(i).getOpcode() != Opcodes.ARETURN || vanillasReturns.contains(i)) continue;
+			int builder = builtBy(lambda, i);
+			if (builder < 0 || vanillaBuilds.contains(PatchAlignment.token(lambda.instructions.get(builder)))) return false;
+		}
+		// The handler's callback: loaded only to set its return value, to one built as vanilla's returns are.
+		int slot = (handler.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		for (int i = 0; i < parameter; i++) slot += params[i].getSize();
+		int loads = 0;
+		int sets = 0;
+		for (AbstractInsnNode insn : handler.instructions) {
+			if (insn instanceof VarInsnNode var && var.var == slot) {
+				if (var.getOpcode() != Opcodes.ALOAD) return false;
+				loads++;
+			} else if (insn instanceof MethodInsnNode call && call.owner.equals(RETURNABLE) && call.name.equals("setReturnValue")
+					&& call.desc.equals("(Ljava/lang/Object;)V")) {
+				AbstractInsnNode[] pushed = OverloadRepairs.pushedBy(handler, call);
+				if (pushed == null || !(pushed[0] instanceof VarInsnNode load) || load.var != slot || !(pushed[1] instanceof MethodInsnNode made)
+						|| made.getOpcode() != Opcodes.INVOKESTATIC || !vanillaBuilds.contains(PatchAlignment.token(made))) return false;
+				sets++;
+			} else if (insn instanceof IincInsnNode inc && inc.var == slot) {
+				return false;
+			}
+		}
+		return sets > 0 && loads == sets;
+	}
+
+	/**
+	 * The index of the static call that builds the value {@code method}'s return at {@code index} returns: the instruction
+	 * just before it, where no jump, switch or exception handler leads past it; -1 otherwise.
+	 */
+	private static int builtBy(MethodNode method, int index) {
+		AbstractInsnNode ret = method.instructions.get(index);
+		Set<LabelNode> entered = new HashSet<>();
+		for (var block : method.tryCatchBlocks) entered.add(block.handler);
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof JumpInsnNode jump) entered.add(jump.label);
+			if (insn instanceof TableSwitchInsnNode table) {
+				entered.add(table.dflt);
+				entered.addAll(table.labels);
+			}
+			if (insn instanceof LookupSwitchInsnNode lookup) {
+				entered.add(lookup.dflt);
+				entered.addAll(lookup.labels);
+			}
+		}
+		for (AbstractInsnNode insn = ret.getPrevious(); insn != null; insn = insn.getPrevious()) {
+			if (insn instanceof LabelNode label && entered.contains(label)) return -1;
+			if (insn.getOpcode() < 0) continue;
+			return insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESTATIC ? method.instructions.indexOf(insn) : -1;
+		}
+		return -1;
 	}
 
 	/**
