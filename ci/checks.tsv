@@ -7,8 +7,8 @@
 # file: what it reads, relative to the run: out (the console), log (the game log, or the console without one), report
 #   (fabric-bridge-report.txt), report#<section> (a section of it), debug (debug.log), crash (crash reports), status
 #   (the server's start, or the client's exit status), failures (mixin-failures.json), warm and warm-report (the
-#   console and the report of a second launch), mods (the mods folder's listing), linkage (ci/forge-shared/standin-linkage.py's output); several,
-#   comma-separated.
+#   console and the report of a second launch), mods (the mods folder's listing), linkage
+#   (ci/forge-shared/standin-linkage.py's output); several, comma-separated.
 # pattern: a regular expression a line must match; !<pattern> one no line may match; #<n> <pattern> exactly n lines,
 #   #<n>+ at least n; <file,...> before it reads other files; conditions join with && and ||, && binding first.
 #   {minecraft}, {platform} and {loader} are the run's. A missing "<check> OK" line with "<check> SKIPPED: <why>" in
