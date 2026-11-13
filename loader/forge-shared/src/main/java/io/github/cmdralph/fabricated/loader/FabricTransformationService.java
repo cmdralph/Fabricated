@@ -59,20 +59,25 @@ public final class FabricTransformationService implements ITransformationService
 	public void onLoad(IEnvironment env, Set<String> otherServices) {
 	}
 
-	/**
-	 * How many loading errors Forge's mod list holds: Forge 66's {@code LoadingModList} answers statically, Forge 47 to
-	 * 65's instance does. 0 when it can't be read.
-	 */
+	/** How many loading errors Forge's mod list holds ({@link #ofModList}); 0 when it can't be read. */
 	private static int loadingErrors() {
 		try {
-			Method getErrors = LoadingModList.class.getMethod("getErrors");
-			Object list = Modifier.isStatic(getErrors.getModifiers()) ? null : LoadingModList.class.getMethod("get").invoke(null);
-			if (list == null && !Modifier.isStatic(getErrors.getModifiers())) return 0;
-			return getErrors.invoke(list) instanceof List<?> errors ? errors.size() : 0;
+			return ofModList("getErrors") instanceof List<?> errors ? errors.size() : 0;
 		} catch (ReflectiveOperationException | RuntimeException e) {
 			LOGGER.debug("Could not read Forge's loading errors", e);
 			return 0;
 		}
+	}
+
+	/**
+	 * What a getter of Forge's mod list answers: Forge 66's {@code LoadingModList} answers statically, Forge 47 to 65's
+	 * instance does. Null when there is no instance yet.
+	 */
+	private static Object ofModList(String getter) throws ReflectiveOperationException {
+		Method method = LoadingModList.class.getMethod(getter);
+		Object list = Modifier.isStatic(method.getModifiers()) ? null : LoadingModList.class.getMethod("get").invoke(null);
+		if (list == null && !Modifier.isStatic(method.getModifiers())) return null;
+		return method.invoke(list);
 	}
 
 	/**
@@ -134,16 +139,10 @@ public final class FabricTransformationService implements ITransformationService
 		}
 	}
 
-	/**
-	 * Whether a mod file of Forge's mod list holds one of the packages. Forge 66's {@code LoadingModList} answers
-	 * statically, Forge 47 to 65's instance does; false when it can't be read.
-	 */
+	/** Whether a mod file of Forge's mod list ({@link #ofModList}) holds one of the packages; false if it can't be read. */
 	private static boolean modFileHolds(Set<String> packages) {
 		try {
-			Method getModFiles = LoadingModList.class.getMethod("getModFiles");
-			Object list = Modifier.isStatic(getModFiles.getModifiers()) ? null : LoadingModList.class.getMethod("get").invoke(null);
-			if (list == null && !Modifier.isStatic(getModFiles.getModifiers())) return false;
-			if (!(getModFiles.invoke(list) instanceof List<?> infos)) return false;
+			if (!(ofModList("getModFiles") instanceof List<?> infos)) return false;
 			for (Object info : infos) {
 				if (info.getClass().getMethod("getFile").invoke(info) instanceof IModFile file
 						&& !Collections.disjoint(file.getSecureJar().getPackages(), packages)) {

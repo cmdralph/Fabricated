@@ -43,6 +43,7 @@ import io.github.cmdralph.fabricated.core.report.LaunchPhases;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.NativeModules;
+import io.github.cmdralph.fabricated.core.resolve.NestedNeoForgeJars;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
 import io.github.cmdralph.fabricated.core.runtime.PlatformProperties;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
@@ -292,7 +293,8 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric,
 		// or another jar's copy of Fabric Loader is left out for the empty jar it nests.
 		boolean addGameMod = gameModJar != null && (!result.mods().isEmpty() || inGameMod);
-		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), devGameMod.isPresent() || addGameMod);
+		boolean gameModLoads = devGameMod.isPresent() || addGameMod;
+		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), gameModLoads);
 		FabricatedState state = new FabricatedState(result, logsDir, api);
 		FabricatedState.set(state);
 		ApiHolder.install(api);
@@ -300,10 +302,10 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		if (!result.mods().isEmpty()) ForgeStack.registerInjectionPoints();
 		// Fabric mods' handlers in a registry's freeze, and their hooks into the game's options, wait for their main
 		// entrypoints, as on Fabric (REG-8, ENTRY-2): Forge's client creates the options before it loads mods.
-		if (devGameMod.isPresent() || addGameMod) EarlyFreeze.holdUntilMainEntrypoints();
+		if (gameModLoads) EarlyFreeze.holdUntilMainEntrypoints();
 		// Before any Fabric mod's code runs: the property FML sets for no log marker, which Fabric mods can't read (CORPUS-60,
 		// Ledger's configuration).
-		if ((devGameMod.isPresent() || addGameMod) && PlatformProperties.dropEmptyLogMarker()) {
+		if (gameModLoads && PlatformProperties.dropEmptyLogMarker()) {
 			result.report().line("Launch", "Removed the system property " + PlatformProperties.EMPTY_LOG_MARKER + ", which FML sets for an empty"
 					+ " log marker and nothing reads; a Fabric mod reading every system property as a dotted path stops on it");
 		}
@@ -498,7 +500,7 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 			SecureJar jar = file.getSecureJar();
 			String version = null;
 			try {
-				byte[] jarJar = ForgeMods.read(jar, "META-INF/jarjar/metadata.json");
+				byte[] jarJar = ForgeMods.read(jar, NestedNeoForgeJars.METADATA);
 				if (jarJar != null) version = PlatformLibraries.nestedMixinExtras(new String(jarJar, StandardCharsets.UTF_8));
 			} catch (IOException | JsonException e) {
 				LOGGER.debug("Could not read the nested jars of {}", file.getFileName(), e);
@@ -514,7 +516,7 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 	/** The MixinExtras version {@code jar} nests for Forge's jar-in-jar locator, or null. */
 	private static String nestedMixinExtras(SafeArchive jar) {
 		try {
-			byte[] jarJar = jar.read("META-INF/jarjar/metadata.json");
+			byte[] jarJar = jar.read(NestedNeoForgeJars.METADATA);
 			return jarJar == null ? null : PlatformLibraries.nestedMixinExtras(new String(jarJar, StandardCharsets.UTF_8));
 		} catch (ArchiveException | JsonException e) {
 			LOGGER.debug("Could not read the in-game mod's nested jars", e);
