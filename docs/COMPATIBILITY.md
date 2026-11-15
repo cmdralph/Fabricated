@@ -1581,6 +1581,13 @@ What this can't match of Fabric, seen in a reference pack (2026-10-28):
   fluid type uses. A Fabric mod's hook of vanilla's water constant there would also act in other mods' fluids, unlike
   on Fabric, so it is left out: Additional Entity Attributes' water-speed attribute (with Apoli and Origins) doesn't
   change how fast an entity sinks in water. Forge 52 to 66 do the same.
+- **A value NeoForge's code doesn't keep in a local.** NeoForge compiles the game from its decompiled sources, which
+  can hold a value vanilla keeps in a local only until its slot is used again. Ledger's logging of an item put on a
+  campfire takes the block entity vanilla's `CampfireBlock.useItemOn` keeps in a local where the player's stat is
+  awarded; NeoForge 21.1 tests it as a campfire and reuses its slot before then, so no local holds it there and the
+  hook is left out (LOCAL-6). Forge 52 does the same. Ledger's logging of the fire an explosion starts is left out on
+  both too, though Mixin would find the fire loop's iterator it takes: pre-flight reads a local taken by its type from
+  the method's local variable table alone, which doesn't name the loop's iterator (PRE-36).
 
 ### What this means for Fabric mods
 
