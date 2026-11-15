@@ -43,9 +43,9 @@ import io.github.cmdralph.fabricated.loader.FabricatedState;
  * each config it selects out of {@code Mixins.getConfigs()}, so that set no longer has them as mixins apply. Where the
  * record can't be read, nothing is recorded again.
  *
- * <p>Registered only where Mixin records frames unexpanded ({@link #needed}): Forge 61 to 66's Mixin 0.8.7, which stopped
- * expanding them by default. Forge 47's Mixin 0.8.5 reads a class's metadata with its frames expanded, so it records each
- * frame's whole locals and counts them right.
+ * <p>Registered only where Mixin records frames unexpanded ({@link #needed}): Forge 52's and 61 to 66's Mixin 0.8.7,
+ * which stopped expanding them by default. Forge 47's Mixin 0.8.5 reads a class's metadata with its frames expanded, so
+ * it records each frame's whole locals and counts them right.
  */
 final class RecordedFrameRepair implements IExtension {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
