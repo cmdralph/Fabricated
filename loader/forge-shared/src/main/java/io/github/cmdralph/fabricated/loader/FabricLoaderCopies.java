@@ -68,7 +68,7 @@ final class FabricLoaderCopies {
 		/** A version's leading numbers. */
 		private static final Pattern NUMBERS = Pattern.compile("(\\d{1,9}(?:\\.\\d{1,9})*).*");
 
-		/** This build's, or null where its in-game mod nests none (Forge 61 to 66, for which no mod nests a copy). */
+		/** This build's, or null where its in-game mod nests none (Forge 52 and 61 to 66: every copy is refused). */
 		static Placeholder ofThisBuild() throws IOException, JsonException {
 			byte[] info = FabricatedInfo.readOptional(PLACEHOLDER_INFO);
 			return info == null ? null : parse(new String(info, StandardCharsets.UTF_8));

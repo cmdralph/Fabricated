@@ -43,6 +43,7 @@ import io.github.cmdralph.fabricated.core.report.LaunchPhases;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.NativeModules;
+import io.github.cmdralph.fabricated.core.resolve.NestedNeoForgeJars;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
 import io.github.cmdralph.fabricated.core.runtime.PlatformProperties;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
@@ -63,12 +64,12 @@ import net.minecraftforge.forgespi.locating.ModFileFactory;
  * files found so far, before its own jar-in-jar locator. It runs Fabricated's discovery pipeline over the Fabric jars in
  * the mods folder and hands Forge every translated Fabric mod as a mod file, the jar remapped to the names Forge runs the
  * game with ({@link IntermediaryMappings}) and overlaid with the generated descriptor ({@link ForgeStack#descriptor}),
- * and Fabricated's in-game mod nested in its jar. What Forge 47 does otherwise than Forge 61 to 66 below the game is in
- * {@link ForgeStack}, of which each has its own (mc/mc.gradle's {@code loader_variant}). Forge's only error path here
- * stops the game, so anything that goes wrong is logged and Fabric support is off for the launch; the Fabric mods that
- * weren't loaded are in the log, Fabricated's report and Forge's loading warnings (which the in-game mod adds, as Forge
- * reads them after loading: on the server in its log, on the client on its warnings screen). In a development
- * workspace, where the in-game mod is a mod of its own, it isn't handed over again.
+ * and Fabricated's in-game mod nested in its jar. What Forge 47 does otherwise than Forge 52 and 61 to 66 below the
+ * game is in {@link ForgeStack}, of which each has its own (mc/mc.gradle's {@code loader_variant}). Forge's only error
+ * path here stops the game, so anything that goes wrong is logged and Fabric support is off for the launch; the Fabric
+ * mods that weren't loaded are in the log, Fabricated's report and Forge's loading warnings (which the in-game mod
+ * adds, as Forge reads them after loading: on the server in its log, on the client on its warnings screen). In a
+ * development workspace, where the in-game mod is a mod of its own, it isn't handed over again.
  */
 public final class FabricDependencyLocator extends ForgeModProvider implements IDependencyLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -194,9 +195,9 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		List<SafeArchive> vanillaJars = new ArrayList<>();
 		// Closed once the pipeline is done with it, however it ends.
 		try (SafeArchive archive = gameModJar == null ? null : SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS)) {
-			// Forge 61 and later offer their jar-in-jar locator MixinExtras from their own libraries (Forge 47 ships none), and
-			// the in-game mod nests a newer one: the locator, which reads the files handed to it here too, adds the newest of
-			// those and of the copies other files nest, once a file declares mixin configs.
+			// Forge 61 and later offer their jar-in-jar locator MixinExtras from their own libraries (Forge 47 and 52 ship
+			// none), and the in-game mod nests a newer one: the locator, which reads the files handed to it here too, adds the
+			// newest of those and of the copies other files nest, once a file declares mixin configs.
 			String mixinExtras = newest(newest(mixinExtrasVersion(loadedMods), archive == null ? null : nestedMixinExtras(archive)),
 					offeredMixinExtras());
 			if (archive != null) {
@@ -290,9 +291,10 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		}
 		result.runtime().install();
 		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric,
-		// or another jar's copy of Fabric Loader is left out for the empty jar it nests.
-		boolean addGameMod = gameModJar != null && (!result.mods().isEmpty() || inGameMod);
-		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), devGameMod.isPresent() || addGameMod);
+		// or another jar's copy of Fabric Loader is left out for the empty jar it nests (the jar is extracted only then).
+		boolean addGameMod = gameModJar != null;
+		boolean entrypointsRun = devGameMod.isPresent() || addGameMod;
+		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), entrypointsRun);
 		FabricatedState state = new FabricatedState(result, logsDir, api);
 		FabricatedState.set(state);
 		ApiHolder.install(api);
@@ -300,10 +302,10 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		if (!result.mods().isEmpty()) ForgeStack.registerInjectionPoints();
 		// Fabric mods' handlers in a registry's freeze, and their hooks into the game's options, wait for their main
 		// entrypoints, as on Fabric (REG-8, ENTRY-2): Forge's client creates the options before it loads mods.
-		if (devGameMod.isPresent() || addGameMod) EarlyFreeze.holdUntilMainEntrypoints();
+		if (entrypointsRun) EarlyFreeze.holdUntilMainEntrypoints();
 		// Before any Fabric mod's code runs: the property FML sets for no log marker, which Fabric mods can't read (CORPUS-60,
 		// Ledger's configuration).
-		if ((devGameMod.isPresent() || addGameMod) && PlatformProperties.dropEmptyLogMarker()) {
+		if (entrypointsRun && PlatformProperties.dropEmptyLogMarker()) {
 			result.report().line("Launch", "Removed the system property " + PlatformProperties.EMPTY_LOG_MARKER + ", which FML sets for an empty"
 					+ " log marker and nothing reads; a Fabric mod reading every system property as a dotted path stops on it");
 		}
@@ -498,7 +500,7 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 			SecureJar jar = file.getSecureJar();
 			String version = null;
 			try {
-				byte[] jarJar = ForgeMods.read(jar, "META-INF/jarjar/metadata.json");
+				byte[] jarJar = ForgeMods.read(jar, NestedNeoForgeJars.METADATA);
 				if (jarJar != null) version = PlatformLibraries.nestedMixinExtras(new String(jarJar, StandardCharsets.UTF_8));
 			} catch (IOException | JsonException e) {
 				LOGGER.debug("Could not read the nested jars of {}", file.getFileName(), e);
@@ -514,7 +516,7 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 	/** The MixinExtras version {@code jar} nests for Forge's jar-in-jar locator, or null. */
 	private static String nestedMixinExtras(SafeArchive jar) {
 		try {
-			byte[] jarJar = jar.read("META-INF/jarjar/metadata.json");
+			byte[] jarJar = jar.read(NestedNeoForgeJars.METADATA);
 			return jarJar == null ? null : PlatformLibraries.nestedMixinExtras(new String(jarJar, StandardCharsets.UTF_8));
 		} catch (ArchiveException | JsonException e) {
 			LOGGER.debug("Could not read the in-game mod's nested jars", e);

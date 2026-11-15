@@ -18,7 +18,7 @@ import net.fabricmc.loader.api.FabricLoader;
  * load. Without the renderer API there is nothing to guard, so nothing of these configs applies.
  *
  * <p>Asked when Mixin selects the configs, after Fabricated resolved the Fabric mods (Fabric mods' own plugins ask Fabric
- * Loader the same way). Shared by Forge 47 and Forge 61 to 66.
+ * Loader the same way). Shared by Forge 47, 52 and 61 to 66.
  */
 public final class FrapiMixinPlugin implements IMixinConfigPlugin {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");

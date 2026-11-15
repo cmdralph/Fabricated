@@ -42,7 +42,7 @@ final class FabricatedCompat {
     static void init() {
         Fabricated.get().ifPresent(api -> {
             if (api.isFabricModLoaded("some-fabric-mod")) {
-                // Talk to it once its initializers have run (registries are still open then).
+                // Talk to it once its initializers have run (on a client the registries are frozen again by then).
                 api.afterEntrypoints(() -> SomeIntegration.register());
             }
         });
