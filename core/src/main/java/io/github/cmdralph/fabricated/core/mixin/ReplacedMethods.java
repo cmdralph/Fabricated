@@ -2,10 +2,12 @@ package io.github.cmdralph.fabricated.core.mixin;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.mixin.InjectionPoints.Verdict;
@@ -53,6 +55,10 @@ import org.objectweb.asm.tree.VarInsnNode;
  */
 final class ReplacedMethods extends PreflightPart {
 	private final Map<String, Optional<Replaced>> replacedCache = new HashMap<>();
+	/** The mixin last decided ({@link #moving}), its target, and its handlers that move. */
+	private ClassNode decidedMixin;
+	private String decidedTarget;
+	private Set<String> decided;
 
 	ReplacedMethods(PreflightClasses classes) {
 		super(classes);
@@ -169,8 +175,9 @@ final class ReplacedMethods extends PreflightPart {
 	 */
 	List<String> callRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
 		List<String> moved = new ArrayList<>();
-		for (AnnotationNode at : movableCalls(mixin, handler, injector, target, ctx)) {
-			if (!movesWithItsState(mixin, handler, target, ctx)) break;
+		List<AnnotationNode> calls = movableCalls(mixin, handler, injector, target, ctx);
+		if (calls.isEmpty() || !moving(mixin, target, ctx).contains(handler.name + handler.desc)) return moved;
+		for (AnnotationNode at : calls) {
 			Replaced replaced = calledAt(at, target, ctx);
 			String raw = (String) Annotations.value(at, "target");
 			Annotations.put(at, "target", "L" + target.name + ";" + replaced.named());
@@ -189,8 +196,7 @@ final class ReplacedMethods extends PreflightPart {
 	List<String> methodRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx, List<MethodNode> bridges) {
 		Replaced replaced = replacedTarget(mixin, handler, injector, target, ctx);
 		List<Derived> derived = replaced == null ? null : bridged(handler, replaced);
-		if (derived == null || !movesWithItsState(mixin, handler, target, ctx)
-				|| (inside(injector) || trailingShares(handler) > 0) && !movesWithItsMethodsHooks(mixin, handler, replaced, target, ctx)) return List.of();
+		if (derived == null || !moving(mixin, target, ctx).contains(handler.name + handler.desc)) return List.of();
 		if (!derived.isEmpty()) {
 			bridges.add(bridge(mixin.name, handler, injector, replaced.method(), derived, trailingShares(handler),
 					HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
@@ -211,7 +217,7 @@ final class ReplacedMethods extends PreflightPart {
 		return args.length > 0 && PreflightAsm.isCallbackInfo(args[args.length - 1]);
 	}
 
-	/** The points {@link #callRepairs} would move (before checking the injectors keeping state with this one). */
+	/** The points {@link #callRepairs} would move, where the handler is among those moving ({@link #moving}). */
 	private List<AnnotationNode> movableCalls(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
 		if (!movable(mixin, handler, injector)) return List.of();
 		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
@@ -304,38 +310,20 @@ final class ReplacedMethods extends PreflightPart {
 
 	/**
 	 * How many MixinExtras {@code @Share}s a handler takes after its callback info, or -1 where it takes anything else
-	 * there, has another annotated parameter, or takes no callback info last.
+	 * there, has another annotated parameter (its callback info's included), takes no callback info last, or shares under
+	 * a namespace, which other mixin classes' handlers may share under too, unseen from this one.
 	 */
 	private static int trailingShares(MethodNode handler) {
 		Type[] args = Type.getArgumentTypes(handler.desc);
 		int shares = 0;
-		while (shares < args.length && Annotations.ofParameter(handler, args.length - 1 - shares).stream().anyMatch(a -> a.desc.equals(MixinNames.SHARE))) shares++;
+		while (shares < args.length && Annotations.ofParameter(handler, args.length - 1 - shares).stream()
+				.anyMatch(a -> a.desc.equals(MixinNames.SHARE) && Annotations.value(a, "namespace") == null)) shares++;
 		int info = args.length - 1 - shares;
 		if (info < 0 || !PreflightAsm.isCallbackInfo(args[info])) return -1;
 		for (int i = 0; i < args.length; i++) {
 			if (Annotations.ofParameter(handler, i).size() != (i > info ? 1 : 0)) return -1;
 		}
 		return shares;
-	}
-
-	/**
-	 * Whether every other injector of the mixin into vanilla's method the platform replaced moves there too: a mod's hooks
-	 * inside a method, or sharing values there, would otherwise apply in part (Moonlight's two around the block's removal,
-	 * the one keeping the block for the other).
-	 */
-	private boolean movesWithItsMethodsHooks(ClassNode mixin, MethodNode handler, Replaced replaced, ClassNode target, Context ctx) {
-		for (MethodNode other : mixin.methods) {
-			AnnotationNode injector = Annotations.all(other).stream().filter(a -> PreflightAsm.isInjector(a.desc)).findFirst().orElse(null);
-			// A handler without its injector has moved onto a bridge already.
-			if (other == handler || injector == null || !(Annotations.value(injector, "method") instanceof List<?> selectors)) continue;
-			boolean into = false;
-			for (Object selector : selectors) {
-				MemberRef ref = selector instanceof String raw ? MemberRef.parse(ctx.resolve(raw)) : null;
-				into |= ref != null && !ref.fuzzy() && ref.name() != null && replaced(target, ref.name(), ref.desc()) == replaced;
-			}
-			if (into && (replacedTarget(mixin, other, injector, target, ctx) != replaced || bridged(other, replaced) == null)) return false;
-		}
-		return true;
 	}
 
 	/**
@@ -364,23 +352,82 @@ final class ReplacedMethods extends PreflightPart {
 		return shares < 0 ? null : Type.getArgumentTypes(handler.desc).length - shares == 1 ? List.of() : derive(replaced);
 	}
 
-	/**
-	 * Whether a handler can move: it keeps no state with other injectors of its mixin, or each of those
-	 * ({@link MixinPreflight#stateGroups}, the whole mixin where it has no group) moves here too, or applies where it is.
-	 * One moved alone would read what the others never set (HOOK-2's jGui).
-	 */
-	private boolean movesWithItsState(ClassNode mixin, MethodNode handler, ClassNode target, Context ctx) {
-		if (independentOf(mixin).contains(handler.name + handler.desc)) return true;
-		MixinPreflight.StateGroup group = stateGroupsOf(mixin).get(handler.name + handler.desc);
-		for (MethodNode other : mixin.methods) {
-			AnnotationNode injector = Annotations.all(other).stream().filter(a -> PreflightAsm.isInjector(a.desc)).findFirst().orElse(null);
-			// A handler without its injector has moved onto a bridge already.
-			if (other == handler || injector == null || group != null && !group.handlers().contains(other.name + other.desc)) continue;
-			boolean moves = !movableCalls(mixin, other, injector, target, ctx).isEmpty() || replacedTarget(mixin, other, injector, target, ctx) != null
-					&& bridged(other, replacedTarget(mixin, other, injector, target, ctx)) != null;
-			if (!moves && !appliesWhereItIs(injector, target, ctx)) return false;
+	/** An injector of the mixin being decided: the replaced method it would move into, or null where it would move at a call, or not at all. */
+	private record Hook(MethodNode handler, AnnotationNode injector, Replaced into) {
+		String key() {
+			return handler.name + handler.desc;
 		}
-		return true;
+	}
+
+	/**
+	 * The handlers of a mixin (name and descriptor) whose injectors move: to the platform's call in the place of vanilla's
+	 * one of a replaced method ({@link #callRepairs}), or into the platform's method ({@link #methodRepairs}). Decided once
+	 * for the mixin, as its first such handler is reached and before any moves, with every condition applied to each:
+	 * taking a handler out may take out those that only move with it, until none goes.
+	 * <ul>
+	 * <li>The repairs reach it: it is none of a {@code @Group}'s alternatives.</li>
+	 * <li>It keeps no state with other injectors of its mixin, or each of those ({@link MixinPreflight#stateGroups}, the
+	 * whole mixin where it has no group) moves too, or applies where it is. One moved alone would read what the others
+	 * never set (HOOK-2's jGui).</li>
+	 * <li>One inside a replaced method, or sharing values there, moves only with every other injector of its mixin that
+	 * is, or may be, into that method ({@link #mayBeInto}): a mod's hooks there would otherwise apply in part (Moonlight's
+	 * two around the block's removal, the one keeping the block for the other).</li>
+	 * </ul>
+	 * A handler judged to move here that an earlier repair of its own has since pointed elsewhere stays where that put it.
+	 */
+	private Set<String> moving(ClassNode mixin, ClassNode target, Context ctx) {
+		if (decidedMixin == mixin && target.name.equals(decidedTarget)) return decided;
+		List<Hook> hooks = new ArrayList<>();
+		Set<String> moving = new HashSet<>();
+		for (MethodNode handler : mixin.methods) {
+			AnnotationNode injector = Annotations.all(handler).stream().filter(a -> PreflightAsm.isInjector(a.desc)).findFirst().orElse(null);
+			// A handler without its injector has moved onto another repair's bridge already.
+			if (injector == null) continue;
+			Replaced into = replacedTarget(mixin, handler, injector, target, ctx);
+			if (into != null && bridged(handler, into) == null) into = null;
+			Hook hook = new Hook(handler, injector, into);
+			hooks.add(hook);
+			if (!PreflightAsm.hasAlternatives(mixin, handler) && (into != null || !movableCalls(mixin, handler, injector, target, ctx).isEmpty())) moving.add(hook.key());
+		}
+		Set<String> independent = independentOf(mixin);
+		Map<String, MixinPreflight.StateGroup> groups = stateGroupsOf(mixin);
+		for (boolean changed = true; changed;) {
+			changed = false;
+			for (Hook hook : hooks) {
+				if (!moving.contains(hook.key())) continue;
+				boolean stays = false;
+				MixinPreflight.StateGroup group = groups.get(hook.key());
+				boolean together = hook.into() != null && (inside(hook.injector()) || trailingShares(hook.handler()) > 0);
+				for (Hook other : hooks) {
+					if (other == hook) continue;
+					boolean moves = moving.contains(other.key());
+					stays |= !independent.contains(hook.key()) && (group == null || group.handlers().contains(other.key())) && !moves
+							&& !appliesWhereItIs(other.injector(), target, ctx);
+					stays |= together && !(moves && other.into() == hook.into()) && mayBeInto(other.injector(), hook.into().vanilla(), ctx);
+				}
+				if (stays) {
+					moving.remove(hook.key());
+					changed = true;
+				}
+			}
+		}
+		decidedMixin = mixin;
+		decidedTarget = target.name;
+		decided = moving;
+		return moving;
+	}
+
+	/**
+	 * Whether an injector selects vanilla's method, or may: by its name, alone or with its descriptor (vanilla's first of
+	 * that name where it has several, whichever that is), by a pattern, or by a {@code @Desc}, which aren't read here.
+	 */
+	private static boolean mayBeInto(AnnotationNode injector, MethodNode vanilla, Context ctx) {
+		if (Annotations.value(injector, "target") != null || !(Annotations.value(injector, "method") instanceof List<?> selectors)) return true;
+		for (Object selector : selectors) {
+			MemberRef ref = selector instanceof String raw ? MemberRef.parse(ctx.resolve(raw)) : null;
+			if (ref == null || ref.fuzzy() || ref.name() == null || ref.matchesMethod(vanilla.name, vanilla.desc)) return true;
+		}
+		return false;
 	}
 
 	/** Whether every method an injector selects has its points (and it selects one). */

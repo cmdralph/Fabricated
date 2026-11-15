@@ -11,7 +11,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   A hook at the start or end of a private method of vanilla's the platform replaced so at each of its calls now runs in
   the platform's method, its handler given vanilla's parameters where every call passes them alike; one at a call or
   field access inside it runs there too where the platform's method makes that call in its place, with the mod's
-  other hooks into the method, and may share values through MixinExtras' `@Share` (also at STRUCT-1's methods).
+  other hooks into the method, and may share values through MixinExtras' `@Share` (also at STRUCT-1's methods). Which
+  of a mod's hooks move is decided once for each mixin, so that hooks keeping state together, sharing a value or set
+  inside one method apply together or not at all; where another hook may be into the method without pre-flight
+  telling, they stay out.
   Moonlight's hooks apply on Forge 47. Forge 52 to 66 and NeoForge keep the method's name and bridge such hooks as
   before. Supplementaries' invoker of vanilla's method has nothing to call there: it stays out, and the report names it
   a known limit (a call of it fails, which lit lumisene burning the blocks around it would make).
