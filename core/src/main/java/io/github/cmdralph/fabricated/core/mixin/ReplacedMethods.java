@@ -35,6 +35,21 @@ import org.objectweb.asm.tree.VarInsnNode;
  * vanilla's parameters from a bridge working each out from the platform's method's as vanilla's call did: the value
  * the platform's call passes too, or a field getter called on one ({@link #derive}). The other injectors there (Porting
  * Lib's, which port the platform's own processing) have nothing of vanilla's to apply to and stay out.
+ * <p>
+ * Where that method calls vanilla's at several places, each with a call of the platform's method in its place and the
+ * platform's method called nowhere else, the platform's method still runs once where vanilla's did, at each of them
+ * (STRUCT-2): vanilla's {@code FireBlock.tick} tries to set each of the six blocks around a fire alight with its private
+ * {@code checkBurnOut(level, pos, chance, random, age)}, which Forge 47 replaced with {@code tryCatchFire}, taking the
+ * side the fire comes from too. An {@code @Inject} at the method's start, or at its end where the platform's returns as
+ * vanilla's does, moves there; a handler taking vanilla's parameters only where every call works each out the same way.
+ * One at a call stays out. Forge 52 to 66 and NeoForge keep the name ({@code checkBurnOut} taking the side), where the
+ * bridges for a method given more parameters take the hooks by name (SIG-1, SIG-2).
+ * <p>
+ * An {@code @Inject} at a call or a field access inside vanilla's method moves too where the platform's method has each
+ * instruction the point picks there, in its place ({@link PatchAlignment}), and no other: Moonlight's hooks before and
+ * after {@code checkBurnOut}'s {@code removeBlock}, which Forge's {@code tryCatchFire} makes as vanilla's does. Its handler
+ * may end with MixinExtras {@code @Share}s, which see nothing of the method's code; it moves only with every other
+ * injector of its mixin into that method, so that a mod's hooks there apply together or not at all.
  */
 final class ReplacedMethods extends PreflightPart {
 	private final Map<String, Optional<Replaced>> replacedCache = new HashMap<>();
@@ -44,14 +59,30 @@ final class ReplacedMethods extends PreflightPart {
 	}
 
 	/**
-	 * Vanilla's private method, the method making its one call ({@code vanillaCaller}, and the platform's {@code caller}),
-	 * and the platform's private method ({@code method}) called once, by {@code call}, in that call's place.
+	 * Vanilla's private method, the method making its calls ({@code vanillaCaller}, and the platform's {@code caller}),
+	 * and the platform's private method ({@code method}) called by {@code calls}, each in the place of vanilla's call at
+	 * its index in {@code vanillaCalls}.
 	 */
-	record Replaced(MethodNode vanilla, MethodNode vanillaCaller, MethodInsnNode vanillaCall, MethodNode caller, MethodInsnNode call,
+	record Replaced(MethodNode vanilla, MethodNode vanillaCaller, List<MethodInsnNode> vanillaCalls, MethodNode caller, List<MethodInsnNode> calls,
 			MethodNode method, PatchAlignment alignment) {
 		/** The platform's method as messages name it. */
 		String named() {
 			return method.name + method.desc;
+		}
+
+		/** Whether vanilla's method is called at one place (STRUCT-1) rather than at several (STRUCT-2). */
+		boolean oneCall() {
+			return calls.size() == 1;
+		}
+
+		/** Where the platform's method is called, as messages say it: "which placeInWorld calls in its place". */
+		String where() {
+			return "which " + caller.name + " calls in its place" + (oneCall() ? "" : " at each of its " + calls.size() + " calls");
+		}
+
+		/** The finding a move there names. */
+		String finding() {
+			return oneCall() ? "STRUCT-1" : "STRUCT-2";
 		}
 	}
 
@@ -76,7 +107,7 @@ final class ReplacedMethods extends PreflightPart {
 		MethodNode before = PreflightAsm.declared(vanilla, name, desc);
 		if (before == null || (before.access & Opcodes.ACC_PRIVATE) == 0) return null;
 		Map<String, List<Integer>> made = OverloadRepairs.callsByMethod(vanilla, before, before, this::vanillaClass);
-		if (made == null || made.size() != 1 || made.values().iterator().next().size() != 1) return null;
+		if (made == null || made.size() != 1) return null;
 		String key = made.keySet().iterator().next();
 		if (!key.startsWith(vanilla.name + ".")) return null;
 		MethodNode vanillaCaller = null;
@@ -85,35 +116,54 @@ final class ReplacedMethods extends PreflightPart {
 		}
 		MethodNode caller = vanillaCaller == null ? null : PreflightAsm.declared(target, vanillaCaller.name, vanillaCaller.desc);
 		if (caller == null || caller.instructions == null) return null;
-		MethodInsnNode vanillaCall = null;
+		List<MethodInsnNode> vanillaCalls = new ArrayList<>();
 		for (AbstractInsnNode insn : vanillaCaller.instructions) {
-			if (insn instanceof MethodInsnNode c && c.owner.equals(vanilla.name) && c.name.equals(name) && c.desc.equals(desc)) vanillaCall = c;
+			if (insn instanceof MethodInsnNode c && c.owner.equals(vanilla.name) && c.name.equals(name) && c.desc.equals(desc)) vanillaCalls.add(c);
 		}
-		PatchAlignment alignment = vanillaCall == null ? null : PatchAlignment.of(vanillaCaller, caller);
+		PatchAlignment alignment = vanillaCalls.size() == made.get(key).size() ? PatchAlignment.of(vanillaCaller, caller) : null;
 		if (alignment == null) return null;
-		int at = vanillaCaller.instructions.indexOf(vanillaCall);
+		List<MethodInsnNode> calls = new ArrayList<>();
+		MethodNode method = null;
+		for (MethodInsnNode vanillaCall : vanillaCalls) {
+			MethodInsnNode call = callInPlace(vanillaCaller.instructions.indexOf(vanillaCall), alignment, vanilla, target, caller);
+			MethodNode m = call == null ? null : PreflightAsm.declared(target, call.name, call.desc);
+			// The same method in the place of each of vanilla's calls, each call after the one before: one in the place of each.
+			if (m == null || method != null && m != method
+					|| !calls.isEmpty() && caller.instructions.indexOf(call) <= caller.instructions.indexOf(calls.get(calls.size() - 1))) return null;
+			calls.add(call);
+			method = m;
+		}
+		// One keeping vanilla's name at several calls is vanilla's given more parameters (Forge 52 to 66's and NeoForge's
+		// checkBurnOut, taking the side the fire comes from), whose hooks the bridges by name take (SIG-1, SIG-2).
+		if (method != null && calls.size() > 1 && method.name.equals(name)) return null;
+		if (method == null || (method.access & Opcodes.ACC_PRIVATE) == 0 || (method.access & Opcodes.ACC_STATIC) != (before.access & Opcodes.ACC_STATIC)
+				|| !Type.getReturnType(method.desc).equals(Type.getReturnType(before.desc))
+				|| !made.equals(OverloadRepairs.callsByMethod(target, method, method, this::gameTarget))) return null;
+		return new Replaced(before, vanillaCaller, List.copyOf(vanillaCalls), caller, List.copyOf(calls), method, alignment);
+	}
+
+	/**
+	 * The platform caller's one call of a method its class declares and vanilla's doesn't among what its patch put in the
+	 * place of vanilla's instruction at {@code at} ({@link PatchAlignment#replacementOf}; where that can't be told, the
+	 * region around it that both alignments bound); null where it has none or more than one.
+	 */
+	private static MethodInsnNode callInPlace(int at, PatchAlignment alignment, ClassNode vanilla, ClassNode target, MethodNode caller) {
 		int[] range = alignment.replacementOf(at);
 		int[] region = range == null ? alignment.uncertainRegion(at) : null;
 		if (region != null) range = new int[] {region[2], region[3]};
 		if (range == null) return null;
 		MethodInsnNode call = null;
-		MethodNode method = null;
 		for (int i = range[0]; i < range[1]; i++) {
-			if (!(caller.instructions.get(i) instanceof MethodInsnNode c) || !c.owner.equals(target.name) || PreflightAsm.declared(vanilla, c.name, c.desc) != null) continue;
-			MethodNode m = PreflightAsm.declared(target, c.name, c.desc);
-			if (m == null) continue;
+			if (!(caller.instructions.get(i) instanceof MethodInsnNode c) || !c.owner.equals(target.name) || PreflightAsm.declared(vanilla, c.name, c.desc) != null
+					|| PreflightAsm.declared(target, c.name, c.desc) == null) continue;
 			if (call != null) return null;
 			call = c;
-			method = m;
 		}
-		if (method == null || (method.access & Opcodes.ACC_PRIVATE) == 0 || (method.access & Opcodes.ACC_STATIC) != (before.access & Opcodes.ACC_STATIC)
-				|| !Type.getReturnType(method.desc).equals(Type.getReturnType(before.desc))
-				|| !made.equals(OverloadRepairs.callsByMethod(target, method, method, this::gameTarget))) return null;
-		return new Replaced(before, vanillaCaller, vanillaCall, caller, call, method, alignment);
+		return call;
 	}
 
 	/**
-	 * Points an {@code @Inject}'s {@code INVOKE} points at vanilla's call of a method the platform replaced
+	 * Points an {@code @Inject}'s {@code INVOKE} points at vanilla's one call of a method the platform replaced
 	 * ({@link #replaced}) at the platform's call in its place: its handler sees none of the call's arguments. Returns a
 	 * description of each move.
 	 */
@@ -131,23 +181,26 @@ final class ReplacedMethods extends PreflightPart {
 	}
 
 	/**
-	 * Points an {@code @Inject} at the start or the end of a method the platform replaced ({@link #replaced}) at the
-	 * platform's method, which runs once where vanilla's did. A handler taking vanilla's parameters gets them from a bridge
-	 * taking the platform's ({@link #derive}). Returns a description of the move, or nothing.
+	 * Points an {@code @Inject} at the start or the end of a method the platform replaced ({@link #replaced}), or at a call
+	 * or field access in it that the platform's method has in its place, at the platform's method, which runs once where
+	 * vanilla's did, at each of vanilla's calls. A handler taking vanilla's parameters gets them from a bridge taking the
+	 * platform's ({@link #derive}). Returns a description of the move, or nothing.
 	 */
 	List<String> methodRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx, List<MethodNode> bridges) {
 		Replaced replaced = replacedTarget(mixin, handler, injector, target, ctx);
 		List<Derived> derived = replaced == null ? null : bridged(handler, replaced);
-		if (derived == null || !movesWithItsState(mixin, handler, target, ctx)) return List.of();
-		if (Type.getArgumentTypes(handler.desc).length > 1) {
-			bridges.add(bridge(mixin.name, handler, injector, replaced.method(), derived, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
+		if (derived == null || !movesWithItsState(mixin, handler, target, ctx)
+				|| (inside(injector) || trailingShares(handler) > 0) && !movesWithItsMethodsHooks(mixin, handler, replaced, target, ctx)) return List.of();
+		if (!derived.isEmpty()) {
+			bridges.add(bridge(mixin.name, handler, injector, replaced.method(), derived, trailingShares(handler),
+					HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
 		}
 		@SuppressWarnings("unchecked")
 		List<Object> selectors = (List<Object>) Annotations.value(injector, "method");
 		selectors.set(0, replaced.named());
 		return List.of(replaced.vanilla().name + replaced.vanilla().desc + ", a private method " + loader + " replaced with " + replaced.named()
-				+ ", which " + replaced.caller().name + " calls in its place; the injector is pointed there"
-				+ (derived.isEmpty() ? "" : ", its handler taking vanilla's parameters as that method's give them") + " (STRUCT-1)");
+				+ ", " + replaced.where() + "; the injector is pointed there"
+				+ (derived.isEmpty() ? "" : ", its handler taking vanilla's parameters as that method's give them") + " (" + replaced.finding() + ")");
 	}
 
 	/** An {@code @Inject} whose handler sees nothing of the code around its point: no captured locals or sugar, no slice. */
@@ -172,37 +225,117 @@ final class ReplacedMethods extends PreflightPart {
 		return movable;
 	}
 
-	/** The replaced method whose call an {@code INVOKE} point names (its first, without a shift by a count), or null. */
+	/**
+	 * The replaced method whose one call an {@code INVOKE} point names (its first, without a shift by a count), or null:
+	 * of several calls, the ones a point picks (by its ordinal, or all of them) are counted in vanilla's code (STRUCT-2).
+	 */
 	private Replaced calledAt(AnnotationNode at, ClassNode target, Context ctx) {
 		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 		if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw) || Annotations.value(at, "by") != null
 				|| Annotations.value(at, "ordinal") instanceof Integer ordinal && ordinal != 0) return null;
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 		if (ref.fuzzy() || !target.name.equals(ref.owner()) || ref.name() == null || ref.desc() == null) return null;
-		return replaced(target, ref.name(), ref.desc());
+		Replaced replaced = replaced(target, ref.name(), ref.desc());
+		return replaced == null || !replaced.oneCall() ? null : replaced;
 	}
 
 	/**
-	 * The replaced method an {@code @Inject} at its start or end (no ordinal or shift) targets, or null; its handler takes
-	 * the callback info alone or vanilla's parameters before it. One at its end only where the platform's method returns
-	 * as vanilla's does ({@link #returnsAlike}).
+	 * The replaced method an {@code @Inject} at its start or end (no ordinal or shift), or at a call or field access in it
+	 * ({@link #inPlace}), targets, or null; its handler takes the callback info alone or vanilla's parameters before it,
+	 * then nothing but {@code @Share}s. One at its end only where the platform's method returns as vanilla's does
+	 * ({@link #returnsAlike}).
 	 */
 	private Replaced replacedTarget(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
-		if (!movable(mixin, handler, injector) || !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
+		int shares = trailingShares(handler);
+		if (shares < 0 || !injector.desc.equals(MixinNames.INJECT) || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || Annotations.value(injector, "slice") != null
+				|| Annotations.value(injector, "locals") != null || !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
 				|| !(selectors.get(0) instanceof String raw)) return null;
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
-		boolean atEnd = false;
-		for (AnnotationNode at : ats) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
-			if (!List.of("HEAD", "RETURN", "TAIL").contains(point) || Annotations.value(at, "ordinal") != null || Annotations.value(at, "shift") != null) return null;
-			atEnd |= !point.equals("HEAD");
-		}
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 		if (ats.isEmpty() || ref.fuzzy() || ref.name() == null) return null;
 		Replaced replaced = replaced(target, ref.name(), ref.desc());
-		boolean takesParameters = Type.getArgumentTypes(handler.desc).length > 1;
-		return replaced == null || takesParameters && !ConstructorRepairs.takesExactly(handler, replaced.vanilla())
-				|| atEnd && !returnsAlike(replaced.vanilla(), replaced.method()) ? null : replaced;
+		if (replaced == null) return null;
+		for (AnnotationNode at : ats) {
+			if (!inPlace(at, replaced, ctx)) return null;
+		}
+		int own = Type.getArgumentTypes(handler.desc).length - 1 - shares;
+		Type[] params = Type.getArgumentTypes(replaced.vanilla().desc);
+		if (own == 0) return replaced;
+		if (own != params.length) return null;
+		for (int i = 0; i < own; i++) {
+			if (!Type.getArgumentTypes(handler.desc)[i].equals(params[i])) return null;
+		}
+		return replaced;
+	}
+
+	/**
+	 * Whether an {@code @At} picks in the platform's method what it picks in vanilla's: its start; its returns or its end
+	 * where the platform's method returns as vanilla's does ({@link #returnsAlike}); or, at a call or a field access, an
+	 * instruction in the place of each vanilla's has there ({@link PatchAlignment}) and no other, before or after it.
+	 */
+	private static boolean inPlace(AnnotationNode at, Replaced replaced, Context ctx) {
+		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		Object shift = Annotations.value(at, "shift");
+		if (point.equals("HEAD") || point.equals("RETURN") || point.equals("TAIL")) {
+			return Annotations.value(at, "ordinal") == null && shift == null && (point.equals("HEAD") || returnsAlike(replaced.vanilla(), replaced.method()));
+		}
+		if (!point.equals("INVOKE") && !point.equals("FIELD") || !(Annotations.value(at, "target") instanceof String raw) || Annotations.value(at, "by") != null
+				|| Annotations.value(at, "args") != null || Annotations.value(at, "slice") != null
+				|| shift != null && !(shift instanceof String[] s && s.length == 2 && (s[1].equals("BEFORE") || s[1].equals("AFTER")))) return false;
+		String resolved = ctx.resolve(raw);
+		int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
+		int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+		List<Integer> was = InjectionPoints.indexes(point, resolved, ordinal, opcode, InjectionPoints.Range.ALL, replaced.vanilla());
+		List<Integer> now = InjectionPoints.indexes(point, resolved, ordinal, opcode, InjectionPoints.Range.ALL, replaced.method());
+		PatchAlignment alignment = was == null || now == null || was.isEmpty() || was.size() != now.size() ? null
+				: PatchAlignment.of(replaced.vanilla(), replaced.method());
+		if (alignment == null) return false;
+		for (int k = 0; k < was.size(); k++) {
+			if (alignment.placeOf(was.get(k)) != now.get(k)) return false;
+		}
+		return true;
+	}
+
+	/** Whether an injector has a point other than a method's start or end. */
+	private static boolean inside(AnnotationNode injector) {
+		return Annotations.list(Annotations.value(injector, "at")).stream()
+				.anyMatch(at -> !(Annotations.value(at, "value") instanceof String v && List.of("HEAD", "RETURN", "TAIL").contains(v.toUpperCase(Locale.ROOT))));
+	}
+
+	/**
+	 * How many MixinExtras {@code @Share}s a handler takes after its callback info, or -1 where it takes anything else
+	 * there, has another annotated parameter, or takes no callback info last.
+	 */
+	private static int trailingShares(MethodNode handler) {
+		Type[] args = Type.getArgumentTypes(handler.desc);
+		int shares = 0;
+		while (shares < args.length && Annotations.ofParameter(handler, args.length - 1 - shares).stream().anyMatch(a -> a.desc.equals(MixinNames.SHARE))) shares++;
+		int info = args.length - 1 - shares;
+		if (info < 0 || !PreflightAsm.isCallbackInfo(args[info])) return -1;
+		for (int i = 0; i < args.length; i++) {
+			if (Annotations.ofParameter(handler, i).size() != (i > info ? 1 : 0)) return -1;
+		}
+		return shares;
+	}
+
+	/**
+	 * Whether every other injector of the mixin into vanilla's method the platform replaced moves there too: a mod's hooks
+	 * inside a method, or sharing values there, would otherwise apply in part (Moonlight's two around the block's removal,
+	 * the one keeping the block for the other).
+	 */
+	private boolean movesWithItsMethodsHooks(ClassNode mixin, MethodNode handler, Replaced replaced, ClassNode target, Context ctx) {
+		for (MethodNode other : mixin.methods) {
+			AnnotationNode injector = Annotations.all(other).stream().filter(a -> PreflightAsm.isInjector(a.desc)).findFirst().orElse(null);
+			// A handler without its injector has moved onto a bridge already.
+			if (other == handler || injector == null || !(Annotations.value(injector, "method") instanceof List<?> selectors)) continue;
+			boolean into = false;
+			for (Object selector : selectors) {
+				MemberRef ref = selector instanceof String raw ? MemberRef.parse(ctx.resolve(raw)) : null;
+				into |= ref != null && !ref.fuzzy() && ref.name() != null && replaced(target, ref.name(), ref.desc()) == replaced;
+			}
+			if (into && (replacedTarget(mixin, other, injector, target, ctx) != replaced || bridged(other, replaced) == null)) return false;
+		}
+		return true;
 	}
 
 	/**
@@ -222,9 +355,13 @@ final class ReplacedMethods extends PreflightPart {
 		return true;
 	}
 
-	/** How the handler gets vanilla's parameters: none where it takes the callback info alone; null where they can't be worked out. */
+	/**
+	 * How the handler gets vanilla's parameters: none where it takes the callback info (and {@code @Share}s) alone; null
+	 * where they can't be worked out.
+	 */
 	private List<Derived> bridged(MethodNode handler, Replaced replaced) {
-		return Type.getArgumentTypes(handler.desc).length == 1 ? List.of() : derive(replaced);
+		int shares = trailingShares(handler);
+		return shares < 0 ? null : Type.getArgumentTypes(handler.desc).length - shares == 1 ? List.of() : derive(replaced);
 	}
 
 	/**
@@ -256,17 +393,45 @@ final class ReplacedMethods extends PreflightPart {
 
 	/** How a bridge works one of vanilla's parameters out: the platform's method's parameter, then the getters called on it. */
 	private record Derived(int parameter, List<MethodInsnNode> getters) {
+		/** Whether the other works the parameter out the same way: from the same parameter, through the same getters. */
+		boolean alike(Derived other) {
+			if (parameter != other.parameter || getters.size() != other.getters.size()) return false;
+			for (int k = 0; k < getters.size(); k++) {
+				MethodInsnNode a = getters.get(k);
+				MethodInsnNode b = other.getters.get(k);
+				if (a.getOpcode() != b.getOpcode() || !a.owner.equals(b.owner) || !a.name.equals(b.name) || !a.desc.equals(b.desc)) return false;
+			}
+			return true;
+		}
 	}
 
 	/**
 	 * How a bridge taking the platform's method's parameters works out each of vanilla's: as vanilla's call worked it out,
 	 * from the value the platform's call passes too, through the field getters vanilla's call reads ({@link #fieldGetter})
 	 * on it. Null where one can't be. Forge 47's {@code addEntitiesToWorld(level, pos, settings)}: the mirror is
-	 * {@code settings.getMirror()}, the box {@code settings.getBoundingBox()}, which vanilla read into a local.
+	 * {@code settings.getMirror()}, the box {@code settings.getBoundingBox()}, which vanilla read into a local. Where
+	 * vanilla's method is called at several places (STRUCT-2), the bridge serves each of the platform's calls: null unless
+	 * each call works each parameter out the same way.
 	 */
 	private List<Derived> derive(Replaced replaced) {
-		List<Value> wanted = arguments(replaced.vanillaCaller(), replaced.vanillaCall());
-		List<Value> given = arguments(replaced.caller(), replaced.call());
+		List<Derived> derived = null;
+		for (int k = 0; k < replaced.calls().size(); k++) {
+			List<Derived> at = derive(replaced, replaced.vanillaCalls().get(k), replaced.calls().get(k));
+			if (at == null) return null;
+			if (derived != null) {
+				for (int p = 0; p < at.size(); p++) {
+					if (!at.get(p).alike(derived.get(p))) return null;
+				}
+			}
+			derived = at;
+		}
+		return derived;
+	}
+
+	/** {@link #derive(Replaced)} at one of vanilla's calls and the platform's in its place. */
+	private List<Derived> derive(Replaced replaced, MethodInsnNode vanillaCall, MethodInsnNode call) {
+		List<Value> wanted = arguments(replaced.vanillaCaller(), vanillaCall);
+		List<Value> given = arguments(replaced.caller(), call);
 		boolean instance = (replaced.vanilla().access & Opcodes.ACC_STATIC) == 0;
 		if (wanted == null || given == null || instance && (wanted.get(0).slot() != 0 || given.get(0).slot() != 0)) return null;
 		int skip = instance ? 1 : 0;
@@ -309,11 +474,15 @@ final class ReplacedMethods extends PreflightPart {
 
 	/**
 	 * A value code works out, as far as it is followed: a parameter of the method that it never stores to (by slot), a
-	 * no-argument instance call on a value ({@code getter} on {@code of}), or the instruction that pushed it; or none of
-	 * those ({@link #UNKNOWN}).
+	 * no-argument instance call on a value ({@code getter} on {@code of}), or the instruction that pushed it, with the
+	 * values of an arithmetic one's {@code operands}; or none of those ({@link #UNKNOWN}).
 	 */
-	private record Value(int slot, MethodInsnNode getter, Value of, int insn) {
-		static final Value UNKNOWN = new Value(-1, null, null, -1);
+	private record Value(int slot, MethodInsnNode getter, Value of, int insn, List<Value> operands) {
+		static final Value UNKNOWN = new Value(-1, null, null, -1, List.of());
+
+		Value(int slot, MethodInsnNode getter, Value of, int insn) {
+			this(slot, getter, of, insn, List.of());
+		}
 	}
 
 	/** A value and the index of the first instruction of the code pushing it, -1 where that isn't followed. */
@@ -336,13 +505,21 @@ final class ReplacedMethods extends PreflightPart {
 
 	/**
 	 * The value the code ending at or before {@code end} pushes: a load of a parameter, or of a local stored once (its
-	 * stored value), a no-argument instance call, a constant or a static field; or the instruction that pushed it.
+	 * stored value), a no-argument instance call, a constant or a static field, or arithmetic on two of those (vanilla's
+	 * {@code FireBlock.tick} passes {@code 300 + k}); or the instruction that pushed it.
 	 */
 	private static Parsed parse(MethodNode method, int end, int depth) {
 		while (end >= 0 && method.instructions.get(end).getOpcode() < 0) end--;
 		if (end < 0 || depth > 4) return null;
 		AbstractInsnNode insn = method.instructions.get(end);
 		int op = insn.getOpcode();
+		// IADD to LXOR, but the negations, which take one operand.
+		if (op >= Opcodes.IADD && op <= Opcodes.LXOR && (op < Opcodes.INEG || op > Opcodes.DNEG)) {
+			Parsed right = parse(method, end - 1, depth + 1);
+			Parsed left = right == null || right.start() < 0 ? null : parse(method, right.start() - 1, depth + 1);
+			if (left == null || left.start() < 0) return new Parsed(new Value(-1, null, null, end), -1);
+			return new Parsed(new Value(-1, null, null, end, List.of(left.value(), right.value())), left.start());
+		}
 		if (insn instanceof VarInsnNode load && op >= Opcodes.ILOAD && op <= Opcodes.ALOAD) {
 			List<Integer> stores = storesTo(method, load.var);
 			if (load.var < parameterSlots(method)) return new Parsed(stores.isEmpty() ? new Value(load.var, null, null, -1) : Value.UNKNOWN, end);
@@ -377,7 +554,8 @@ final class ReplacedMethods extends PreflightPart {
 
 	/**
 	 * Whether a value of vanilla's code is one of the platform's: the same parameter, the same getter on the same value,
-	 * or instructions in each other's place ({@link PatchAlignment}), or the same constant or static field.
+	 * or instructions in each other's place ({@link PatchAlignment}), or the same constant or static field; arithmetic
+	 * only on the same operands.
 	 */
 	private static boolean same(Value vanilla, Value platform, PatchAlignment alignment) {
 		if (vanilla.getter() != null || platform.getter() != null) {
@@ -386,18 +564,25 @@ final class ReplacedMethods extends PreflightPart {
 					&& same(vanilla.of(), platform.of(), alignment);
 		}
 		if (vanilla.slot() >= 0 || platform.slot() >= 0) return vanilla.slot() == platform.slot();
-		return vanilla.insn() >= 0 && platform.insn() >= 0 && alignment.placeOf(vanilla.insn()) == platform.insn();
+		if (vanilla.insn() < 0 || platform.insn() < 0 || alignment.placeOf(vanilla.insn()) != platform.insn()
+				|| vanilla.operands().size() != platform.operands().size()) return false;
+		for (int k = 0; k < vanilla.operands().size(); k++) {
+			if (!same(vanilla.operands().get(k), platform.operands().get(k), alignment)) return false;
+		}
+		return true;
 	}
 
 	/**
-	 * A handler for the injector at the platform's method: it takes that method's parameters and the callback info, and
-	 * calls {@code handler} with vanilla's parameters as {@code derived} works them out, and the callback info. The injector
-	 * annotation moves to it; {@code handler} stays a plain method of the mixin.
+	 * A handler for the injector at the platform's method: it takes that method's parameters, the callback info and the
+	 * handler's {@code shares} last ones, and calls {@code handler} with vanilla's parameters as {@code derived} works them
+	 * out, the callback info and those. The injector annotation, and the {@code @Share}s', move to it; {@code handler}
+	 * stays a plain method of the mixin.
 	 */
-	private static MethodNode bridge(String mixin, MethodNode handler, AnnotationNode injector, MethodNode method, List<Derived> derived, String name) {
+	private static MethodNode bridge(String mixin, MethodNode handler, AnnotationNode injector, MethodNode method, List<Derived> derived, int shares,
+			String name) {
 		Type[] own = Type.getArgumentTypes(handler.desc);
 		List<Type> params = new ArrayList<>(List.of(Type.getArgumentTypes(method.desc)));
-		params.add(own[own.length - 1]);
+		params.addAll(List.of(own).subList(own.length - 1 - shares, own.length));
 		MethodNode bridge = HandlerBridges.bridgeMethod(handler, name, params, Type.VOID_TYPE);
 		int stack = 0;
 		int peak = 0;
@@ -416,8 +601,12 @@ final class ReplacedMethods extends PreflightPart {
 			}
 			stack += own[k].getSize();
 		}
-		bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, HandlerBridges.slotOf(handler, params, params.size() - 1)));
-		HandlerBridges.callHandler(bridge, mixin, handler, Math.max(stack + 1, peak));
+		int first = params.size() - 1 - shares;
+		for (int k = first; k < params.size(); k++) {
+			bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, HandlerBridges.slotOf(handler, params, k)));
+		}
+		HandlerBridges.moveSugar(handler, own.length - shares, bridge, params.size() - shares, shares);
+		HandlerBridges.callHandler(bridge, mixin, handler, Math.max(stack + 1 + shares, peak));
 		HandlerBridges.moveInjector(handler, injector, bridge);
 		return bridge;
 	}
