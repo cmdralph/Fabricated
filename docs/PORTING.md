@@ -198,7 +198,7 @@ Fallbacks, both read in source: return the language jar as a PLUGIN `Resource` f
 GAME code through a new public hook; `VanillaGameJar` needs Forge's server layout (on 1.21.11 the installer also
 writes `net.minecraft:<side>:<mc>:official` jars), and any change to it goes to `main`.
 
-| `loader/neoforge` | `loader/forge` | Change |
+| `loader/neoforge` | `loader/forge-shared` | Change |
 |---|---|---|
 | `FabricCandidateLocator` | `FabricModLocator implements IModLocator`: lists Fabric jars (no `META-INF/mods.toml`), returns the language provider's `ModFile` | small rewrite |
 | `FabricDependencyLocator` | same name: the `Pipeline.Input` assembly carries over; the glue (`FMLLoader` facts, `SecureJar` for `JarContents`, platform packages from the BOOT and SERVICE layers, warnings through `FabricatedState`, MixinExtras as data) is rewritten | about 40% rewritten |

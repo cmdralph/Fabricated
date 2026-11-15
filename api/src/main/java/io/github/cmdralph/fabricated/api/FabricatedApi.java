@@ -43,9 +43,11 @@ public interface FabricatedApi {
 	boolean entrypointsComplete();
 
 	/**
-	 * Runs {@code action} once the Fabric mods' {@code main} and {@code client}/{@code server} initializers have run
-	 * (during NeoForge's registration, on the mod loading thread), or right away on the calling thread when they already
-	 * have. A waiting action that throws is logged and reported as a loading warning, and does not stop the others.
+	 * Runs {@code action} once the Fabric mods' {@code main} and {@code client}/{@code server} initializers have run, or
+	 * right away on the calling thread when they already have. On a dedicated server that is during the platform's
+	 * registration, on the mod loading thread, with the registries still open; on a client it is in {@code Minecraft}'s
+	 * constructor, on the game thread, once the registries are frozen again. A waiting action that throws is logged and
+	 * reported as a loading warning, and does not stop the others.
 	 */
 	void afterEntrypoints(Runnable action);
 
