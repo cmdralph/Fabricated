@@ -93,8 +93,10 @@ Fabricated/
 │                            types (Apache-2.0, from Fabric Loader; NOTICE attribution), with SemVer and
 │                            version-predicate parsing
 ├── loader/                  Platform-facing glue: common/ (every platform), neoforge/ (FabricCandidateLocator,
-│                            FabricDependencyLocator, FabricLanguageLoader, FabricModContainer, FabricClassProcessor:
-│                            interface injection; @Environment is stripped in translation), in two variants: src/fml for FML 10 to 12
+│                            FabricDependencyLocator, FabricLanguageLoader, FabricModContainer, and what changes classes as
+│                            they load, FabricClassTransforms in common/: interface injection, default bridges,
+│                            @Environment members, methods the platform made final, vanilla's methods put back),
+│                            in two variants: src/fml for FML 10 to 12
 │                            (1.21.11, 26.x), src/modlauncher for NeoForge 21.1's FML 4 on ModLauncher (1.21.1),
 │                            each behind its own Fml facade (the Forge platforms' are on their branches, forge and
 │                            forge-legacy, with the same structure)
@@ -374,7 +376,7 @@ Loader*):
 
 * *A Fabric API module another mod provides is that mod's (PROVIDER-1).* `NeoForgeMods` lists the NeoForge mods and the
   packages of their jars; a mod provides a module by its id, its `provides` or one of the module's packages
-  (`FabricDependencyLocator.providingByPackages`). `Pipeline.providedElsewhere` gives the plan's modules so provided,
+  (core's `NativeModules.providingByPackages`). `Pipeline.providedElsewhere` gives the plan's modules so provided,
   whose ids then satisfy dependencies and whose rows read `PROVIDED_BY_MOD`. For a native one, core's `NativeModules`
   says what stands down, from two data files: the version's `native-modules.json` (each native module's packages,
   written by `scripts/native-module-index.py` from the plan's official Fabric API release; a package Fabric API keeps
