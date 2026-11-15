@@ -130,6 +130,7 @@ jobs:
         with:
           name: unit-test-reports-${{ needs.plan.outputs.platforms }}
           path: |
+            api/build/reports/tests
             core/build/reports/tests
             fabric-loader-api/build/reports/tests
           if-no-files-found: ignore
@@ -286,8 +287,10 @@ jobs:
           lookup-only: true
       - name: Fill the caches
         if: env.SAVE == 'true' && (steps.server-install.outputs.cache-hit != 'true' || steps.client-install.outputs.cache-hit != 'true' || steps.downloads.outputs.cache-hit != 'true')
+        env:
+          GAME_JAVA: ${{ matrix.java }}
         run: |
-          JAVA_HOME="$(printenv "JAVA_HOME_${{ matrix.java }}_X64")"
+          JAVA_HOME="$(printenv "JAVA_HOME_${GAME_JAVA}_X64")"
           export JAVA_HOME PATH="$JAVA_HOME/bin:$PATH"
           ci/smoke.sh "$PLATFORM" "$MC" warm
       - name: Save the server's install

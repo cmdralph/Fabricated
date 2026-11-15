@@ -11,7 +11,7 @@ client_launch_id="$mc-forge"
 mcrt_loader=lexforge
 
 installer() {
-	curl -fsSL --retry 8 --retry-max-time 300 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/$forge_id/forge-$forge_id-installer.jar"
+	retrying_curl -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/$forge_id/forge-$forge_id-installer.jar"
 }
 
 install_server() {
@@ -28,10 +28,10 @@ install_client() {
 	# version's parent: it comes from Mojang's version manifest.
 	if [ ! -f "$1/versions/$mc/$mc.json" ]; then
 		local url
-		url=$(curl -fsSL --retry 8 --retry-max-time 300 https://piston-meta.mojang.com/mc/game/version_manifest_v2.json \
-			| python3 -c 'import json, sys; print(next(v["url"] for v in json.load(sys.stdin)["versions"] if v["id"] == sys.argv[1]))' "$mc")
+		url=$(retrying_curl https://piston-meta.mojang.com/mc/game/version_manifest_v2.json \
+			| python3 -I -c 'import json, sys; print(next(v["url"] for v in json.load(sys.stdin)["versions"] if v["id"] == sys.argv[1]))' "$mc")
 		mkdir -p "$1/versions/$mc"
-		curl -fsSL --retry 8 --retry-max-time 300 -o "$1/versions/$mc/$mc.json" "$url"
+		retrying_curl -o "$1/versions/$mc/$mc.json" "$url"
 	fi
 }
 
@@ -82,7 +82,7 @@ after_run() {
 # The newest Forge build for the version, named as the pinned one is.
 newest_loader() {
 	local newest
-	newest=$(curl -fsSL --retry 8 --retry-max-time 300 https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml \
+	newest=$(retrying_curl https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml \
 		| grep -o "<version>$mc-[^<]*" | sed 's/<version>//' | tail -n 1)
 	if [ "$forge_id" = "$loader" ]; then echo "$newest"; else echo "${newest#"$mc"-}"; fi
 }

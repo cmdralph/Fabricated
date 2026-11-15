@@ -186,6 +186,13 @@ class EvaluatorTest(unittest.TestCase):
         self.assertNotIn("::error", out.getvalue())
 
 
+class ArgumentsTest(unittest.TestCase):
+    def test_an_option_given_last_without_its_value_says_so(self):
+        with self.assertRaises(SystemExit) as stop:
+            check_log.main(["neoforge", "1.21.1", "server", "/nowhere", "--summary"])
+        self.assertEqual("--summary needs a value", str(stop.exception))
+
+
 class ManifestTest(unittest.TestCase):
     """The repository's manifests: every row well formed, so a mistake fails here rather than in a game run."""
     runs = plan.read_table(HERE / "runs.tsv")

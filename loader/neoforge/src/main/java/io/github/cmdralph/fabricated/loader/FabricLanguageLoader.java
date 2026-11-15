@@ -32,7 +32,7 @@ public final class FabricLanguageLoader implements IModLanguageLoader {
 	public ModContainer loadMod(IModInfo info, ModFileScanData modFileScanResults, ModuleLayer layer) throws ModLoadingException {
 		FabricatedState state = FabricatedState.get();
 		if (state == null || !state.isFabricMod(info.getModId())) {
-			throw new ModLoadingException(ModLoadingIssue.error("§e[Fabricated]§r {0}",
+			throw new ModLoadingException(ModLoadingIssue.error(FabricDependencyLocator.MESSAGE,
 					"Mod " + info.getModId() + " declares the Fabricated loader but was not translated by Fabricated").withAffectedMod(info));
 		}
 		PluginAnnotations.add(info.getModId(), state.pluginAnnotations(info.getModId()), modFileScanResults.getAnnotations(),

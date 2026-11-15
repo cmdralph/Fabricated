@@ -17,7 +17,7 @@ import io.github.cmdralph.fabricated.loader.FabricatedState;
  * hands Mixin the mod files in that order, and Mixin registers each file's configs (its manifest's) and loads their
  * plugins in that order. It registers Fabricated's Mixin extensions ({@link MixinExtensions}, CORPUS-63) and creates the
  * Fabric mods' language adapters, as Fabric Loader does before Mixin starts (some mods declare an adapter only to run
- * code that early). It changes nothing about which mixins apply. Shared by Forge 47 and Forge 61 to 66.
+ * code that early). It changes nothing about which mixins apply. Shared by Forge 47, 52 and 61 to 66.
  */
 public final class FabricatedMixinPlugin implements IMixinConfigPlugin {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");

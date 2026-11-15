@@ -198,7 +198,7 @@ Fallbacks, both read in source: return the language jar as a PLUGIN `Resource` f
 GAME code through a new public hook; `VanillaGameJar` needs Forge's server layout (on 1.21.11 the installer also
 writes `net.minecraft:<side>:<mc>:official` jars), and any change to it goes to `main`.
 
-| `loader/neoforge` | `loader/forge` | Change |
+| `loader/neoforge` | `loader/forge-shared` | Change |
 |---|---|---|
 | `FabricCandidateLocator` | `FabricModLocator implements IModLocator`: lists Fabric jars (no `META-INF/mods.toml`), returns the language provider's `ModFile` | small rewrite |
 | `FabricDependencyLocator` | same name: the `Pipeline.Input` assembly carries over; the glue (`FMLLoader` facts, `SecureJar` for `JarContents`, platform packages from the BOOT and SERVICE layers, warnings through `FabricatedState`, MixinExtras as data) is rewritten | about 40% rewritten |
@@ -343,10 +343,9 @@ the abstractions below are added when the branch work starts (owner decision D2 
    FRAPI test mod's folder on the first shared folder that has one. Checked behaviour-neutral by printing every
    version project's source sets, declared dependencies and placeholders before and after: only the loader's
    folders differ.
-4. **CI per platform** (done; reworked on 2026-10-27 and 2026-10-28): each platform has its own workflow on its own
-   branch (`build.yml` on `main`, `build-forge.yml` on `forge`, `build-forge-legacy.yml` on `forge-legacy`), run on
-   pull requests into that branch, with a quick check on each push (`check.yml`, `ci/changed-targets.py`). The smoke scripts take the loader version as
-   a parameter; the matrix stays in each workflow, as the platforms' steps differ.
+4. **CI** (done): one workflow, `ci.yml`, the same on every branch, runs on pull requests and pushes; `ci/plan.py`
+   picks the versions a change touches and the JDK each runs on, and the runs and checks are data (`ci/runs.tsv`,
+   `ci/checks.tsv`). The smoke scripts take the loader version as a parameter.
 5. **A platform profile** (data, per target, part of the cache key): the descriptor path and dialect, the
    platform's package prefixes and provided libraries, who provides MixinExtras, the data-pack keys, the Mixin facts
    (absorbing `mixin.*` from `version.properties`), the loader hook map, the rename table and the coremod-private

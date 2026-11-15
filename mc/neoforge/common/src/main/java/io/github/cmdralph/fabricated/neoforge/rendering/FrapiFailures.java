@@ -59,11 +59,7 @@ public final class FrapiFailures {
 			return fabric;
 		}
 
-		/** Whether Fabric's renderer draws this class now: a Fabric model whose drawing never threw. */
-		public boolean drawn() {
-			return fabric && !broken;
-		}
-
+		/** Whether drawing this class threw: NeoForge's renderer draws it from then on. */
 		public boolean broken() {
 			return broken;
 		}

@@ -3,7 +3,7 @@
 # directory. Used for the modules Fabricated ships natively (see fabric-api-plan.json). Re-run it when
 # moving a Minecraft version to a newer Fabric API release; review the diff before committing.
 #
-# Usage: scripts/import-fabric-api.sh [--yarn <yarn-version>] <fabric-api-tag> <destination-dir> <module>[:api] [module[:api]...]
+# Usage: scripts/import-fabric-api.sh [--yarn <yarn-version>] <fabric-api-tag> <destination-dir> <module>[:api] [<module>[:api]...]
 # A ":api" suffix imports only the module's public API (net/fabricmc/fabric/api/**); Fabricated then
 # provides the implementation itself on NeoForge events instead of upstream's mixins.
 # Files in <destination-dir>-overrides/java are copied over the imported ones afterwards.
@@ -16,16 +16,17 @@
 # Example: scripts/import-fabric-api.sh --yarn 1.21.1+build.3 0.116.17+1.21.1 mc/neoforge/1.21.1/src/fabricapi fabric-api-base
 set -euo pipefail
 
+usage() {
+	echo "usage: $0 [--yarn <yarn-version>] <fabric-api-tag> <destination-dir> <module>[:api] [<module>[:api]...]" >&2
+	exit 2
+}
 yarn=""
 if [ "${1:-}" = "--yarn" ]; then
+	[ "$#" -ge 2 ] || usage
 	yarn="$2"
 	shift 2
 fi
-
-if [ "$#" -lt 3 ]; then
-	echo "usage: $0 [--yarn <yarn-version>] <fabric-api-tag> <destination-dir> <module> [module...]" >&2
-	exit 2
-fi
+[ "$#" -ge 3 ] || usage
 
 tag="$1"
 dest="$2"

@@ -166,9 +166,10 @@ class CurseForge:
 
 
 def error_body(error):
+    """The start of an error's body, else its reason: a body cut off (IncompleteRead) or unreadable gives the reason."""
     try:
         body = error.read(2000).decode("utf-8", "replace").strip()
-    except OSError:
+    except (OSError, http.client.HTTPException):
         body = ""
     return body or error.reason
 

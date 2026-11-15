@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.loader;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -48,8 +49,9 @@ final class FabricClassTransformer implements ITransformer<ClassNode> {
 		}
 		// A target that doesn't exist reaches a transformer as an empty node.
 		if (state != null && input.name != null) {
-			FabricClassTransforms.beforeMixin(state, input, (activity, detail) -> LOGGER.debug("{} in {}: {}", activity, input.name, detail));
-			FabricClassTransforms.declareDefaultBridges(state, input, (activity, detail) -> LOGGER.debug("{} in {}: {}", activity, input.name, detail));
+			BiConsumer<String, String> audit = (activity, detail) -> LOGGER.debug("{} in {}: {}", activity, input.name, detail);
+			FabricClassTransforms.beforeMixin(state, input, audit);
+			FabricClassTransforms.declareDefaultBridges(state, input, audit);
 		}
 		return input;
 	}

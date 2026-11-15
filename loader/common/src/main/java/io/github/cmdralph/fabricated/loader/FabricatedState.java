@@ -119,7 +119,7 @@ public final class FabricatedState {
 		return result.providedElsewhere().contains(module);
 	}
 
-	/** Classes of loaded Fabric mods with {@code @Environment} annotations (see {@link FabricClassProcessor}). */
+	/** Classes of loaded Fabric mods with {@code @Environment} annotations (see {@link FabricClassTransforms#beforeMixin}). */
 	public Set<String> environmentClasses() {
 		return result.environmentClasses();
 	}
@@ -128,7 +128,7 @@ public final class FabricatedState {
 		return result.injectedInterfaces();
 	}
 
-	/** Methods to declare on game classes, by class (see {@link FabricClassProcessor}). */
+	/** Methods to declare on game classes, by class (see {@link FabricClassTransforms#declareDefaultBridges}). */
 	public Map<String, List<DefaultBridge>> defaultBridges() {
 		return result.defaultBridges();
 	}

@@ -93,8 +93,10 @@ Fabricated/
 │                            types (Apache-2.0, from Fabric Loader; NOTICE attribution), with SemVer and
 │                            version-predicate parsing
 ├── loader/                  Platform-facing glue: common/ (every platform), neoforge/ (FabricCandidateLocator,
-│                            FabricDependencyLocator, FabricLanguageLoader, FabricModContainer, FabricClassProcessor:
-│                            interface injection; @Environment is stripped in translation), in two variants: src/fml for FML 10 to 12
+│                            FabricDependencyLocator, FabricLanguageLoader, FabricModContainer, and what changes classes as
+│                            they load, FabricClassTransforms in common/: interface injection, default bridges,
+│                            @Environment members, methods the platform made final, vanilla's methods put back),
+│                            in two variants: src/fml for FML 10 to 12
 │                            (1.21.11, 26.x), src/modlauncher for NeoForge 21.1's FML 4 on ModLauncher (1.21.1),
 │                            each behind its own Fml facade (the Forge platforms' are on their branches, forge and
 │                            forge-legacy, with the same structure)
@@ -374,7 +376,7 @@ Loader*):
 
 * *A Fabric API module another mod provides is that mod's (PROVIDER-1).* `NeoForgeMods` lists the NeoForge mods and the
   packages of their jars; a mod provides a module by its id, its `provides` or one of the module's packages
-  (`FabricDependencyLocator.providingByPackages`). `Pipeline.providedElsewhere` gives the plan's modules so provided,
+  (core's `NativeModules.providingByPackages`). `Pipeline.providedElsewhere` gives the plan's modules so provided,
   whose ids then satisfy dependencies and whose rows read `PROVIDED_BY_MOD`. For a native one, core's `NativeModules`
   says what stands down, from two data files: the version's `native-modules.json` (each native module's packages,
   written by `scripts/native-module-index.py` from the plan's official Fabric API release; a package Fabric API keeps
@@ -564,7 +566,7 @@ Unknown keys produce a warning. Invalid values fall back to defaults with a warn
 
 * **Unit (core, runs anywhere):** metadata parsing/translation, version predicates, id normalisation, dependency resolution, archive safety (crafted malicious zips generated in-test), Tiny/ProGuard parsing and composition, remapping (incl. determinism), refmap rewriting, AW/CT→AT, pre-flight verifier (synthetic target/mixin classes generated with ASM), cache integrity, config validation, report rendering. **No third-party binaries are committed.** Fixtures are generated in tests.
 * **Integration (per MC version, CI):** no `gameTestServer` run. A real dedicated server of each platform starts with the in-repo test mods (`ci/smoke-server.sh`, the checks in `ci/checks.tsv`: entrypoints, the Fabric Loader API, registries, mixins, access wideners, the native Fabric API modules, commands, and the isolation of a missing dependency, an impossible mixin and a throwing entrypoint), plus a client started headlessly under Xvfb (`ci/smoke-client.sh`) that joins a singleplayer world and exits.
-* **Real-mod smoke (CI only):** Fabric mods from Modrinth (`ci/mod-corpus.txt`, `ci/mod-corpus-advanced.txt` and projects named in the workflow), fetched by **CI** (never by Fabricated) with `ci/fetch-corpus.py`: each project's newest build for the version unless a Modrinth version id is named (the plugin hosts' are), each file checked against the SHA-512 Modrinth lists. Results feed `docs/COMPATIBILITY.md`.
+* **Real-mod smoke (CI only):** Fabric mods from Modrinth (`ci/mod-corpus.txt`, `ci/mod-corpus-advanced.txt`, and the projects `ci/runs.tsv` and each version's pins name), fetched by **CI** (never by Fabricated) with `ci/fetch-corpus.py`: each project's newest build for the version unless a Modrinth version id is named (the plugin hosts' are), each file checked against the SHA-512 Modrinth lists. Results feed `docs/COMPATIBILITY.md`.
 * **GitHub Actions (`ci.yml`, the same workflow on every branch):** the unit tests, then per version a build and its server, client and other mods' runs (`ci/plan.py` picks the versions a change touches, and the JDK each runs on from its `gradle.properties`).
 * **Startup and memory benchmark (CI):** each version's server run with Fabric API also measures what the JVM's threads allocate during Fabricated's discovery, in its first launch and in a second with everything cached (discovery's log line gives the count), and the live heap once the server started, after a full GC (`jcmd`'s class histogram). `ci/bench.py` compares them with their baselines in `ci/bench.tsv` and writes the table to the job's summary: a metric more than 10% over its baseline fails, unless the change records the new value there with its reason. Wall times are only reported, as GitHub's runners differ by up to a third.
 

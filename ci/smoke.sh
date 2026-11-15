@@ -16,8 +16,10 @@ mc="$2"
 part="$3"
 shift 3
 cd "$(dirname "$0")/.." || exit 1
-# shellcheck disable=SC1090 # the version's pins: loader, java, fabric_api, plugin_hosts, renderers, fabric_renderers
-eval "$(python3 -I ci/plan.py target "$platform" "$mc")" || exit 1
+# The version's pins (loader, java, fabric_api, plugin_hosts, renderers, fabric_renderers), as shell assignments: taken
+# apart from eval, which would hide plan.py's failure.
+assignments=$(python3 -I ci/plan.py target "$platform" "$mc") || exit 1
+eval "$assignments"
 work="${SMOKE_WORK:-${RUNNER_TEMP:-/tmp}/smoke}"
 side=
 # shellcheck source=ci/smoke-lib.sh
