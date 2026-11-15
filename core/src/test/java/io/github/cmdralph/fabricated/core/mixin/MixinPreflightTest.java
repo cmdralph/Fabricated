@@ -5172,6 +5172,423 @@ class MixinPreflightTest {
 		assertEquals("L" + TARGET + ";other(I)V", Annotations.value(point, "target"), "the hook's call isn't taken for it");
 	}
 
+	private static final String MODIFY_ARG = "Lorg/spongepowered/asm/mixin/injection/ModifyArg;";
+	private static final String DROP = "drop(Ljava/lang/Object;ZZ)Ljava/lang/Object;";
+	private static final String TOSS_HOOK = "net/neoforged/Hooks";
+
+	/** {@code Thing.toss(boolean)}: vanilla's drops the stack it works out itself, {@code tossing} the platform's way. */
+	private static String tossingThing(String tossing) {
+		return "package net.minecraft.world; public class Thing { public Object other;"
+				+ " public Object drop(Object stack, boolean thrown, boolean named) { return stack; }"
+				+ " public boolean toss(boolean all) { Object stack = String.valueOf(all); return " + tossing + " != null; } }";
+	}
+
+	/** A {@code @ModifyArg} of the stack {@code toss} passes {@code drop}, returning it unchanged. */
+	private static byte[] tossMixin() {
+		return mixin("com/example/mixin/Toss", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "keep", "(Ljava/lang/Object;)Ljava/lang/Object;", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_ARG, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "toss");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";" + DROP);
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 1);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 2);
+			mv.visitEnd();
+		});
+	}
+
+	/** The toss mixin's repairs where the platform's {@code toss} calls {@code tossing} and its hook's body is {@code hook}. */
+	private static Map<String, byte[]> tossRepairs(Path dir, Map<String, byte[]> vanilla, String tossing, String hook, List<PreflightFinding> notes)
+			throws Exception {
+		Map<String, byte[]> platform = TestSources.compile(dir, Map.of("net/minecraft/world/Thing.java", tossingThing(tossing), "net/neoforged/Hooks.java",
+				"package net.neoforged; public class Hooks { public static Object onToss(net.minecraft.world.Thing thing, Object stack, boolean named) {"
+						+ hook + " } }"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Toss", tossMixin()));
+		return new MixinPreflight(new ClassIndex(platform::get), InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true,
+				Map.of(TARGET, vanilla.get(TARGET))::get).repairs("test.mixins.json", MixinConfigFile.parse(config(true, "Toss")), Refmap.EMPTY, Set.of(), notes);
+	}
+
+	@Test
+	void aModifyArgAtACallThePlatformMakesInItsHookIsPointedAtTheHooksParameter(@TempDir Path dir) throws Exception {
+		// OVERLOAD-4: NeoForge 21.1 and Forge 52 drop the stack ServerPlayer.drop(boolean) takes through their
+		// onPlayerTossEvent(player, stack, true), which drops it with player.drop(stack, false, includeName) and fires the
+		// toss event; Apoli's @ModifyArg of the stack vanilla's call drops found no call there.
+		Map<String, byte[]> vanilla = TestSources.compile(dir.resolve("vanilla"), Map.of("net/minecraft/world/Thing.java", tossingThing("this.drop(stack, false, true)")));
+		String tossing = TOSS_HOOK.replace('/', '.') + ".onToss(this, stack, true)";
+		String passes = " Object dropped = thing.drop(stack, false, named); if (dropped == null) return null; return dropped;";
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = tossRepairs(dir.resolve("hook"), vanilla, tossing, passes, notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.get(0).message().contains("inside its hook net.neoforged.Hooks.onToss"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Toss.class")).accept(node, 0);
+		AnnotationNode injector = Annotations.find(node.methods.getFirst().name.equals("keep") ? node.methods.getFirst() : node.methods.getLast(), MODIFY_ARG);
+		AnnotationNode at = Annotations.list(Annotations.value(injector, "at")).getFirst();
+		assertEquals("L" + TOSS_HOOK + ";onToss(L" + TARGET + ";Ljava/lang/Object;Z)Ljava/lang/Object;", Annotations.value(at, "target"));
+		assertNull(Annotations.value(injector, "index"), "the hook's one Object parameter, which Mixin finds by its type");
+
+		// The hook works the value out, reads it again, makes the call on another object or only on some ways through it,
+		// or the method passes the hook another receiver than this: the handler's value isn't the one dropped there.
+		for (String hook : List.of(" return thing.drop(String.valueOf(stack), false, named);",
+				" if (stack == null) return null; return thing.drop(stack, false, named);",
+				" Object dropped = thing.drop(stack, false, named); System.out.println(stack); return dropped;",
+				" return new net.minecraft.world.Thing().drop(stack, false, named);",
+				" Object kept = stack; return thing.drop(kept, false, named);",
+				" stack = String.valueOf(named); return thing.drop(stack, false, named);")) {
+			assertTrue(tossRepairs(dir.resolve("h" + hook.hashCode()), vanilla, tossing, hook, new ArrayList<>()).isEmpty(), hook);
+		}
+		String other = TOSS_HOOK.replace('/', '.') + ".onToss((net.minecraft.world.Thing) this.other, stack, true)";
+		assertTrue(tossRepairs(dir.resolve("other"), vanilla, other, passes, new ArrayList<>()).isEmpty(), "another receiver");
+	}
+
+	/**
+	 * {@code Thing.sleep(int)}: vanilla's checks, returning a problem ({@code Optional.of}) or going on to sleep, or
+	 * NeoForge's, which runs them in a lambda returning {@code Optional.empty()} where they pass ({@code guard} first),
+	 * passes their result through its event hook and goes on where there's no problem.
+	 */
+	private static String sleepingThing(boolean platform, String guard) {
+		String checks = "if (x < 0) return java.util.Optional.of(\"far\"); this.mark(x); if (x > 5) return java.util.Optional.of(\"day\");";
+		String body = platform
+				? "java.util.Optional<String> checked = ((java.util.function.Supplier<java.util.Optional<String>>) () -> { " + guard + checks
+						+ " return java.util.Optional.empty(); }).get(); checked = net.neoforged.Hooks.check(this, checked);"
+						+ " if (checked.isPresent()) return checked; return this.start(x);"
+				: checks + " return this.start(x);";
+		return "package net.minecraft.world; public class Thing { public void mark(int x) { }"
+				+ " java.util.Optional<String> start(int x) { return java.util.Optional.empty(); }"
+				+ " public java.util.Optional<String> sleep(int x) { " + body + " } }";
+	}
+
+	/** A {@code @WrapOperation} of {@code sleep}'s {@code mark} call taking a {@code @Cancellable} callback, {@code body} its code. */
+	private static byte[] sleepMixin(Consumer<MethodVisitor> body) {
+		return mixin("com/example/mixin/Sleep", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "wrap", "(L" + TARGET + ";I" + OPERATION + CIR + ")V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(WRAP_OPERATION, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "sleep");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";mark(I)V");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitParameterAnnotation(3, "Lcom/llamalad7/mixinextras/sugar/Cancellable;", false).visitEnd();
+			mv.visitCode();
+			body.accept(mv);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(3, 5);
+			mv.visitEnd();
+		});
+	}
+
+	/** Sets the callback's return value to {@code Optional.of("tired")} (Apoli's prevented sleep: a problem). */
+	private static final Consumer<MethodVisitor> SETS_A_PROBLEM = mv -> {
+		mv.visitVarInsn(Opcodes.ALOAD, 4);
+		mv.visitLdcInsn("tired");
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Optional", "of", "(Ljava/lang/Object;)Ljava/util/Optional;", false);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, CIR.substring(1, CIR.length() - 1), "setReturnValue", "(Ljava/lang/Object;)V", false);
+	};
+
+	private static Map<String, byte[]> sleepRepairs(Path dir, String guard, byte[] mixin, boolean withVanilla, List<PreflightFinding> notes) throws Exception {
+		Map<String, byte[]> vanilla = TestSources.compile(dir.resolve("vanilla"), Map.of("net/minecraft/world/Thing.java", sleepingThing(false, "")));
+		Map<String, byte[]> platform = TestSources.compile(dir.resolve("platform"), Map.of("net/minecraft/world/Thing.java", sleepingThing(true, guard),
+				"net/neoforged/Hooks.java", "package net.neoforged; public class Hooks {"
+						+ " public static java.util.Optional<String> check(Object thing, java.util.Optional<String> result) { return result; } }"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Sleep", mixin));
+		ClassBytesSource original = withVanilla ? Map.of(TARGET, vanilla.get(TARGET))::get : ClassBytesSource.EMPTY;
+		return new MixinPreflight(new ClassIndex(platform::get), InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, original)
+				.repairs("test.mixins.json", MixinConfigFile.parse(config(true, "Sleep")), Refmap.EMPTY, Set.of(), notes);
+	}
+
+	@Test
+	void aCancellableWrapOperationFollowsVanillasChecksIntoTheLambdaThatReturnsTheirResult(@TempDir Path dir) throws Exception {
+		// LAMBDA-13: NeoForge 21.1 runs ServerPlayer.startSleepInBed's checks in a lambda whose result its sleep event gets,
+		// going on to sleep where it has no problem; Apoli's @WrapOperation of the respawn point set there cancels with a
+		// problem, Either.left as vanilla's checks return theirs (Optional.of here), which the lambda returns as they do.
+		String guard = "if (x == 99) return java.util.Optional.empty(); ";
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = sleepRepairs(dir.resolve("ok"), guard, sleepMixin(SETS_A_PROBLEM), true, notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.get(0).message().contains("a cancelled callback returns from the lambda the value it sets"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Sleep.class")).accept(node, 0);
+		MethodNode wrap = node.methods.stream().filter(m -> m.name.equals("wrap")).findFirst().orElseThrow();
+		assertEquals(List.of("sleep", "lambda$sleep$0(I)Ljava/util/Optional;"), Annotations.value(Annotations.find(wrap, WRAP_OPERATION), "method"));
+
+		// Without vanilla's class, its code there can't be told.
+		assertTrue(sleepRepairs(dir.resolve("unknown"), guard, sleepMixin(SETS_A_PROBLEM), false, new ArrayList<>()).isEmpty());
+		// The platform's own return built as vanilla's are: a problem set there could be taken for the platform's own.
+		assertTrue(sleepRepairs(dir.resolve("alike"), "if (x == 99) return java.util.Optional.of(\"modded\"); ", sleepMixin(SETS_A_PROBLEM), true,
+				new ArrayList<>()).isEmpty());
+		// A handler setting what the platform's code returns where the checks pass (the method would go on to sleep, where
+		// vanilla's returned), setting a value built otherwise, cancelling without one (null), or passing the callback on.
+		String optional = "java/util/Optional";
+		String returnable = CIR.substring(1, CIR.length() - 1);
+		List<Consumer<MethodVisitor>> wrong = List.of(mv -> {
+			mv.visitVarInsn(Opcodes.ALOAD, 4);
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, optional, "empty", "()Ljava/util/Optional;", false);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, returnable, "setReturnValue", "(Ljava/lang/Object;)V", false);
+		}, mv -> {
+			mv.visitVarInsn(Opcodes.ALOAD, 4);
+			mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, returnable, "setReturnValue", "(Ljava/lang/Object;)V", false);
+		}, mv -> {
+			mv.visitVarInsn(Opcodes.ALOAD, 4);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, returnable, "cancel", "()V", false);
+		}, mv -> {
+			SETS_A_PROBLEM.accept(mv);
+			mv.visitVarInsn(Opcodes.ALOAD, 4);
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Objects", "requireNonNull", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
+			mv.visitInsn(Opcodes.POP);
+		});
+		for (int i = 0; i < wrong.size(); i++) {
+			assertTrue(sleepRepairs(dir.resolve("wrong" + i), guard, sleepMixin(wrong.get(i)), true, new ArrayList<>()).isEmpty(), "handler " + i);
+		}
+	}
+
+	private static final String DROPS = " public Object drop(Object stack, boolean thrown, boolean named) { return stack; }";
+	private static final String ON_TOSS = " public static Object onToss(net.minecraft.world.Thing thing, Object stack, boolean named) {"
+			+ " Object dropped = thing.drop(stack, false, named); if (dropped == null) return null; return dropped; }";
+	private static final String ON_TOSS_CALL = "L" + TOSS_HOOK + ";onToss(L" + TARGET + ";Ljava/lang/Object;Z)Ljava/lang/Object;";
+
+	private static Map<String, String> thing(String members) {
+		return Map.of("net/minecraft/world/Thing.java", "package net.minecraft.world; public class Thing {" + members + " }");
+	}
+
+	private static Map<String, String> thingAndHooks(String members, String hooks) {
+		return Map.of("net/minecraft/world/Thing.java", "package net.minecraft.world; public class Thing {" + members + " }", "net/neoforged/Hooks.java",
+				"package net.neoforged; public class Hooks {" + hooks + " }");
+	}
+
+	/**
+	 * A {@code @ModifyArg} handler {@code keep} of {@code toss}'s call {@code target}, of the descriptor {@code desc},
+	 * its point with {@code ordinal} and the injector with {@code index} where given, its second parameter annotated
+	 * {@code sugar} where given; it returns the argument.
+	 */
+	private static byte[] argMixin(String target, String desc, Integer ordinal, Integer index, String sugar) {
+		return mixin("com/example/mixin/Toss", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "keep", desc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_ARG, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "toss");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", target);
+			if (ordinal != null) at.visit("ordinal", ordinal);
+			at.visitEnd();
+			if (index != null) ann.visit("index", index);
+			ann.visitEnd();
+			if (sugar != null) {
+				AnnotationVisitor on = mv.visitParameterAnnotation(1, sugar, false);
+				if (sugar.endsWith("/Share;")) on.visit("value", "kept");
+				on.visitEnd();
+			}
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 1);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 3);
+			mv.visitEnd();
+		});
+	}
+
+	/**
+	 * The repairs of the mixin {@code name} of {@code Thing}, vanilla's classes compiled from {@code vanilla} and the
+	 * platform's from {@code platform}, its {@code Thing} then changed by {@code edit} where given.
+	 */
+	private static Map<String, byte[]> movedRepairs(Path dir, Map<String, String> vanilla, Map<String, String> platform, String name, byte[] mixin,
+			java.util.function.UnaryOperator<byte[]> edit, List<PreflightFinding> notes) throws Exception {
+		Map<String, byte[]> before = TestSources.compile(dir.resolve("vanilla"), vanilla);
+		Map<String, byte[]> after = new HashMap<>(TestSources.compile(dir.resolve("platform"), platform));
+		if (edit != null) after.put(TARGET, edit.apply(after.get(TARGET)));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/" + name, mixin));
+		return new MixinPreflight(new ClassIndex(after::get), InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, before::get)
+				.repairs("test.mixins.json", MixinConfigFile.parse(config(true, name)), Refmap.EMPTY, Set.of(), notes);
+	}
+
+	/** The {@code @ModifyArg} of the repaired toss mixin's {@code keep}. */
+	private static AnnotationNode keepInjector(Map<String, byte[]> repaired) {
+		assertFalse(repaired.isEmpty(), "repaired");
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Toss.class")).accept(node, 0);
+		return Annotations.find(node.methods.stream().filter(m -> m.name.equals("keep")).findFirst().orElseThrow(), MODIFY_ARG);
+	}
+
+	@Test
+	void aModifyArgPointedAtAHooksCallKeepsItsPlaceAmongTheHooksCallsAndNamesTheHooksParameter(@TempDir Path dir) throws Exception {
+		// OVERLOAD-4's ordinal, index, static calls and sugar.
+		String object = "(Ljava/lang/Object;)Ljava/lang/Object;";
+		String drop = "L" + TARGET + ";" + DROP;
+		String hooks = TOSS_HOOK.replace('/', '.');
+		String once = " public boolean toss(boolean all) { Object stack = String.valueOf(all); return %s != null; }";
+		Map<String, String> vanilla = thing(DROPS + once.formatted("this.drop(stack, false, true)"));
+		Map<String, String> platform = thingAndHooks(DROPS + once.formatted(hooks + ".onToss(this, stack, true)"), ON_TOSS);
+
+		// Two of vanilla's calls, each through the hook: the point's ordinal picks the hook's call in the place of vanilla's.
+		String twice = " public boolean toss(boolean all) { Object stack = String.valueOf(all); Object first = %s; return %s != null; }";
+		Map<String, String> vanillaTwice = thing(DROPS + twice.formatted("this.drop(stack, false, true)", "this.drop(first, false, true)"));
+		Map<String, String> platformTwice = thingAndHooks(DROPS + twice.formatted(hooks + ".onToss(this, stack, true)", hooks + ".onToss(this, first, true)"), ON_TOSS);
+		for (int ordinal = 0; ordinal < 2; ordinal++) {
+			AnnotationNode injector = keepInjector(movedRepairs(dir.resolve("twice" + ordinal), vanillaTwice, platformTwice, "Toss", argMixin(drop, object, ordinal, null, null),
+					null, new ArrayList<>()));
+			AnnotationNode at = Annotations.list(Annotations.value(injector, "at")).getFirst();
+			assertEquals(ON_TOSS_CALL, Annotations.value(at, "target"));
+			assertEquals(ordinal, Annotations.value(at, "ordinal"));
+		}
+		// Without an ordinal, both of them.
+		AnnotationNode both = keepInjector(movedRepairs(dir.resolve("both"), vanillaTwice, platformTwice, "Toss", argMixin(drop, object, null, null, null), null,
+				new ArrayList<>()));
+		assertNull(Annotations.value(Annotations.list(Annotations.value(both, "at")).getFirst(), "ordinal"));
+		// A call of the hook of the platform's own before it: the ordinal counts it; without one the handler would modify
+		// its argument too, so the point stays.
+		Map<String, String> extra = thingAndHooks(DROPS + " public boolean toss(boolean all) { " + hooks + ".onToss(this, \"own\", true);"
+				+ " Object stack = String.valueOf(all); return " + hooks + ".onToss(this, stack, true) != null; }", ON_TOSS);
+		AnnotationNode shifted = keepInjector(movedRepairs(dir.resolve("extra"), vanilla, extra, "Toss", argMixin(drop, object, 0, null, null), null, new ArrayList<>()));
+		assertEquals(1, Annotations.value(Annotations.list(Annotations.value(shifted, "at")).getFirst(), "ordinal"));
+		assertTrue(movedRepairs(dir.resolve("extra-all"), vanilla, extra, "Toss", argMixin(drop, object, null, null, null), null, new ArrayList<>()).isEmpty());
+
+		// An index names the hook's parameter; so does a hook taking two of the argument's type.
+		assertEquals(1, Annotations.value(keepInjector(movedRepairs(dir.resolve("index"), vanilla, platform, "Toss", argMixin(drop, object, null, 0, null), null,
+				new ArrayList<>())), "index"));
+		Map<String, String> twoOfAType = thingAndHooks(DROPS + once.formatted(hooks + ".onToss(this, null, stack, true)"),
+				" public static Object onToss(net.minecraft.world.Thing thing, Object context, Object stack, boolean named) { return thing.drop(stack, false, named); }");
+		assertEquals(2, Annotations.value(keepInjector(movedRepairs(dir.resolve("two"), vanilla, twoOfAType, "Toss", argMixin(drop, object, null, null, null), null,
+				new ArrayList<>())), "index"));
+
+		// A static call, which the hook makes of the same class's method.
+		String sdrops = " public static Object sdrop(Object stack, boolean thrown, boolean named) { return stack; }";
+		String sdrop = "L" + TARGET + ";sdrop(Ljava/lang/Object;ZZ)Ljava/lang/Object;";
+		Map<String, String> vanillaStatic = thing(sdrops + once.formatted("Thing.sdrop(stack, false, true)"));
+		String tossed = sdrops + once.formatted(hooks + ".onToss(stack, true)");
+		AnnotationNode ofStatic = keepInjector(movedRepairs(dir.resolve("static"), vanillaStatic, thingAndHooks(tossed,
+				" public static Object onToss(Object stack, boolean named) { return net.minecraft.world.Thing.sdrop(stack, false, named); }"), "Toss",
+				argMixin(sdrop, object, null, null, null), null, new ArrayList<>()));
+		assertEquals("L" + TOSS_HOOK + ";onToss(Ljava/lang/Object;Z)Ljava/lang/Object;", Annotations.value(Annotations.list(Annotations.value(ofStatic, "at")).getFirst(), "target"));
+		assertNull(Annotations.value(ofStatic, "index"));
+		assertTrue(movedRepairs(dir.resolve("static-other"), vanillaStatic, thingAndHooks(tossed, sdrops
+				+ " public static Object onToss(Object stack, boolean named) { return sdrop(stack, false, named); }"), "Toss", argMixin(sdrop, object, null, null, null),
+				null, new ArrayList<>()).isEmpty(), "another class's method of that name");
+
+		// @Share and @Cancellable belong to the method the handler stays in: the shared value is the method's other
+		// injectors', and cancelling returns from the method before the hook's call, as before vanilla's. A @Local reads
+		// the code around the point, and stays.
+		String withRef = "(Ljava/lang/Object;Lcom/llamalad7/mixinextras/sugar/ref/LocalRef;)Ljava/lang/Object;";
+		String withCallback = "(Ljava/lang/Object;" + CIR + ")Ljava/lang/Object;";
+		for (String[] sugar : new String[][] {{withRef, "Lcom/llamalad7/mixinextras/sugar/Share;"}, {withCallback, "Lcom/llamalad7/mixinextras/sugar/Cancellable;"}}) {
+			AnnotationNode injector = keepInjector(movedRepairs(dir.resolve("sugar" + sugar[1].hashCode()), vanilla, platform, "Toss",
+					argMixin(drop, sugar[0], null, null, sugar[1]), null, new ArrayList<>()));
+			assertEquals(ON_TOSS_CALL, Annotations.value(Annotations.list(Annotations.value(injector, "at")).getFirst(), "target"), sugar[1]);
+		}
+		assertTrue(movedRepairs(dir.resolve("local"), vanilla, platform, "Toss", argMixin(drop, "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", null, null,
+				LOCAL), null, new ArrayList<>()).isEmpty());
+	}
+
+	@Test
+	void aModifyArgAtACallOfTheSuperclasssMethodStaysWhereTheHookCallsItOnTheObject(@TempDir Path dir) throws Exception {
+		// OVERLOAD-4: super.drop(...) runs the superclass's code; the hook's thing.drop(...) the class's own override, which
+		// would get the modified value where vanilla's never passed it one.
+		String hooks = TOSS_HOOK.replace('/', '.');
+		String base = "package net.minecraft.world; public class Base { public Object drop(Object stack, boolean thrown, boolean named) { return stack; } }";
+		java.util.function.Function<String, Map<String, String>> classes = dropping -> Map.of("net/minecraft/world/Base.java", base,
+				"net/minecraft/world/Thing.java", "package net.minecraft.world; public class Thing extends Base {"
+						+ " public Object drop(Object stack, boolean thrown, boolean named) { return null; }"
+						+ " public boolean toss(boolean all) { Object stack = String.valueOf(all); return " + dropping + " != null; } }",
+				"net/neoforged/Hooks.java", "package net.neoforged; public class Hooks {"
+						+ " public static Object onToss(net.minecraft.world.Base thing, Object stack, boolean named) { return thing.drop(stack, false, named); } }");
+		Map<String, String> platform = classes.apply(hooks + ".onToss(this, stack, true)");
+		String object = "(Ljava/lang/Object;)Ljava/lang/Object;";
+		assertTrue(movedRepairs(dir.resolve("super"), classes.apply("super.drop(stack, false, true)"), platform, "Toss",
+				argMixin("Lnet/minecraft/world/Base;" + DROP, object, null, null, null), null, new ArrayList<>()).isEmpty());
+		// Called on the object, the hook's call of the method it overrides runs the same code.
+		AnnotationNode injector = keepInjector(movedRepairs(dir.resolve("this"), classes.apply("this.drop(stack, false, true)"), platform, "Toss",
+				argMixin("L" + TARGET + ";" + DROP, object, null, null, null), null, new ArrayList<>()));
+		assertEquals("L" + TOSS_HOOK + ";onToss(Lnet/minecraft/world/Base;Ljava/lang/Object;Z)Ljava/lang/Object;",
+				Annotations.value(Annotations.list(Annotations.value(injector, "at")).getFirst(), "target"));
+	}
+
+	/** {@code Thing} with {@code sleep}, its {@code mark} and what {@code members} adds. */
+	private static Map<String, String> sleeper(String type, String body, String members) {
+		return Map.of("net/minecraft/world/Thing.java", "package net.minecraft.world; public class Thing { public void mark(int x) { }" + members
+				+ " public " + type + " sleep(int x) { " + body + " } }");
+	}
+
+	/** The platform's {@code Thing} creating the lambda of its {@code sleep} a second time. */
+	private static byte[] creatingItsLambdaTwice(byte[] thing) {
+		ClassNode node = new ClassNode();
+		new ClassReader(thing).accept(node, 0);
+		MethodNode sleep = node.methods.stream().filter(m -> m.name.equals("sleep")).findFirst().orElseThrow();
+		AbstractInsnNode created = java.util.Arrays.stream(sleep.instructions.toArray()).filter(i -> i instanceof InvokeDynamicInsnNode).findFirst().orElseThrow();
+		InsnList again = new InsnList();
+		again.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		again.add(new VarInsnNode(Opcodes.ILOAD, 1));
+		again.add(created.clone(null));
+		again.add(new InsnNode(Opcodes.POP));
+		sleep.instructions.insert(created, again);
+		sleep.maxStack += 3;
+		ClassWriter cw = new ClassWriter(0);
+		node.accept(cw);
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aCancellableWrapOperationStaysOutWhereTheLambdasOwnReturnIsBuiltAsALaterReturnOfVanillas(@TempDir Path dir) throws Exception {
+		// LAMBDA-13: the lambda's last return, the platform's own where vanilla's code goes on, built as a return vanilla's
+		// method makes past the code the lambda has: an alignment of the whole method pairs the two, and a handler
+		// setting such a value would send the platform's method on where vanilla's returned.
+		String supplier = "((java.util.function.Supplier<%s>) () -> { %s }).get()";
+		String test = " boolean test(int x) { return x > 5; }";
+		Consumer<MethodVisitor> setsTrue = mv -> {
+			mv.visitVarInsn(Opcodes.ALOAD, 4);
+			mv.visitInsn(Opcodes.ICONST_1);
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;", false);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, CIR.substring(1, CIR.length() - 1), "setReturnValue", "(Ljava/lang/Object;)V", false);
+		};
+		String checks = "if (x < 0) return false; this.mark(x);";
+		// return test(x) against the lambda's return true.
+		assertTrue(movedRepairs(dir.resolve("boolean"), sleeper("Boolean", checks + " return this.test(x);", test),
+				sleeper("Boolean", "Boolean r = " + supplier.formatted("Boolean", checks + " return true;") + "; if (!r) return false; return this.test(x);", test),
+				"Sleep", sleepMixin(setsTrue), null, new ArrayList<>()).isEmpty());
+		// The very return the lambda makes, after code of vanilla's the lambda doesn't have.
+		assertTrue(movedRepairs(dir.resolve("after"), sleeper("Boolean", checks + " this.test(x); return true;", test),
+				sleeper("Boolean", "Boolean r = " + supplier.formatted("Boolean", checks + " return true;") + "; if (!r) return false; this.test(x); return true;", test),
+				"Sleep", sleepMixin(setsTrue), null, new ArrayList<>()).isEmpty());
+		// Optional.of for both.
+		String optional = "java.util.Optional<String>";
+		String name = " String name(int x) { return \"n\"; }";
+		String problems = "if (x < 0) return java.util.Optional.of(\"far\"); this.mark(x);";
+		assertTrue(movedRepairs(dir.resolve("optional"), sleeper(optional, problems + " return java.util.Optional.of(this.name(x));", name),
+				sleeper(optional, optional + " r = " + supplier.formatted(optional, problems + " return java.util.Optional.of(\"go\");")
+						+ "; if (!r.get().equals(\"go\")) return r; return java.util.Optional.of(this.name(x));", name),
+				"Sleep", sleepMixin(SETS_A_PROBLEM), null, new ArrayList<>()).isEmpty());
+
+		// The platform's own return before vanilla's code a copy of vanilla's first: which is vanilla's can't be told.
+		String guard = "if (x == 99) return java.util.Optional.empty(); ";
+		assertTrue(sleepRepairs(dir.resolve("uncertain"), "if (x == 99) return java.util.Optional.of(\"far\"); ", sleepMixin(SETS_A_PROBLEM), true,
+				new ArrayList<>()).isEmpty());
+		// A lambda returning another type than the method: its returns aren't the method's.
+		Map<String, String> vanilla = Map.of("net/minecraft/world/Thing.java", sleepingThing(false, ""));
+		String start = " java.util.Optional<String> start(int x) { return java.util.Optional.empty(); }";
+		assertTrue(movedRepairs(dir.resolve("type"), vanilla, sleeper(optional, "String problem = " + supplier.formatted("String",
+				"if (x < 0) return \"far\"; this.mark(x); if (x > 5) return \"day\"; return null;")
+				+ "; if (problem != null) return java.util.Optional.of(problem); return this.start(x);", start), "Sleep", sleepMixin(SETS_A_PROBLEM), null,
+				new ArrayList<>()).isEmpty());
+		// The lambda created twice in the method.
+		Map<String, String> platform = Map.of("net/minecraft/world/Thing.java", sleepingThing(true, guard), "net/neoforged/Hooks.java",
+				"package net.neoforged; public class Hooks {"
+						+ " public static java.util.Optional<String> check(Object thing, java.util.Optional<String> result) { return result; } }");
+		assertFalse(movedRepairs(dir.resolve("once"), vanilla, platform, "Sleep", sleepMixin(SETS_A_PROBLEM), null, new ArrayList<>()).isEmpty());
+		assertTrue(movedRepairs(dir.resolve("again"), vanilla, platform, "Sleep", sleepMixin(SETS_A_PROBLEM), MixinPreflightTest::creatingItsLambdaTwice,
+				new ArrayList<>()).isEmpty());
+	}
+
 	@Test
 	void anInjectionAtACallNeoForgeMovedIntoAHookIsPointedAtTheHook() throws Exception {
 		// HOOK-2: architectury, FancyMenu and Inventory Profiles Next hook the game's call rendering the screen, which

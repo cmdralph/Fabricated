@@ -350,6 +350,15 @@ failures fall into a few groups:
   inject into synthetic lambdas whose captured values NeoForge's build passes in another order or not at all.
   NeoForge rewrote that code around its own conditions, so Fabricated evaluates `fabric:load_conditions` inside
   NeoForge's conditional codecs instead (with upstream's conditions), and the module loads.
+- **The platform moved vanilla's call into a lambda or a hook of its own**: a hook at a call vanilla's method makes
+  follows it into the one lambda the platform's build creates for that code (LAMBDA-2). One taking MixinExtras'
+  `@Cancellable` follows it only where cancelling there returns what vanilla's code returns: the lambda's code is
+  vanilla's, and the value set is built as vanilla's returns there are and as none of the platform's own (LAMBDA-13:
+  Apoli's sleep power in `ServerPlayer.startSleepInBed`, whose checks NeoForge 21.1 runs in a lambda whose result its
+  sleep event gets). A `@ModifyArg` of a call the platform's patch makes inside a static hook of its own, called in
+  vanilla's call's place, is pointed at the hook's call where the hook passes the value on unchanged, once, on every
+  way through it, as a check of its code proves (OVERLOAD-4: Apoli's drop hooks in `ServerPlayer.drop(boolean)`, which
+  NeoForge 21.1 and Forge 52 drop through `onPlayerTossEvent`). Otherwise the hook stays out, the report saying why.
 - **A mixin adds a method NeoForge already added**: `fabric-recipe-api-v1` generates an accessor
   `getConnection()` on `ServerCommonPacketListenerImpl` (NeoForge adds a public one), on 26.1.2 and 1.21.11 its
   `IngredientMixin` merges a `hashCode()` that NeoForge's `Ingredient` already has, and `fabric-tag-api-v1`

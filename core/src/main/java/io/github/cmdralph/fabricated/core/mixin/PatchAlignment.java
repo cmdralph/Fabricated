@@ -98,6 +98,14 @@ final class PatchAlignment {
 		return fromFront[vanillaIndex] == fromBack[vanillaIndex] ? fromFront[vanillaIndex] : UNCERTAIN;
 	}
 
+	/**
+	 * Whether both alignments place vanilla's instruction at {@code vanillaIndex}, at the same patched instruction or not:
+	 * the patched method has it, whichever copy of a repeated one it is.
+	 */
+	boolean placedByBoth(int vanillaIndex) {
+		return fromFront[vanillaIndex] >= 0 && fromBack[vanillaIndex] >= 0;
+	}
+
 	/** The indices of the patched instructions that are vanilla's: each one an instruction of vanilla's is placed at. */
 	Set<Integer> vanillaPlaces() {
 		Set<Integer> places = new HashSet<>();
