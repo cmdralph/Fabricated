@@ -350,6 +350,15 @@ failures fall into a few groups:
   inject into synthetic lambdas whose captured values NeoForge's build passes in another order or not at all.
   NeoForge rewrote that code around its own conditions, so Fabricated evaluates `fabric:load_conditions` inside
   NeoForge's conditional codecs instead (with upstream's conditions), and the module loads.
+- **The platform moved vanilla's call into a lambda or a hook of its own**: a hook at a call vanilla's method makes
+  follows it into the one lambda the platform's build creates for that code (LAMBDA-2). One taking MixinExtras'
+  `@Cancellable` follows it only where cancelling there returns what vanilla's code returns: the lambda's code is
+  vanilla's, and the value set is built as vanilla's returns there are and as none of the platform's own (LAMBDA-13:
+  Apoli's sleep power in `ServerPlayer.startSleepInBed`, whose checks NeoForge 21.1 runs in a lambda whose result its
+  sleep event gets). A `@ModifyArg` of a call the platform's patch makes inside a static hook of its own, called in
+  vanilla's call's place, is pointed at the hook's call where the hook passes the value on unchanged, once, on every
+  way through it, as a check of its code proves (OVERLOAD-4: Apoli's drop hooks in `ServerPlayer.drop(boolean)`, which
+  NeoForge 21.1 and Forge 52 drop through `onPlayerTossEvent`). Otherwise the hook stays out, the report saying why.
 - **A mixin adds a method NeoForge already added**: `fabric-recipe-api-v1` generates an accessor
   `getConnection()` on `ServerCommonPacketListenerImpl` (NeoForge adds a public one), on 26.1.2 and 1.21.11 its
   `IngredientMixin` merges a `hashCode()` that NeoForge's `Ingredient` already has, and `fabric-tag-api-v1`
@@ -1430,6 +1439,18 @@ processing, which the platform runs itself (Porting Lib's processors take the pl
 and Foes' wrapper of a structure mob's spawn in the method's lambda on NeoForge and Forge 47, whose lambda takes the
 settings where vanilla's takes what it reads from them: its spawn event doesn't fire for structure mobs there.
 
+The same goes where vanilla calls such a method at several places and the platform calls its own in the place of each
+(STRUCT-2): Forge 47's `FireBlock.tryCatchFire`, which replaced the private `checkBurnOut` that sets each block around
+a fire alight and takes the side the fire comes from too. A hook at the method's start, or at its end where the
+platform's returns as vanilla's does, runs there, its handler given vanilla's parameters where every call passes them
+alike; one at a call or field access inside the method runs where the platform's method makes that call in its place,
+together with the mod's other hooks into the method: Moonlight's hooks around the burnt block's removal (its fire
+consume event, used by Supplementaries and Amendments) work on Forge 47. A hook at vanilla's calls stays out. Forge 52
+to 66 and NeoForge (21.1 to 26.1.2, the versions whose classes were read) keep the name, `checkBurnOut` taking the side,
+where hooks are bridged as for any method given more parameters (SIG-1). An invoker of vanilla's method (Supplementaries' lumisene setting blocks alight) has nothing to
+call, the side being a parameter vanilla's never had: it stays out, a known limit the report names, and a call of it
+fails (*Supplementaries' lumisene* below).
+
 A mod's own call of a game constructor NeoForge replaced with one taking a name too, `LootPool`'s on every version
 (BCLib's loot pool mixin makes its pools so), calls NeoForge's with no name, and its widener's line for vanilla's
 constructor opens NeoForge's (LOOT-3). Any other call of a game constructor NeoForge lacks, a mixin's included, is
@@ -2311,9 +2332,14 @@ instead.
   `sinkInFluid`, which every fluid uses, so a hook of vanilla's water constant is left out: Additional Entity
   Attributes' water-speed attribute doesn't apply.
 - **Reach Entity Attributes** (Forge 47). Forge 47 works out reach from its own attributes (`ForgeMod.BLOCK_REACH` and
-  `ENTITY_REACH`). The constants Reach Entity Attributes' hooks change are gone from the methods it hooks, and its
-  container checks are interface mixins Forge 47's Mixin doesn't apply, so its reach attributes don't change reach. A
-  Fabric mod that gives reach through it gives none there.
+  `ENTITY_REACH`). The constants Reach Entity Attributes' hooks change are gone from the methods it hooks, and so are
+  the call and the constant its container checks hook (interface mixins, which Fabricated applies there itself where
+  their points are, INTERFACE-2), so its reach attributes don't change reach. A Fabric mod that gives reach through it
+  gives none there.
+- **Supplementaries' lumisene** (Forge 47). Its fire spread calls an invoker of vanilla's `FireBlock.checkBurnOut`,
+  which Forge replaced with `tryCatchFire`, taking the side the fire comes from too (STRUCT-2): the invoker is left out,
+  so the call fails (`NoSuchMethodError`), and as it is made in lit lumisene's block tick, the server would stop with
+  a crash report once lumisene burns the blocks around it. The report names it a known limit.
 - **Porting Lib's ports of Forge's hooks** (Forge 47). About 45 of Porting Lib's hooks (in Create and Farmer's Delight
   Refabricated) are left out on Forge 47. They port hooks Forge's own code makes there, where vanilla's code they
   hook is now Forge's, and call Porting Lib's own block and entity interfaces (`CustomFrictionBlock.getFriction`,
