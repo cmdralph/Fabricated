@@ -2427,8 +2427,8 @@ class MixinPreflightTest {
 			assertTrue(findings.stream().anyMatch(f -> f.message().contains("targets method " + PLACE_ENTITIES + ", which does not exist")), findings.toString());
 			boolean replaced = (Boolean) game.get(3);
 			assertEquals(replaced, findings.stream().anyMatch(f -> f.suggestion().contains("Forge replaced that private method with " + ADD_ENTITIES
-					+ ", which place calls in its place; only an @Inject at its call or its start, or at its end where that method returns as vanilla's does,"
-					+ " moves there (STRUCT-1)")), findings.toString());
+					+ ", which place calls in its place; only an @Inject at its call, its start, a call or field access in it that method makes in its place,"
+					+ " or its end where that method returns as vanilla's does, moves there (STRUCT-1)")), findings.toString());
 		}
 	}
 
@@ -2478,6 +2478,606 @@ class MixinPreflightTest {
 					.map(f -> f.handler().substring(0, f.handler().indexOf('('))).sorted().toList();
 			assertEquals(earlyReturn ? List.of("end", "last") : List.of(), leftOut, findings.toString());
 		}
+	}
+
+	private static final String BURN = "(Ljava/lang/Object;I)V";
+	private static final String CATCH_FIRE = "(Ljava/lang/Object;ILjava/lang/String;)V";
+	private static final String LOCAL_REF = "Lcom/llamalad7/mixinextras/sugar/ref/LocalRef;";
+
+	/**
+	 * {@link #TARGET} as vanilla's {@code FireBlock} has it: {@code tick(level, k)} sets two blocks alight with its private
+	 * {@code burn(level, chance)}, passing {@code 300 + k} and {@code 250 + k}, which removes the block; or as Forge 47
+	 * patches it, {@code catchFire(level, chance, face)} called in each place, asking the face's flammability first.
+	 * {@code variant}: {@code "unlike"}, the second call passing {@code k} alone; {@code "twice"}, the block removed twice;
+	 * {@code "named"}, the platform's method keeping vanilla's name.
+	 */
+	private static byte[] fireLike(boolean vanilla, String variant) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		String burner = vanilla ? "burn" : variant.equals("named") ? "burn" : "catchFire";
+		String desc = vanilla ? BURN : CATCH_FIRE;
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "(Ljava/lang/Object;I)V", null, null);
+		tick.visitCode();
+		for (int k = 0; k < 2; k++) {
+			tick.visitVarInsn(Opcodes.ALOAD, 0);
+			tick.visitVarInsn(Opcodes.ALOAD, 1);
+			if (k == 0 || vanilla || !variant.equals("unlike")) {
+				tick.visitIntInsn(Opcodes.SIPUSH, k == 0 ? 300 : 250);
+				tick.visitVarInsn(Opcodes.ILOAD, 2);
+				tick.visitInsn(Opcodes.IADD);
+			} else {
+				tick.visitVarInsn(Opcodes.ILOAD, 2);
+			}
+			if (!vanilla) tick.visitLdcInsn(k == 0 ? "east" : "west");
+			tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, burner, desc, false);
+		}
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		MethodVisitor burn = cw.visitMethod(Opcodes.ACC_PRIVATE, burner, desc, null, null);
+		burn.visitCode();
+		if (!vanilla) {
+			burn.visitVarInsn(Opcodes.ALOAD, 0);
+			burn.visitVarInsn(Opcodes.ALOAD, 3);
+			burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "flammable", "(Ljava/lang/String;)I", false);
+			burn.visitInsn(Opcodes.POP);
+		}
+		for (int k = 0; k < (!vanilla && variant.equals("twice") ? 2 : 1); k++) {
+			burn.visitVarInsn(Opcodes.ALOAD, 0);
+			burn.visitVarInsn(Opcodes.ALOAD, 1);
+			burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "remove", "(Ljava/lang/Object;)Z", false);
+			burn.visitInsn(Opcodes.POP);
+		}
+		burn.visitInsn(Opcodes.RETURN);
+		burn.visitMaxs(0, 0);
+		burn.visitEnd();
+		for (String[] own : new String[][] {{"remove", "(Ljava/lang/Object;)Z"}, {"flammable", "(Ljava/lang/String;)I"}}) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, own[0], own[1], null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.ICONST_1);
+			mv.visitInsn(Opcodes.IRETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * Moonlight's fire hooks: before and after {@code burn}'s removal of the block, taking its parameters and sharing a
+	 * value; with one at its start taking them, one taking the callback info alone, one at its call in {@code tick}, and,
+	 * {@code redirect}, a redirect of the removal too.
+	 */
+	private static byte[] fireHooks(boolean redirect) {
+		return mixin("com/example/mixin/Fire", false, cw -> {
+			List<String[]> hooks = new ArrayList<>(List.of(new String[] {"start", INJECT, "burn" + BURN, "HEAD", null, BURN.replace(")V", CALLBACK_INFO + ")V")},
+					new String[] {"bare", INJECT, "burn" + BURN, "HEAD", null, "(" + CALLBACK_INFO + ")V"},
+					new String[] {"before", INJECT, "burn" + BURN, "INVOKE", null, BURN.replace(")V", CALLBACK_INFO + LOCAL_REF + ")V")},
+					new String[] {"after", INJECT, "burn" + BURN, "INVOKE", "AFTER", BURN.replace(")V", CALLBACK_INFO + LOCAL_REF + ")V")},
+					new String[] {"atCall", INJECT, "tick", "INVOKE", null, "(" + CALLBACK_INFO + ")V"}));
+			if (redirect) hooks.add(new String[] {"removal", REDIRECT, "burn" + BURN, "INVOKE", null, "(L" + TARGET + ";Ljava/lang/Object;)Z"});
+			for (String[] hook : hooks) {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, hook[0], hook[5], null, null);
+				AnnotationVisitor ann = mv.visitAnnotation(hook[1], true);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, hook[2]);
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", hook[3]);
+				if (hook[3].equals("INVOKE")) at.visit("target", "L" + TARGET + ";" + (hook[0].equals("atCall") ? "burn" + BURN : "remove(Ljava/lang/Object;)Z"));
+				if (hook[4] != null) at.visitEnum("shift", "Lorg/spongepowered/asm/mixin/injection/At$Shift;", hook[4]);
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visitEnd();
+				if (hook[5].contains(LOCAL_REF)) {
+					int count = Type.getArgumentTypes(hook[5]).length;
+					mv.visitAnnotableParameterCount(count, false);
+					AnnotationVisitor share = mv.visitParameterAnnotation(count - 1, "Lcom/llamalad7/mixinextras/sugar/Share;", false);
+					share.visit("value", "state");
+					share.visitEnd();
+				}
+				mv.visitCode();
+				if (hook[1].equals(REDIRECT)) {
+					mv.visitInsn(Opcodes.ICONST_1);
+					mv.visitInsn(Opcodes.IRETURN);
+				} else {
+					mv.visitInsn(Opcodes.RETURN);
+				}
+				mv.visitMaxs(1, Type.getArgumentTypes(hook[5]).length + 1);
+				mv.visitEnd();
+			}
+		});
+	}
+
+	@Test
+	void injectorsInAPrivateMethodThePlatformReplacedAtEachOfItsCallsMoveThere() throws Exception {
+		// STRUCT-2: Forge 47 sets the blocks around a fire alight with tryCatchFire(level, pos, chance, random, age, face),
+		// which tick calls in the place of each of vanilla's six calls of its private checkBurnOut. Moonlight's hooks
+		// around its removal of the block, sharing the block's state, move there, as do those at the method's start; their
+		// handlers take vanilla's parameters as each call gives them. One at vanilla's call stays out: Forge's calls are
+		// others.
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Fire"));
+		Map<String, byte[]> vanilla = Map.of(TARGET, fireLike(true, ""));
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, fireLike(false, ""))::get);
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Fire", fireHooks(false)));
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get, "Forge")
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		for (String handler : List.of("start", "bare", "before", "after")) {
+			assertTrue(notes.stream().anyMatch(n -> n.message().contains("@Inject " + handler + " targets burn" + BURN + ", a private method Forge replaced with catchFire"
+					+ CATCH_FIRE + ", which tick calls in its place at each of its 2 calls; the injector is pointed there") && n.message().endsWith("(STRUCT-2)")),
+					handler + ": " + notes);
+		}
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Fire.class")).accept(node, 0);
+		MethodNode bare = node.methods.stream().filter(m -> m.name.equals("bare")).findFirst().orElseThrow();
+		assertEquals(List.of("catchFire" + CATCH_FIRE), Annotations.value(Annotations.find(bare, INJECT), "method"));
+		for (String handler : List.of("before", "after")) {
+			MethodNode bridge = node.methods.stream().filter(m -> m.name.equals(handler + "$fabricated")).findFirst().orElseThrow();
+			assertEquals(CATCH_FIRE.replace(")V", CALLBACK_INFO + LOCAL_REF + ")V"), bridge.desc);
+			assertEquals(List.of("catchFire" + CATCH_FIRE), Annotations.value(Annotations.find(bridge, INJECT), "method"));
+			// The level and the chance as the platform's method takes them, not the face; then the callback info and the share.
+			List<String> code = new ArrayList<>();
+			for (AbstractInsnNode insn : bridge.instructions) {
+				if (insn instanceof VarInsnNode load) code.add("load " + load.var);
+				if (insn instanceof MethodInsnNode call) code.add(call.name);
+			}
+			assertEquals(List.of("load 0", "load 1", "load 2", "load 4", "load 5", handler), code);
+			assertEquals(MixinNames.SHARE, bridge.invisibleParameterAnnotations[4].get(0).desc, "the share moves to the bridge");
+		}
+		MethodNode atCall = node.methods.stream().filter(m -> m.name.equals("atCall")).findFirst().orElseThrow();
+		assertEquals("L" + TARGET + ";burn" + BURN, Annotations.value(Annotations.list(Annotations.value(Annotations.find(atCall, INJECT), "at")).get(0), "target"));
+		mod.put("com/example/mixin/Fire", repaired.get("com/example/mixin/Fire.class"));
+		List<PreflightFinding> findings = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get, "Forge")
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().filter(f -> f.severity() != Severity.INFO).toList();
+		assertEquals(1, findings.size(), findings.toString());
+		assertTrue(findings.get(0).message().contains("@Inject in tick expects @At(\"INVOKE\", target=\"L" + TARGET + ";burn" + BURN + "\")"), findings.toString());
+		assertTrue(findings.get(0).suggestion().contains("which tick calls in its place at each of its 2 calls; only an @Inject at its start, a call or field access in it"
+				+ " that method makes in its place, or its end where that method returns as vanilla's does, moves there, one taking vanilla's parameters only"
+				+ " where each call gives them alike (STRUCT-2)"), findings.toString());
+
+		// What stays: the hooks taking vanilla's parameters where one call gives the chance otherwise; those inside the
+		// method where Forge's removes the block twice; those inside where a redirect of the removal in the same mixin can't
+		// move with them; and every hook where the platform's method keeps vanilla's name, which the bridges for added
+		// parameters take (SIG-1).
+		Map<String, List<String>> moving = Map.of("unlike", List.of("bare"), "twice", List.of("start", "bare"), "redirect", List.of("start", "bare"),
+				"named", List.of());
+		for (Map.Entry<String, List<String>> e : moving.entrySet()) {
+			boolean redirect = e.getKey().equals("redirect");
+			ClassIndex game = new ClassIndex(Map.of(TARGET, fireLike(false, redirect ? "" : e.getKey()))::get);
+			Map<String, byte[]> own = Map.of("com/example/mixin/Fire", fireHooks(redirect));
+			List<PreflightFinding> moved = new ArrayList<>();
+			new MixinPreflight(game, InstalledClasses.NONE, own::get, ClassBytesSource.EMPTY, false, true, vanilla::get, "Forge")
+					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), moved);
+			List<String> handlers = moved.stream().filter(n -> n.message().contains("(STRUCT-2)"))
+					.map(n -> n.message().substring("@Inject ".length(), n.message().indexOf(" targets"))).sorted().toList();
+			assertEquals(e.getValue().stream().sorted().toList(), handlers, e.getKey() + ": " + moved);
+		}
+	}
+
+	@Test
+	void anInvokerOfAPrivateMethodThePlatformReplacedIsAKnownLimit() throws Exception {
+		// STRUCT-2: Supplementaries' invoker of FireBlock.checkBurnOut, which Forge 47 replaced with tryCatchFire taking the
+		// side the fire comes from too: nothing of Forge's takes what the invoker is given, which the report says.
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, "com/example/mixin/Burner", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(TARGET));
+		values.visitEnd();
+		m.visitEnd();
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "invokeBurn", BURN, null, null);
+		AnnotationVisitor invoker = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Invoker;", true);
+		invoker.visit("value", "burn");
+		invoker.visitEnd();
+		mv.visitEnd();
+		cw.visitEnd();
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Burner", cw.toByteArray());
+		Map<String, byte[]> vanilla = Map.of(TARGET, fireLike(true, ""));
+		for (boolean replaced : new boolean[] {true, false}) {
+			ClassIndex forge = new ClassIndex(Map.of(TARGET, fireLike(false, replaced ? "" : "unlike"))::get);
+			ClassBytesSource original = replaced ? vanilla::get : ClassBytesSource.EMPTY;
+			List<PreflightFinding> findings = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, original, "Forge")
+					.check("test.mixins.json", MixinConfigFile.parse(config(true, "Burner")), Refmap.EMPTY, Set.of());
+			assertEquals(1, findings.size(), findings.toString());
+			PreflightFinding f = findings.get(0);
+			assertTrue(f.message().startsWith("@Invoker target method burn" + BURN + " does not exist"), f.toString());
+			String limit = io.github.cmdralph.fabricated.core.report.KnownLimits.ofFinding("Forge", f);
+			if (!replaced) {
+				assertEquals("The method was renamed or removed by Forge or this Minecraft version.", f.suggestion());
+				assertNull(limit, f.toString());
+				continue;
+			}
+			assertEquals("Forge replaced that private method with catchFire" + CATCH_FIRE + ", which tick calls in its place at each of its 2 calls, and has no"
+					+ " method taking vanilla's parameters for the invoker to call; a call of it fails.", f.suggestion());
+			assertNotNull(limit, f.toString());
+			assertTrue(limit.startsWith("Known limit: NeoForge and Forge replaced that private method") && limit.endsWith("(STRUCT-2)"), limit);
+		}
+	}
+
+	/**
+	 * A handler of {@link #hookMixin}: its injector, the method it selects, its point with its target and shift, and its
+	 * descriptor. {@code options}, space separated: {@code share} (its last parameter shares {@code state}),
+	 * {@code share:<namespace>}, {@code group} (in the group {@code g}), {@code static}, {@code ordinal1},
+	 * {@code w:<field>} and {@code r:<field>} (it writes or reads that field of the mixin).
+	 */
+	private record HookSpec(String name, String annotation, String method, String point, String target, String shift, String desc, String options) {
+		boolean has(String option) {
+			return List.of(options.split(" ")).contains(option);
+		}
+
+		String valued(String option) {
+			return List.of(options.split(" ")).stream().filter(o -> o.startsWith(option + ":")).map(o -> o.substring(option.length() + 1)).findFirst().orElse(null);
+		}
+	}
+
+	/** The mixin {@code com/example/mixin/Fire} with {@code hooks} and the int {@code fields} they keep. */
+	private static byte[] hookMixin(List<HookSpec> hooks, String... fields) {
+		String name = "com/example/mixin/Fire";
+		return mixin(name, false, cw -> {
+			for (String field : fields) cw.visitField(Opcodes.ACC_PRIVATE, field, "I", null, null).visitEnd();
+			for (HookSpec hook : hooks) {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | (hook.has("static") ? Opcodes.ACC_STATIC : 0), hook.name(), hook.desc(), null, null);
+				if (hook.has("group")) {
+					AnnotationVisitor group = mv.visitAnnotation(MixinNames.GROUP, true);
+					group.visit("name", "g");
+					group.visitEnd();
+				}
+				AnnotationVisitor ann = mv.visitAnnotation(hook.annotation(), true);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, hook.method());
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", hook.point());
+				if (hook.target() != null) at.visit("target", hook.target());
+				if (hook.shift() != null) at.visitEnum("shift", "Lorg/spongepowered/asm/mixin/injection/At$Shift;", hook.shift());
+				if (hook.has("ordinal1")) at.visit("ordinal", 1);
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visitEnd();
+				int count = Type.getArgumentTypes(hook.desc()).length;
+				if (hook.has("share") || hook.valued("share") != null) {
+					mv.visitAnnotableParameterCount(count, false);
+					AnnotationVisitor share = mv.visitParameterAnnotation(count - 1, MixinNames.SHARE, false);
+					if (hook.valued("share") != null) share.visit("namespace", hook.valued("share"));
+					share.visit("value", "state");
+					share.visitEnd();
+				}
+				mv.visitCode();
+				if (hook.valued("w") != null) {
+					mv.visitVarInsn(Opcodes.ALOAD, 0);
+					mv.visitInsn(Opcodes.ICONST_1);
+					mv.visitFieldInsn(Opcodes.PUTFIELD, name, hook.valued("w"), "I");
+				}
+				if (hook.valued("r") != null) {
+					mv.visitVarInsn(Opcodes.ALOAD, 0);
+					mv.visitFieldInsn(Opcodes.GETFIELD, name, hook.valued("r"), "I");
+					mv.visitInsn(Opcodes.POP);
+				}
+				if (hook.annotation().equals(REDIRECT)) mv.visitInsn(Opcodes.ICONST_1);
+				mv.visitInsn(hook.annotation().equals(REDIRECT) ? Opcodes.IRETURN : Opcodes.RETURN);
+				mv.visitMaxs(2, 2 * count + 2);
+				mv.visitEnd();
+			}
+		});
+	}
+
+	/**
+	 * The handlers of {@code mixin} ({@code com/example/mixin/Fire}) whose injectors pre-flight's repairs point at a method
+	 * the platform replaced or at its call (STRUCT-1, STRUCT-2), sorted; {@code repaired} takes the mixin as repaired.
+	 */
+	private static List<String> movedHooks(byte[] vanilla, byte[] platform, byte[] mixin, String config, Map<String, byte[]> repaired) throws Exception {
+		Map<String, byte[]> original = Map.of(TARGET, vanilla);
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, platform)::get);
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Fire", mixin);
+		List<PreflightFinding> notes = new ArrayList<>();
+		repaired.putAll(new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, original::get, "Forge")
+				.repairs("test.mixins.json", MixinConfigFile.parse(config), Refmap.EMPTY, Set.of(), notes));
+		return notes.stream().filter(n -> n.message().contains(" is pointed there") && n.message().contains("(STRUCT-"))
+				.map(n -> n.message().substring("@Inject ".length()).split(" ")[0]).sorted().toList();
+	}
+
+	/**
+	 * {@link #fireLike} with {@code calls} calls of {@code burn}, each passing the level and another chance; with,
+	 * {@code overload}, a public {@code burn(level)} beside it on both.
+	 */
+	private static byte[] fireCalls(boolean vanilla, int calls, boolean overload) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		String burner = vanilla ? "burn" : "catchFire";
+		String desc = vanilla ? BURN : CATCH_FIRE;
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "(Ljava/lang/Object;I)V", null, null);
+		tick.visitCode();
+		for (int k = 0; k < calls; k++) {
+			tick.visitVarInsn(Opcodes.ALOAD, 0);
+			tick.visitVarInsn(Opcodes.ALOAD, 1);
+			tick.visitIntInsn(Opcodes.SIPUSH, 300 - k);
+			tick.visitVarInsn(Opcodes.ILOAD, 2);
+			tick.visitInsn(Opcodes.IADD);
+			if (!vanilla) tick.visitLdcInsn("face" + k);
+			tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, burner, desc, false);
+		}
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		MethodVisitor burn = cw.visitMethod(Opcodes.ACC_PRIVATE, burner, desc, null, null);
+		burn.visitCode();
+		if (!vanilla) {
+			burn.visitVarInsn(Opcodes.ALOAD, 0);
+			burn.visitVarInsn(Opcodes.ALOAD, 3);
+			burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "flammable", "(Ljava/lang/String;)I", false);
+			burn.visitInsn(Opcodes.POP);
+		}
+		burn.visitVarInsn(Opcodes.ALOAD, 0);
+		burn.visitVarInsn(Opcodes.ALOAD, 1);
+		burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "remove", "(Ljava/lang/Object;)Z", false);
+		burn.visitInsn(Opcodes.POP);
+		burn.visitInsn(Opcodes.RETURN);
+		burn.visitMaxs(0, 0);
+		burn.visitEnd();
+		List<String[]> own = new ArrayList<>(List.of(new String[] {"remove", "(Ljava/lang/Object;)Z"}, new String[] {"flammable", "(Ljava/lang/String;)I"}));
+		if (overload) own.add(new String[] {"burn", "(Ljava/lang/Object;)Z"});
+		for (String[] method : own) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, method[0], method[1], null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.ICONST_1);
+			mv.visitInsn(Opcodes.IRETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	private static final String INFO_ALONE = "(" + MixinPreflightTest.CALLBACK_INFO + ")V";
+	private static final String INFO_AND_SHARE = "(" + MixinPreflightTest.CALLBACK_INFO + LOCAL_REF + ")V";
+	private static final String REMOVE = "L" + TARGET + ";remove(Ljava/lang/Object;)Z";
+	private static final String REQUIRING = "{\"required\":true,\"package\":\"com.example.mixin\",\"injectors\":{\"defaultRequire\":1},\"mixins\":[\"Fire\"]}";
+	private static final String WITH_PLUGIN = "{\"required\":true,\"package\":\"com.example.mixin\",\"plugin\":\"com.example.Plugin\",\"injectors\":"
+			+ "{\"defaultRequire\":1},\"mixins\":[\"Fire\"]}";
+
+	@Test
+	void hooksAtAMethodThePlatformReplacedMoveTogetherOrNotAtAll() throws Exception {
+		// STRUCT-2: a hook moved on the word that its partner moves, while the partner stayed for a reason of its own, applied
+		// alone. Each is judged with every condition, and taking one out takes out those that only move with it.
+		HookSpec removal = new HookSpec("removal", REDIRECT, "burn" + BURN, "INVOKE", REMOVE, null, "(L" + TARGET + ";Ljava/lang/Object;)Z", "");
+		HookSpec gone = new HookSpec("other", INJECT, "tick", "INVOKE", "L" + TARGET + ";gone()V", null, INFO_ALONE, "r:kept");
+		HookSpec there = new HookSpec("other", INJECT, "tick", "HEAD", null, null, INFO_ALONE, "r:kept");
+		// One at the start writing a field one inside reads, which a redirect in the method, which can't move, keeps out.
+		List<HookSpec> state = List.of(new HookSpec("start", INJECT, "burn" + BURN, "HEAD", null, null, INFO_ALONE, "w:kept"),
+				new HookSpec("inner", INJECT, "burn" + BURN, "INVOKE", REMOVE, null, INFO_ALONE, "r:kept"));
+		// Two sharing a value, or just inside the method, one keeping a field with an injector that applies nowhere.
+		List<HookSpec> shared = List.of(new HookSpec("before", INJECT, "burn" + BURN, "INVOKE", REMOVE, null, INFO_AND_SHARE, "share"),
+				new HookSpec("after", INJECT, "burn" + BURN, "INVOKE", REMOVE, "AFTER", INFO_AND_SHARE, "share w:kept"));
+		List<HookSpec> inside = List.of(new HookSpec("before", INJECT, "burn" + BURN, "INVOKE", REMOVE, null, INFO_ALONE, ""),
+				new HookSpec("after", INJECT, "burn" + BURN, "INVOKE", REMOVE, "AFTER", INFO_ALONE, "w:kept"));
+		// One at vanilla's call writing a field one inside reads, kept out by the redirect.
+		List<HookSpec> atCall = List.of(new HookSpec("start", INJECT, "tick", "INVOKE", "L" + TARGET + ";burn" + BURN, null, INFO_ALONE, "w:kept"),
+				new HookSpec("inner", INJECT, "burn" + BURN, "INVOKE", REMOVE, null, INFO_ALONE, "r:kept"));
+		for (int calls : new int[] {1, 2}) {
+			byte[] vanilla = fireCalls(true, calls, false);
+			byte[] forge = fireCalls(false, calls, false);
+			for (String config : List.of(REQUIRING, WITH_PLUGIN)) {
+				String at = calls + " call(s), " + (config.equals(REQUIRING) ? "required" : "with a plugin");
+				for (List<List<HookSpec>> shape : List.of(List.of(state, List.of(removal)), List.of(shared, List.of(gone), List.of(there)),
+						List.of(inside, List.of(gone), List.of(there)), List.of(atCall, List.of(removal)))) {
+					if (shape.get(0) == atCall && calls > 1) continue;
+					List<HookSpec> blocked = new ArrayList<>(shape.get(0));
+					blocked.addAll(shape.get(1));
+					assertEquals(List.of(), movedHooks(vanilla, forge, hookMixin(blocked, "kept"), config, new HashMap<>()), at + ": " + blocked);
+					// Without what keeps one out, or with it applying where it is, both move.
+					List<HookSpec> free = new ArrayList<>(shape.get(0));
+					if (shape.size() > 2) free.addAll(shape.get(2));
+					assertEquals(shape.get(0).stream().map(HookSpec::name).sorted().toList(), movedHooks(vanilla, forge, hookMixin(free, "kept"), config, new HashMap<>()),
+							at + ": " + free);
+				}
+			}
+		}
+	}
+
+	@Test
+	void aHookInAMethodThePlatformReplacedStaysWhereAPartnerCantBeTold() throws Exception {
+		// STRUCT-2: a hook inside the method moves with every other injector of its mixin into it. One selecting its method by
+		// a pattern, or by a name vanilla has two methods of, may be into it; alternatives of a group aren't moved; a share
+		// under a namespace may be another mixin class's too. The hook stays out with each.
+		HookSpec inner = new HookSpec("inner", INJECT, "burn" + BURN, "INVOKE", REMOVE, null, INFO_ALONE, "");
+		Map<String, List<HookSpec>> partners = new LinkedHashMap<>();
+		partners.put("a pattern", List.of(new HookSpec("partner", INJECT, "burn*", "HEAD", null, null, INFO_ALONE, "")));
+		partners.put("a name of two", List.of(new HookSpec("partner", INJECT, "burn", "HEAD", null, null, INFO_ALONE, "")));
+		partners.put("a group", List.of(new HookSpec("partner", INJECT, "burn" + BURN, "HEAD", null, null, INFO_ALONE, "group"),
+				new HookSpec("alternative", INJECT, "burn" + BURN, "HEAD", null, null, INFO_ALONE, "group")));
+		for (Map.Entry<String, List<HookSpec>> e : partners.entrySet()) {
+			boolean overload = e.getKey().equals("a name of two");
+			List<HookSpec> hooks = new ArrayList<>(List.of(inner));
+			hooks.addAll(e.getValue());
+			assertEquals(List.of(), movedHooks(fireCalls(true, 2, overload), fireCalls(false, 2, overload), hookMixin(hooks), REQUIRING, new HashMap<>()), e.getKey());
+		}
+		// A partner named by its descriptor moves, and the hook with it; so does one named alone where vanilla has one of the name.
+		for (String selector : List.of("burn" + BURN, "burn")) {
+			List<HookSpec> told = List.of(inner, new HookSpec("partner", INJECT, selector, "HEAD", null, null, INFO_ALONE, ""));
+			assertEquals(List.of("inner", "partner"), movedHooks(fireCalls(true, 2, false), fireCalls(false, 2, false), hookMixin(told), REQUIRING, new HashMap<>()), selector);
+		}
+		List<HookSpec> namespaced = List.of(new HookSpec("before", INJECT, "burn" + BURN, "INVOKE", REMOVE, null, INFO_AND_SHARE, "share:example"),
+				new HookSpec("after", INJECT, "burn" + BURN, "INVOKE", REMOVE, "AFTER", INFO_AND_SHARE, "share:example"));
+		assertEquals(List.of(), movedHooks(fireCalls(true, 2, false), fireCalls(false, 2, false), hookMixin(namespaced), REQUIRING, new HashMap<>()));
+	}
+
+	private static final String POS = "net/minecraft/world/Pos";
+	private static final String SPREAD = "(Ljava/lang/Object;L" + POS + ";ILjava/lang/Object;I)V";
+
+	/**
+	 * {@link #TARGET} with vanilla's {@code FireBlock.tick} as it works its arguments out: the age read once from the state
+	 * ({@code getValue(AGE).intValue()}), a bonus stored once from either branch of a condition, and each call of the
+	 * private {@code burn(level, pos, chance, random, age)} passing a neighbour of the position ({@code pos.east()}) and a
+	 * number plus the bonus; or as Forge 47 patches it, {@code catchFire} taking the face too.
+	 */
+	private static byte[] fireTickLike(boolean vanilla) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		String burner = vanilla ? "burn" : "catchFire";
+		String desc = vanilla ? SPREAD : SPREAD.replace(")V", "Ljava/lang/String;)V");
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "(Ljava/util/function/Supplier;Ljava/lang/Object;L" + POS + ";Ljava/lang/Object;Z)V", null, null);
+		tick.visitCode();
+		tick.visitVarInsn(Opcodes.ALOAD, 1);
+		tick.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/function/Supplier", "get", "()Ljava/lang/Object;", true);
+		tick.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Integer");
+		tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Integer", "intValue", "()I", false);
+		tick.visitVarInsn(Opcodes.ISTORE, 6);
+		Label dry = new Label();
+		Label store = new Label();
+		tick.visitVarInsn(Opcodes.ILOAD, 5);
+		tick.visitJumpInsn(Opcodes.IFEQ, dry);
+		tick.visitIntInsn(Opcodes.BIPUSH, -50);
+		tick.visitJumpInsn(Opcodes.GOTO, store);
+		tick.visitLabel(dry);
+		tick.visitInsn(Opcodes.ICONST_0);
+		tick.visitLabel(store);
+		tick.visitVarInsn(Opcodes.ISTORE, 7);
+		for (String side : List.of("east", "west")) {
+			tick.visitVarInsn(Opcodes.ALOAD, 0);
+			tick.visitVarInsn(Opcodes.ALOAD, 2);
+			tick.visitVarInsn(Opcodes.ALOAD, 3);
+			tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, POS, side, "()L" + POS + ";", false);
+			tick.visitIntInsn(Opcodes.SIPUSH, side.equals("east") ? 300 : 250);
+			tick.visitVarInsn(Opcodes.ILOAD, 7);
+			tick.visitInsn(Opcodes.IADD);
+			tick.visitVarInsn(Opcodes.ALOAD, 4);
+			tick.visitVarInsn(Opcodes.ILOAD, 6);
+			if (!vanilla) tick.visitLdcInsn(side);
+			tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, burner, desc, false);
+		}
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		MethodVisitor burn = cw.visitMethod(Opcodes.ACC_PRIVATE, burner, desc, null, null);
+		burn.visitCode();
+		burn.visitInsn(Opcodes.RETURN);
+		burn.visitMaxs(0, 0);
+		burn.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aHandlerTakesVanillasParametersAsTheFireTicksCallsWorkThemOut() throws Exception {
+		// STRUCT-2: vanilla's FireBlock.tick passes checkBurnOut a neighbour of the position, a chance plus a bonus stored
+		// from either branch of a condition, and the age read from the state; Forge 47's passes tryCatchFire the same, and
+		// the face. Each call gives vanilla's parameters as the platform's first five.
+		Map<String, byte[]> repaired = new HashMap<>();
+		List<HookSpec> hooks = List.of(new HookSpec("start", INJECT, "burn" + SPREAD, "HEAD", null, null, SPREAD.replace(")V", CALLBACK_INFO + ")V"), ""));
+		assertEquals(List.of("start"), movedHooks(fireTickLike(true), fireTickLike(false), hookMixin(hooks), REQUIRING, repaired));
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Fire.class")).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("start$fabricated")).findFirst().orElseThrow();
+		assertEquals(SPREAD.replace(")V", "Ljava/lang/String;" + CALLBACK_INFO + ")V"), bridge.desc);
+		List<Integer> loads = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode load) loads.add(load.var);
+		}
+		assertEquals(List.of(0, 1, 2, 3, 4, 5, 7), loads, "the face, in slot 6, isn't the handler's");
+	}
+
+	private static final String HEAT = "(JDLjava/lang/Object;)V";
+	private static final String HEAT_AND_FACE = "(JDLjava/lang/Object;Ljava/lang/String;)V";
+
+	/**
+	 * {@link #TARGET} with a static {@code tick(level, amount, heat)} calling its private static
+	 * {@code burn(amount, heat, level)} twice, which reads the static field {@code count}, removes the level's block twice
+	 * and returns; or as a platform patches it, {@code catchFire} taking a face too, which, {@code early}, returns first
+	 * where the face isn't flammable.
+	 */
+	private static byte[] staticFireLike(boolean vanilla, boolean early) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "count", "I", null, null).visitEnd();
+		String burner = vanilla ? "burn" : "catchFire";
+		String desc = vanilla ? HEAT : HEAT_AND_FACE;
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "tick", "(Ljava/lang/Object;JD)V", null, null);
+		tick.visitCode();
+		for (String side : List.of("east", "west")) {
+			tick.visitVarInsn(Opcodes.LLOAD, 1);
+			tick.visitVarInsn(Opcodes.DLOAD, 3);
+			tick.visitVarInsn(Opcodes.ALOAD, 0);
+			if (!vanilla) tick.visitLdcInsn(side);
+			tick.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, burner, desc, false);
+		}
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		MethodVisitor burn = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, burner, desc, null, null);
+		burn.visitCode();
+		if (!vanilla) {
+			Label on = new Label();
+			burn.visitVarInsn(Opcodes.ALOAD, 5);
+			burn.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "flammable", "(Ljava/lang/String;)I", false);
+			if (early) {
+				burn.visitJumpInsn(Opcodes.IFNE, on);
+				burn.visitInsn(Opcodes.RETURN);
+				burn.visitLabel(on);
+			} else {
+				burn.visitInsn(Opcodes.POP);
+			}
+		}
+		burn.visitFieldInsn(Opcodes.GETSTATIC, TARGET, "count", "I");
+		burn.visitInsn(Opcodes.POP);
+		for (int k = 0; k < 2; k++) {
+			burn.visitVarInsn(Opcodes.ALOAD, 4);
+			burn.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "remove", "(Ljava/lang/Object;)Z", false);
+			burn.visitInsn(Opcodes.POP);
+		}
+		burn.visitInsn(Opcodes.RETURN);
+		burn.visitMaxs(0, 0);
+		burn.visitEnd();
+		for (String[] own : new String[][] {{"remove", "(Ljava/lang/Object;)Z"}, {"flammable", "(Ljava/lang/String;)I"}}) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, own[0], own[1], null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.ICONST_1);
+			mv.visitInsn(Opcodes.IRETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void hooksAtTheEndAFieldAndAnOrdinalOfAStaticMethodReplacedAtEachCallMoveThere() throws Exception {
+		// STRUCT-2: hooks at the returns and the end of a static method the platform replaced at each of its calls, at a field
+		// it reads and at the second of two calls it makes, move to the platform's; a bridge takes its wide parameters ahead
+		// of the callback info and the share. Where the platform's returns first too, those at its end stay, and with them
+		// the ones inside it.
+		String taking = HEAT.replace(")V", CALLBACK_INFO + ")V");
+		List<HookSpec> hooks = List.of(new HookSpec("end", INJECT, "burn" + HEAT, "RETURN", null, null, taking, "static"),
+				new HookSpec("last", INJECT, "burn" + HEAT, "TAIL", null, null, INFO_ALONE, "static"),
+				new HookSpec("counted", INJECT, "burn" + HEAT, "FIELD", "L" + TARGET + ";count:I", null, HEAT.replace(")V", CALLBACK_INFO + LOCAL_REF + ")V"),
+						"static share"),
+				new HookSpec("second", INJECT, "burn" + HEAT, "INVOKE", REMOVE, null, INFO_AND_SHARE, "static share ordinal1"));
+		byte[] vanilla = staticFireLike(true, false);
+		Map<String, byte[]> repaired = new HashMap<>();
+		assertEquals(List.of("counted", "end", "last", "second"), movedHooks(vanilla, staticFireLike(false, false), hookMixin(hooks), REQUIRING, repaired));
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Fire.class")).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("counted$fabricated")).findFirst().orElseThrow();
+		assertEquals(HEAT_AND_FACE.replace(")V", CALLBACK_INFO + LOCAL_REF + ")V"), bridge.desc);
+		assertTrue((bridge.access & Opcodes.ACC_STATIC) != 0, "static as its handler");
+		List<String> code = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode load) code.add(load.getOpcode() + " " + load.var);
+		}
+		// The amount, the heat and the level, not the face in slot 5; then the callback info and the share.
+		assertEquals(List.of(Opcodes.LLOAD + " 0", Opcodes.DLOAD + " 2", Opcodes.ALOAD + " 4", Opcodes.ALOAD + " 6", Opcodes.ALOAD + " 7"), code);
+		assertEquals(MixinNames.SHARE, bridge.invisibleParameterAnnotations[5].get(0).desc, "the share moves to the bridge");
+		MethodNode second = node.methods.stream().filter(m -> m.name.equals("second")).findFirst().orElseThrow();
+		assertEquals(List.of("catchFire" + HEAT_AND_FACE), Annotations.value(Annotations.find(second, INJECT), "method"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Fire", repaired.get("com/example/mixin/Fire.class"));
+		Map<String, byte[]> original = Map.of(TARGET, vanilla);
+		List<PreflightFinding> findings = new MixinPreflight(new ClassIndex(Map.of(TARGET, staticFireLike(false, false))::get), InstalledClasses.NONE, mod::get,
+				ClassBytesSource.EMPTY, false, true, original::get, "Forge").check("test.mixins.json", MixinConfigFile.parse(REQUIRING), Refmap.EMPTY, Set.of());
+		assertTrue(findings.stream().noneMatch(f -> f.severity() != Severity.INFO), findings.toString());
+
+		assertEquals(List.of(), movedHooks(vanilla, staticFireLike(false, true), hookMixin(hooks), REQUIRING, new HashMap<>()));
 	}
 
 	/**
@@ -11432,6 +12032,81 @@ class MixinPreflightTest {
 			assertEquals(PreflightFinding.Severity.LEFT_OUT, f.severity(), "the mixin is self-contained: " + f);
 			assertEquals("h(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", f.handler(), "only the handler: " + f);
 			assertTrue(f.message().contains("is an injector in an interface mixin, which Forge's Mixin doesn't apply"), f.message());
+		}
+	}
+
+	@Test
+	void anInterfaceMixinsInjectorFabricatedCantApplyIsLeftOutForWhatItFindsMissing() throws Exception {
+		// PRE-35: Fabric API's recipe remainder redirects and Reach Entity Attributes' reach checks are interface mixins'
+		// injectors of kinds Fabricated applies on Forge 47, whose calls and constants Forge's code lacks. The report said
+		// Forge's Mixin applies no such injector, against INTERFACE-2's list; it says what Fabricated finds missing.
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, "com/example/mixin/Hooks", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(TARGET));
+		values.visitEnd();
+		m.visitEnd();
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "redirected", "(L" + TARGET + ";)V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(REDIRECT, true);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "tick");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", "INVOKE");
+		at.visit("target", "L" + TARGET + ";gone()V");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitEnd();
+		cw.visitEnd();
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Hooks", cw.toByteArray());
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		List<PreflightFinding> findings = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY,
+				"Forge", false).check("test.mixins.json", MixinConfigFile.parse(config(true, "Hooks")), Refmap.EMPTY, Set.of());
+		assertEquals(1, findings.size(), findings.toString());
+		PreflightFinding f = findings.getFirst();
+		assertEquals(PreflightFinding.Severity.LEFT_OUT, f.severity(), f.toString());
+		assertEquals("@Redirect handler redirected is an injector in an interface mixin, which Forge's Mixin doesn't apply (Mixin does from 0.8.6), and"
+				+ " Fabricated, which applies @Inject, @Redirect, @ModifyConstant and @WrapOperation injectors there itself, doesn't apply this one: it finds"
+				+ " no INVOKE L" + TARGET + ";gone()V in tick()V in net.minecraft.world.Thing, so it would drop the whole mixin", f.message());
+		assertEquals("Forge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.", f.suggestion());
+	}
+
+	@Test
+	void aPointVanillasOwnMethodLacksTooIsNoChangeOfThePlatforms() throws Exception {
+		// PRE-34: Supplementaries' hook of the creeper's explosion with fire, Arclight's, whose call vanilla 1.20.1's
+		// explodeCreeper doesn't make either: the report said Forge or this Minecraft version changed the method. Where
+		// vanilla's classes show the point missing there too, it says so; without them, as before.
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Elsewhere", mixin("com/example/mixin/Elsewhere", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "hook", "(" + CALLBACK_INFO + ")V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "tick");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";gone()V");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 2);
+			mv.visitEnd();
+		}));
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		Map<String, byte[]> vanilla = Map.of(TARGET, targetClass());
+		for (boolean withVanilla : new boolean[] {true, false}) {
+			List<PreflightFinding> findings = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true,
+					withVanilla ? vanilla::get : ClassBytesSource.EMPTY, "Forge").check("test.mixins.json", MixinConfigFile.parse(config(true, "Elsewhere")), Refmap.EMPTY, Set.of());
+			assertEquals(1, findings.size(), findings.toString());
+			assertTrue(findings.getFirst().message().endsWith("target=\"L" + TARGET + ";gone()V\"), which does not occur in that method"), findings.toString());
+			assertEquals(withVanilla ? "Vanilla's own tick doesn't have it either, so Forge didn't change it: the hook is for another Minecraft version's, another"
+					+ " platform's or another mod's code, and would find nothing on Fabric with this Minecraft version either."
+					: "Forge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.", findings.getFirst().suggestion());
 		}
 	}
 

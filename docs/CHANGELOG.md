@@ -3,6 +3,35 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-13: Hooks in a private method the platform replaced at each of its calls (STRUCT-2); truer report lines for hooks vanilla's code lacks too (PRE-34) and for interface mixins' injectors on Forge 47 (PRE-35)
+
+- **STRUCT-2** (P1), fixed: Forge 47 replaced `FireBlock`'s private `checkBurnOut`, which vanilla's `tick` calls for
+  each of the six blocks around a fire, with `tryCatchFire`, taking the side the fire comes from too. Moonlight's hooks
+  around the burnt block's removal (its fire consume event, which Supplementaries and Amendments use) were left out.
+  A hook at the start or end of a private method of vanilla's the platform replaced so at each of its calls now runs in
+  the platform's method, its handler given vanilla's parameters where every call passes them alike; one at a call or
+  field access inside it runs there too where the platform's method makes that call in its place, with the mod's
+  other hooks into the method, and may share values through MixinExtras' `@Share` (also at STRUCT-1's methods). Which
+  of a mod's hooks move is decided once for each mixin, so that hooks keeping state together, sharing a value or set
+  inside one method apply together or not at all; where another hook may be into the method without pre-flight
+  telling, they stay out.
+  Moonlight's hooks apply on Forge 47. Forge 52 to 66 and NeoForge keep the method's name and bridge such hooks as
+  before. Supplementaries' invoker of vanilla's method has nothing to call there: it stays out, and the report names it
+  a known limit (a call of it fails, which lit lumisene burning the blocks around it would make).
+- **PRE-34** (P3), fixed: a hook whose point vanilla's own method lacks too, as Supplementaries' hook of Arclight's
+  creeper explosion, was reported as Forge or this Minecraft version having changed the method; the report now says
+  vanilla's method doesn't have it either.
+- **PRE-35** (P3), fixed: on Forge 47, an interface mixin's injector of a kind Fabricated applies there itself, left out
+  because Forge's code lacks its point (Fabric API's recipe remainder redirects, Reach Entity Attributes' container
+  reach checks), was reported as one Forge's Mixin doesn't apply; the report now says what Fabricated finds missing.
+
+Verified with core's unit tests (the new and updated ones fail without the change), CI's script tests and the mixin
+inventory, and on Forge 47's corpus and advanced corpus servers against the same build without the change: Moonlight's
+two fire hooks are pointed at Forge's `tryCatchFire` and apply, the other changed report lines are the reasons above
+and the hint of STRUCT-1's methods, and every check is as before. Pre-flight run on the fire classes of Forge 47, 52,
+61 and 64 to 66 and NeoForge 21.1, 21.11 and 26.1.2 moves hooks of Moonlight's shape on Forge 47 only, the others
+bridging them as before.
+
 ## 2026-11-13: Apoli's sleep and drop hooks follow vanilla's code into NeoForge's lambda and the platforms' toss hook (LAMBDA-13, OVERLOAD-4)
 
 - **LAMBDA-13** (P2), fixed: on NeoForge 1.21.1, Origins' power preventing sleep didn't: NeoForge runs a player's sleep
