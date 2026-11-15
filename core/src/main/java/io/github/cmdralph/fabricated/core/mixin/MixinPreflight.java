@@ -2979,7 +2979,8 @@ public final class MixinPreflight extends PreflightPart {
 	 * the values stored are typed as Mixin's generated table types them, its verifier's types ({@link #flowType}): a
 	 * slot stored values of several types holds one of them, or a superclass of one where they meet, so none of that type
 	 * where it is neither one of them nor a superclass of one, as far as {@code hierarchy} tells ({@link #mayBeTyped}); a
-	 * parameter's slot holds its type too; nothing is told of {@code Object}, which the verifier types a null and unlike
+	 * parameter's slot holds its type too; a slot nothing gives a local up to the point holds none, {@code method} read
+	 * with its frames ({@link #untouched}); nothing is told of {@code Object}, which the verifier types a null and unlike
 	 * values. Without it (null), one type per slot.
 	 */
 	static boolean absentAt(Type type, MethodNode method, int point, String owner, int but, Function<String, ClassIndex.ClassInfo> hierarchy) {
@@ -3022,7 +3023,19 @@ public final class MixinPreflight extends PreflightPart {
 		});
 		for (int slot : suspect) {
 			if (slot == but || lastEnd.containsKey(slot)) continue;
-			if (!overwritten(method, slot, 0, point)) return false;
+			if (!overwritten(method, slot, 0, point) && !(hierarchy != null && slot >= argSlots && untouched(method, slot, point))) return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Whether nothing gives {@code slot} a local up to the instruction at {@code point} as Mixin walks the method read with
+	 * its frames: no load of it or store to it, and no stack map frame. A slot past the parameters holds none there.
+	 */
+	private static boolean untouched(MethodNode method, int slot, int point) {
+		for (int i = 0; i <= point && i < method.instructions.size(); i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			if (insn instanceof FrameNode || insn instanceof VarInsnNode var && var.var == slot) return false;
 		}
 		return true;
 	}
