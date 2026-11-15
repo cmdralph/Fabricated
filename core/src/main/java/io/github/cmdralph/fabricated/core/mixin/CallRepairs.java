@@ -380,8 +380,6 @@ final class CallRepairs extends PreflightPart {
 
 	/** Mixin's {@code @ModifyArg}. */
 	private static final String MODIFY_ARG = "Lorg/spongepowered/asm/mixin/injection/ModifyArg;";
-	/** MixinExtras' {@code @Cancellable}. */
-	private static final String CANCELLABLE = "Lcom/llamalad7/mixinextras/sugar/Cancellable;";
 
 	/**
 	 * Points a {@code @ModifyArg} at a call vanilla's method makes, which the platform's patch makes inside a hook of its
@@ -393,7 +391,9 @@ final class CallRepairs extends PreflightPart {
 	 * The value the hook's call gets there must be the one the call inside gets, which an analysis of the stack tells
 	 * ({@link OverloadRepairs#pushedBy}):
 	 * <ul>
-	 * <li>vanilla's call (VANILLA-1) is gone from the method, and in its place, as an alignment of the two methods' code
+	 * <li>vanilla's call (VANILLA-1), a static one or one the object's class decides (not {@code super}'s or another
+	 * {@code invokespecial}, which names one class's code where the hook's call would run an override's), is gone from
+	 * the method, and in its place, as an alignment of the two methods' code
 	 * tells ({@link PatchAlignment#replacementOf}), the patch calls one static method of the platform's (in its classes),
 	 * nowhere else; with the point's ordinal, the call in the place of vanilla's with that ordinal;</li>
 	 * <li>that hook makes the call once, on every way through it (no jump, switch, return, throw or try block, and no
@@ -419,7 +419,7 @@ final class CallRepairs extends PreflightPart {
 		for (int i = 0; i < params.length; i++) {
 			boolean sugar = false;
 			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
-				if (!a.desc.equals(MixinNames.SHARE) && !a.desc.equals(CANCELLABLE)) return List.of();
+				if (!a.desc.equals(MixinNames.SHARE) && !a.desc.equals(MixinNames.CANCELLABLE)) return List.of();
 				sugar = true;
 			}
 			if (!sugar) args.add(params[i]);
@@ -457,7 +457,7 @@ final class CallRepairs extends PreflightPart {
 		if (inVanilla.isEmpty() || ordinal >= inVanilla.size()) return List.of();
 		PatchAlignment alignment = PatchAlignment.of(before, patched);
 		if (alignment == null) return List.of();
-		boolean staticCall = before.instructions.get(inVanilla.get(0)).getOpcode() == Opcodes.INVOKESTATIC;
+		boolean staticCall = before.instructions.get(inVanilla.get(Math.max(ordinal, 0))).getOpcode() == Opcodes.INVOKESTATIC;
 		// The hook's call in the place of each of vanilla's calls the point picks.
 		MethodInsnNode hook = null;
 		int[] passed = null;
@@ -465,6 +465,10 @@ final class CallRepairs extends PreflightPart {
 		for (int k = 0; k < inVanilla.size(); k++) {
 			if (ordinal >= 0 && k != ordinal) continue;
 			int vanillaCall = inVanilla.get(k);
+			// A call of the method itself, as the hook's is: super.drop(...) (invokespecial) names the superclass's code, which
+			// the hook's call on the object wouldn't run where its class overrides it.
+			int made = before.instructions.get(vanillaCall).getOpcode();
+			if (staticCall ? made != Opcodes.INVOKESTATIC : made != Opcodes.INVOKEVIRTUAL && made != Opcodes.INVOKEINTERFACE) return List.of();
 			int[] range = alignment.replacementOf(vanillaCall);
 			if (alignment.placeOf(vanillaCall) != -1 || range == null) return List.of();
 			MethodInsnNode found = null;

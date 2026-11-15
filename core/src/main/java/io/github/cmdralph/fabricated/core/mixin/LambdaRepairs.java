@@ -712,8 +712,6 @@ final class LambdaRepairs extends PreflightPart {
 		return false;
 	}
 
-	/** MixinExtras' {@code @Cancellable}. */
-	private static final String CANCELLABLE ="Lcom/llamalad7/mixinextras/sugar/Cancellable;";
 	private static final String RETURNABLE = "org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable";
 
 	/**
@@ -725,7 +723,7 @@ final class LambdaRepairs extends PreflightPart {
 		int found = -1;
 		for (int i = 0; i < params.length; i++) {
 			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
-				if (!a.desc.equals(CANCELLABLE) || found != -1 || !params[i].getInternalName().equals(RETURNABLE)) return -2;
+				if (!a.desc.equals(MixinNames.CANCELLABLE) || found != -1 || !params[i].getInternalName().equals(RETURNABLE)) return -2;
 				found = i;
 			}
 		}
@@ -738,11 +736,18 @@ final class LambdaRepairs extends PreflightPart {
 	 * sets, which {@code method}'s code then takes as it takes the returns vanilla's code there makes, where it returned
 	 * from vanilla's method (LAMBDA-13). So:
 	 * <ul>
-	 * <li>{@code method} creates the lambda once, and the lambda returns the type it returns, a reference;</li>
-	 * <li>the lambda's code is vanilla's method's there, as an alignment of the two tells with certainty
-	 * ({@link PatchAlignment}): each instruction the point picks in vanilla's method, as many as the lambda has, is
-	 * placed at one the point picks in the lambda, and each of vanilla's returns is placed at one of the lambda's, or
-	 * has no place;</li>
+	 * <li>{@code method} creates the lambda once, and the lambda returns the type it returns, a reference. How the
+	 * platform's code then runs the lambda (once, as NeoForge's sleep checks, or again, in a loop, or dropping its
+	 * result) isn't told: whatever it does with one of vanilla's returns there, it does with the cancelled one;</li>
+	 * <li>the lambda's code is vanilla's method's there, as an alignment of the two tells ({@link PatchAlignment}): the
+	 * lambda has vanilla's code from the method's start on, every instruction of it, up to the first one an alignment
+	 * leaves without a place there, where the lambda stops and the method goes on ({@link #coveredBy}); each
+	 * instruction the point picks in vanilla's method, as many as the lambda has, is in that code and placed, with
+	 * certainty, at one the point picks in the lambda; and a return of vanilla's is the lambda's where it is in that code
+	 * and it and the call building its value are placed there with certainty. A return of vanilla's past that code
+	 * isn't the lambda's, whatever the alignment pairs it with: the lambda's last return, the platform's own for
+	 * vanilla's code going on, may be built as a later return of vanilla's is ({@code return true} for
+	 * {@code return test(x)});</li>
 	 * <li>each value the handler sets is built by a call of the one static method that builds the value of each of
 	 * vanilla's returns placed in the lambda, and builds none of the lambda's other returns, each built by a static call
 	 * too: the platform tells what vanilla's code returns from what its own code returns by how each is built
@@ -775,14 +780,16 @@ final class LambdaRepairs extends PreflightPart {
 		List<Integer> before = PreflightAsm.matching(original, point, ref, opcode);
 		List<Integer> after = PreflightAsm.matching(lambda, point, ref, opcode);
 		if (before.isEmpty() || before.size() != after.size()) return false;
+		int covered = coveredBy(original, alignment);
 		for (int index : before) {
-			if (!after.contains(alignment.placeOf(index))) return false;
+			if (index >= covered || !after.contains(alignment.placeOf(index))) return false;
 		}
 		// How the values of vanilla's returns in the lambda are built, and how those of the lambda's own returns are. A
-		// return of vanilla's is in the lambda where it and the call building its value both are placed there.
+		// return of vanilla's is the lambda's where it is in the code the lambda has and it and the call building its value
+		// both are placed there.
 		Set<Integer> vanillasReturns = new HashSet<>();
 		Set<String> vanillaBuilds = new HashSet<>();
-		for (int i = 0; i < original.instructions.size(); i++) {
+		for (int i = 0; i < covered; i++) {
 			if (original.instructions.get(i).getOpcode() != Opcodes.ARETURN) continue;
 			int place = alignment.placeOf(i);
 			int builder = builtBy(original, i);
@@ -818,6 +825,19 @@ final class LambdaRepairs extends PreflightPart {
 			}
 		}
 		return sets > 0 && loads == sets;
+	}
+
+	/**
+	 * Where the code of vanilla's method that a lambda has ends ({@link #cancelsAsVanilla}): the index of the first
+	 * instruction of {@code original} that one of the alignments with the lambda's code leaves without a place. Up to
+	 * there the lambda has every instruction of vanilla's, in order (which copy of a repeated one, as where the
+	 * platform's own check before vanilla's reads what vanilla's first reads, needn't be told).
+	 */
+	private static int coveredBy(MethodNode original, PatchAlignment alignment) {
+		for (int i = 0; i < original.instructions.size(); i++) {
+			if (original.instructions.get(i).getOpcode() >= 0 && !alignment.placedByBoth(i)) return i;
+		}
+		return original.instructions.size();
 	}
 
 	/**
