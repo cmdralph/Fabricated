@@ -1948,7 +1948,6 @@ public final class MixinPreflight extends PreflightPart {
 				hint != null ? hint : "The method was renamed or removed by " + ctx.changer(false) + ".");
 	}
 
-	/** {@link #replacedHint(ClassNode, String, String)} for a point's call of a method of the target. */
 	/**
 	 * Why an injector's point is missing where vanilla's own method lacks it too (VANILLA-1's classes): no change of the
 	 * platform's, but code another Minecraft version, another platform or another mod has there (Supplementaries' hook of
@@ -1969,6 +1968,7 @@ public final class MixinPreflight extends PreflightPart {
 				+ " another platform's or another mod's code, and would find nothing on Fabric with this Minecraft version either.";
 	}
 
+	/** {@link #replacedHint(ClassNode, String, String)} for a point's call of a method of the target. */
 	private String replacedHint(ClassNode target, String rawTarget, Context ctx) {
 		MemberRef ref = rawTarget == null ? null : MemberRef.parse(ctx.resolve(rawTarget));
 		return ref == null || ref.fuzzy() || !target.name.equals(ref.owner()) ? null : replacedHint(target, ref.name(), ref.desc());

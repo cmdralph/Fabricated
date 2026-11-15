@@ -222,7 +222,7 @@ point fails at startup, in CI. Four injections set `require = 0` on purpose, eac
 | Thread | Fabricated code that runs there |
 |---|---|
 | FML discovery (early services; may be a worker pool) | `FabricCandidateLocator`, `FabricDependencyLocator` → core `Pipeline` (translates mods with `parallelStream()`), `TranslationCache` |
-| Any class-loading thread | `FabricClassProcessor` (reads only the immutable `FabricatedState`) |
+| Any class-loading thread | `FabricClassTransforms`, called by `FabricClassProcessor` and `DefaultBridgeProcessor` (FML 10 to 12) or `FabricClassTransformer` (1.21.1); it only reads `FabricatedState`'s discovery result |
 | Mod construction / mod-bus events | `FabricatedMod`, native module registration, entrypoints (`main` on the first `RegisterEvent`) |
 | Render thread | client entrypoints (in `Minecraft`'s constructor), HUD/screen bridges, client networking handlers, moving blocks and the breaking overlay (`MovingBlockRenderMixin`, `BlockBreakingRenderMixin` → `FabricBlockRendering`, with their own per-thread renderer and emitter) |
 | **Chunk-section compile workers (several at once)** | `SectionCompilerMixin` → `FabricBlockRendering` for every block: the decision is a `ClassValue` (and, for a vanilla multipart or weighted model, a field of the model, written once with the same answer by any thread); the Fabric renderer and emitter are per thread (`ThreadLocal`); nothing else shared is mutated |
