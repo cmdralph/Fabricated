@@ -164,7 +164,7 @@ A beta release holds this bar, on every branch:
 3. Run the workflow with mode `dry-run` (the default), and check the jars, the checksums and what would be uploaded to
    CurseForge in the run's summary and log.
 4. Run it again with mode `draft` (a draft GitHub release) or `publish` (a published one, its jars uploaded to
-   CurseForge, which needs the secrets `CURSEFORGE_PROJECT_ID` and `CURSEFORGE_TOKEN`). A tag with a
+   CurseForge, which needs the repository variable `CURSEFORGE_PROJECT_ID` and the secret `CURSEFORGE_TOKEN`). A tag with a
    pre-release suffix (`-beta.2`) makes a pre-release on GitHub and a beta on CurseForge (`-alpha`, an alpha). GitHub
    creates the tag at `main`'s pinned commit when the release is published; no tag is pushed from a working copy.
 
