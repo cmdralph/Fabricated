@@ -1,7 +1,7 @@
 # Fabricated for Forge 1.20.1 and 1.21.1
 
 > **This is the `forge-legacy` branch:** Fabricated for **Minecraft Forge 47** (Minecraft 1.20.1) and **Forge 52**
-> (Minecraft 1.21.1, new in v0.6.0-beta.2), on dedicated servers and clients. **Status: beta (v0.6.0-beta.2)**, held to
+> (Minecraft 1.21.1, new in v0.6.0-beta.2), on dedicated servers and clients. **Status: beta (v0.6.0-beta.3)**, held to
 > the same bar as NeoForge in CI; the open findings are in the [roadmap](/docs/roadmap.md#open-findings). What works on
 > it is in the [support matrix](/docs/COMPATIBILITY.md#support-matrix) and under [*Forge*](/docs/COMPATIBILITY.md#forge)
 > in `docs/COMPATIBILITY.md`, what Forge doesn't support yet under
@@ -24,7 +24,7 @@ and tests the Forge 1.20.1 and 1.21.1 targets, and the releases' `fabricated-for
 
 1. Install Forge 47 for Minecraft 1.20.1, or Forge 52 for Minecraft 1.21.1, with the official installer.
 2. Download `fabricated-forge-<version>+mc<minecraft>.jar` for that version (for this release,
-   `fabricated-forge-0.6.0-beta.2+mc1.20.1.jar` or `fabricated-forge-0.6.0-beta.2+mc1.21.1.jar`) from the
+   `fabricated-forge-0.6.0-beta.3+mc1.20.1.jar` or `fabricated-forge-0.6.0-beta.3+mc1.21.1.jar`) from the
    [releases](https://github.com/cmdralph/Fabricated/releases) or CurseForge. The `fabricated-neoforge-*+mc1.21.1.jar`
    is NeoForge's.
 3. Check the jar against the release's `SHA256SUMS.txt`.
