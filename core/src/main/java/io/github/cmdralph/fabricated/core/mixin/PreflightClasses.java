@@ -159,19 +159,24 @@ final class PreflightClasses {
 
 	/** Whether {@code type} is, extends or implements {@code supertype}, as far as the game's and the libraries' classes tell. */
 	boolean isSubtype(String type, String supertype) {
-		if (libraries == null) libraries = new ClassIndex(untransformable);
 		Set<String> seen = new HashSet<>();
 		ArrayDeque<String> queue = new ArrayDeque<>(List.of(type));
 		while (!queue.isEmpty()) {
 			String name = queue.poll();
 			if (name.equals(supertype)) return true;
 			if (!seen.add(name)) continue;
-			ClassIndex.ClassInfo info = game.contains(name) ? game.get(name) : libraries.get(name);
+			ClassIndex.ClassInfo info = info(name);
 			if (info == null) continue;
 			if (info.superName() != null) queue.add(info.superName());
 			queue.addAll(info.interfaces());
 		}
 		return false;
+	}
+
+	/** A class as the game has it, else as the libraries do; null where neither has it. */
+	ClassIndex.ClassInfo info(String internalName) {
+		if (libraries == null) libraries = new ClassIndex(untransformable);
+		return game.contains(internalName) ? game.get(internalName) : libraries.get(internalName);
 	}
 
 	/** Vanilla's version of a game class (parsed once per pre-flight), or null. */
