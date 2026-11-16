@@ -19,7 +19,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   `CampfireBlock` and `Explosion` with the frames recorded compressed and expanded; core's tests, CI's script tests and
   the inventory.
 
-## 2026-11-13: Hooks in a private method the platform replaced at each of its calls (STRUCT-2); truer report lines for hooks vanilla's code lacks too (PRE-36) and for interface mixins' injectors on Forge 47 (PRE-35)
+## 2026-11-13: Hooks in a private method the platform replaced at each of its calls (STRUCT-2); truer report lines for hooks vanilla's code lacks too (PRE-34) and for interface mixins' injectors on Forge 47 (PRE-35)
 
 - **STRUCT-2** (P1), fixed: Forge 47 replaced `FireBlock`'s private `checkBurnOut`, which vanilla's `tick` calls for
   each of the six blocks around a fire, with `tryCatchFire`, taking the side the fire comes from too. Moonlight's hooks
@@ -47,6 +47,24 @@ two fire hooks are pointed at Forge's `tryCatchFire` and apply, the other change
 and the hint of STRUCT-1's methods, and every check is as before. Pre-flight run on the fire classes of Forge 47, 52,
 61 and 64 to 66 and NeoForge 21.1, 21.11 and 26.1.2 moves hooks of Moonlight's shape on Forge 47 only, the others
 bridging them as before.
+
+## 2026-11-13: Apoli's sleep and drop hooks follow vanilla's code into NeoForge's lambda and the platforms' toss hook (LAMBDA-13, OVERLOAD-4)
+
+- **LAMBDA-13** (P2), fixed: on NeoForge 1.21.1, Origins' power preventing sleep didn't: NeoForge runs a player's sleep
+  checks in a lambda whose result its sleep event gets, and Apoli's hook there cancels the sleep, which Fabricated didn't
+  move into the lambda. A hook taking MixinExtras' `@Cancellable` now follows a call into such a lambda where cancelling
+  there returns what vanilla's code there returns: the lambda's code is vanilla's, and the value the hook sets is built
+  as vanilla's returns there are and as none of the platform's own (a problem, not "no problem"). Otherwise it stays
+  out as before.
+- **OVERLOAD-4** (P2), fixed: on NeoForge 1.21.1 and Forge 1.21.1 (52), Origins' powers changing the item a player drops
+  didn't run: both platforms drop it through their toss event hook, which makes vanilla's drop call itself. A
+  `@ModifyArg` of such a call is now pointed at the hook's call where the hook passes the value on unchanged, as a
+  check of its code proves; otherwise it stays out as before.
+- FrozenLib's registry hook taking the new entry's id by its type on NeoForge 1.21.11 and 26.1.2 was checked: it applies
+  there, taking NeoForge's copy of the id.
+- Verified: core's tests and CI's script tests; NeoForge 1.21.1's, 1.21.11's and 26.1.2's and Forge 52's advanced corpus servers
+  against runs before the change: the two hooks apply where the platform moved the code, with no Mixin error, and nothing
+  else in the reports or the checks changes.
 
 ## 2026-11-12: Vanilla's calls of a block state or a stack put back where the platform asks an extension of it (SEAM-8), PRE-30's naming of a local by its slot extended to slices and assignments (PRE-33)
 
