@@ -19,7 +19,7 @@ installer() {
 }
 
 install_server() {
-	installer
+	installer || { echo "The installer could not be downloaded"; return 1; }
 	java -jar installer.jar --installServer . > installer.log 2>&1 || { cat installer.log; return 1; }
 }
 
@@ -27,7 +27,7 @@ install_server() {
 install_client() {
 	# The installer only checks that a launcher profile file exists.
 	echo '{"profiles":{}}' > "$1/launcher_profiles.json"
-	installer
+	installer || { echo "The installer could not be downloaded"; return 1; }
 	java -jar installer.jar --installClient "$1" > installer.log 2>&1 || { cat installer.log; return 1; }
 }
 
