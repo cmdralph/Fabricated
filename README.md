@@ -19,7 +19,8 @@ It's built to be:
   modifies your mod jars, never touches the network, and has no telemetry.
 
 > **Status: beta (v0.6.0-beta.3).** Nearly every Fabric API module loads, and every platform and version is held to
-> the same bar in CI, but Fabric mods that patch code NeoForge changed can still be disabled before they run. Read
+> the same bar in CI, but Fabric mods that patch code NeoForge changed can still lose that hook, or be disabled before
+> they run. Read
 > [What works today](#what-works-today) before relying on it.
 
 **Platforms and branches.** This README is about NeoForge. Builds for Minecraft Forge, for dedicated servers and
@@ -61,7 +62,8 @@ that NeoForge has already changed. Fabricated handles this per module:
   `fabric-entity-events-v1`, `fabric-object-builder-api-v1`, `fabric-item-api-v1`, `fabric-block-api-v1`,
   `fabric-events-interaction-v0`, `fabric-loot-api-v3`, `fabric-content-registries-v0`,
   `fabric-transfer-api-v1`, `fabric-api-lookup-api-v1`, `fabric-menu-api-v1` (`fabric-screen-handler-api-v1`
-  on 1.21.1 and 1.21.11), `fabric-biome-api-v1`, `fabric-crash-report-info-v1`, and on 1.21.1 `fabric-particles-v1`.
+  on 1.21.1 and 1.21.11), `fabric-biome-api-v1`, `fabric-crash-report-info-v1`, and on 1.21.1 `fabric-particles-v1`
+  and `fabric-key-binding-api-v1`.
 - **Pass-through**: the module is loaded from the official Fabric API jar you install. Fabricated checks
   every mixin against NeoForge's code before loading it ("mixin pre-flight"). Modules whose mixins can't
   apply are disabled, along with every mod that requires them, with an explanation.
@@ -189,6 +191,11 @@ warning in the report, so a bad config never crashes the game.
 
 - **Fabric API coverage** is the main limit. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the
   per-module status on each Minecraft version. What is planned is in [docs/roadmap.md](docs/roadmap.md).
+- **Hooks into code NeoForge replaced.** Where NeoForge replaced vanilla's code that a Fabric mod hooks, Fabricated
+  puts vanilla's call back or points the hook at NeoForge's code where it can prove the hook then does what it does on
+  Fabric. The others are left out, and the report says why. The known ones are listed, by mod, under
+  [*Mixins NeoForge's code can't take*](docs/COMPATIBILITY.md#mixins-neoforges-code-cant-take-leave-1), and Forge's
+  under [*Unsupported on Forge*](docs/COMPATIBILITY.md#unsupported-on-forge).
 - **Mixin pre-flight is conservative.** It only reports what it can prove from bytecode. A mixin it can't
   evaluate (wildcard selectors, unusual injection points, a target in another Fabric mod) loads normally. If
   that mixin later fails, Mixin's own crash report names the Fabric mod. Mixins into Minecraft, Fabric API and
@@ -218,9 +225,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ## Design and research
 
-- [docs/roadmap.md](docs/roadmap.md): the roadmap (the platforms' parity, the tracks, what is next), the open findings, test matrices and what is still unverified.
+- [docs/roadmap.md](docs/roadmap.md): what comes next, the open findings and what is still unverified.
 - [docs/FINDINGS.md](docs/FINDINGS.md): every fixed finding, with its cause and how its fix was verified.
-- [docs/CHANGELOG.md](docs/CHANGELOG.md): what each working session changed, and how it was verified.
+- [docs/CHANGELOG.md](docs/CHANGELOG.md): what changed, newest first, and how it was verified.
 - [docs/MIXINS.md](docs/MIXINS.md): every mixin Fabricated applies, with its target and injection point.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the pipeline, isolation, caching and security work.
 - [docs/RESEARCH.md](docs/RESEARCH.md): verified facts about NeoForge, FML and Fabric that the design
