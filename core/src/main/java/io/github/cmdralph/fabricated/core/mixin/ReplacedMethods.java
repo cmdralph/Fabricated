@@ -568,7 +568,7 @@ final class ReplacedMethods extends PreflightPart {
 		}
 		if (insn instanceof VarInsnNode load && op >= Opcodes.ILOAD && op <= Opcodes.ALOAD) {
 			List<Integer> stores = storesTo(method, load.var);
-			if (load.var < parameterSlots(method)) return new Parsed(stores.isEmpty() ? new Value(load.var, null, null, -1) : Value.UNKNOWN, end);
+			if (load.var < OverloadRepairs.firstLocalSlot(method)) return new Parsed(stores.isEmpty() ? new Value(load.var, null, null, -1) : Value.UNKNOWN, end);
 			Parsed stored = stores.size() == 1 ? parse(method, stores.get(0) - 1, depth + 1) : null;
 			return new Parsed(stored == null ? Value.UNKNOWN : stored.value(), end);
 		}
@@ -590,12 +590,6 @@ final class ReplacedMethods extends PreflightPart {
 					|| insn instanceof IincInsnNode inc && inc.var == slot) stores.add(i);
 		}
 		return stores;
-	}
-
-	private static int parameterSlots(MethodNode method) {
-		int slots = (method.access & Opcodes.ACC_STATIC) == 0 ? 1 : 0;
-		for (Type type : Type.getArgumentTypes(method.desc)) slots += type.getSize();
-		return slots;
 	}
 
 	/**

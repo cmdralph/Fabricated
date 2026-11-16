@@ -515,7 +515,7 @@ final class CallRepairs extends PreflightPart {
 		int parameter = parameterLoaded(hook, pushed[offset + argument], Type.getArgumentTypes(ref.desc())[argument]);
 		int receiver = staticCall ? -1 : parameterLoaded(hook, pushed[0], null);
 		if (parameter < 0 || !staticCall && receiver < 0) return null;
-		int slot = parameterSlot(hook, parameter);
+		int slot = HandlerBridges.slotOf(hook, List.of(Type.getArgumentTypes(hook.desc)), parameter);
 		int loads = 0;
 		for (AbstractInsnNode insn : hook.instructions) {
 			if (insn instanceof VarInsnNode var && var.var == slot && var.getOpcode() >= Opcodes.ILOAD && var.getOpcode() <= Opcodes.ALOAD) loads++;
@@ -539,14 +539,6 @@ final class CallRepairs extends PreflightPart {
 			slot += params[i].getSize();
 		}
 		return -1;
-	}
-
-	/** The local variable slot of {@code method}'s parameter at {@code index}. */
-	private static int parameterSlot(MethodNode method, int index) {
-		Type[] params = Type.getArgumentTypes(method.desc);
-		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
-		for (int i = 0; i < index; i++) slot += params[i].getSize();
-		return slot;
 	}
 
 	/** Whether {@code method} stores into, or increments, the local variable in {@code slot}. */

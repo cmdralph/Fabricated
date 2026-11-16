@@ -157,9 +157,9 @@ final class LocalRepairs extends PreflightPart {
 	/** The slot of the method's argument that its local variable table names one of {@code names}, of a type {@code accepts}; null when none. */
 	private static Integer argumentSlot(MethodNode method, List<?> names, Predicate<String> accepts) {
 		if (method.localVariables == null) return null;
-		int end = argumentsEnd(method);
+		int end = OverloadRepairs.firstLocalSlot(method);
 		for (LocalVariableNode lv : method.localVariables) {
-			if (lv.index < end && names.contains(lv.name) && accepts.test(lv.desc) && isArgumentSlot(method, lv.index)) return lv.index;
+			if (lv.index < end && names.contains(lv.name) && accepts.test(lv.desc) && argumentAt(method, lv.index) != null) return lv.index;
 		}
 		return null;
 	}
@@ -176,21 +176,6 @@ final class LocalRepairs extends PreflightPart {
 			slot += arg.getSize();
 		}
 		return found;
-	}
-
-	/** The first slot after the method's arguments. */
-	private static int argumentsEnd(MethodNode method) {
-		return ((method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1) + (Type.getArgumentsAndReturnSizes(method.desc) >> 2) - 1;
-	}
-
-	/** Whether a slot is where one of the method's arguments starts (not {@code this}, nor the second half of a long or double). */
-	private static boolean isArgumentSlot(MethodNode method, int index) {
-		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
-		for (Type arg : Type.getArgumentTypes(method.desc)) {
-			if (slot == index) return true;
-			slot += arg.getSize();
-		}
-		return false;
 	}
 
 	/**
@@ -443,7 +428,7 @@ final class LocalRepairs extends PreflightPart {
 			if (alignment.placeOf(i) >= 0) vanillaAt.put(alignment.placeOf(i), i);
 		}
 		String desc = type.getDescriptor();
-		int parameterSlots = argumentsEnd(patched);
+		int parameterSlots = OverloadRepairs.firstLocalSlot(patched);
 		int found = -1;
 		for (int p : positions) {
 			Integer v = vanillaAt.get(p);
@@ -834,7 +819,7 @@ final class LocalRepairs extends PreflightPart {
 		return true;
 	}
 
-	/** The type of the method's argument that starts at a slot; null when none does. */
+	/** The type of the method's argument that starts at a slot; null when none does ({@code this}, the second half of a long or double). */
 	private static Type argumentAt(MethodNode method, int index) {
 		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
 		for (Type arg : Type.getArgumentTypes(method.desc)) {

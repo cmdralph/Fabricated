@@ -384,7 +384,7 @@ public final class InterfaceInjects {
 			List<Type> wanted = List.of(handlerArgs).subList(info + 1, own);
 			String[] there = locals.at(method, at);
 			List<Type> available = new ArrayList<>();
-			for (int slot = firstLocal(method); there != null && slot < there.length && available.size() < wanted.size(); slot++) {
+			for (int slot = OverloadRepairs.firstLocalSlot(method); there != null && slot < there.length && available.size() < wanted.size(); slot++) {
 				if (there[slot] == null) continue;
 				Type type = Type.getType(there[slot]);
 				available.add(type);
@@ -523,7 +523,7 @@ public final class InterfaceInjects {
 		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
 		String[] slots;
 		if (Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))) {
-			slots = new String[firstLocal(method)];
+			slots = new String[OverloadRepairs.firstLocalSlot(method)];
 			int slot = 0;
 			if (!isStatic) slots[slot++] = Type.getObjectType(owner.name).getDescriptor();
 			for (Type arg : Type.getArgumentTypes(method.desc)) {
@@ -800,12 +800,6 @@ public final class InterfaceInjects {
 		boolean isStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
 		return new MethodInsnNode(isStatic ? Opcodes.INVOKESTATIC : Opcodes.INVOKESPECIAL, owner.name, handler.name, handler.desc,
 				(owner.access & Opcodes.ACC_INTERFACE) != 0);
-	}
-
-	private static int firstLocal(MethodNode method) {
-		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
-		for (Type arg : Type.getArgumentTypes(method.desc)) slot += arg.getSize();
-		return slot;
 	}
 
 	private static int argumentSlots(String desc) {
