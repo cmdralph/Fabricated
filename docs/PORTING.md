@@ -13,7 +13,7 @@ Facts about other projects cite their repository, ref and file; what could not b
 | Branch | Platform | Phase | Its CI and README |
 |---|---|---|---|
 | `main` | NeoForge 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | active, the primary platform | `build.yml`; the root `README.md` |
-| `forge` | Minecraft Forge for the versions `main` covers (Forge 61 for 1.21.11, 64 to 66 for 26.1.2 to 26.3) | F4: native modules on Forge's events (§7) | `build-forge.yml`; its own `README.md` and `docs/FORGE.md` |
+| `forge` | Minecraft Forge for the versions `main` covers (Forge 52 for 1.21.1, 61 for 1.21.11, 64 to 66 for 26.1.2 to 26.3) | F4: native modules on Forge's events (§7) | `build-forge.yml`; its own `README.md` and `docs/FORGE.md` |
 | `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1) and other legacy versions | L4: native modules on Forge 47's events (§7) | `build-forge-legacy.yml`; its own `README.md` and `docs/FORGE-LEGACY.md` |
 
 NeoForge needs no legacy branch: its 1.20.1 build is a 2024 fork of Forge 47.1 (§3.1), so the legacy line is Forge's

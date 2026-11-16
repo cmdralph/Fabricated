@@ -1646,7 +1646,7 @@ modules that cascade from it.
 
 ## Forge
 
-Forge 61 to 66 (Minecraft 1.21.11 to 26.3) build from the `forge` branch, and Forge 47 (1.20.1) and Forge 52 (1.21.1)
+Forge 52 (Minecraft 1.21.1) and Forge 61 to 66 (1.21.11 to 26.3) build from the `forge` branch, and Forge 47 (1.20.1)
 from `forge-legacy`. All use the same engine as NeoForge; what Forge's code changes is below. Forge 52 runs the game in
 Mojang's names, with the discovery services, the ForgeGradle build and most of the in-game mod Forge 61 to 66 have
 (`mc/forge-shared`'s version groups), and Forge 47's EventBus 6 wiring; its column in the table below is its local

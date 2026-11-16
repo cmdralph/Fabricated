@@ -6,7 +6,7 @@ follows, and step-by-step instructions for adding a new Minecraft version.
 ## Project layout
 
 Each platform is on its own branch, with the same folder structure: `main` holds the shared engine and NeoForge,
-`forge` the shared engine and Minecraft Forge 61 to 66, `forge-legacy` the shared engine and Forge 47. Shared changes go
+`forge` the shared engine and Minecraft Forge 52 and 61 to 66, `forge-legacy` the shared engine and Forge 47. Shared changes go
 to `main` and reach the platform branches by merge (`scripts/sync-platform-branch.sh`); Forge work goes to its branch
 directly. This is `main`'s tree:
 
@@ -21,7 +21,7 @@ directly. This is `main`'s tree:
 | `mc/<platform>/<version>/` | One Gradle project per platform and Minecraft version, `:mc:<platform>-<version>`: properties, vendored native Fabric API modules (`src/fabricapi`), the Fabric API plan (`src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`), version-specific code (`src/main/java`) and the platform's half of the version's test mods | Yes |
 | `mc/<platform>/common*/` | Code a platform's versions share, as each version's `shared_sources` lists it: NeoForge's `common` (the in-game mod, the platform's half of the test mods) for every version, `common121` for 1.21.1 and 1.21.11, `common12111` for 1.21.11 and all 26.x versions, `common26` for all 26.x versions, `common26early` for 26.1.2 and 26.2, `common26late` for 26.2 and 26.3 | Yes |
 | `mc/shared/` | Sources every platform uses: in `src`, the in-game mod's shared code (`/fabricated`, Mod Menu's API), the broken test mods, stand-ins for other mods' APIs and the build's Fabric API remapper; in `<group>/src`, the Fabric test mods, by the Minecraft versions each group serves (`1.20.1+`, `1.20.1-1.21.1`, `1.21.1+`, `1.21.x`, `1.21.11+`, `26.x`, `26.1-26.2`, `26.2+`, one version's own), which its name says: every version builds the groups that serve it | Yes |
-| `mc/mc.gradle`, `mc/platform-<platform>.gradle` | The build shared by every version, and each platform's part of it | - |
+| `mc/mc.gradle`, `mc/platform-<platform>.gradle` | The build shared by every version, and each platform's part of it (a Forge platform's on its branch) | - |
 | `ci/` | CI's plan (`plan.py`), harness (`smoke-server.sh`, `smoke-client.sh`, `smoke.sh`), runs and checks (`runs.tsv`, `checks.tsv`, `check-log.py`), the benchmark (`bench.py`, its baselines in `bench.tsv`) and the mod corpus lists, every platform's; `ci/<platform>/` holds the platform's adapter (`platform.sh`: its build tasks, how its loader installs and launches) and its stand-ins | - |
 | `scripts/` | Maintenance scripts (importing Fabric API modules, the native modules' index, syncing a platform branch with `main`) | - |
 | `docs/` | Research, architecture and compatibility notes | - |
@@ -134,7 +134,7 @@ A release is cut by hand with the Release workflow (`.github/workflows/release.y
 commit of each branch when it starts (their heads by default) and runs that commit's full matrix, extended, each
 branch's to the end even when another's fails. The jars those runs build, from an empty Gradle cache, are the release:
 eleven, one per platform and Minecraft version, named `fabricated-<neoforge|forge>-<version>+mc<minecraft>.jar`.
-NeoForge's five come from `main`, Forge 61 to 66's four from `forge`, and Forge 47's and Forge 52's from
+NeoForge's five come from `main`, Forge 52's and Forge 61 to 66's five from `forge`, and Forge 47's from
 `forge-legacy`.
 
 1. Merge the release's work into `main`, then sync `forge` and `forge-legacy` with it

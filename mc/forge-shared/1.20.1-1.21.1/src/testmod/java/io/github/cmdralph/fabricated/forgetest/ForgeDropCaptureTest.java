@@ -15,7 +15,7 @@ import java.util.List;
 import net.fabricmc.loader.api.FabricLoader;
 
 /**
- * The forge-legacy test mods' part for a Fabric mod's port of Forge's drop capture (CORPUS-105). Porting Lib's hook at
+ * The Forge 47 and 52 test mods' part for a Fabric mod's port of Forge's drop capture (CORPUS-105). Porting Lib's hook at
  * the return of {@code LivingEntity.dropAllDeathLoot} takes the drops that Forge's capture ({@code captureDrops}, which
  * Porting Lib adds under Forge's name on Fabric) holds, and adds them to the level. The test mod's own such hook stands
  * in for it ({@code LivingEntityCapturedDropsMixin}). At the first server tick, a pig dies ({@code die}). The hook must

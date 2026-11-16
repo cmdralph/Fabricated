@@ -1143,8 +1143,8 @@ Versions: all · package `io.github.cmdralph.fabricated.testmod.broken.plugin` �
 
 ## Forge configs
 
-The Forge branches' configs, the test mods' included: `forge` (Forge 61 to 66, Minecraft 1.21.11 and 26.x) and
-`forge-legacy` (Forge 47 and 52, Minecraft 1.20.1 and 1.21.1). Generated from those branches' sources on 2026-11-08
+The Forge branches' configs, the test mods' included: `forge` (Forge 52 and 61 to 66, Minecraft 1.21.1, 1.21.11 and
+26.x) and `forge-legacy` (Forge 47, Minecraft 1.20.1). Generated from those branches' sources on 2026-11-08
 (task 6), Forge 52's on 2026-11-09, in the per-config tables' format above; `scripts/check-mixin-inventory.py` checks
 them on each branch, where the configs are. A version takes a config, and each mixin class, from its own folder
 (`mc/<platform>/<version>`), else from the first folder its `shared_sources` lists that has it, `mc/forge-shared` among
@@ -1794,7 +1794,7 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.testmod.frapi.mixin` 
 |---|---|---|---|---|---|---|---|---|
 | client | McRuntimeTestHoldMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedFrapiTest$holdForMovingBlocks | "tickHook" | HEAD cancellable=true | — | default |
 
-## Forge 52 (`forge-legacy`): 71 mixins in 14 configs
+## Forge 52 (`forge`): 71 mixins in 14 configs
 
 Minecraft 1.21.1, in Mojang's names without a refmap, as on Forge 61 to 66. The mixins come from `mc/forge-shared` and its
 groups, as the source column says, but `NamespacedWrapperAliasMixin`, over 1.21.1's lookups, `LoadingRegistriesMixin`, on
@@ -1805,22 +1805,22 @@ vanilla form (NET-13), and the bridges of the fields it replaced, named after Mo
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 26, client 6 | 1 | — | `FabricatedMixinPlugin` |
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.1 | mixins 4 | 1 | true | none |
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 1.21.1 | mixins 2 | 1 | — | none |
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-entity.mixins.json` | `io.github.cmdralph.fabricated.forge.entity.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
+| `mc/forge/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 26, client 6 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge/1.21.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.1 | mixins 4 | 1 | true | none |
+| `mc/forge/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 1.21.1 | mixins 2 | 1 | — | none |
+| `mc/forge/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
+| `mc/forge/1.21.1/src/main/resources/fabricated-forge-entity.mixins.json` | `io.github.cmdralph.fabricated.forge.entity.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
 | `mc/forge-shared/1.21.1+/src/main/resources/fabricated-forge-block.mixins.json` | `io.github.cmdralph.fabricated.forge.block.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-color.mixins.json` | `io.github.cmdralph.fabricated.forge.color.mixin` | 1.21.1 | client 2 | 1 | — | none |
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.21.1 | client 1 | 1 | — | none |
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.21.1 | client 4 | 1 | — | none |
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-item.mixins.json` | `io.github.cmdralph.fabricated.forge.item.mixin` | 1.21.1 | mixins 4 | 1 | — | none |
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-content.mixins.json` | `io.github.cmdralph.fabricated.forge.content.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 1.21.1 | client 6 | 1 | — | `FrapiMixinPlugin` |
-| `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-screen.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.mixin` | 1.21.1 | client 1 | 1 | — | none |
-| `mc/forge-legacy/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.1 | mixins 6, client 5 | 1 | — | none |
+| `mc/forge/1.21.1/src/main/resources/fabricated-forge-color.mixins.json` | `io.github.cmdralph.fabricated.forge.color.mixin` | 1.21.1 | client 2 | 1 | — | none |
+| `mc/forge/1.21.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.21.1 | client 1 | 1 | — | none |
+| `mc/forge/1.21.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.21.1 | client 4 | 1 | — | none |
+| `mc/forge/1.21.1/src/main/resources/fabricated-forge-item.mixins.json` | `io.github.cmdralph.fabricated.forge.item.mixin` | 1.21.1 | mixins 4 | 1 | — | none |
+| `mc/forge/1.21.1/src/main/resources/fabricated-forge-content.mixins.json` | `io.github.cmdralph.fabricated.forge.content.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
+| `mc/forge/1.21.1/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 1.21.1 | client 6 | 1 | — | `FrapiMixinPlugin` |
+| `mc/forge/1.21.1/src/main/resources/fabricated-forge-screen.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.mixin` | 1.21.1 | client 1 | 1 | — | none |
+| `mc/forge/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.1 | mixins 6, client 5 | 1 | — | none |
 
-### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge.mixins.json`
+### `mc/forge/1.21.1/src/main/resources/fabricated-forge.mixins.json`
 
 Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.mixin` · required=true · defaultRequire=1 · plugin=`FabricatedMixinPlugin` · overwrites.requireAnnotations=—
 
@@ -1869,7 +1869,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | client | ForgeLayeredDrawVanillaLayersMixin | 1.21.1 (1.21.1) | forge.client.gui.overlay.ForgeLayeredDraw | @Inject → fabricated$keepOthers (what else vanilla's list held follows the layer of Forge's it followed, in Forge's order) | "resolveNested" | TAIL | — | default |
 | client | LayeredDrawLayersAccessor | 1.21.1 (1.21.1) | n.m.client.gui.LayeredDraw | @Accessor → fabricated$layers | "layers" |  | — | default |
 
-### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-loot.mixins.json`
+### `mc/forge/1.21.1/src/main/resources/fabricated-loot.mixins.json`
 
 Versions: 1.21.1 · package `net.fabricmc.fabric.mixin.loot` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true
 
@@ -1906,7 +1906,7 @@ Versions: 1.21.1 · package `net.fabricmc.fabric.mixin.loot` · required=true ·
 | mixins | LootTableBuilderMixin | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable$Builder | no injectors; implements FabricLootTableBuilder; adds methods pool, apply, pools, modifyPools; @Unique methods self; @Shadow @Mutable pools, functions | | | | |
 | mixins | LootTableBuilderMixin | mc/forge-shared/1.21.x (1.21.1) | n.m.world.level.storage.loot.LootTable$Builder | no injectors; implements FabricLootTableBuilder; adds methods pool, apply, pools, modifyPools; @Unique methods self; @Shadow @Mutable pools | | | | |
 
-### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json`
+### `mc/forge/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json`
 
 Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.loot.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
 
@@ -1916,7 +1916,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.loot.mixin` · 
 | mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
 | mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 
-### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json`
+### `mc/forge/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json`
 
 Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.interaction.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
 
@@ -1927,7 +1927,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.interaction.mix
 | mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$beforeVanillaRemoval (reads the state and block entity before vanilla's removal where Fabricated puts it back, SEAM-3); @Unique fields fabricated$removedState, fabricated$removedBlockEntity | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/ServerLevel;removeBlock(L…/BlockPos;Z)Z` | — | require=0 |
 | mixins | ServerPlayerGameModeBreakMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.server.level.ServerPlayerGameMode | @Inject → fabricated$afterVanillaRemoval (fires `AFTER` at vanilla's `Block.destroy` put back, SEAM-3) | "destroyBlock(Lnet/minecraft/core/BlockPos;)Z" | INVOKE `L…/Block;destroy(L…/LevelAccessor;L…/BlockPos;L…/BlockState;)V` | — | require=0 |
 
-### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-entity.mixins.json`
+### `mc/forge/1.21.1/src/main/resources/fabricated-forge-entity.mixins.json`
 
 Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.entity.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
 
@@ -1944,7 +1944,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.block.mixin` ·
 |---|---|---|---|---|---|---|---|---|
 | mixins | BlockForgeHooksMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.world.level.block.Block | no injectors; adds method makesOpenTrapdoorAboveClimbable (Forge's ladder rule, or a block in Fabric's trapdoor tag) | | | | |
 
-### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-color.mixins.json`
+### `mc/forge/1.21.1/src/main/resources/fabricated-forge-color.mixins.json`
 
 Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.color.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
 
@@ -1953,7 +1953,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.color.mixin` ·
 | client | BlockColorsLookupMixin | mc/forge-shared/1.20.1-1.21.11 (1.21.1) | n.m.client.color.block.BlockColors | no injectors; adds methods get; @Shadow blockColors | | | | |
 | client | ItemColorsLookupMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.color.item.ItemColors | no injectors; adds methods get; @Shadow itemColors | | | | |
 
-### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-keybinding.mixins.json`
+### `mc/forge/1.21.1/src/main/resources/fabricated-keybinding.mixins.json`
 
 Versions: 1.21.1 · package `net.fabricmc.fabric.mixin.client.keybinding` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
 
@@ -1962,7 +1962,7 @@ Versions: 1.21.1 · package `net.fabricmc.fabric.mixin.client.keybinding` · req
 | client | KeyBindingAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.KeyMapping | @Accessor → fabric_getCategoryMap | "CATEGORY_SORT_ORDER" |  | — | default |
 | client | KeyBindingAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.KeyMapping | @Accessor → fabric_getBoundKey | "key" |  | — | default |
 
-### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-particles.mixins.json`
+### `mc/forge/1.21.1/src/main/resources/fabricated-particles.mixins.json`
 
 Versions: 1.21.1 · package `net.fabricmc.fabric.mixin.client.particle` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
 
@@ -1973,7 +1973,7 @@ Versions: 1.21.1 · package `net.fabricmc.fabric.mixin.client.particle` · requi
 | client | ParticleManagerAccessor$SimpleSpriteProviderAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine$MutableSpriteSet (`targets`) | @Accessor → getSprites | "sprites" |  | — | default |
 | client | ParticleManagerMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Inject → onRegisterDefaultFactories | "registerProviders()V" | RETURN | — | default |
 
-### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-item.mixins.json`
+### `mc/forge/1.21.1/src/main/resources/fabricated-forge-item.mixins.json`
 
 Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.item.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
 
@@ -1984,7 +1984,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.item.mixin` · 
 | mixins | ItemRecipeRemainderMixin | 1.21.1 (1.21.1) | n.m.world.item.Item | no injectors; adds methods getCraftingRemainingItem(ItemStack), hasCraftingRemainingItem(ItemStack) (Forge 52's, answered from Fabric's getRecipeRemainder) | | | | |
 | mixins | ItemBuiltComponentsMixin | mc/forge-shared/1.21.x (1.21.1) | n.m.world.item.Item | @Inject → fabricated$buildAgainOnceChanged; @Shadow components, builtComponents; @Unique fields fabricated$builtFrom | "components()Lnet/minecraft/core/component/DataComponentMap;" | HEAD | — | default |
 
-### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-content.mixins.json`
+### `mc/forge/1.21.1/src/main/resources/fabricated-forge-content.mixins.json`
 
 Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.content.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
 
@@ -1992,7 +1992,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.content.mixin` 
 |---|---|---|---|---|---|---|---|---|
 | mixins | FurnaceFuelTableMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.level.block.entity.AbstractFurnaceBlockEntity | @Inject → fabricated$addFabricFuels (Fabric's fuels in the table Forge 52 reads its burn times from, FUEL-2) | "getFuel" | RETURN | — | default |
 
-### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-frapi.mixins.json`
+### `mc/forge/1.21.1/src/main/resources/fabricated-forge-frapi.mixins.json`
 
 Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.rendering.mixin` · required=true · defaultRequire=1 · plugin=`FrapiMixinPlugin` · overwrites.requireAnnotations=—
 
@@ -2007,7 +2007,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.rendering.mixin
 | client | SectionCompilerMixin | 1.21.1 (1.21.1) | n.m.client.renderer.chunk.SectionCompiler | @Inject → fabricated$endSection | "compile" | RETURN | — | default |
 | client | WeightedBakedModelMixin | 1.21.1 (1.21.1) | n.m.client.resources.model.WeightedBakedModel | no injectors; implements FabricBlockRendering$Composite; adds methods fabricated$state, fabricated$parts; @Shadow list; @Unique fields fabricated$state | | | | |
 
-### `mc/forge-legacy/1.21.1/src/main/resources/fabricated-forge-screen.mixins.json`
+### `mc/forge/1.21.1/src/main/resources/fabricated-forge-screen.mixins.json`
 
 Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.screen.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
 
@@ -2016,7 +2016,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.screen.mixin` �
 | client | ForgeEventFactoryClientScreenInputMixin | 1.21.1 (1.21.1) | forge.client.event.ForgeEventFactoryClient | @WrapOperation → fabricated$mouseClicked (Fabric's mouse click events around the screen's call, LAMBDA-10) | "onScreenMouseClicked" | INVOKE `L…/Screen;mouseClicked(DDI)Z` | — | default |
 | client | ForgeEventFactoryClientScreenInputMixin | 1.21.1 (1.21.1) | forge.client.event.ForgeEventFactoryClient | @WrapOperation → fabricated$mouseReleased | "onScreenMouseReleased" | INVOKE `L…/Screen;mouseReleased(DDI)Z` | — | default |
 
-### `mc/forge-legacy/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json`
+### `mc/forge/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json`
 
 Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forgetest.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
 
