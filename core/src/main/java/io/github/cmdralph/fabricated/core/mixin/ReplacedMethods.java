@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -236,7 +235,7 @@ final class ReplacedMethods extends PreflightPart {
 	 * of several calls, the ones a point picks (by its ordinal, or all of them) are counted in vanilla's code (STRUCT-2).
 	 */
 	private Replaced calledAt(AnnotationNode at, ClassNode target, Context ctx) {
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		String point = InjectionPoints.pointOf(at);
 		if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw) || Annotations.value(at, "by") != null
 				|| Annotations.value(at, "ordinal") instanceof Integer ordinal && ordinal != 0) return null;
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
@@ -280,7 +279,7 @@ final class ReplacedMethods extends PreflightPart {
 	 * instruction in the place of each vanilla's has there ({@link PatchAlignment}) and no other, before or after it.
 	 */
 	private static boolean inPlace(AnnotationNode at, Replaced replaced, Context ctx) {
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		String point = InjectionPoints.pointOf(at);
 		Object shift = Annotations.value(at, "shift");
 		if (point.equals("HEAD") || point.equals("RETURN") || point.equals("TAIL")) {
 			return Annotations.value(at, "ordinal") == null && shift == null && (point.equals("HEAD") || returnsAlike(replaced.vanilla(), replaced.method()));
@@ -289,8 +288,8 @@ final class ReplacedMethods extends PreflightPart {
 				|| Annotations.value(at, "args") != null || Annotations.value(at, "slice") != null
 				|| shift != null && !(shift instanceof String[] s && s.length == 2 && (s[1].equals("BEFORE") || s[1].equals("AFTER")))) return false;
 		String resolved = ctx.resolve(raw);
-		int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
-		int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+		int ordinal = InjectionPoints.ordinalOf(at);
+		int opcode = InjectionPoints.opcodeOf(at);
 		List<Integer> was = InjectionPoints.indexes(point, resolved, ordinal, opcode, InjectionPoints.Range.ALL, replaced.vanilla());
 		List<Integer> now = InjectionPoints.indexes(point, resolved, ordinal, opcode, InjectionPoints.Range.ALL, replaced.method());
 		PatchAlignment alignment = was == null || now == null || was.isEmpty() || was.size() != now.size() ? null
@@ -305,7 +304,7 @@ final class ReplacedMethods extends PreflightPart {
 	/** Whether an injector has a point other than a method's start or end. */
 	private static boolean inside(AnnotationNode injector) {
 		return Annotations.list(Annotations.value(injector, "at")).stream()
-				.anyMatch(at -> !(Annotations.value(at, "value") instanceof String v && List.of("HEAD", "RETURN", "TAIL").contains(v.toUpperCase(Locale.ROOT))));
+				.anyMatch(at -> !List.of("HEAD", "RETURN", "TAIL").contains(InjectionPoints.pointOf(at)));
 	}
 
 	/**

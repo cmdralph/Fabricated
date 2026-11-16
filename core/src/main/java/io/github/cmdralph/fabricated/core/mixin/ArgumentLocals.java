@@ -6,7 +6,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -181,10 +180,10 @@ final class ArgumentLocals {
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
 		Set<Integer> indexes = new TreeSet<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("INVOKE") && !point.equals("FIELD") || !(Annotations.value(at, "target") instanceof String raw)) return null;
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
-			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
+			int opcode = InjectionPoints.opcodeOf(at);
 			AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
 			Range range = slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, method, ctx);
 			List<Integer> picked = InjectionPoints.indexes(point, ctx.resolve(raw), ordinal, opcode, range, method);

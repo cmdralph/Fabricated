@@ -534,7 +534,7 @@ public final class InterfaceInjects {
 			slots = locals.at(method, at);
 			if (slots == null) throw new LeftOut("its @Local " + type.getClassName() + " finds no locals Mixin can tell there");
 		}
-		int ordinal = Annotations.value(local, "ordinal") instanceof Integer o ? o : -1;
+		int ordinal = InjectionPoints.ordinalOf(local);
 		int index = Annotations.value(local, "index") instanceof Integer i ? i : -1;
 		int base = isStatic ? 0 : 1;
 		List<Integer> ofType = new ArrayList<>();
@@ -606,7 +606,7 @@ public final class InterfaceInjects {
 					throw new Refused("its @At(" + value + ") names no " + (value.equals("FIELD") ? "field" : "method") + " plainly");
 				}
 				if (!shift.equals("NONE") && !(inject && (shift.equals("BEFORE") || shift.equals("AFTER")))) throw new Refused("its @At shifts " + shift);
-				int opcode = Annotations.value(at, "opcode") instanceof Integer o ? o : -1;
+				int opcode = InjectionPoints.opcodeOf(at);
 				points.add(new Point(value, target, ordinal, opcode, shift.equals("BEFORE") ? -1 : shift.equals("AFTER") ? 1 : 0, null));
 			}
 			if (points.isEmpty()) throw new Refused("it names no injection point");
@@ -631,7 +631,7 @@ public final class InterfaceInjects {
 			for (Point point : points) {
 				List<AbstractInsnNode> returns = new ArrayList<>();
 				for (AbstractInsnNode insn : insns) {
-					if (insn.getOpcode() >= Opcodes.IRETURN && insn.getOpcode() <= Opcodes.RETURN) returns.add(insn);
+					if (PreflightAsm.isReturn(insn.getOpcode())) returns.add(insn);
 				}
 				List<AbstractInsnNode> picked = new ArrayList<>();
 				switch (point.value()) {
@@ -772,7 +772,7 @@ public final class InterfaceInjects {
 	}
 
 	private static int ordinal(AnnotationNode annotation) {
-		return Annotations.value(annotation, "ordinal") instanceof Integer o ? o : -1;
+		return InjectionPoints.ordinalOf(annotation);
 	}
 
 	/** What a call takes off the stack: its receiver, unless it is static, and its arguments. */

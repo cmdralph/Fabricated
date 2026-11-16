@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -48,7 +47,7 @@ final class CallRepairs extends PreflightPart {
 		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw)
 					|| Annotations.value(at, "ordinal") instanceof Integer ordinal && ordinal > 0) continue;
 			String resolved = ctx.resolve(raw);
@@ -92,7 +91,7 @@ final class CallRepairs extends PreflightPart {
 		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("INVOKE") && !point.equals("INVOKE_ASSIGN") || !(Annotations.value(at, "target") instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null) continue;
@@ -112,7 +111,7 @@ final class CallRepairs extends PreflightPart {
 					}
 				}
 			}
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
 			if (named || subtype == null || ambiguous || ordinal >= calls) continue;
 			String retargeted = "L" + subtype + ";" + ref.name() + ref.desc();
 			for (int i = 0; i + 1 < at.values.size(); i += 2) {
@@ -142,7 +141,7 @@ final class CallRepairs extends PreflightPart {
 		List<VanillaSeams.Restored> putBack = VanillaSeams.restoredIn(target).stream().filter(r -> (method.name + method.desc).equals(r.in())).toList();
 		List<String> dropped = new ArrayList<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("INVOKE") && !point.equals("INVOKE_ASSIGN") || !Integer.valueOf(0).equals(Annotations.value(at, "ordinal"))
 					|| !(Annotations.value(at, "target") instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
@@ -191,7 +190,7 @@ final class CallRepairs extends PreflightPart {
 		PatchAlignment alignment = null;
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : ats) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (point.equals("RETURN") && Annotations.value(at, "ordinal") instanceof Integer ordinal) {
 				List<Integer> inVanilla = PreflightAsm.returns(before), here = PreflightAsm.returns(patched);
 				// An ordinal below 0 picks every return, as Mixin reads it.
@@ -216,10 +215,10 @@ final class CallRepairs extends PreflightPart {
 				continue;
 			}
 			if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)) continue;
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 			if (ref.fuzzy()) continue;
-			int opcode = Annotations.value(at, "opcode") instanceof Integer o ? o : -1;
+			int opcode = InjectionPoints.opcodeOf(at);
 			List<Integer> inVanilla = PreflightAsm.matching(before, point, ref, opcode);
 			List<Integer> here = PreflightAsm.matching(patched, point, ref, opcode);
 			boolean every = ordinal < 0;
@@ -290,23 +289,11 @@ final class CallRepairs extends PreflightPart {
 	 * nothing between them jumps, switches, returns or throws, and no jump, switch or exception handler leads into them.
 	 */
 	private static boolean onOnePath(MethodNode method, int from, int to) {
-		Set<AbstractInsnNode> entered = new HashSet<>();
-		for (TryCatchBlockNode block : method.tryCatchBlocks) entered.add(block.handler);
-		for (AbstractInsnNode insn : method.instructions) {
-			if (insn instanceof JumpInsnNode jump) entered.add(jump.label);
-			if (insn instanceof TableSwitchInsnNode table) {
-				entered.add(table.dflt);
-				entered.addAll(table.labels);
-			}
-			if (insn instanceof LookupSwitchInsnNode lookup) {
-				entered.add(lookup.dflt);
-				entered.addAll(lookup.labels);
-			}
-		}
+		Set<LabelNode> entered = PreflightAsm.jumpTargets(method);
 		for (int i = from + 1; i < to; i++) {
 			AbstractInsnNode insn = method.instructions.get(i);
 			int op = insn.getOpcode();
-			if (Initialisers.branches(insn) || op >= Opcodes.IRETURN && op <= Opcodes.RETURN || op == Opcodes.ATHROW || entered.contains(insn)) return false;
+			if (Initialisers.branches(insn) || PreflightAsm.isReturn(op) || op == Opcodes.ATHROW || entered.contains(insn)) return false;
 		}
 		return true;
 	}
@@ -356,13 +343,13 @@ final class CallRepairs extends PreflightPart {
 		if (before == null || before.instructions == null || patched.instructions == null) return List.of();
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw) || Annotations.value(at, "shift") != null
 					|| Annotations.value(at, "by") != null) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null || !PreflightAsm.matching(patched, point, ref, -1).isEmpty()) continue;
 			List<Integer> inVanilla = PreflightAsm.matching(before, point, ref, -1);
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
 			if (ordinal < 0 ? inVanilla.size() != 1 : ordinal >= inVanilla.size()) continue;
 			MethodInsnNode next = vanillasPlace(before, patched, inVanilla.get(Math.max(ordinal, 0)));
 			Code into = next == null ? null : movedInto(patched, ref, 3);
@@ -428,7 +415,7 @@ final class CallRepairs extends PreflightPart {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.size() != 1) return List.of();
 		AnnotationNode at = ats.get(0);
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		String point = InjectionPoints.pointOf(at);
 		if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw) || Annotations.value(at, "shift") != null
 				|| Annotations.value(at, "by") != null || Annotations.value(at, "opcode") != null || Annotations.value(at, "slice") != null) return List.of();
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
@@ -453,7 +440,7 @@ final class CallRepairs extends PreflightPart {
 		}
 		if (argument < 0 || argument >= callArgs.length || !callArgs[argument].equals(value)) return List.of();
 		List<Integer> inVanilla = PreflightAsm.matching(before, point, ref, -1);
-		int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		int ordinal = InjectionPoints.ordinalOf(at);
 		if (inVanilla.isEmpty() || ordinal >= inVanilla.size()) return List.of();
 		PatchAlignment alignment = PatchAlignment.of(before, patched);
 		if (alignment == null) return List.of();
@@ -581,29 +568,15 @@ final class CallRepairs extends PreflightPart {
 	 * exception handlers leads to comes.
 	 */
 	private static boolean reachedOnEveryWay(MethodNode method, MethodInsnNode call) {
-		Set<LabelNode> entered = new HashSet<>();
+		Set<LabelNode> entered = PreflightAsm.jumpTargets(method);
 		Set<LabelNode> tried = new HashSet<>();
-		for (TryCatchBlockNode block : method.tryCatchBlocks) {
-			entered.add(block.handler);
-			tried.add(block.start);
-		}
-		for (AbstractInsnNode insn : method.instructions) {
-			if (insn instanceof JumpInsnNode jump) entered.add(jump.label);
-			if (insn instanceof TableSwitchInsnNode table) {
-				entered.add(table.dflt);
-				entered.addAll(table.labels);
-			}
-			if (insn instanceof LookupSwitchInsnNode lookup) {
-				entered.add(lookup.dflt);
-				entered.addAll(lookup.labels);
-			}
-		}
+		for (TryCatchBlockNode block : method.tryCatchBlocks) tried.add(block.start);
 		for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
 			if (insn instanceof LabelNode label && (entered.contains(label) || tried.contains(label))) return false;
 			if (insn == call) return true;
 			int op = insn.getOpcode();
 			if (insn instanceof JumpInsnNode || insn instanceof TableSwitchInsnNode || insn instanceof LookupSwitchInsnNode
-					|| op >= Opcodes.IRETURN && op <= Opcodes.RETURN || op == Opcodes.ATHROW) return false;
+					|| PreflightAsm.isReturn(op) || op == Opcodes.ATHROW) return false;
 		}
 		return false;
 	}
@@ -819,7 +792,7 @@ final class CallRepairs extends PreflightPart {
 		if (methods.isEmpty() || !pointOnly && ats.size() != 1) return List.of();
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : ats) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			boolean constructor = point.equals("NEW");
 			if (!point.equals("INVOKE") && !constructor || !(Annotations.value(at, "target") instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
@@ -857,7 +830,7 @@ final class CallRepairs extends PreflightPart {
 			// keeps the screen's graphics from a @ModifyArg at the same call for its @Inject after it.
 			if ((hook != null || leading != null) && !independentOf(mixin).contains(handler.name + handler.desc)) continue;
 			if (leading != null) {
-				int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+				int ordinal = InjectionPoints.ordinalOf(at);
 				if (ordinal >= countCalls(methods, leading)) continue;
 				for (int i = 0; i + 1 < at.values.size(); i += 2) {
 					if ("target".equals(at.values.get(i))) at.values.set(i + 1, "L" + leading.owner + ";" + leading.name + leading.desc);
@@ -883,7 +856,7 @@ final class CallRepairs extends PreflightPart {
 				staticCall = replacement.getOpcode() == Opcodes.INVOKESTATIC;
 				calls = countCalls(methods, replacement);
 			}
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
 			if (named || overload == null || ambiguous || ordinal >= calls) continue;
 			int inserted = hook == null && replacement == null && !constructor ? insertedArgumentOf(owner, name, desc, overload) : insertedArgument(desc, overload);
 			// A hook taking just the call's receiver and arguments takes the handlers as they are.
@@ -983,13 +956,13 @@ final class CallRepairs extends PreflightPart {
 			AnnotationNode copy = new AnnotationNode(at.desc);
 			at.accept(copy);
 			copies.add(copy);
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null) continue;
 			Overloads found = overloadsCalled(List.of(method), ref.owner(), ref.name(), ref.desc(), false, pointOnly);
 			if (found.named() || found.overload() == null) continue;
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
 			if (found.ambiguous() || ordinal >= found.calls()
 					|| !pointOnly && !bridgeable(handler, injector, ref.owner(), ref.desc(), insertedArgumentOf(ref.owner(), ref.name(), ref.desc(), found.overload()),
 							found.staticCall(), List.of(Type.getArgumentTypes(method.desc)))) return null;

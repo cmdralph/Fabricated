@@ -39,6 +39,21 @@ final class InjectionPoints {
 	private InjectionPoints() {
 	}
 
+	/** An {@code @At}'s point ({@code value}) in upper case, as Mixin reads it; empty where it has none. */
+	static String pointOf(AnnotationNode at) {
+		return Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+	}
+
+	/** The {@code ordinal} of an {@code @At} or a {@code @Constant}; -1 where it has none, which picks every match. */
+	static int ordinalOf(AnnotationNode at) {
+		return Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+	}
+
+	/** An {@code @At}'s {@code opcode}; -1 where it has none. */
+	static int opcodeOf(AnnotationNode at) {
+		return Annotations.value(at, "opcode") instanceof Integer n ? n : -1;
+	}
+
 	/** A {@code @Constant}'s value as the source would write it, or null when pre-flight can't judge it. */
 	static String constantDescription(AnnotationNode constant) {
 		if (Annotations.value(constant, "expandZeroConditions") != null) return null;
@@ -54,7 +69,7 @@ final class InjectionPoints {
 	/** Whether a {@code @Constant} (with its ordinal) occurs in {@code method}, as Mixin matches constants. */
 	static Verdict constantVerdict(AnnotationNode constant, MethodNode method) {
 		int count = constantInsns(constant, method).size();
-		int ordinal = Annotations.value(constant, "ordinal") instanceof Integer n ? n : -1;
+		int ordinal = ordinalOf(constant);
 		if (count == 0) return Verdict.MISSING;
 		if (Annotations.value(constant, "slice") != null) return Verdict.UNKNOWN;
 		return ordinal >= count ? Verdict.MISSING : Verdict.FOUND;
@@ -156,11 +171,11 @@ final class InjectionPoints {
 	static Verdict pointsIn(List<AnnotationNode> ats, List<AnnotationNode> slices, MethodNode method, Context ctx) {
 		Verdict result = Verdict.FOUND;
 		for (AnnotationNode at : ats) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = pointOf(at);
 			if (point.equals("MIXINEXTRAS:EXPRESSION")) return Verdict.UNKNOWN;
 			String rawTarget = Annotations.value(at, "target") instanceof String t ? t : null;
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
-			int opcode = Annotations.value(at, "opcode") instanceof Integer n ? n : -1;
+			int ordinal = ordinalOf(at);
+			int opcode = opcodeOf(at);
 			AnnotationNode slice = sliceFor(at, slices);
 			Range range = slice == null ? Range.ALL : sliceRange(slice, method, ctx);
 			Verdict v = point.equals("CONSTANT") ? constantPointVerdict(Annotations.value(at, "args"), ordinal, range, method)
@@ -217,15 +232,15 @@ final class InjectionPoints {
 
 	static int slicePoint(AnnotationNode at, MethodNode method, Context ctx, int defaultValue, int failValue) {
 		if (at == null) return defaultValue;
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		String point = pointOf(at);
 		if (point.equals("HEAD")) return 0;
 		if (!point.equals("INVOKE") && !point.equals("INVOKE_ASSIGN") && !point.equals("FIELD") && !point.equals("NEW")) return UNEVALUATED_INDEX;
 		String rawTarget = Annotations.value(at, "target") instanceof String t ? t : null;
 		if (rawTarget == null || rawTarget.contains(":LAST") || rawTarget.contains(":ONE") || rawTarget.contains(":FIRST")) return UNEVALUATED_INDEX;
 		MemberRef ref = MemberRef.parse(ctx.resolve(rawTarget));
 		if (ref.fuzzy()) return UNEVALUATED_INDEX;
-		int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
-		int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+		int ordinal = ordinalOf(at);
+		int opcode = opcodeOf(at);
 		int seen = 0;
 		for (int i = 0; i < method.instructions.size(); i++) {
 			AbstractInsnNode insn = method.instructions.get(i);
@@ -329,8 +344,7 @@ final class InjectionPoints {
 				int countInMethod = 0;
 				int countInRange = 0;
 				for (int i = 0; i < method.instructions.size(); i++) {
-					int op = method.instructions.get(i).getOpcode();
-					if (op < Opcodes.IRETURN || op > Opcodes.RETURN) continue;
+					if (!PreflightAsm.isReturn(method.instructions.get(i).getOpcode())) continue;
 					countInMethod++;
 					if (i >= range.start() && i <= range.end()) countInRange++;
 				}
