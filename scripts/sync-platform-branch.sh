@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Merges main into a Forge platform branch, keeping the branch's own platform and leaving main's out. main holds the
 # shared code (the code both Forge platforms share included, CI's one workflow and harness among it) and NeoForge;
-# forge adds Forge 61 to 66, forge-legacy Forge 47 and 52. Shared changes go to main and reach the platform branches
+# forge adds Forge 52 and 61 to 66, forge-legacy Forge 47. Shared changes go to main and reach the platform branches
 # through this merge; a platform branch is never merged into main.
 #
 # Run it in a checkout of a working branch made from the platform branch, with main fetched. It makes a merge commit
@@ -16,7 +16,7 @@ platform="${1:-}"
 base="${2:-origin/main}"
 case "$platform" in
 	forge)
-		own=(mc/forge ci/forge README.md docs/FORGE.md)
+		own=(mc/forge mc/platform-forge.gradle ci/forge README.md docs/FORGE.md)
 		gone=(loader/forge)
 		;;
 	forge-legacy)

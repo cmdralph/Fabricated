@@ -8,7 +8,7 @@ import java.util.Map;
 import net.fabricmc.fabric.api.registry.OxidizableBlocksRegistry;
 
 /**
- * The forge-legacy test mods' part for fabric-content-registries-v0's oxidizable blocks (CORPUS-91, INTERFACE-1; with
+ * The Forge 47 and 52 test mods' part for fabric-content-registries-v0's oxidizable blocks (CORPUS-91, INTERFACE-1; with
  * Fabric API's jar only): a pair {@code OxidizableBlocksRegistry} registers must be in vanilla's oxidation map
  * ({@code WeatheringCopper.NEXT_BY_BLOCK}, {@code NEXT_BY_BLOCK}), which stays immutable unless upstream's
  * {@code OxidizableMixin} made it a mutable copy. That mixin is an {@code @Inject} in an interface mixin, of which

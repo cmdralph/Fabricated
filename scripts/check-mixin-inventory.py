@@ -14,7 +14,8 @@ skipped; Gradle's copies under build/ don't match them. A branch without some pl
 It also runs the build's checkNativeModules rule for mixins, which otherwise only a platform build finds: each mixin of
 a platform's in-game mod (mc/<platform>/*/src/main/resources/*.mixins.json, but a config in a Fabric API package or
 listed under "configs") must be named in that platform's mc/<platform>/common/src/main/resources/META-INF/fabricated/
-mixin-modules.json, as UNASSIGNED <config> <mixin>.
+mixin-modules.json, or in the folder's own where it has one (a version that doesn't compile common: Forge 52), as
+UNASSIGNED <config> <mixin>.
 
 Usage, from anywhere: python3 -I scripts/check-mixin-inventory.py. Prints MISSING <config> <mixin> for each mixin
 without a row (and UNASSIGNED for each without a module entry) and exits 1, else prints one OK line and exits 0.
@@ -49,10 +50,12 @@ def doc_tables(text):
 def unassigned():
     """The build's checkNativeModules rule for mixins: each mixin of a platform's in-game mod named in mixin-modules.json."""
     found = []
-    for modules in sorted(ROOT.glob('mc/*/common/src/main/resources/META-INF/fabricated/mixin-modules.json')):
-        platform = modules.parents[6]
-        mapping = json.loads(modules.read_text(encoding='utf-8'))
+    for common in sorted(ROOT.glob('mc/*/common/src/main/resources/META-INF/fabricated/mixin-modules.json')):
+        platform = common.parents[6]
         for path in sorted(platform.glob('*/src/main/resources/*.mixins.json')):
+            own = path.parent / 'META-INF' / 'fabricated' / 'mixin-modules.json'
+            modules = own if own.is_file() else common
+            mapping = json.loads(modules.read_text(encoding='utf-8'))
             data = json.loads(path.read_text(encoding='utf-8'))
             if path.name in mapping.get('configs', {}) or data.get('package', '').startswith('net.fabricmc.fabric.'):
                 continue
