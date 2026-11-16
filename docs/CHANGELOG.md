@@ -9,22 +9,24 @@ One entry per working session, newest first: what changed, and how it was verifi
   hook takes the iterator of the fire loop in `Explosion.finalizeExplosion` by its type, a local the method's local
   variable table doesn't name, and Fabricated read such a local from that table alone and left the hook out. It now
   judges a local taken by its type alone where the hook applies, as Mixin types the method's slots from its code: the
-  hook applies where exactly one local of the type is there, at as many of its points as it requires, and stays out
-  otherwise, the report saying whether the method holds none there or several.
+  hook applies where exactly one local of the type is there, with every other local the hook takes, at as many of its
+  points as it requires, and stays out otherwise, the report saying whether the method holds none there or several. A
+  hook whose locals can't all be told there stays out, as before.
 - **LOCAL-6** (P1), open: Ledger's logging of an item put on a campfire stays out on NeoForge 21.1 and Forge 52.
   Their `CampfireBlock.useItemOn` tests the block entity as a campfire and uses its slot again before the player's stat
   is awarded, where Ledger's hook takes it (`@Local BlockEntity`): no local holds it there, which the report now says.
   It isn't Mixin's count of the method's frames, which Fabricated records again on Forge (CORPUS-79) and which FRAME-2
   tracks on NeoForge: Mixin finds the same locals there with the frames recorded expanded.
 - FRAME-1, fixed (`FINDINGS.md`), is no longer listed among the roadmap's open findings.
-- Verified: core's tests (three new ones, which fail without the change), CI's script tests and the inventory. Mixin's
-  own local computation (`Locals.getLocalsAt` of Fabric's Mixin 0.16.4, which NeoForge 21.1 runs, and of SpongePowered's
+- Verified: core's tests (the new ones fail without their change), CI's script tests and the inventory. Mixin's own
+  local computation (`Locals.getLocalsAt` of Fabric's Mixin 0.16.4, which NeoForge 21.1 runs, and of SpongePowered's
   0.8.7, which Forge 52 runs) run on NeoForge 21.1.265's, Forge 52.1.21's and vanilla 1.21.1's `CampfireBlock` and
   `Explosion`, and compared with Fabricated's judgement at every call and field access of the game's methods on
-  NeoForge 21.1 and 21.11 and Forge 52 and 61: Fabricated never says one local where Mixin finds none or several, nor
-  none where Mixin finds one. NeoForge 1.21.1's and Forge 52's advanced corpus servers against runs before the change:
-  Ledger's explosion fire hook applies, with no Mixin error; its campfire hook stays out as before, its report line now
-  saying the method holds no such local there; nothing else in the reports or the checks changes.
+  NeoForge 21.1 and 21.11 and Forge 47 (SpongePowered's 0.8.5), 52 and 61: Fabricated never says a local is found where
+  Mixin finds none or several, nor that a method holds none where Mixin finds one. NeoForge 1.21.1's and Forge 52's
+  advanced corpus servers against runs before the change: Ledger's explosion fire hook applies, with no Mixin error;
+  its campfire hook stays out as before, its report line now saying the method holds no such local there; nothing
+  else in the reports or the checks changes.
 
 ## 2026-11-13: Hooks in a private method the platform replaced at each of its calls (STRUCT-2); truer report lines for hooks vanilla's code lacks too (PRE-34) and for interface mixins' injectors on Forge 47 (PRE-35)
 
