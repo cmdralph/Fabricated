@@ -56,7 +56,7 @@ final class PreflightAsm {
 		List<MethodNode> methods = new ArrayList<>();
 		for (Object selector : selectors) {
 			if (!(selector instanceof String raw)) return null;
-			String s = ctx.resolve(raw).replaceAll("\\s+", "");
+			String s = Refmap.stripped(ctx.resolve(raw));
 			if (!s.startsWith("*") || s.length() > 1 && s.charAt(1) != '(') return null;
 			String desc = s.length() > 1 ? s.substring(1) : null;
 			if (desc != null && target.methods.stream().noneMatch(m -> m.desc.equals(desc))) return null;

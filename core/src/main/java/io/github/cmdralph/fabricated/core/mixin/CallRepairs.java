@@ -58,9 +58,7 @@ final class CallRepairs extends PreflightPart {
 			}
 			if (step == null || calls(methods, hook) != 0) continue;
 			MemberRef call = MemberRef.parse(step);
-			for (int i = 0; i + 1 < at.values.size(); i += 2) {
-				if ("target".equals(at.values.get(i))) at.values.set(i + 1, step);
-			}
+			Annotations.put(at, "target", step);
 			moved.add(hook.owner().replace('/', '.') + "." + hook.name() + ", which Fabric Loader adds where it runs mods' entrypoints;"
 					+ " the injection point is pointed at " + call.owner().replace('/', '.') + "." + call.name() + ", where they run here");
 		}
@@ -114,9 +112,7 @@ final class CallRepairs extends PreflightPart {
 			int ordinal = InjectionPoints.ordinalOf(at);
 			if (named || subtype == null || ambiguous || ordinal >= calls) continue;
 			String retargeted = "L" + subtype + ";" + ref.name() + ref.desc();
-			for (int i = 0; i + 1 < at.values.size(); i += 2) {
-				if ("target".equals(at.values.get(i))) at.values.set(i + 1, retargeted);
-			}
+			Annotations.put(at, "target", retargeted);
 			moved.add(ref.owner().replace('/', '.') + "." + ref.name() + ", which this game build calls through "
 					+ subtype.replace('/', '.') + " (the same method); the injection point is pointed there");
 		}
@@ -832,9 +828,7 @@ final class CallRepairs extends PreflightPart {
 			if (leading != null) {
 				int ordinal = InjectionPoints.ordinalOf(at);
 				if (ordinal >= countCalls(methods, leading)) continue;
-				for (int i = 0; i + 1 < at.values.size(); i += 2) {
-					if ("target".equals(at.values.get(i))) at.values.set(i + 1, "L" + leading.owner + ";" + leading.name + leading.desc);
-				}
+				Annotations.put(at, "target", "L" + leading.owner + ";" + leading.name + leading.desc);
 				moved.add(owner.replace('/', '.') + "." + name + desc + ", which this game build makes through " + loader + "'s "
 						+ leading.owner.replace('/', '.') + "." + leading.name + leading.desc + "; the injection point is pointed at that call");
 				continue;
@@ -861,9 +855,7 @@ final class CallRepairs extends PreflightPart {
 			int inserted = hook == null && replacement == null && !constructor ? insertedArgumentOf(owner, name, desc, overload) : insertedArgument(desc, overload);
 			// A hook taking just the call's receiver and arguments takes the handlers as they are.
 			if (!pointOnly && !overload.equals(desc) && !bridgeTo(mixin, handler, injector, owner, desc, overload, inserted, staticCall, methods, bridges)) continue;
-			for (int i = 0; i + 1 < at.values.size(); i += 2) {
-				if ("target".equals(at.values.get(i))) at.values.set(i + 1, constructor ? overload : "L" + callOwner + ";" + callName + overload);
-			}
+			Annotations.put(at, "target", constructor ? overload : "L" + callOwner + ";" + callName + overload);
 			String via = pointOnly || overload.equals(desc) ? "" : ", through a bridge handler";
 			if (hook != null) {
 				// A redirect replaces the hook's call, and with it the platform's events around the call: where its handler makes

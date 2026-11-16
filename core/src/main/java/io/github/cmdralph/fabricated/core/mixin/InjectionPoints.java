@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
@@ -35,6 +36,8 @@ final class InjectionPoints {
 	private static final int UNEVALUATED_INDEX = Integer.MIN_VALUE;
 	/** The opcodes a field access's {@code opcode} is taken as: Mixin's {@code BeforeFieldAccess} reads any other as none. */
 	private static final Set<Integer> FIELD_OPCODES = Set.of(Opcodes.GETFIELD, Opcodes.PUTFIELD, Opcodes.GETSTATIC, Opcodes.PUTSTATIC);
+
+	private static final Pattern PLAIN_DECIMAL = Pattern.compile("[+-]?(\\d+\\.?\\d*|\\.\\d+)([eE][+-]?\\d+)?[fFdD]?");
 
 	private InjectionPoints() {
 	}
@@ -148,7 +151,7 @@ final class InjectionPoints {
 
 	/** A decimal number, with an optional exponent and type suffix, as both Mixin's parser and Java's read alike. */
 	private static boolean plainDecimal(String value) {
-		return value.matches("[+-]?(\\d+\\.?\\d*|\\.\\d+)([eE][+-]?\\d+)?[fFdD]?");
+		return PLAIN_DECIMAL.matcher(value).matches();
 	}
 
 	/**
