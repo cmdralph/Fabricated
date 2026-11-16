@@ -6,7 +6,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -43,7 +42,6 @@ import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
  */
 final class ArgumentLocals {
 	private static final String WRAP_WITH_CONDITION = "Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;";
-	private static final String CANCELLABLE = "Lcom/llamalad7/mixinextras/sugar/Cancellable;";
 	private static final String SUGAR_REFS = "Lcom/llamalad7/mixinextras/sugar/ref/";
 	/** The injectors that store the values of the instruction they apply at before MixinExtras' wrappers do. */
 	private static final Set<String> EARLIER_STORES = Set.of(MixinNames.REDIRECT, "Lorg/spongepowered/asm/mixin/injection/ModifyArg;",
@@ -164,7 +162,7 @@ final class ArgumentLocals {
 							String namespace = Annotations.value(sugar, "namespace") instanceof String given ? given : mixin.name.replace('/', '.');
 							if (shared.putIfAbsent(namespace + ":" + name, next) == null) shareNames.put(next++, name);
 						} else if (sugar.desc.equals(MixinNames.LOCAL) && params[p].getDescriptor().startsWith(SUGAR_REFS)
-								|| sugar.desc.equals(CANCELLABLE)) {
+								|| sugar.desc.equals(MixinNames.CANCELLABLE)) {
 							next++;
 						}
 					}
@@ -182,10 +180,10 @@ final class ArgumentLocals {
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
 		Set<Integer> indexes = new TreeSet<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("INVOKE") && !point.equals("FIELD") || !(Annotations.value(at, "target") instanceof String raw)) return null;
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
-			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
+			int opcode = InjectionPoints.opcodeOf(at);
 			AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
 			Range range = slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, method, ctx);
 			List<Integer> picked = InjectionPoints.indexes(point, ctx.resolve(raw), ordinal, opcode, range, method);

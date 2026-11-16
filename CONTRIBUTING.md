@@ -6,7 +6,8 @@ follows, and step-by-step instructions for adding a new Minecraft version.
 ## Project layout
 
 Each platform is on its own branch, with the same folder structure: `main` holds the shared engine and NeoForge,
-`forge` the shared engine and Minecraft Forge 61 to 66, `forge-legacy` the shared engine and Forge 47. Shared changes go
+`forge` the shared engine and Minecraft Forge 61 to 66, `forge-legacy` the shared engine and Forge 47 and 52. Shared
+changes go
 to `main` and reach the platform branches by merge (`scripts/sync-platform-branch.sh`); Forge work goes to its branch
 directly. This is `main`'s tree:
 
@@ -17,7 +18,7 @@ directly. This is `main`'s tree:
 | `core/` | Everything that can be tested without a game: archive safety, `fabric.mod.json`, dependency resolution, remapping, access widener → access transformer, mixin pre-flight, linkage checks, package guard, cache, config, report, Fabric Loader runtime, and the discovery `Pipeline` | No |
 | `loader/common/` | Loader code every platform shares: Fabric's class transforms, the vanilla game jar, proposed jars, resource bundles, the mods a platform mod's mods.toml declares | No |
 | `loader/neoforge/` | NeoForge's discovery services, compiled into each of its versions' jars: candidate and dependency locators, the mod file reader for Fabric Loader's API, language loader, mod container; in `src/main`, with what FML 10 and later do otherwise than NeoForge 21.1's FML 4 in `src/fml` and `src/modlauncher` (the version's `loader_variant`) | The platform's loader only |
-| `loader/forge-shared/` | Both Forge platforms' discovery services, compiled into each Forge version's jar on the Forge branches: mod and dependency locators, transformation service, language provider; in `src/main`, with what Forge 61 to 66 do otherwise than Forge 47 below the game in `src/modern` and `src/fml47` (the version's `loader_variant`) | The platform's loader only |
+| `loader/forge-shared/` | Both Forge platforms' discovery services, compiled into each Forge version's jar on the Forge branches: mod and dependency locators, transformation service, language provider; in `src/main`, with what Forge 52 and 61 to 66 do otherwise than Forge 47 below the game in `src/modern` and `src/fml47` (the version's `loader_variant`) | The platform's loader only |
 | `mc/<platform>/<version>/` | One Gradle project per platform and Minecraft version, `:mc:<platform>-<version>`: properties, vendored native Fabric API modules (`src/fabricapi`), the Fabric API plan (`src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`), version-specific code (`src/main/java`) and the platform's half of the version's test mods | Yes |
 | `mc/<platform>/common*/` | Code a platform's versions share, as each version's `shared_sources` lists it: NeoForge's `common` (the in-game mod, the platform's half of the test mods) for every version, `common121` for 1.21.1 and 1.21.11, `common12111` for 1.21.11 and all 26.x versions, `common26` for all 26.x versions, `common26early` for 26.1.2 and 26.2, `common26late` for 26.2 and 26.3 | Yes |
 | `mc/shared/` | Sources every platform uses: in `src`, the in-game mod's shared code (`/fabricated`, Mod Menu's API), the broken test mods, stand-ins for other mods' APIs and the build's Fabric API remapper; in `<group>/src`, the Fabric test mods, by the Minecraft versions each group serves (`1.20.1+`, `1.20.1-1.21.1`, `1.21.1+`, `1.21.x`, `1.21.11+`, `26.x`, `26.1-26.2`, `26.2+`, one version's own), which its name says: every version builds the groups that serve it | Yes |
@@ -58,7 +59,8 @@ into `main`, `forge` or `forge-legacy` runs the full matrix for the versions it 
 The full matrix builds each version, boots real dedicated servers and starts real clients headlessly into a
 singleplayer world (HeadlessMC under Xvfb), with the test mods, Fabric API and other people's mods (`ci/runs.tsv`), and
 checks each run against `ci/checks.tsv`. A check a platform or version doesn't pass is listed there as not applying,
-with the reason. The server run with Fabric API is also the startup and memory benchmark (`ci/bench.py`): a pull request
+with the reason. A run `ci/runs.tsv` marks informational only reports; it becomes a gate once it held on two extended
+runs in a row. The server run with Fabric API is also the startup and memory benchmark (`ci/bench.py`): a pull request
 that takes a metric more than 10% over its baseline in `ci/bench.tsv` records the new value there, with the reason.
 
 ## Code rules
@@ -124,7 +126,7 @@ add tests.
 ## Reporting a compatibility result
 
 Run the game with the Fabric mod, then open an issue with:
-- the Minecraft, NeoForge and Fabricated versions,
+- the Minecraft, loader (NeoForge or Forge) and Fabricated versions,
 - the mod name, version and download link (no jar attachments),
 - `logs/fabric-bridge-report.txt` and `logs/latest.log`.
 
@@ -137,10 +139,25 @@ eleven, one per platform and Minecraft version, named `fabricated-<neoforge|forg
 NeoForge's five come from `main`, Forge 61 to 66's four from `forge`, and Forge 47's and Forge 52's from
 `forge-legacy`.
 
+A beta release holds this bar, on every branch:
+
+- **The support matrix is complete** (`docs/COMPATIBILITY.md`): every cell of every loader and Minecraft version is
+  supported, from CI, or unsupported with the reason. `README.md` and the release notes agree with it.
+- **One test suite everywhere:** the same test mods per Minecraft version run on every loader with that version, on a
+  server and a client, with Fabric API (on NeoForge without it too) and with the renderer test mod, as gates. A check a
+  platform doesn't pass is listed in `ci/checks.tsv` with its reason.
+- **Stability:** no launch stopped by Fabricated other than its refusals (Sinytra Connector, a second Fabricated jar),
+  a failed Fabric mod isolated where the platform allows, no open P0 or P1 finding, no open finding on untrusted input,
+  an upgrade that doesn't break a game directory, and the developer API (1.x) stable.
+- **Green release commits:** the full matrix, extended, on each branch's pinned commit, which the workflow runs; the
+  jars released are the ones it tested.
+- **The documents describe the project as it is,** without the history of how a decision came about, and
+  `docs/CHANGELOG.md` is user-facing.
+
 1. Merge the release's work into `main`, then sync `forge` and `forge-legacy` with it
    (`scripts/sync-platform-branch.sh`, a pull request each), all three with their CI green. `fabricated_version` in
    `gradle.properties` must be the tag's version, without its `v`, on each: the workflow stops otherwise.
-2. Write the notes as `docs/releases/<tag>.md` (for example `docs/releases/v0.6.0-beta.2.md`), titled with a `# `
+2. Write the notes as `docs/releases/<tag>.md` (for example `docs/releases/v0.6.0-beta.3.md`), titled with a `# `
    heading naming the version, and merge them into `main`. The workflow appends the commits the jars were built from
    and the jars' SHA-256 checksums, and that text is the GitHub release's and, after its title, each CurseForge
    file's changelog, so its links are full URLs (a relative link resolves against the release page).
