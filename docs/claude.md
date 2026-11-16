@@ -1,12 +1,12 @@
 # Fabricated: engineering memory
 
 This file is the starting point for anyone (human or agent) working on Fabricated. **Read it first, then
-[`roadmap.md`](roadmap.md)** (the next release's goals come first there). It holds the architecture map, the rules the
+[`roadmap.md`](roadmap.md)** (what comes next, and what is open). It holds the architecture map, the rules the
 code follows and the commands to run before committing. [`README.md`](README.md) says which document holds what and
 when it changes. The longer design documents remain the reference for details:
 [`ARCHITECTURE.md`](ARCHITECTURE.md) (pipeline, isolation, caching, security), [`RESEARCH.md`](RESEARCH.md) (verified
 facts about NeoForge, FML and Fabric), [`COMPATIBILITY.md`](COMPATIBILITY.md) (what works, per version and module),
-[`API.md`](API.md) (Fabricated's public API), [`CHANGELOG.md`](CHANGELOG.md) (each session's changes and how they were
+[`API.md`](API.md) (Fabricated's public API), [`CHANGELOG.md`](CHANGELOG.md) (what changed and how it was
 verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the porting record) and
 [`../CONTRIBUTING.md`](../CONTRIBUTING.md) (layout, build, adding a version).
 
@@ -191,8 +191,7 @@ dependency (their `build.gradle` files list only `fabric-loader-api`, `api`, ASM
 exists); `loader/common` names no loader types at all, so another platform's branch reuses it. The in-game mod
 reaches `loader` and `core` through NeoForge's parent class loader at runtime (`compileOnly`), never the reverse.
 
-The prompt that started the 2026-10-19 session described `api/` as "Fabric API surface re-implementations". It
-isn't: `api/` is Fabricated's own small public API (see `API.md`). The Fabric API re-implementations are the
+`api/` is Fabricated's own small public API (see `API.md`), not a re-implementation of Fabric API: those are the
 vendored modules in `mc/neoforge/<version>/src/fabricapi` and the bridges in `mc/neoforge/common*`.
 
 ### The version seam
@@ -222,7 +221,7 @@ point fails at startup, in CI. Four injections set `require = 0` on purpose, eac
 | Thread | Fabricated code that runs there |
 |---|---|
 | FML discovery (early services; may be a worker pool) | `FabricCandidateLocator`, `FabricDependencyLocator` → core `Pipeline` (translates mods with `parallelStream()`), `TranslationCache` |
-| Any class-loading thread | `FabricClassProcessor` (reads only the immutable `FabricatedState`) |
+| Any class-loading thread | `FabricClassTransforms`, called by `FabricClassProcessor` and `DefaultBridgeProcessor` (FML 10 to 12) or `FabricClassTransformer` (1.21.1); it only reads `FabricatedState`'s discovery result |
 | Mod construction / mod-bus events | `FabricatedMod`, native module registration, entrypoints (`main` on the first `RegisterEvent`) |
 | Render thread | client entrypoints (in `Minecraft`'s constructor), HUD/screen bridges, client networking handlers, moving blocks and the breaking overlay (`MovingBlockRenderMixin`, `BlockBreakingRenderMixin` → `FabricBlockRendering`, with their own per-thread renderer and emitter) |
 | **Chunk-section compile workers (several at once)** | `SectionCompilerMixin` → `FabricBlockRendering` for every block: the decision is a `ClassValue` (and, for a vanilla multipart or weighted model, a field of the model, written once with the same answer by any thread); the Fabric renderer and emitter are per thread (`ThreadLocal`); nothing else shared is mutated |
@@ -315,14 +314,14 @@ breaking overlay) through Fabric's renderer. On NeoForge that would drop level-a
    there too), and on 1.21.11 a Fabric model's parts for NeoForge's `collectParts` are made each time they're asked
    for (moving blocks every frame, a renderer mod's meshing once per section build). Only Fabric models' blocks pay.
 2. **Quad data has one owner, the active renderer.** Fabricated reads quads through `QuadView` and never keeps
-   them (vanilla quads made from them for the game, as for the breaking overlay, are the game's). If Fabricated ever gets its own encoder (see `roadmap.md`), its `int[]` stride, offsets and
+   them (vanilla quads made from them for the game, as for the breaking overlay, are the game's). If Fabricated ever gets its own encoder, its `int[]` stride, offsets and
    bit masks live in one constants class that every reader and writer uses.
 3. **Emitters and Fabric block renderers are thread-confined.** One per thread and use (`ThreadLocal`), bound to a
    section or a frame's buffers only for the duration of one call, never shared, never stored in a static field. Indigo's
    block renderer captures its thread's light cache when it is made, so sharing one across threads is a bug.
 4. **Version-agnostic FRAPI code lives in `mc/neoforge/common26`** behind the narrow seam above. Version-specific code goes in
-   `mc/neoforge/<version>` with a one-line comment naming the API difference that forces it. 1.21.11 needs its own work (see
-   `roadmap.md`).
+   `mc/neoforge/<version>` with a one-line comment naming the API difference that forces it. 1.21.11 has its own
+   (`mc/neoforge/1.21.11`).
 5. **Every cache has an explicit lifecycle tied to what it caches.** A cache keyed by a `Class` is a `ClassValue`
    (class lifetime, no pinning). A cache of baked models, sprites or atlases is cleared in a reload listener, or it
    lives in a field of the reloaded object itself. No static map keyed by models, states or identifiers outlives a

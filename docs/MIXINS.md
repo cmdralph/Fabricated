@@ -1,9 +1,8 @@
 # Mixin inventory
 
 Every mixin Fabricated ships, by config: target, injector, injection point, `require` and the versions that compile
-it. Snapshot taken 2026-10-19 by scanning the sources (see `roadmap.md`), then updated by hand for that session's
-changes; the list of configs, each config's entries, the per-config tables and the counts below were checked against
-the configs, and each row's source folder against the source tree, on 2026-10-28. A commit that adds, removes or
+it. Snapshot taken 2026-10-19 by scanning the sources, then updated by hand with each change; the list of configs,
+each config's entries, the per-config tables and the counts below were checked against the configs, and each row's source folder against the source tree, on 2026-10-28. A commit that adds, removes or
 retargets a mixin updates its row here; `scripts/check-mixin-inventory.py` fails when a config lists a mixin that its
 table here leaves out. Source line numbers are left out on purpose; open the class. The Forge branches' configs are
 under *Forge configs*, at the end.

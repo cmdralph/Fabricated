@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -27,6 +26,7 @@ import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.LookupSwitchInsnNode;
@@ -182,7 +182,8 @@ final class OverloadRepairs extends PreflightPart {
 			String why = "";
 			List<AnnotationNode> found;
 			Verdict inChosen = InjectionPoints.pointsIn(ats, slices, chosen, ctx);
-			boolean localsGone = inject && inChosen == Verdict.FOUND && MixinPreflight.missingLocal(handler, List.of(chosen)) != null;
+			boolean localsGone = inject && inChosen == Verdict.FOUND
+					&& MixinPreflight.missingLocal(handler, injector, List.of(chosen), target, ctx.require(handler, injector), classes, ctx) != null;
 			if (inChosen == Verdict.MISSING || localsGone) {
 				overload = calledOverload(chosen, target);
 				MethodNode replacement = overload == null ? replacementOf(chosen, target) : null;
@@ -432,7 +433,7 @@ final class OverloadRepairs extends PreflightPart {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.size() != 1) return List.of();
 		AnnotationNode at = ats.get(0);
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		String point = InjectionPoints.pointOf(at);
 		if (!point.equals("LOAD") || Annotations.value(at, "opcode") != null || Annotations.value(at, "shift") != null || Annotations.value(at, "by") != null) {
 			return List.of();
 		}
@@ -450,7 +451,7 @@ final class OverloadRepairs extends PreflightPart {
 		}
 		if (chosen == null) return List.of();
 		AnnotationNode slice = InjectionPoints.sliceFor(at, Annotations.list(Annotations.value(injector, "slice")));
-		int pointOrdinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		int pointOrdinal = InjectionPoints.ordinalOf(at);
 		InjectionPoints.Range inChosen = slice == null ? InjectionPoints.Range.ALL : InjectionPoints.sliceRange(slice, chosen, ctx);
 		// The method must have lost the point: no load of the type there (PRE-17).
 		if (inChosen == InjectionPoints.Range.UNEVALUATED || InjectionPoints.accessesAnyLocal(true, value, -1, pointOrdinal, inChosen, chosen)) return List.of();
@@ -551,7 +552,7 @@ final class OverloadRepairs extends PreflightPart {
 	private static int nthLocalOfType(MethodNode method, Type type, int ordinal, int position, Set<Integer> vanillaPlaces) {
 		java.util.TreeMap<Integer, LocalVariableNode> bySlot = new java.util.TreeMap<>();
 		for (LocalVariableNode lv : method.localVariables) {
-			if (method.instructions.indexOf(lv.start) > position || position >= method.instructions.indexOf(lv.end)) continue;
+			if (!PreflightAsm.inScope(method, lv, position)) continue;
 			if (bySlot.put(lv.index, lv) != null) return AMBIGUOUS;
 		}
 		int base = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
@@ -588,7 +589,7 @@ final class OverloadRepairs extends PreflightPart {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.isEmpty()) return List.of();
 		for (AnnotationNode at : ats) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("RETURN") || at.values == null || at.values.size() != 2) return List.of(); // every return, nothing else
 		}
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
@@ -766,7 +767,7 @@ final class OverloadRepairs extends PreflightPart {
 		int first = firstLocalSlot(method);
 		java.util.TreeMap<Integer, LocalVariableNode> bySlot = new java.util.TreeMap<>();
 		for (LocalVariableNode lv : method.localVariables) {
-			if (lv.index < first || method.instructions.indexOf(lv.start) > position || position >= method.instructions.indexOf(lv.end)) continue;
+			if (lv.index < first || !PreflightAsm.inScope(method, lv, position)) continue;
 			if (bySlot.put(lv.index, lv) != null) return null;
 		}
 		List<Type> types = new ArrayList<>();
@@ -862,7 +863,7 @@ final class OverloadRepairs extends PreflightPart {
 		boolean called = false;
 		for (AbstractInsnNode insn : method.instructions) {
 			if (insn.getOpcode() < 0) continue; // labels, line numbers, frames
-			if (called) return insn.getOpcode() >= Opcodes.IRETURN && insn.getOpcode() <= Opcodes.RETURN;
+			if (called) return PreflightAsm.isReturn(insn.getOpcode());
 			if (insn instanceof MethodInsnNode call) {
 				if (!call.owner.equals(target.name) || !call.name.equals(callee.name) || !call.desc.equals(callee.desc)) return false;
 				called = true;
@@ -1038,7 +1039,7 @@ final class OverloadRepairs extends PreflightPart {
 			int op = code.get(i).getOpcode();
 			boolean stores = op >= Opcodes.ISTORE && op <= Opcodes.SASTORE || op == Opcodes.PUTFIELD || op == Opcodes.PUTSTATIC || op == Opcodes.IINC;
 			if (stores || code.get(i) instanceof JumpInsnNode || code.get(i) instanceof TableSwitchInsnNode || code.get(i) instanceof LookupSwitchInsnNode
-					|| op >= Opcodes.IRETURN && op <= Opcodes.RETURN || op == Opcodes.ATHROW) return -1;
+					|| PreflightAsm.isReturn(op) || op == Opcodes.ATHROW) return -1;
 		}
 		return passedOnWith(method, call);
 	}
@@ -1097,19 +1098,7 @@ final class OverloadRepairs extends PreflightPart {
 	 * switches or exception handlers leads among them.
 	 */
 	static AbstractInsnNode[] pushedBy(MethodNode method, MethodInsnNode call) {
-		Set<AbstractInsnNode> entered = new HashSet<>();
-		for (var block : method.tryCatchBlocks) entered.add(block.handler);
-		for (AbstractInsnNode insn : method.instructions) {
-			if (insn instanceof JumpInsnNode jump) entered.add(jump.label);
-			if (insn instanceof TableSwitchInsnNode table) {
-				entered.add(table.dflt);
-				entered.addAll(table.labels);
-			}
-			if (insn instanceof LookupSwitchInsnNode lookup) {
-				entered.add(lookup.dflt);
-				entered.addAll(lookup.labels);
-			}
-		}
+		Set<LabelNode> entered = PreflightAsm.jumpTargets(method);
 		int values = Type.getArgumentTypes(call.desc).length + (call.getOpcode() == Opcodes.INVOKESTATIC ? 0 : 1);
 		AbstractInsnNode[] pushed = new AbstractInsnNode[values];
 		// The stack before the instruction looked at, top last: the index of the call's value each entry is, or -1.
@@ -1448,7 +1437,7 @@ final class OverloadRepairs extends PreflightPart {
 		if (method.localVariables == null || method.localVariables.isEmpty()) return null;
 		java.util.TreeMap<Integer, LocalVariableNode> bySlot = new java.util.TreeMap<>();
 		for (LocalVariableNode lv : method.localVariables) {
-			if (!lv.desc.equals(desc) || method.instructions.indexOf(lv.start) > index || index >= method.instructions.indexOf(lv.end)) continue;
+			if (!lv.desc.equals(desc) || !PreflightAsm.inScope(method, lv, index)) continue;
 			if (bySlot.put(lv.index, lv) != null) return null;
 		}
 		return new ArrayList<>(bySlot.values());
@@ -1460,27 +1449,19 @@ final class OverloadRepairs extends PreflightPart {
 	 * matches, or its ordinal-th. Null for any other point, or when it matches none.
 	 */
 	private static List<Integer> pointPositions(List<AnnotationNode> ats, MethodNode method, Context ctx) {
-		List<Integer> positions = new ArrayList<>();
 		if (ConstructorRepairs.atEndOnly(ats)) {
-			for (int i = 0; i < method.instructions.size(); i++) {
-				int op = method.instructions.get(i).getOpcode();
-				if (op >= Opcodes.IRETURN && op <= Opcodes.RETURN) positions.add(i);
-			}
-			return positions.isEmpty() ? null : positions;
+			List<Integer> returns = PreflightAsm.returns(method);
+			return returns.isEmpty() ? null : returns;
 		}
 		if (ats.size() != 1) return null;
 		AnnotationNode at = ats.get(0);
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		String point = InjectionPoints.pointOf(at);
 		if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)
 				|| Annotations.value(at, "shift") != null || Annotations.value(at, "by") != null) return null;
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 		if (ref.fuzzy()) return null;
-		int opcode = Annotations.value(at, "opcode") instanceof Integer o ? o : -1;
-		for (int i = 0; i < method.instructions.size(); i++) {
-			AbstractInsnNode insn = method.instructions.get(i);
-			if (InjectionPoints.hasOpcode(point, opcode, insn) && InjectionPoints.matchesInsn(point, ref, insn)) positions.add(i);
-		}
-		int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		List<Integer> positions = PreflightAsm.matching(method, point, ref, InjectionPoints.opcodeOf(at));
+		int ordinal = InjectionPoints.ordinalOf(at);
 		if (ordinal >= 0) return ordinal < positions.size() ? List.of(positions.get(ordinal)) : null;
 		return positions.isEmpty() ? null : positions;
 	}
@@ -1496,7 +1477,7 @@ final class OverloadRepairs extends PreflightPart {
 		for (int i : positions) {
 			TreeSet<Integer> inScope = new TreeSet<>();
 			for (LocalVariableNode lv : method.localVariables) {
-				if (lv.desc.equals(type.getDescriptor()) && method.instructions.indexOf(lv.start) <= i && i < method.instructions.indexOf(lv.end)) {
+				if (lv.desc.equals(type.getDescriptor()) && PreflightAsm.inScope(method, lv, i)) {
 					inScope.add(lv.index);
 				}
 			}

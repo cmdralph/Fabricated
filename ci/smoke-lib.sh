@@ -32,10 +32,35 @@ cached_install() {
 	fi
 }
 
-# retrying_curl <curl arguments...>: how the harness and the adapters download: failing on an HTTP error, a dropped
-# connection or a server's error tried again for up to five minutes.
+# retrying_curl <curl arguments...>: how the harness and the adapters download: failing on an HTTP error. curl tries a
+# timeout or a server's error again itself, for up to five minutes; a connection that is refused, reset or dropped
+# part way, which curl doesn't, is tried up to four more times here, from the start. Without -o the answer is kept
+# back until a whole one came, so what reads it never gets part of one and then all of it.
 retrying_curl() {
-	curl -fsSL --retry 8 --retry-max-time 300 "$@"
+	local arg out='' attempt status=0
+	for arg in "$@"; do
+		if [ "$arg" = -o ]; then out=given; fi
+	done
+	if [ -z "$out" ]; then out=$(mktemp); fi
+	for attempt in 1 2 3 4 5; do
+		if [ "$out" = given ]; then
+			curl -fsSL --retry 8 --retry-max-time 300 "$@"
+		else
+			curl -fsSL --retry 8 --retry-max-time 300 -o "$out" "$@"
+		fi
+		status=$?
+		case $status in
+			# No connection, a TLS handshake cut short, part of a file, an empty answer, a send or a receive that failed,
+			# an HTTP/2 stream reset.
+			7|18|35|52|55|56|92) [ "$attempt" = 5 ] || sleep "${SMOKE_RETRY_WAIT:-$((attempt * 10))}" ;;
+			*) break ;;
+		esac
+	done
+	if [ "$out" != given ]; then
+		if [ "$status" = 0 ]; then cat "$out"; fi
+		rm -f "$out"
+	fi
+	return "$status"
 }
 
 # download <url> <file>: a pinned download, kept in the cache's downloads folder by its URL. A failed one, which may

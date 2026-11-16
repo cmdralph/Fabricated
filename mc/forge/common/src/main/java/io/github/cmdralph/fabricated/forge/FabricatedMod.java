@@ -87,11 +87,11 @@ public final class FabricatedMod {
 		// module of Fabric API's jar. The module is outside the plans, which the provider check reads: a mod providing it
 		// has it as a Forge mod, not a Fabric mod Fabricated runs, and bridges it itself (PROVIDER-16).
 		if (state.isFabricMod(ModIds.toNeoForgeId(TransferBridge.MODULE))) TransferBridge.register();
-		for (String text : ForgeLoaderHooks.notLoaded()) {
-			LoadingWarnings.add(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
-		}
+		IModInfo self = context.getContainer().getModInfo();
+		Consumer<String> warning = text -> LoadingWarnings.add(new ModLoadingWarning(self, ModLoadingStage.CONSTRUCT, AS_IS, text));
+		for (String text : ForgeLoaderHooks.notLoaded()) warning.accept(text);
 		// What discovery tells the player from now on: a Fabric mod's jar proposed for the class path (DOWNLOAD-1).
-		ForgeLoaderHooks.warnings(text -> LoadingWarnings.add(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text)));
+		ForgeLoaderHooks.warnings(warning);
 		// /fabricated, in the server's commands and, on a client, in its own, which only its player runs.
 		RegisterCommandsEvent.BUS.addListener(event -> FabricatedCommands.register(event.getDispatcher(), state, false));
 		if (!FMLLoader.getDist().isDedicatedServer()) {
@@ -107,7 +107,6 @@ public final class FabricatedMod {
 			// Fabric mods' built-in packs enabled by default, once their initializers registered them (see FabricDefaultPacks).
 			if (ours(state, FabricDefaultPacks.MODULE)) state.api().afterEntrypoints(FabricDefaultPacks::apply);
 		}
-		IModInfo self = context.getContainer().getModInfo();
 		// Each entrypoint runs with a context class loader that finds Fabric mods' directories, as on Fabric (SCAN-1).
 		EntrypointRunner runner = new EntrypointRunner(state.runtime(), ModDirectoryClassLoader.contextHook(state.runtime()));
 		List<EntrypointRunner.Failure> preLaunch = runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch);
@@ -118,8 +117,7 @@ public final class FabricatedMod {
 				attributesRegistered = true;
 			} else if (attributesRegistered) {
 				initialized = true;
-				initialize(state, runner, event.getForgeRegistry(), preLaunch,
-						text -> LoadingWarnings.add(new ModLoadingWarning(self, ModLoadingStage.CONSTRUCT, AS_IS, text)));
+				initialize(state, runner, event.getForgeRegistry(), preLaunch, warning);
 			}
 		});
 	}

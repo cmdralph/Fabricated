@@ -84,6 +84,13 @@ public final class KnownLimits {
 					Pattern.compile("applies in doSweepAttack\\([^)]*\\)\\S*, vanilla's method, which NeoForge's Player never calls"),
 					"NeoForge makes the sweep attack's box in attack, for an overload of doSweepAttack of its own, so hooks in vanilla's doSweepAttack"
 							+ " apply there but never run (SEAM-8)", true),
+			// An invoker of a private method of vanilla's the platform replaced with one of its own taking other parameters
+			// (Forge 47's FireBlock.tryCatchFire, taking the side the fire comes from): pre-flight's hint names that method.
+			new Limit(Set.of("NeoForge", "Forge"), null,
+					Pattern.compile("^@Invoker target method .* replaced that private method with .*, and has no method taking vanilla's parameters"
+							+ " for the invoker to call", Pattern.DOTALL),
+					"NeoForge and Forge replaced that private method with one of their own taking other parameters, so the mod's invoker of"
+							+ " vanilla's method has nothing to call, and the feature calling it fails when it does (STRUCT-2)"),
 			// ForgeRegistry.add, whose maps key a value by its equality: two objects, by their identity hashes, not one object
 			// under two names.
 			new Limit(Set.of(), IllegalArgumentException.class.getName(),
