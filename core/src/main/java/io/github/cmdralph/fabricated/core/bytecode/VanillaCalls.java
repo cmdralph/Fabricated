@@ -2127,8 +2127,8 @@ final class VanillaCalls {
 		if (method.invisibleAnnotations == null) return 0;
 		String key = owner + ";" + name + desc;
 		for (AnnotationNode ann : method.invisibleAnnotations) {
-			if (VanillaSeams.MARKER.equals(ann.desc) && value(ann, "calls") instanceof List<?> calls && calls.contains(key)
-					&& value(ann, "places") instanceof Integer places) return places;
+			if (VanillaSeams.MARKER.equals(ann.desc) && Annotations.value(ann, "calls") instanceof List<?> calls && calls.contains(key)
+					&& Annotations.value(ann, "places") instanceof Integer places) return places;
 		}
 		return 0;
 	}
@@ -2139,14 +2139,14 @@ final class VanillaCalls {
 		for (MethodNode method : node.methods) {
 			if (method.invisibleAnnotations == null) continue;
 			for (AnnotationNode ann : method.invisibleAnnotations) {
-				if (!VanillaSeams.MARKER.equals(ann.desc) || !(value(ann, "calls") instanceof List<?> calls)) continue;
-				String keeps = String.valueOf(value(ann, "keeps"));
+				if (!VanillaSeams.MARKER.equals(ann.desc) || !(Annotations.value(ann, "calls") instanceof List<?> calls)) continue;
+				String keeps = String.valueOf(Annotations.value(ann, "keeps"));
 				for (Object call : calls) {
 					String key = String.valueOf(call);
 					int semicolon = key.indexOf(';'), paren = key.indexOf('(');
 					found.add(new VanillaSeams.Restored(key.substring(0, semicolon), key.substring(semicolon + 1, paren), key.substring(paren),
-							method.name + method.desc, keeps, String.valueOf(value(ann, "finding")), String.valueOf(value(ann, "through")),
-							String.valueOf(value(ann, "note"))));
+							method.name + method.desc, keeps, String.valueOf(Annotations.value(ann, "finding")), String.valueOf(Annotations.value(ann, "through")),
+							String.valueOf(Annotations.value(ann, "note"))));
 				}
 			}
 		}
@@ -2166,7 +2166,7 @@ final class VanillaCalls {
 			MethodNode method = holder(restored, row, srg);
 			Member platform = row.platform();
 			if (method == null || method.invisibleAnnotations == null || method.invisibleAnnotations.stream()
-					.noneMatch(a -> VanillaSeams.MARKER.equals(a.desc) && platform.key(false).equals(value(a, "platform")))) continue;
+					.noneMatch(a -> VanillaSeams.MARKER.equals(a.desc) && platform.key(false).equals(Annotations.value(a, "platform")))) continue;
 			moved.add(platform.key(false));
 			holders.add(method.name + method.desc);
 			if (platform.owner().equals(node.name)) bypassed.add(platform.name() + platform.desc());
@@ -2382,13 +2382,6 @@ final class VanillaCalls {
 		if (declares(classes, info.superName(), member, field, seen)) return true;
 		for (String itf : info.interfaces()) if (declares(classes, itf, member, field, seen)) return true;
 		return false;
-	}
-
-	private static Object value(AnnotationNode ann, String name) {
-		for (int i = 0; ann.values != null && i + 1 < ann.values.size(); i += 2) {
-			if (name.equals(ann.values.get(i))) return ann.values.get(i + 1);
-		}
-		return null;
 	}
 
 	private static byte[] write(ClassNode node) {
