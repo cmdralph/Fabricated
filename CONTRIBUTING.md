@@ -6,7 +6,8 @@ follows, and step-by-step instructions for adding a new Minecraft version.
 ## Project layout
 
 Each platform is on its own branch, with the same folder structure: `main` holds the shared engine and NeoForge,
-`forge` the shared engine and Minecraft Forge 61 to 66, `forge-legacy` the shared engine and Forge 47. Shared changes go
+`forge` the shared engine and Minecraft Forge 61 to 66, `forge-legacy` the shared engine and Forge 47 and 52. Shared
+changes go
 to `main` and reach the platform branches by merge (`scripts/sync-platform-branch.sh`); Forge work goes to its branch
 directly. This is `main`'s tree:
 
@@ -58,7 +59,8 @@ into `main`, `forge` or `forge-legacy` runs the full matrix for the versions it 
 The full matrix builds each version, boots real dedicated servers and starts real clients headlessly into a
 singleplayer world (HeadlessMC under Xvfb), with the test mods, Fabric API and other people's mods (`ci/runs.tsv`), and
 checks each run against `ci/checks.tsv`. A check a platform or version doesn't pass is listed there as not applying,
-with the reason. The server run with Fabric API is also the startup and memory benchmark (`ci/bench.py`): a pull request
+with the reason. A run `ci/runs.tsv` marks informational only reports; it becomes a gate once it held on two extended
+runs in a row. The server run with Fabric API is also the startup and memory benchmark (`ci/bench.py`): a pull request
 that takes a metric more than 10% over its baseline in `ci/bench.tsv` records the new value there, with the reason.
 
 ## Code rules
@@ -124,7 +126,7 @@ add tests.
 ## Reporting a compatibility result
 
 Run the game with the Fabric mod, then open an issue with:
-- the Minecraft, NeoForge and Fabricated versions,
+- the Minecraft, loader (NeoForge or Forge) and Fabricated versions,
 - the mod name, version and download link (no jar attachments),
 - `logs/fabric-bridge-report.txt` and `logs/latest.log`.
 
@@ -137,10 +139,25 @@ eleven, one per platform and Minecraft version, named `fabricated-<neoforge|forg
 NeoForge's five come from `main`, Forge 61 to 66's four from `forge`, and Forge 47's and Forge 52's from
 `forge-legacy`.
 
+A beta release holds this bar, on every branch:
+
+- **The support matrix is complete** (`docs/COMPATIBILITY.md`): every cell of every loader and Minecraft version is
+  supported, from CI, or unsupported with the reason. `README.md` and the release notes agree with it.
+- **One test suite everywhere:** the same test mods per Minecraft version run on every loader with that version, on a
+  server and a client, with Fabric API (on NeoForge without it too) and with the renderer test mod, as gates. A check a
+  platform doesn't pass is listed in `ci/checks.tsv` with its reason.
+- **Stability:** no launch stopped by Fabricated other than its refusals (Sinytra Connector, a second Fabricated jar),
+  a failed Fabric mod isolated where the platform allows, no open P0 or P1 finding, no open finding on untrusted input,
+  an upgrade that doesn't break a game directory, and the developer API (1.x) stable.
+- **Green release commits:** the full matrix, extended, on each branch's pinned commit, which the workflow runs; the
+  jars released are the ones it tested.
+- **The documents describe the project as it is,** without the history of how a decision came about, and
+  `docs/CHANGELOG.md` is user-facing.
+
 1. Merge the release's work into `main`, then sync `forge` and `forge-legacy` with it
    (`scripts/sync-platform-branch.sh`, a pull request each), all three with their CI green. `fabricated_version` in
    `gradle.properties` must be the tag's version, without its `v`, on each: the workflow stops otherwise.
-2. Write the notes as `docs/releases/<tag>.md` (for example `docs/releases/v0.6.0-beta.2.md`), titled with a `# `
+2. Write the notes as `docs/releases/<tag>.md` (for example `docs/releases/v0.6.0-beta.3.md`), titled with a `# `
    heading naming the version, and merge them into `main`. The workflow appends the commits the jars were built from
    and the jars' SHA-256 checksums, and that text is the GitHub release's and, after its title, each CurseForge
    file's changelog, so its links are full URLs (a relative link resolves against the release page).
