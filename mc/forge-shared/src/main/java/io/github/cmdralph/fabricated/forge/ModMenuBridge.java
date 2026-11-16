@@ -1,10 +1,6 @@
 package io.github.cmdralph.fabricated.forge;
 
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.Optional;
 
 import org.slf4j.Logger;
@@ -18,7 +14,6 @@ import io.github.cmdralph.fabricated.core.runtime.FabricLoaderRuntime;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.fml.ModContainer;
-import net.minecraftforge.fml.ModList;
 
 /**
  * Fabric mods' config screens (their {@code modmenu} entrypoint) behind the config button of Forge's mod list, which
@@ -71,20 +66,10 @@ final class ModMenuBridge {
 		}
 	}
 
-	/**
-	 * {@code ModList.getModContainerById} as {@code (String)Optional}: Forge 64 and later (Minecraft 26.x) made
-	 * {@code ModList}'s methods static, where Forge 47 and 61 reach them through {@code ModList.get()}, so neither call
-	 * compiles on both.
-	 */
+	/** {@code ModList.getModContainerById} ({@link ForgeModList#containerById}). */
 	private static MethodHandle containerById() {
 		try {
-			MethodHandles.Lookup lookup = MethodHandles.publicLookup();
-			Method byId = ModList.class.getMethod("getModContainerById", String.class);
-			MethodHandle handle = lookup.unreflect(byId);
-			if (!Modifier.isStatic(byId.getModifiers())) {
-				handle = MethodHandles.collectArguments(handle, 0, lookup.unreflect(ModList.class.getMethod("get")));
-			}
-			return handle.asType(MethodType.methodType(Optional.class, String.class));
+			return ForgeModList.containerById();
 		} catch (ReflectiveOperationException e) {
 			throw new IllegalStateException("Forge's ModList has no public getModContainerById", e);
 		}

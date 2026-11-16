@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -48,7 +47,7 @@ final class CallRepairs extends PreflightPart {
 		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw)
 					|| Annotations.value(at, "ordinal") instanceof Integer ordinal && ordinal > 0) continue;
 			String resolved = ctx.resolve(raw);
@@ -59,9 +58,7 @@ final class CallRepairs extends PreflightPart {
 			}
 			if (step == null || calls(methods, hook) != 0) continue;
 			MemberRef call = MemberRef.parse(step);
-			for (int i = 0; i + 1 < at.values.size(); i += 2) {
-				if ("target".equals(at.values.get(i))) at.values.set(i + 1, step);
-			}
+			Annotations.put(at, "target", step);
 			moved.add(hook.owner().replace('/', '.') + "." + hook.name() + ", which Fabric Loader adds where it runs mods' entrypoints;"
 					+ " the injection point is pointed at " + call.owner().replace('/', '.') + "." + call.name() + ", where they run here");
 		}
@@ -92,7 +89,7 @@ final class CallRepairs extends PreflightPart {
 		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("INVOKE") && !point.equals("INVOKE_ASSIGN") || !(Annotations.value(at, "target") instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null) continue;
@@ -112,12 +109,10 @@ final class CallRepairs extends PreflightPart {
 					}
 				}
 			}
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
 			if (named || subtype == null || ambiguous || ordinal >= calls) continue;
 			String retargeted = "L" + subtype + ";" + ref.name() + ref.desc();
-			for (int i = 0; i + 1 < at.values.size(); i += 2) {
-				if ("target".equals(at.values.get(i))) at.values.set(i + 1, retargeted);
-			}
+			Annotations.put(at, "target", retargeted);
 			moved.add(ref.owner().replace('/', '.') + "." + ref.name() + ", which this game build calls through "
 					+ subtype.replace('/', '.') + " (the same method); the injection point is pointed there");
 		}
@@ -142,7 +137,7 @@ final class CallRepairs extends PreflightPart {
 		List<VanillaSeams.Restored> putBack = VanillaSeams.restoredIn(target).stream().filter(r -> (method.name + method.desc).equals(r.in())).toList();
 		List<String> dropped = new ArrayList<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("INVOKE") && !point.equals("INVOKE_ASSIGN") || !Integer.valueOf(0).equals(Annotations.value(at, "ordinal"))
 					|| !(Annotations.value(at, "target") instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
@@ -191,7 +186,7 @@ final class CallRepairs extends PreflightPart {
 		PatchAlignment alignment = null;
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : ats) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (point.equals("RETURN") && Annotations.value(at, "ordinal") instanceof Integer ordinal) {
 				List<Integer> inVanilla = PreflightAsm.returns(before), here = PreflightAsm.returns(patched);
 				// An ordinal below 0 picks every return, as Mixin reads it.
@@ -216,10 +211,10 @@ final class CallRepairs extends PreflightPart {
 				continue;
 			}
 			if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)) continue;
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 			if (ref.fuzzy()) continue;
-			int opcode = Annotations.value(at, "opcode") instanceof Integer o ? o : -1;
+			int opcode = InjectionPoints.opcodeOf(at);
 			List<Integer> inVanilla = PreflightAsm.matching(before, point, ref, opcode);
 			List<Integer> here = PreflightAsm.matching(patched, point, ref, opcode);
 			boolean every = ordinal < 0;
@@ -290,23 +285,11 @@ final class CallRepairs extends PreflightPart {
 	 * nothing between them jumps, switches, returns or throws, and no jump, switch or exception handler leads into them.
 	 */
 	private static boolean onOnePath(MethodNode method, int from, int to) {
-		Set<AbstractInsnNode> entered = new HashSet<>();
-		for (TryCatchBlockNode block : method.tryCatchBlocks) entered.add(block.handler);
-		for (AbstractInsnNode insn : method.instructions) {
-			if (insn instanceof JumpInsnNode jump) entered.add(jump.label);
-			if (insn instanceof TableSwitchInsnNode table) {
-				entered.add(table.dflt);
-				entered.addAll(table.labels);
-			}
-			if (insn instanceof LookupSwitchInsnNode lookup) {
-				entered.add(lookup.dflt);
-				entered.addAll(lookup.labels);
-			}
-		}
+		Set<LabelNode> entered = PreflightAsm.jumpTargets(method);
 		for (int i = from + 1; i < to; i++) {
 			AbstractInsnNode insn = method.instructions.get(i);
 			int op = insn.getOpcode();
-			if (Initialisers.branches(insn) || op >= Opcodes.IRETURN && op <= Opcodes.RETURN || op == Opcodes.ATHROW || entered.contains(insn)) return false;
+			if (Initialisers.branches(insn) || PreflightAsm.isReturn(op) || op == Opcodes.ATHROW || entered.contains(insn)) return false;
 		}
 		return true;
 	}
@@ -356,13 +339,13 @@ final class CallRepairs extends PreflightPart {
 		if (before == null || before.instructions == null || patched.instructions == null) return List.of();
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw) || Annotations.value(at, "shift") != null
 					|| Annotations.value(at, "by") != null) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null || !PreflightAsm.matching(patched, point, ref, -1).isEmpty()) continue;
 			List<Integer> inVanilla = PreflightAsm.matching(before, point, ref, -1);
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
 			if (ordinal < 0 ? inVanilla.size() != 1 : ordinal >= inVanilla.size()) continue;
 			MethodInsnNode next = vanillasPlace(before, patched, inVanilla.get(Math.max(ordinal, 0)));
 			Code into = next == null ? null : movedInto(patched, ref, 3);
@@ -376,6 +359,224 @@ final class CallRepairs extends PreflightPart {
 					+ next.owner.replace('/', '.') + "." + next.name + next.desc + " after it");
 		}
 		return moved;
+	}
+
+	/** Mixin's {@code @ModifyArg}. */
+	private static final String MODIFY_ARG = "Lorg/spongepowered/asm/mixin/injection/ModifyArg;";
+
+	/**
+	 * Points a {@code @ModifyArg} at a call vanilla's method makes, which the platform's patch makes inside a hook of its
+	 * own instead, at the hook's call, and at the hook's parameter the hook passes on as that argument (OVERLOAD-4).
+	 * NeoForge 21.1 and Forge 52 drop the selected stack in {@code ServerPlayer.drop(boolean)} through
+	 * {@code onPlayerTossEvent(player, stack, true)}, which drops it with {@code player.drop(stack, false, includeName)}
+	 * and then fires the toss event; Apoli's hook modifying the stack vanilla's call drops found no call there.
+	 * <p>
+	 * The value the hook's call gets there must be the one the call inside gets, which an analysis of the stack tells
+	 * ({@link OverloadRepairs#pushedBy}):
+	 * <ul>
+	 * <li>vanilla's call (VANILLA-1), a static one or one the object's class decides (not {@code super}'s or another
+	 * {@code invokespecial}, which names one class's code where the hook's call would run an override's), is gone from
+	 * the method, and in its place, as an alignment of the two methods' code
+	 * tells ({@link PatchAlignment#replacementOf}), the patch calls one static method of the platform's (in its classes),
+	 * nowhere else; with the point's ordinal, the call in the place of vanilla's with that ordinal;</li>
+	 * <li>that hook makes the call once, on every way through it (no jump, switch, return, throw or try block, and no
+	 * label a jump leads to, from its start to the call): the call of vanilla's method, or, on the same object, of the
+	 * method it overrides;</li>
+	 * <li>the argument is a plain load of one of the hook's parameters, of the argument's type, which the hook loads
+	 * nowhere else and never stores into, so the value the handler returns is the one the call gets, and nothing else
+	 * of the hook's sees it;</li>
+	 * <li>the call's receiver, where it has one, is a parameter of the hook the hook never stores into, which the method
+	 * passes {@code this}, as vanilla's call was made on {@code this}.</li>
+	 * </ul>
+	 * The handler takes the argument alone (Mixin's single argument form), and MixinExtras' {@code @Share} or
+	 * {@code @Cancellable} sugar, which don't depend on the code around the point: it stays in the method, at the place
+	 * of vanilla's call, and runs before the hook's code ahead of the call (Forge's and NeoForge's capture of the drops).
+	 * A point with a slice, a shift or an opcode isn't judged. Returns a description of each move.
+	 */
+	List<String> hookArgumentRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!injector.desc.equals(MODIFY_ARG) || Annotations.value(injector, "slice") != null || (mixin.access & Opcodes.ACC_INTERFACE) != 0) return List.of();
+		// The single argument form: the argument alone, then sugar that doesn't read the method's locals.
+		Type value = Type.getReturnType(handler.desc);
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		List<Type> args = new ArrayList<>();
+		for (int i = 0; i < params.length; i++) {
+			boolean sugar = false;
+			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
+				if (!a.desc.equals(MixinNames.SHARE) && !a.desc.equals(MixinNames.CANCELLABLE)) return List.of();
+				sugar = true;
+			}
+			if (!sugar) args.add(params[i]);
+		}
+		if (value.getSort() == Type.VOID || !args.equals(List.of(value))) return List.of();
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.size() != 1) return List.of();
+		AnnotationNode at = ats.get(0);
+		String point = InjectionPoints.pointOf(at);
+		if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw) || Annotations.value(at, "shift") != null
+				|| Annotations.value(at, "by") != null || Annotations.value(at, "opcode") != null || Annotations.value(at, "slice") != null) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null || ref.name().startsWith("<")) return List.of();
+		ClassNode original = vanillaClass(target.name);
+		List<MethodNode> methods = original == null ? List.of() : PreflightAsm.selectedMethods(injector, target, ctx);
+		if (methods.size() != 1) return List.of();
+		MethodNode patched = methods.get(0);
+		MethodNode before = PreflightAsm.declared(original, patched.name, patched.desc);
+		if (before == null || (before.access & Opcodes.ACC_STATIC) != (patched.access & Opcodes.ACC_STATIC) || !PreflightAsm.matching(patched, point, ref, -1).isEmpty()) {
+			return List.of();
+		}
+		// The argument the handler modifies: by its index, or the call's one argument of its type, as Mixin finds it.
+		Type[] callArgs = Type.getArgumentTypes(ref.desc());
+		int argument = Annotations.value(injector, "index") instanceof Integer n ? n : -1;
+		if (argument < 0) {
+			for (int i = 0; i < callArgs.length; i++) {
+				if (!callArgs[i].equals(value)) continue;
+				if (argument >= 0) return List.of();
+				argument = i;
+			}
+		}
+		if (argument < 0 || argument >= callArgs.length || !callArgs[argument].equals(value)) return List.of();
+		List<Integer> inVanilla = PreflightAsm.matching(before, point, ref, -1);
+		int ordinal = InjectionPoints.ordinalOf(at);
+		if (inVanilla.isEmpty() || ordinal >= inVanilla.size()) return List.of();
+		PatchAlignment alignment = PatchAlignment.of(before, patched);
+		if (alignment == null) return List.of();
+		boolean staticCall = before.instructions.get(inVanilla.get(Math.max(ordinal, 0))).getOpcode() == Opcodes.INVOKESTATIC;
+		// The hook's call in the place of each of vanilla's calls the point picks.
+		MethodInsnNode hook = null;
+		int[] passed = null;
+		List<MethodInsnNode> placed = new ArrayList<>();
+		for (int k = 0; k < inVanilla.size(); k++) {
+			if (ordinal >= 0 && k != ordinal) continue;
+			int vanillaCall = inVanilla.get(k);
+			// A call of the method itself, as the hook's is: super.drop(...) (invokespecial) names the superclass's code, which
+			// the hook's call on the object wouldn't run where its class overrides it.
+			int made = before.instructions.get(vanillaCall).getOpcode();
+			if (staticCall ? made != Opcodes.INVOKESTATIC : made != Opcodes.INVOKEVIRTUAL && made != Opcodes.INVOKEINTERFACE) return List.of();
+			int[] range = alignment.replacementOf(vanillaCall);
+			if (alignment.placeOf(vanillaCall) != -1 || range == null) return List.of();
+			MethodInsnNode found = null;
+			for (int i = range[0]; i < range[1]; i++) {
+				if (!(patched.instructions.get(i) instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC || !MixinNames.isPlatformCode(call.owner)) continue;
+				if (found != null) return List.of();
+				found = call;
+			}
+			if (found == null || hook != null && !(hook.owner.equals(found.owner) && hook.name.equals(found.name) && hook.desc.equals(found.desc))) return List.of();
+			if (hook == null) {
+				passed = passedThrough(found, ref, argument, staticCall);
+				if (passed == null) return List.of();
+			}
+			if (!staticCall && !(receivedAsThis(before, vanillaCall, 0) && receivedAsThis(patched, patched.instructions.indexOf(found), passed[1]))) return List.of();
+			hook = found;
+			placed.add(found);
+		}
+		// The hook's calls in the method: those, and with no ordinal no others, where the hook would modify more.
+		List<MethodInsnNode> hookCalls = new ArrayList<>();
+		for (AbstractInsnNode insn : patched.instructions) {
+			if (insn instanceof MethodInsnNode call && call.owner.equals(hook.owner) && call.name.equals(hook.name) && call.desc.equals(hook.desc)) hookCalls.add(call);
+		}
+		if (ordinal < 0 ? !hookCalls.equals(placed) : !hookCalls.contains(placed.get(0))) return List.of();
+		Annotations.put(at, "target", "L" + hook.owner + ";" + hook.name + hook.desc);
+		if (ordinal >= 0) Annotations.put(at, "ordinal", hookCalls.indexOf(placed.get(0)));
+		// The hook's parameter, which Mixin finds by its type too where the hook takes one of that type alone.
+		int parameter = passed[0];
+		Type[] hookArgs = Type.getArgumentTypes(hook.desc);
+		long ofType = java.util.Arrays.stream(hookArgs).filter(value::equals).count();
+		if (Annotations.value(injector, "index") != null || ofType != 1) Annotations.put(injector, "index", parameter);
+		return List.of("the call " + ctx.resolve(raw) + " in vanilla's code, which " + loader + "'s patch makes inside its hook " + hook.owner.replace('/', '.') + "." + hook.name
+				+ hook.desc + ", called in its place, which passes its parameter " + parameter + " on to it unchanged as that argument; the injection point is"
+				+ " pointed at the hook's call, at that parameter");
+	}
+
+	/**
+	 * The parameters of {@code hookCall}'s static hook, the platform's, that it passes on, unchanged, to the one call of
+	 * {@code ref} it makes, on every way through it, before anything else of its own could leave it or loop
+	 * ({@link #hookArgumentRepairs}): the one it passes as argument {@code argument}, which it loads there alone, and the
+	 * call's receiver (-1 for a static call). Null otherwise.
+	 */
+	private int[] passedThrough(MethodInsnNode hookCall, MemberRef ref, int argument, boolean staticCall) {
+		Code code = declaration(hookCall.owner, hookCall.name, hookCall.desc);
+		if (code == null || !code.owner().equals(hookCall.owner) || (code.method().access & Opcodes.ACC_STATIC) == 0) return null;
+		MethodNode hook = code.method();
+		MethodInsnNode made = null;
+		for (AbstractInsnNode insn : hook.instructions) {
+			if (!(insn instanceof MethodInsnNode call) || !call.name.equals(ref.name()) || !call.desc.equals(ref.desc())) continue;
+			// Vanilla's method, or, called on the same object, the one it overrides.
+			boolean same = staticCall ? call.getOpcode() == Opcodes.INVOKESTATIC && call.owner.equals(ref.owner())
+					: (call.getOpcode() == Opcodes.INVOKEVIRTUAL || call.getOpcode() == Opcodes.INVOKEINTERFACE)
+							&& (call.owner.equals(ref.owner()) || isSubtype(ref.owner(), call.owner));
+			if (!same) continue;
+			if (made != null) return null;
+			made = call;
+		}
+		if (made == null || !reachedOnEveryWay(hook, made)) return null;
+		AbstractInsnNode[] pushed = OverloadRepairs.pushedBy(hook, made);
+		if (pushed == null) return null;
+		int offset = staticCall ? 0 : 1;
+		int parameter = parameterLoaded(hook, pushed[offset + argument], Type.getArgumentTypes(ref.desc())[argument]);
+		int receiver = staticCall ? -1 : parameterLoaded(hook, pushed[0], null);
+		if (parameter < 0 || !staticCall && receiver < 0) return null;
+		int slot = HandlerBridges.slotOf(hook, List.of(Type.getArgumentTypes(hook.desc)), parameter);
+		int loads = 0;
+		for (AbstractInsnNode insn : hook.instructions) {
+			if (insn instanceof VarInsnNode var && var.var == slot && var.getOpcode() >= Opcodes.ILOAD && var.getOpcode() <= Opcodes.ALOAD) loads++;
+		}
+		return loads == 1 ? new int[] {parameter, receiver} : null;
+	}
+
+	/**
+	 * The index of the parameter of {@code method} that {@code insn} loads, of {@code type} (any reference type where it
+	 * is null), when the method never stores into its slot; -1 otherwise.
+	 */
+	private static int parameterLoaded(MethodNode method, AbstractInsnNode insn, Type type) {
+		if (!(insn instanceof VarInsnNode load) || load.getOpcode() < Opcodes.ILOAD || load.getOpcode() > Opcodes.ALOAD) return -1;
+		Type[] params = Type.getArgumentTypes(method.desc);
+		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		for (int i = 0; i < params.length; i++) {
+			if (slot == load.var) {
+				boolean fits = type == null ? params[i].getSort() == Type.OBJECT || params[i].getSort() == Type.ARRAY : params[i].equals(type);
+				return fits && load.getOpcode() == params[i].getOpcode(Opcodes.ILOAD) && !storesInto(method, slot) ? i : -1;
+			}
+			slot += params[i].getSize();
+		}
+		return -1;
+	}
+
+	/** Whether {@code method} stores into, or increments, the local variable in {@code slot}. */
+	private static boolean storesInto(MethodNode method, int slot) {
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof VarInsnNode var && var.getOpcode() >= Opcodes.ISTORE && var.getOpcode() <= Opcodes.ASTORE && var.var == slot
+					|| insn instanceof org.objectweb.asm.tree.IincInsnNode inc && inc.var == slot) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Whether every way through {@code method} reaches {@code call}, once: from the method's start to it, no instruction
+	 * jumps, switches, returns or throws, no try block starts, and no label one of the method's jumps, switches or
+	 * exception handlers leads to comes.
+	 */
+	private static boolean reachedOnEveryWay(MethodNode method, MethodInsnNode call) {
+		Set<LabelNode> entered = PreflightAsm.jumpTargets(method);
+		Set<LabelNode> tried = new HashSet<>();
+		for (TryCatchBlockNode block : method.tryCatchBlocks) tried.add(block.start);
+		for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn instanceof LabelNode label && (entered.contains(label) || tried.contains(label))) return false;
+			if (insn == call) return true;
+			int op = insn.getOpcode();
+			if (insn instanceof JumpInsnNode || insn instanceof TableSwitchInsnNode || insn instanceof LookupSwitchInsnNode
+					|| PreflightAsm.isReturn(op) || op == Opcodes.ATHROW) return false;
+		}
+		return false;
+	}
+
+	/**
+	 * Whether the value {@code method}'s call at {@code index} takes as its {@code value}-th (its receiver first) is
+	 * {@code this}: a load of slot 0 in an instance method that never stores into it ({@link OverloadRepairs#pushedBy}).
+	 */
+	private static boolean receivedAsThis(MethodNode method, int index, int value) {
+		if ((method.access & Opcodes.ACC_STATIC) != 0 || !(method.instructions.get(index) instanceof MethodInsnNode call) || storesInto(method, 0)) return false;
+		AbstractInsnNode[] pushed = OverloadRepairs.pushedBy(method, call);
+		return pushed != null && value < pushed.length && pushed[value] instanceof VarInsnNode load && load.getOpcode() == Opcodes.ALOAD && load.var == 0;
 	}
 
 	/** Whether an injector handler's last parameter is its {@code CallbackInfo}: it takes no locals or sugar after it. */
@@ -579,7 +780,7 @@ final class CallRepairs extends PreflightPart {
 		if (methods.isEmpty() || !pointOnly && ats.size() != 1) return List.of();
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : ats) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			boolean constructor = point.equals("NEW");
 			if (!point.equals("INVOKE") && !constructor || !(Annotations.value(at, "target") instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
@@ -617,11 +818,9 @@ final class CallRepairs extends PreflightPart {
 			// keeps the screen's graphics from a @ModifyArg at the same call for its @Inject after it.
 			if ((hook != null || leading != null) && !independentOf(mixin).contains(handler.name + handler.desc)) continue;
 			if (leading != null) {
-				int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+				int ordinal = InjectionPoints.ordinalOf(at);
 				if (ordinal >= countCalls(methods, leading)) continue;
-				for (int i = 0; i + 1 < at.values.size(); i += 2) {
-					if ("target".equals(at.values.get(i))) at.values.set(i + 1, "L" + leading.owner + ";" + leading.name + leading.desc);
-				}
+				Annotations.put(at, "target", "L" + leading.owner + ";" + leading.name + leading.desc);
 				moved.add(owner.replace('/', '.') + "." + name + desc + ", which this game build makes through " + loader + "'s "
 						+ leading.owner.replace('/', '.') + "." + leading.name + leading.desc + "; the injection point is pointed at that call");
 				continue;
@@ -643,14 +842,12 @@ final class CallRepairs extends PreflightPart {
 				staticCall = replacement.getOpcode() == Opcodes.INVOKESTATIC;
 				calls = countCalls(methods, replacement);
 			}
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
 			if (named || overload == null || ambiguous || ordinal >= calls) continue;
 			int inserted = hook == null && replacement == null && !constructor ? insertedArgumentOf(owner, name, desc, overload) : insertedArgument(desc, overload);
 			// A hook taking just the call's receiver and arguments takes the handlers as they are.
 			if (!pointOnly && !overload.equals(desc) && !bridgeTo(mixin, handler, injector, owner, desc, overload, inserted, staticCall, methods, bridges)) continue;
-			for (int i = 0; i + 1 < at.values.size(); i += 2) {
-				if ("target".equals(at.values.get(i))) at.values.set(i + 1, constructor ? overload : "L" + callOwner + ";" + callName + overload);
-			}
+			Annotations.put(at, "target", constructor ? overload : "L" + callOwner + ";" + callName + overload);
 			String via = pointOnly || overload.equals(desc) ? "" : ", through a bridge handler";
 			if (hook != null) {
 				// A redirect replaces the hook's call, and with it the platform's events around the call: where its handler makes
@@ -743,13 +940,13 @@ final class CallRepairs extends PreflightPart {
 			AnnotationNode copy = new AnnotationNode(at.desc);
 			at.accept(copy);
 			copies.add(copy);
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null) continue;
 			Overloads found = overloadsCalled(List.of(method), ref.owner(), ref.name(), ref.desc(), false, pointOnly);
 			if (found.named() || found.overload() == null) continue;
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
 			if (found.ambiguous() || ordinal >= found.calls()
 					|| !pointOnly && !bridgeable(handler, injector, ref.owner(), ref.desc(), insertedArgumentOf(ref.owner(), ref.name(), ref.desc(), found.overload()),
 							found.staticCall(), List.of(Type.getArgumentTypes(method.desc)))) return null;

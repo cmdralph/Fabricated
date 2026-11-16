@@ -106,33 +106,9 @@ public final class InterfaceInjects {
 	static String mark(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, UnaryOperator<String> resolve,
 			int defaultRequire) {
 		try {
-			for (AnnotationNode other : Annotations.all(handler)) {
-				if (other != injector && (PreflightAsm.isInjector(other.desc) || other.desc.equals(MixinNames.GROUP))) {
-					throw new Refused("it is also annotated @" + PreflightAsm.simpleName(other.desc));
-				}
-			}
-			AnnotationNode resolved = new AnnotationNode(injector.desc);
-			injector.accept(resolved);
-			resolveSelectors(resolved, resolve);
-			Injector parsed = Injector.of(resolved);
+			AnnotationNode resolved = checked(mixin, handler, injector, targets, resolve, defaultRequire);
 			int require = Annotations.value(injector, "require") instanceof Integer r && r >= 0 ? r : defaultRequire;
-			int allow = Annotations.value(injector, "allow") instanceof Integer a ? a : -1;
-			for (ClassNode target : targets) {
-				Map<MethodNode, List<AbstractInsnNode>> sites = sites(target, handler, parsed);
-				if (sites.isEmpty()) throw new Refused("it targets no method of " + dotted(target));
-				int injections = 0;
-				for (Map.Entry<MethodNode, List<AbstractInsnNode>> e : sites.entrySet()) {
-					if (e.getValue().isEmpty()) throw new Refused("it finds no " + parsed.describe() + " in " + where(e.getKey(), target));
-					injections += e.getValue().size();
-				}
-				if (injections < require) throw new Refused("it injects " + injections + " time(s) in " + dotted(target) + ", where it requires " + require);
-				if (allow >= 0 && injections > allow) throw new Refused("it injects " + injections + " time(s) in " + dotted(target) + ", where it allows " + allow);
-			}
-			String name = "fabricated$" + mixin.name.substring(mixin.name.lastIndexOf('/') + 1) + "$" + handler.name;
-			for (MethodNode m : mixin.methods) {
-				if (m != handler && m.name.equals(name) && m.desc.equals(handler.desc)) throw new Refused("the mixin already declares " + name + handler.desc);
-			}
-			rename(mixin, handler, name);
+			rename(mixin, handler, markedName(mixin, handler));
 			if (handler.visibleAnnotations != null) handler.visibleAnnotations.remove(injector);
 			if (handler.invisibleAnnotations != null) handler.invisibleAnnotations.remove(injector);
 			if (handler.invisibleAnnotations == null) handler.invisibleAnnotations = new ArrayList<>();
@@ -145,6 +121,53 @@ public final class InterfaceInjects {
 		} catch (Refused e) {
 			return e.getMessage();
 		}
+	}
+
+	/** Why {@link #mark} can't make the handler one Fabricated applies, or null where it can; nothing changes. */
+	static String refusal(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, UnaryOperator<String> resolve,
+			int defaultRequire) {
+		try {
+			checked(mixin, handler, injector, targets, resolve, defaultRequire);
+			return null;
+		} catch (Refused e) {
+			return e.getMessage();
+		}
+	}
+
+	/** The injector with its selectors resolved, where Fabricated can apply it at each target as {@link #mark} would. */
+	private static AnnotationNode checked(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, UnaryOperator<String> resolve,
+			int defaultRequire) throws Refused {
+		for (AnnotationNode other : Annotations.all(handler)) {
+			if (other != injector && (PreflightAsm.isInjector(other.desc) || other.desc.equals(MixinNames.GROUP))) {
+				throw new Refused("it is also annotated @" + PreflightAsm.simpleName(other.desc));
+			}
+		}
+		AnnotationNode resolved = new AnnotationNode(injector.desc);
+		injector.accept(resolved);
+		resolveSelectors(resolved, resolve);
+		Injector parsed = Injector.of(resolved);
+		int require = Annotations.value(injector, "require") instanceof Integer r && r >= 0 ? r : defaultRequire;
+		int allow = Annotations.value(injector, "allow") instanceof Integer a ? a : -1;
+		for (ClassNode target : targets) {
+			Map<MethodNode, List<AbstractInsnNode>> sites = sites(target, handler, parsed);
+			if (sites.isEmpty()) throw new Refused("it targets no method of " + dotted(target));
+			int injections = 0;
+			for (Map.Entry<MethodNode, List<AbstractInsnNode>> e : sites.entrySet()) {
+				if (e.getValue().isEmpty()) throw new Refused("it finds no " + parsed.describe() + " in " + where(e.getKey(), target));
+				injections += e.getValue().size();
+			}
+			if (injections < require) throw new Refused("it injects " + injections + " time(s) in " + dotted(target) + ", where it requires " + require);
+			if (allow >= 0 && injections > allow) throw new Refused("it injects " + injections + " time(s) in " + dotted(target) + ", where it allows " + allow);
+		}
+		String name = markedName(mixin, handler);
+		for (MethodNode m : mixin.methods) {
+			if (m != handler && m.name.equals(name) && m.desc.equals(handler.desc)) throw new Refused("the mixin already declares " + name + handler.desc);
+		}
+		return resolved;
+	}
+
+	private static String markedName(ClassNode mixin, MethodNode handler) {
+		return "fabricated$" + mixin.name.substring(mixin.name.lastIndexOf('/') + 1) + "$" + handler.name;
 	}
 
 	/** Whether the method is a handler {@link #mark} made, which Fabricated applies once Mixin has merged it. */
@@ -361,7 +384,7 @@ public final class InterfaceInjects {
 			List<Type> wanted = List.of(handlerArgs).subList(info + 1, own);
 			String[] there = locals.at(method, at);
 			List<Type> available = new ArrayList<>();
-			for (int slot = firstLocal(method); there != null && slot < there.length && available.size() < wanted.size(); slot++) {
+			for (int slot = OverloadRepairs.firstLocalSlot(method); there != null && slot < there.length && available.size() < wanted.size(); slot++) {
 				if (there[slot] == null) continue;
 				Type type = Type.getType(there[slot]);
 				available.add(type);
@@ -500,7 +523,7 @@ public final class InterfaceInjects {
 		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
 		String[] slots;
 		if (Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))) {
-			slots = new String[firstLocal(method)];
+			slots = new String[OverloadRepairs.firstLocalSlot(method)];
 			int slot = 0;
 			if (!isStatic) slots[slot++] = Type.getObjectType(owner.name).getDescriptor();
 			for (Type arg : Type.getArgumentTypes(method.desc)) {
@@ -511,7 +534,7 @@ public final class InterfaceInjects {
 			slots = locals.at(method, at);
 			if (slots == null) throw new LeftOut("its @Local " + type.getClassName() + " finds no locals Mixin can tell there");
 		}
-		int ordinal = Annotations.value(local, "ordinal") instanceof Integer o ? o : -1;
+		int ordinal = InjectionPoints.ordinalOf(local);
 		int index = Annotations.value(local, "index") instanceof Integer i ? i : -1;
 		int base = isStatic ? 0 : 1;
 		List<Integer> ofType = new ArrayList<>();
@@ -583,7 +606,7 @@ public final class InterfaceInjects {
 					throw new Refused("its @At(" + value + ") names no " + (value.equals("FIELD") ? "field" : "method") + " plainly");
 				}
 				if (!shift.equals("NONE") && !(inject && (shift.equals("BEFORE") || shift.equals("AFTER")))) throw new Refused("its @At shifts " + shift);
-				int opcode = Annotations.value(at, "opcode") instanceof Integer o ? o : -1;
+				int opcode = InjectionPoints.opcodeOf(at);
 				points.add(new Point(value, target, ordinal, opcode, shift.equals("BEFORE") ? -1 : shift.equals("AFTER") ? 1 : 0, null));
 			}
 			if (points.isEmpty()) throw new Refused("it names no injection point");
@@ -608,7 +631,7 @@ public final class InterfaceInjects {
 			for (Point point : points) {
 				List<AbstractInsnNode> returns = new ArrayList<>();
 				for (AbstractInsnNode insn : insns) {
-					if (insn.getOpcode() >= Opcodes.IRETURN && insn.getOpcode() <= Opcodes.RETURN) returns.add(insn);
+					if (PreflightAsm.isReturn(insn.getOpcode())) returns.add(insn);
 				}
 				List<AbstractInsnNode> picked = new ArrayList<>();
 				switch (point.value()) {
@@ -749,7 +772,7 @@ public final class InterfaceInjects {
 	}
 
 	private static int ordinal(AnnotationNode annotation) {
-		return Annotations.value(annotation, "ordinal") instanceof Integer o ? o : -1;
+		return InjectionPoints.ordinalOf(annotation);
 	}
 
 	/** What a call takes off the stack: its receiver, unless it is static, and its arguments. */
@@ -777,12 +800,6 @@ public final class InterfaceInjects {
 		boolean isStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
 		return new MethodInsnNode(isStatic ? Opcodes.INVOKESTATIC : Opcodes.INVOKESPECIAL, owner.name, handler.name, handler.desc,
 				(owner.access & Opcodes.ACC_INTERFACE) != 0);
-	}
-
-	private static int firstLocal(MethodNode method) {
-		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
-		for (Type arg : Type.getArgumentTypes(method.desc)) slot += arg.getSize();
-		return slot;
 	}
 
 	private static int argumentSlots(String desc) {

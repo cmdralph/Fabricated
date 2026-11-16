@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Supplier;
 import java.util.TreeSet;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.objectweb.asm.ClassReader;
@@ -61,6 +62,8 @@ public final class SeamConflicts {
 	private static final String OVERWRITE = "Lorg/spongepowered/asm/mixin/Overwrite;";
 	private static final String MODIFY_CONSTANT = "Lorg/spongepowered/asm/mixin/injection/ModifyConstant;";
 	private static final List<String> INJECTORS = List.of("Lorg/spongepowered/asm/mixin/injection/", "Lcom/llamalad7/mixinextras/");
+	/** A selector's part given as a regex ({@code name=/.../}), which {@link #selector} doesn't read. */
+	private static final Pattern REGEX_PART = Pattern.compile("(?:owner|name|desc)=/");
 	/** The points a moved call can't shift: they pick by what an instruction is, not by its place. */
 	private static final Set<String> FIXED_POINTS = Set.of("HEAD", "RETURN", "TAIL", "INVOKE", "INVOKE_ASSIGN", "INVOKE_STRING", "FIELD", "NEW", "CONSTANT");
 
@@ -223,7 +226,8 @@ public final class SeamConflicts {
 			ClassNode mixin = new ClassNode();
 			try {
 				new ClassReader(data).accept(mixin, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
-			} catch (RuntimeException e) {
+			} catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
+				// As ClassBytesSource.readNode: a class may nest annotations without end, or claim an attribute too large (SEC-6).
 				return new Read(listed, null, null, List.of());
 			}
 			// What its annotations' strings are read as: through its config's refmap, Forge 47's mods' development names the
@@ -511,10 +515,10 @@ public final class SeamConflicts {
 	private static boolean shiftable(Object value) {
 		if (value instanceof AnnotationNode ann) {
 			if (ann.desc.equals(AT)) {
-				String point = value(ann, "value") instanceof String v ? v : "";
+				String point = Annotations.value(ann, "value") instanceof String v ? v : "";
 				if (!FIXED_POINTS.contains(point)) return true;
-				if (value(ann, "shift") instanceof String[] shift && shift.length == 2 && shift[1].equals("BY")) return true;
-				if (value(ann, "by") instanceof Integer by && by != 0) return true;
+				if (Annotations.value(ann, "shift") instanceof String[] shift && shift.length == 2 && shift[1].equals("BY")) return true;
+				if (Annotations.value(ann, "by") instanceof Integer by && by != 0) return true;
 			}
 			for (int i = 0; ann.values != null && i + 1 < ann.values.size(); i += 2) {
 				if (shiftable(ann.values.get(i + 1))) return true;
@@ -527,7 +531,7 @@ public final class SeamConflicts {
 	/** Whether one of the annotation's points (its own, its slices') is of the kind. */
 	private static boolean points(Object value, String kind) {
 		if (value instanceof AnnotationNode ann) {
-			if (ann.desc.equals(AT) && value(ann, "value") instanceof String point && point.equalsIgnoreCase(kind)) return true;
+			if (ann.desc.equals(AT) && Annotations.value(ann, "value") instanceof String point && point.equalsIgnoreCase(kind)) return true;
 			for (int i = 0; ann.values != null && i + 1 < ann.values.size(); i += 2) {
 				if (points(ann.values.get(i + 1), kind)) return true;
 			}
@@ -555,14 +559,14 @@ public final class SeamConflicts {
 	 */
 	private static List<Selector> selectors(AnnotationNode ann, Map<String, String> mapped) {
 		List<Selector> selectors = new ArrayList<>();
-		Object methods = value(ann, "method");
+		Object methods = Annotations.value(ann, "method");
 		for (Object o : methods instanceof List<?> list ? list : methods instanceof String one ? List.of(one) : List.of()) {
 			selectors.add(o instanceof String selector ? selector(mapped.getOrDefault(Refmap.stripped(selector), selector)) : null);
 		}
-		if (value(ann, "target") instanceof List<?> descs) {
+		if (Annotations.value(ann, "target") instanceof List<?> descs) {
 			// @Desc's value is the method's name; its arguments, which narrow it, are left aside: any method of the name.
 			for (Object o : descs) {
-				selectors.add(o instanceof AnnotationNode desc && value(desc, "value") instanceof String name && !name.isEmpty() && plainName(name)
+				selectors.add(o instanceof AnnotationNode desc && Annotations.value(desc, "value") instanceof String name && !name.isEmpty() && plainName(name)
 						? new Selector(name, null) : null);
 			}
 		}
@@ -576,8 +580,8 @@ public final class SeamConflicts {
 	 * ({@code /.../}, {@code name=/.../}) or a tail ({@code ->}): null for those.
 	 */
 	static Selector selector(String text) {
-		String member = text.replaceAll("\\s", "");
-		if (member.isEmpty() || member.startsWith("/") || member.matches("(?s).*(?:owner|name|desc)=/.*") || member.contains("->")) return null;
+		String member = Refmap.stripped(text);
+		if (member.isEmpty() || member.startsWith("/") || REGEX_PART.matcher(member).find() || member.contains("->")) return null;
 		int paren = member.indexOf('(');
 		String name = paren < 0 ? member : member.substring(0, paren);
 		String desc = paren < 0 ? null : member.substring(paren);
@@ -600,12 +604,5 @@ public final class SeamConflicts {
 			if (c == '*' || c == '+' || c == '{' || c == '}' || c == '/' || c == '(' || c == ')' || c == ';' || c == '=' || c == '.') return false;
 		}
 		return true;
-	}
-
-	private static Object value(AnnotationNode ann, String name) {
-		for (int i = 0; ann.values != null && i + 1 < ann.values.size(); i += 2) {
-			if (name.equals(ann.values.get(i))) return ann.values.get(i + 1);
-		}
-		return null;
 	}
 }

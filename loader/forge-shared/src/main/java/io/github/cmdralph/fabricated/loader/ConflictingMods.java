@@ -78,6 +78,7 @@ final class ConflictingMods {
 					for (String replaced : found.replaced()) replacedCopies.add(name + " (its " + replaced.substring(replaced.lastIndexOf('/') + 1) + ")");
 				} catch (IOException | RuntimeException e) {
 					// Not a zip or unreadable: Forge reports broken files itself.
+					LOGGER.debug("Fabricated could not read {} for conflicting mods: {}", jar.getFileName(), e.toString());
 				}
 			}
 		} catch (IOException e) {
