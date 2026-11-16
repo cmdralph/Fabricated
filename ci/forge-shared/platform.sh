@@ -15,14 +15,14 @@ installer() {
 }
 
 install_server() {
-	installer
+	installer || { echo "The installer could not be downloaded"; return 1; }
 	java -jar installer.jar --installServer . > installer.log 2>&1 || { tail -n 60 installer.log; return 1; }
 }
 
 # install_client <minecraft dir>
 install_client() {
 	echo '{"profiles":{}}' > "$1/launcher_profiles.json"
-	installer
+	installer || { echo "The installer could not be downloaded"; return 1; }
 	java -jar installer.jar --installClient "$1" > installer.log 2>&1 || { tail -n 60 installer.log; return 1; }
 	# The installer leaves the vanilla version's jar but not its version file, which HeadlessMC reads as the Forge
 	# version's parent: it comes from Mojang's version manifest.
