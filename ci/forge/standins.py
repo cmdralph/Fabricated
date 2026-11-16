@@ -11,6 +11,9 @@ Forge branches' counterpart of ci/neoforge/standins.py.
   the test mod checks that none of the loading events came from Fabricated's.
 - standin-lib-a.jar and standin-lib-b.jar: Fabric mods nesting two versions of the same library (standin_lib 1.0.0
   and 1.1.0): only the newer one loads.
+- With replaced-mods (Forge 52's run, ci/forge/platform.sh), standin-forgeconfigapiport.jar and standin-modmenu.jar
+  too: Fabric mods without code under Forge Config API Port's and Mod Menu's ids. On Forge only Mod Menu's is left
+  out, Forge's mod list standing in for it, where NeoForge leaves out both (REPL-1, PLAT-6).
 
 Each copy of a package is one the game would otherwise load twice; the run passes if the server starts, the report
 says who provides what, and the test mods' checks pass.
@@ -19,7 +22,7 @@ With own-loader, it writes only standin-own-loader.jar, for the server run that 
 mod nesting, with Forge's jar-in-jar, a language provider with its own copy of Fabric Loader's API (the classes of
 Fabricated's), as Forgified Fabric API for 1.20.1 nests Forgified Fabric Loader.
 
-Usage: ci/forge/standins.py <fabricated-jar> <out-dir> [own-loader]
+Usage: ci/forge/standins.py <fabricated-jar> <out-dir> [own-loader | replaced-mods]
 """
 import io
 import json
@@ -121,7 +124,7 @@ def main(fabricated, out, only=None):
             f.write(data)
         print(f"standin-own-loader.jar: {len(data)} bytes")
         return
-    if only is not None:
+    if only not in (None, "replaced-mods"):
         raise SystemExit(__doc__)
     with zipfile.ZipFile(fabricated) as outer:
         index = json.loads(outer.read("META-INF/fabricated/native-modules.json"))["modules"]
@@ -148,6 +151,10 @@ def main(fabricated, out, only=None):
     for mod, version in (("a", "1.0.0"), ("b", "1.1.0")):
         library = fabric_mod("standin_lib", version)
         written[f"standin-lib-{mod}.jar"] = fabric_mod(f"standin_lib_user_{mod}", "1.0.0", {f"META-INF/jars/standin-lib-{version}.jar": library})
+
+    if only == "replaced-mods":
+        written["standin-forgeconfigapiport.jar"] = fabric_mod("forgeconfigapiport", "8.0.0")
+        written["standin-modmenu.jar"] = fabric_mod("modmenu", "7.2.2")
 
     for name, data in written.items():
         with open(f"{out}/{name}", "wb") as f:
