@@ -15251,6 +15251,11 @@ class MixinPreflightTest {
 		assertEquals(1, none.size(), none.toString());
 		assertTrue(none.getFirst().message().contains("captures the local variable of type java.util.Optional, which burn in net.minecraft.world.Thing"
 				+ " doesn't hold where its @At points are"), none.toString());
+		// Where the point picks no instruction of the method, nothing is judged there: the table decides, as before.
+		List<PreflightFinding> nowhere = checkLocalByType(target, localByType("burn", "L" + TARGET + ";clear()V", ITERATOR, 0));
+		assertTrue(nowhere.stream().noneMatch(f -> f.message().contains("@At points are")), nowhere.toString());
+		assertTrue(nowhere.stream().anyMatch(f -> f.message().contains("captures the local variable of type java.util.Iterator, which burn in"
+				+ " net.minecraft.world.Thing does not declare")), nowhere.toString());
 	}
 
 	@Test

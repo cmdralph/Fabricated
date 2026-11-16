@@ -1594,9 +1594,9 @@ What this can't match of Fabric, seen in a reference pack (2026-10-28):
   can hold a value vanilla keeps in a local only until its slot is used again. Ledger's logging of an item put on a
   campfire takes the block entity vanilla's `CampfireBlock.useItemOn` keeps in a local where the player's stat is
   awarded; NeoForge 21.1 tests it as a campfire and reuses its slot before then, so no local holds it there and the
-  hook is left out (LOCAL-6). Forge 52 does the same. Ledger's logging of the fire an explosion starts is left out on
-  both too, though Mixin would find the fire loop's iterator it takes: pre-flight reads a local taken by its type from
-  the method's local variable table alone, which doesn't name the loop's iterator (PRE-36).
+  hook is left out (LOCAL-6). Forge 52 does the same. Ledger's logging of the fire an explosion starts works on both:
+  its hook takes the fire loop's iterator by its type, a local the method's local variable table doesn't name, which
+  Fabricated finds where the hook applies as Mixin does, from the method's code (PRE-36).
 
 ### What this means for Fabric mods
 

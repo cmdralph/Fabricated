@@ -3456,12 +3456,13 @@ public final class MixinPreflight extends PreflightPart {
 	 * {@code Level.setBlockAndUpdate} call, the loop's own, which javac leaves out of the table (PRE-36), while its
 	 * {@code CampfireBlockMixin} takes a block entity where NeoForge 21.1's and Forge 52's {@code CampfireBlock.useItemOn}
 	 * hold none any more (LOCAL-6). Where a point can't be judged (no frames, another point than a call or field access, a
-	 * shift, a slice that can't be worked out, a slot whose local can't be told), the table decides, as before: the method
-	 * doesn't declare one.
+	 * shift, a slice that can't be worked out, a slot whose local can't be told), or the points pick no instruction of the
+	 * methods, the table decides, as before: the method doesn't declare one.
 	 */
 	private String lackedAtPoints(Type type, AnnotationNode injector, List<MethodNode> targets, ClassNode owner, int require, Context ctx) {
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
 		int found = 0;
+		int points = 0;
 		boolean told = true;
 		boolean several = false;
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
@@ -3477,11 +3478,12 @@ public final class MixinPreflight extends PreflightPart {
 					if (count == 1) found++;
 					told &= count >= 0;
 					several |= count > 1;
+					points++;
 				}
 			}
 		}
 		if (found >= Math.max(require, 1)) return null;
-		if (!told) return "does not declare";
+		if (!told || points == 0) return "does not declare";
 		if (found > 0) return "holds at fewer of its @At points than the injector requires";
 		return several ? "has more than one of where its @At points are" : "doesn't hold where its @At points are";
 	}
