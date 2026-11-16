@@ -123,7 +123,7 @@ jobs:
       - name: CI's own scripts
         run: python3 -B -m unittest discover -s ci -p 'test_*.py'
       - name: Build and test the Minecraft-independent modules
-        run: ./gradlew -Pfabricated.coreOnly=true build --stacktrace
+        run: ci/retry-downloads.sh ./gradlew -Pfabricated.coreOnly=true build --stacktrace
       - name: Upload the test reports
         if: failure()
         uses: actions/upload-artifact@v6
@@ -342,9 +342,17 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java }}
       - name: Fabricated and the test mods from the build
+        id: built
         uses: actions/download-artifact@v7
         with:
           name: build-${{ matrix.platform }}-${{ matrix.minecraft }}
+      - name: Nothing was built to test
+        if: failure() && steps.built.outcome == 'failure'
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          MC: ${{ matrix.minecraft }}
+        run: |
+          echo "::error::This job tested nothing: the job 'Build $PLATFORM $MC' left no jar. Its failure is the one to read."
       - name: Restore the server's install
         if: contains(matrix.sides, 'server')
         uses: actions/cache/restore@v5
