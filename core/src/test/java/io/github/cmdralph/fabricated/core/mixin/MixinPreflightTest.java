@@ -15830,6 +15830,10 @@ class MixinPreflightTest {
 		Call second = callIn(target, "pick", "set", 1);
 		assertEquals(1, MixinPreflight.tableLocalAt(string, -1, first.index(), false, first.generated()));
 		assertEquals(-1, MixinPreflight.tableLocalAt(string, -1, second.index(), false, second.generated()));
+		// The points are judged only for a handler taking a local the table doesn't name, which the table alone refused: one
+		// whose locals the table all names keeps the table's verdict, whatever is told of them at the points.
+		assertTrue(checkLocalByType(target, localByType("pick", SET, "Ljava/lang/String;", 1)).isEmpty());
+		assertTrue(checkLocalByType(target, localsByType("pick", List.<Object[]>of(new Object[] {"INVOKE", SET, 1}), List.of("Ljava/lang/String;"), 1)).isEmpty());
 	}
 
 	/** Pre-flight with no installed jars, and missing targets fatal unless said otherwise. */
