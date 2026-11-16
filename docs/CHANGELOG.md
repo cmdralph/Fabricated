@@ -3,6 +3,23 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-16: Forge for Minecraft 1.21.1 builds from the `forge` branch
+
+- **The branch layout changed:** Forge 52 (Minecraft 1.21.1) moved from the `forge-legacy` branch to `forge`. `forge`
+  holds modern Forge, Forge 52 (1.21.1), 61 (1.21.11) and 64 to 66 (26.1.2, 26.2, 26.3); `forge-legacy` holds legacy
+  Forge, Forge 47 (1.20.1), with 1.19.2 next. `main` holds the shared code and NeoForge, as before.
+- **Where each Forge version's code is:** Forge 52's in `mc/forge/1.21.1` on `forge` (it was `mc/forge-legacy/1.21.1`),
+  beside Forge 61 to 66's (`mc/forge/1.21.11`, `mc/forge/26.1.2`, `mc/forge/26.2`, `mc/forge/26.3` and
+  `mc/forge/common`); Forge 47's in `mc/forge-legacy/1.20.1` on `forge-legacy`. What Forge versions share stays on
+  `main` (`loader/forge-shared`, `mc/forge-shared`, `ci/forge-shared`). ForgeGradle's build script,
+  `mc/platform-forge.gradle`, is on `forge`, whose versions alone it builds. CI's tables (`ci/runs.tsv`,
+  `ci/checks.tsv`, `ci/bench.tsv`) list 1.21.1's runs, checks and baselines under `forge`.
+- **Nothing changes for players:** the jars keep their names (Forge 52's is
+  `fabricated-forge-<version>+mc1.21.1.jar`), the supported Minecraft versions are the same, and each jar requires the
+  Forge builds it required (1.21.1's Forge 52 or later).
+- **For contributors:** work on Forge 52 goes to `forge` (from `claude/dev-forge`), and its Gradle project is
+  `:mc:forge-1.21.1` (`ci/build.sh forge 1.21.1`).
+
 ## 2026-11-16: The v0.6.0-beta.3 release notes and version
 
 - **Fabricated 0.6.0-beta.3** is a compatibility release, with no new platform: vanilla's calls go back where Fabric

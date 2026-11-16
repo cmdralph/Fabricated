@@ -29,9 +29,9 @@ neoforge	26.3	heap	177	re-recorded: CI's run of #421, after discovery's allocati
 forge-legacy	1.20.1	discovery-alloc	1041	re-recorded: CI's run of the sync pull request (#423), after discovery's allocation cut (#418) and the item checks (SEAM-6)
 forge-legacy	1.20.1	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
 forge-legacy	1.20.1	heap	266	re-recorded: CI's run of the sync pull request (#423), after discovery's allocation cut (#418) and the item checks (SEAM-6)
-forge-legacy	1.21.1	discovery-alloc	837	re-recorded: CI's run of the sync pull request (#423), after discovery's allocation cut (#418) and the item checks (SEAM-6)
-forge-legacy	1.21.1	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
-forge-legacy	1.21.1	heap	266	re-recorded: CI's run of the sync pull request (#423), after discovery's allocation cut (#418) and the item checks (SEAM-6)
+forge	1.21.1	discovery-alloc	837	re-recorded: CI's run of the sync pull request (#423), after discovery's allocation cut (#418) and the item checks (SEAM-6)
+forge	1.21.1	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
+forge	1.21.1	heap	266	re-recorded: CI's run of the sync pull request (#423), after discovery's allocation cut (#418) and the item checks (SEAM-6)
 forge	1.21.11	discovery-alloc	939	re-recorded: CI's run of the sync pull request (#422), after discovery's allocation cut (#418) and the item checks (SEAM-6)
 forge	1.21.11	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
 forge	1.21.11	heap	249	re-recorded: CI's run of the sync pull request (#422), after discovery's allocation cut (#418) and the item checks (SEAM-6)
