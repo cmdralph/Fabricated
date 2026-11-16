@@ -188,7 +188,7 @@ final class Initialisers {
 		for (AbstractInsnNode insn : value) {
 			int opcode = insn.getOpcode();
 			if (insn instanceof VarInsnNode load && (opcode != Opcodes.ALOAD || load.var != 0) || opcode == Opcodes.IINC || opcode == Opcodes.PUTFIELD
-					|| opcode == Opcodes.PUTSTATIC || opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN
+					|| opcode == Opcodes.PUTSTATIC || PreflightAsm.isReturn(opcode)
 					|| insn instanceof LineNumberNode line && !own.contains(line.start)) return null;
 		}
 		// Its jumps stay within it, and nothing else names its labels.

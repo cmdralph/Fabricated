@@ -1,10 +1,6 @@
 package io.github.cmdralph.fabricated.forge.rendering;
 
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -15,9 +11,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.runtime.ThrowSite;
+import io.github.cmdralph.fabricated.forge.ForgeModList;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import net.minecraftforge.fml.ModContainer;
-import net.minecraftforge.fml.ModList;
 
 /**
  * FRAPI rule 8 on Forge: a Fabric block model that throws while Fabric's renderer draws it fails alone. Upstream's own
@@ -26,7 +22,7 @@ import net.minecraftforge.fml.ModList;
  * the rest of the session. The failure is logged once and listed in the report, naming the mod the class belongs to. A
  * throw is put down to the model whose code threw, not to one wrapping it ({@link #putDown}): a mod whose models wrap
  * others (Continuity's) keeps its own drawing when a model it wraps is broken. As NeoForge's, in Forge's terms; shared
- * by Forge 47 and Forge 61 to 66.
+ * by Forge 47, 52 and 61 to 66.
  *
  * <p>Each version keeps a {@link ModelClass} per model class (in a {@code ClassValue}), so the healthy path reads a final
  * field and, for a Fabric model, a volatile one. A composite model (multipart, weighted) keeps its answer for one
@@ -248,20 +244,10 @@ public final class FrapiFailures {
 		}
 	}
 
-	/**
-	 * {@code ModList.getModContainerById} as {@code (String)Optional}: Forge 64 and later (Minecraft 26.x) made
-	 * {@code ModList}'s methods static, where Forge 47 and 61 reach them through {@code ModList.get()} (as
-	 * {@code ModMenuBridge} finds it).
-	 */
+	/** {@code ModList.getModContainerById} ({@link ForgeModList#containerById}), or null. */
 	private static @Nullable MethodHandle containerById() {
 		try {
-			MethodHandles.Lookup lookup = MethodHandles.publicLookup();
-			Method byId = ModList.class.getMethod("getModContainerById", String.class);
-			MethodHandle handle = lookup.unreflect(byId);
-			if (!Modifier.isStatic(byId.getModifiers())) {
-				handle = MethodHandles.collectArguments(handle, 0, lookup.unreflect(ModList.class.getMethod("get")));
-			}
-			return handle.asType(MethodType.methodType(Optional.class, String.class));
+			return ForgeModList.containerById();
 		} catch (ReflectiveOperationException | RuntimeException e) {
 			LOGGER.warn("Forge's ModList has no public getModContainerById: rendering failures name modules, not mods ({})", e.toString());
 			return null;

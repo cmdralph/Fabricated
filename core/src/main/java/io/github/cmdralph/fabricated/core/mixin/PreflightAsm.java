@@ -1,7 +1,9 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.GamePackages;
@@ -13,7 +15,13 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LocalVariableNode;
+import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TableSwitchInsnNode;
+import org.objectweb.asm.tree.TryCatchBlockNode;
 
 /**
  * Bytecode helpers the checker and the repair families share.
@@ -48,7 +56,7 @@ final class PreflightAsm {
 		List<MethodNode> methods = new ArrayList<>();
 		for (Object selector : selectors) {
 			if (!(selector instanceof String raw)) return null;
-			String s = ctx.resolve(raw).replaceAll("\\s+", "");
+			String s = Refmap.stripped(ctx.resolve(raw));
 			if (!s.startsWith("*") || s.length() > 1 && s.charAt(1) != '(') return null;
 			String desc = s.length() > 1 ? s.substring(1) : null;
 			if (desc != null && target.methods.stream().noneMatch(m -> m.desc.equals(desc))) return null;
@@ -186,14 +194,41 @@ final class PreflightAsm {
 		return null;
 	}
 
+	/** Whether an opcode is a return's, of a value or of none. */
+	static boolean isReturn(int opcode) {
+		return opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN;
+	}
+
 	/** The indices of a method's return instructions. */
 	static List<Integer> returns(MethodNode method) {
 		List<Integer> returns = new ArrayList<>();
 		for (int i = 0; i < method.instructions.size(); i++) {
-			int op = method.instructions.get(i).getOpcode();
-			if (op >= Opcodes.IRETURN && op <= Opcodes.RETURN) returns.add(i);
+			if (isReturn(method.instructions.get(i).getOpcode())) returns.add(i);
 		}
 		return returns;
+	}
+
+	/** The labels control enters {@code method}'s code at from elsewhere: those its jumps and switches lead to, and its exception handlers. */
+	static Set<LabelNode> jumpTargets(MethodNode method) {
+		Set<LabelNode> entered = new HashSet<>();
+		for (TryCatchBlockNode block : method.tryCatchBlocks) entered.add(block.handler);
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof JumpInsnNode jump) entered.add(jump.label);
+			if (insn instanceof TableSwitchInsnNode table) {
+				entered.add(table.dflt);
+				entered.addAll(table.labels);
+			}
+			if (insn instanceof LookupSwitchInsnNode lookup) {
+				entered.add(lookup.dflt);
+				entered.addAll(lookup.labels);
+			}
+		}
+		return entered;
+	}
+
+	/** Whether the local variable is in scope at the instruction at {@code index} of {@code method}, as its table has it. */
+	static boolean inScope(MethodNode method, LocalVariableNode local, int index) {
+		return method.instructions.indexOf(local.start) <= index && index < method.instructions.indexOf(local.end);
 	}
 
 	/** Whether {@code method} is marked deprecated. */

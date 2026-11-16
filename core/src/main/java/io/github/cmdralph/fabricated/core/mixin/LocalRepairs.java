@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -158,9 +157,9 @@ final class LocalRepairs extends PreflightPart {
 	/** The slot of the method's argument that its local variable table names one of {@code names}, of a type {@code accepts}; null when none. */
 	private static Integer argumentSlot(MethodNode method, List<?> names, Predicate<String> accepts) {
 		if (method.localVariables == null) return null;
-		int end = argumentsEnd(method);
+		int end = OverloadRepairs.firstLocalSlot(method);
 		for (LocalVariableNode lv : method.localVariables) {
-			if (lv.index < end && names.contains(lv.name) && accepts.test(lv.desc) && isArgumentSlot(method, lv.index)) return lv.index;
+			if (lv.index < end && names.contains(lv.name) && accepts.test(lv.desc) && argumentAt(method, lv.index) != null) return lv.index;
 		}
 		return null;
 	}
@@ -177,21 +176,6 @@ final class LocalRepairs extends PreflightPart {
 			slot += arg.getSize();
 		}
 		return found;
-	}
-
-	/** The first slot after the method's arguments. */
-	private static int argumentsEnd(MethodNode method) {
-		return ((method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1) + (Type.getArgumentsAndReturnSizes(method.desc) >> 2) - 1;
-	}
-
-	/** Whether a slot is where one of the method's arguments starts (not {@code this}, nor the second half of a long or double). */
-	private static boolean isArgumentSlot(MethodNode method, int index) {
-		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
-		for (Type arg : Type.getArgumentTypes(method.desc)) {
-			if (slot == index) return true;
-			slot += arg.getSize();
-		}
-		return false;
 	}
 
 	/**
@@ -214,7 +198,7 @@ final class LocalRepairs extends PreflightPart {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.size() != 1) return List.of();
 		AnnotationNode at = ats.get(0);
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		String point = InjectionPoints.pointOf(at);
 		if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)) return List.of();
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 		if (ref.fuzzy()) return List.of();
@@ -224,8 +208,8 @@ final class LocalRepairs extends PreflightPart {
 		MethodNode patched = methods.get(0);
 		MethodNode before = PreflightAsm.declared(original, patched.name, patched.desc);
 		if (before == null || patched.localVariables == null || patched.localVariables.isEmpty()) return List.of();
-		List<Integer> positions = PreflightAsm.matching(patched, point, ref, Annotations.value(at, "opcode") instanceof Integer o ? o : -1);
-		int pointOrdinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		List<Integer> positions = PreflightAsm.matching(patched, point, ref, InjectionPoints.opcodeOf(at));
+		int pointOrdinal = InjectionPoints.ordinalOf(at);
 		if (pointOrdinal >= 0) positions = pointOrdinal < positions.size() ? List.of(positions.get(pointOrdinal)) : List.of();
 		if (positions.isEmpty()) return List.of();
 		Set<Integer> vanillaPlaces = null;
@@ -422,7 +406,7 @@ final class LocalRepairs extends PreflightPart {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.size() != 1) return List.of();
 		AnnotationNode at = ats.get(0);
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		String point = InjectionPoints.pointOf(at);
 		if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)
 				|| Annotations.value(at, "shift") != null || Annotations.value(at, "by") != null) return List.of();
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
@@ -434,8 +418,8 @@ final class LocalRepairs extends PreflightPart {
 		MethodNode before = PreflightAsm.declared(original, patched.name, patched.desc);
 		if (before == null || patched.localVariables == null || patched.localVariables.isEmpty() || before.localVariables == null
 				|| before.localVariables.isEmpty()) return List.of();
-		List<Integer> positions = PreflightAsm.matching(patched, point, ref, Annotations.value(at, "opcode") instanceof Integer o ? o : -1);
-		int pointOrdinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		List<Integer> positions = PreflightAsm.matching(patched, point, ref, InjectionPoints.opcodeOf(at));
+		int pointOrdinal = InjectionPoints.ordinalOf(at);
 		if (pointOrdinal >= 0) positions = pointOrdinal < positions.size() ? List.of(positions.get(pointOrdinal)) : List.of();
 		PatchAlignment alignment = positions.isEmpty() ? null : PatchAlignment.of(before, patched);
 		if (alignment == null) return List.of();
@@ -444,7 +428,7 @@ final class LocalRepairs extends PreflightPart {
 			if (alignment.placeOf(i) >= 0) vanillaAt.put(alignment.placeOf(i), i);
 		}
 		String desc = type.getDescriptor();
-		int parameterSlots = argumentsEnd(patched);
+		int parameterSlots = OverloadRepairs.firstLocalSlot(patched);
 		int found = -1;
 		for (int p : positions) {
 			Integer v = vanillaAt.get(p);
@@ -643,8 +627,7 @@ final class LocalRepairs extends PreflightPart {
 					List<Integer> positions = pointPositions(injector, m, ctx);
 					if (positions == null) continue;
 					for (int i : positions) {
-						if (m.localVariables.stream().noneMatch(lv -> names.contains(lv.name) && m.instructions.indexOf(lv.start) <= i
-								&& i < m.instructions.indexOf(lv.end))) return String.valueOf(names.get(0));
+						if (m.localVariables.stream().noneMatch(lv -> names.contains(lv.name) && PreflightAsm.inScope(m, lv, i))) return String.valueOf(names.get(0));
 					}
 				}
 			}
@@ -660,12 +643,12 @@ final class LocalRepairs extends PreflightPart {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.size() != 1) return null;
 		AnnotationNode at = ats.get(0);
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		String point = InjectionPoints.pointOf(at);
 		if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)) return null;
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 		if (ref.fuzzy()) return null;
-		List<Integer> positions = PreflightAsm.matching(method, point, ref, Annotations.value(at, "opcode") instanceof Integer o ? o : -1);
-		int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		List<Integer> positions = PreflightAsm.matching(method, point, ref, InjectionPoints.opcodeOf(at));
+		int ordinal = InjectionPoints.ordinalOf(at);
 		if (ordinal >= 0) positions = ordinal < positions.size() ? List.of(positions.get(ordinal)) : List.of();
 		return positions;
 	}
@@ -683,7 +666,7 @@ final class LocalRepairs extends PreflightPart {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.size() != 1) return null;
 		AnnotationNode at = ats.get(0);
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		String point = InjectionPoints.pointOf(at);
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
 		if (!point.equals("INVOKE_ASSIGN") && slices.isEmpty()) return pointPositions(injector, method, ctx);
 		if (!List.of("INVOKE", "FIELD", "NEW", "INVOKE_ASSIGN").contains(point) || !(Annotations.value(at, "target") instanceof String raw)) return null;
@@ -692,8 +675,8 @@ final class LocalRepairs extends PreflightPart {
 		if (point.equals("INVOKE_ASSIGN") && shifted) return null;
 		AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
 		InjectionPoints.Range range = slice == null ? InjectionPoints.Range.ALL : InjectionPoints.sliceRange(slice, method, ctx);
-		List<Integer> picked = InjectionPoints.indexes(point, ctx.resolve(raw), Annotations.value(at, "ordinal") instanceof Integer n ? n : -1,
-				Annotations.value(at, "opcode") instanceof Integer o ? o : -1, range, method);
+		List<Integer> picked = InjectionPoints.indexes(point, ctx.resolve(raw), InjectionPoints.ordinalOf(at),
+				InjectionPoints.opcodeOf(at), range, method);
 		if (picked == null || !point.equals("INVOKE_ASSIGN")) return picked;
 		int last = Math.min(range.end(), method.instructions.size() - 1);
 		List<Integer> after = new ArrayList<>();
@@ -719,7 +702,7 @@ final class LocalRepairs extends PreflightPart {
 	private static List<LocalVariableNode> inScope(MethodNode method, int index, String desc) {
 		List<LocalVariableNode> found = new ArrayList<>();
 		for (LocalVariableNode lv : method.localVariables) {
-			if (lv.desc.equals(desc) && method.instructions.indexOf(lv.start) <= index && index < method.instructions.indexOf(lv.end)) found.add(lv);
+			if (lv.desc.equals(desc) && PreflightAsm.inScope(method, lv, index)) found.add(lv);
 		}
 		return found;
 	}
@@ -736,7 +719,7 @@ final class LocalRepairs extends PreflightPart {
 			int vanillas = 0;
 			int chosen = -1;
 			for (LocalVariableNode lv : method.localVariables) {
-				if (!lv.desc.equals(desc) || method.instructions.indexOf(lv.start) > i || i >= method.instructions.indexOf(lv.end)) continue;
+				if (!lv.desc.equals(desc) || !PreflightAsm.inScope(method, lv, i)) continue;
 				inScope.add(lv.index);
 				if (isVanillasLocal(method, lv, vanillaPlaces)) {
 					vanillas++;
@@ -762,7 +745,7 @@ final class LocalRepairs extends PreflightPart {
 			TreeSet<Integer> inScope = new TreeSet<>();
 			TreeSet<Integer> vanillas = new TreeSet<>();
 			for (LocalVariableNode lv : method.localVariables) {
-				if (!lv.desc.equals(desc) || method.instructions.indexOf(lv.start) > i || i >= method.instructions.indexOf(lv.end)) continue;
+				if (!lv.desc.equals(desc) || !PreflightAsm.inScope(method, lv, i)) continue;
 				inScope.add(lv.index);
 				if (isVanillasLocal(method, lv, vanillaPlaces)) vanillas.add(lv.index);
 			}
@@ -836,7 +819,7 @@ final class LocalRepairs extends PreflightPart {
 		return true;
 	}
 
-	/** The type of the method's argument that starts at a slot; null when none does. */
+	/** The type of the method's argument that starts at a slot; null when none does ({@code this}, the second half of a long or double). */
 	private static Type argumentAt(MethodNode method, int index) {
 		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
 		for (Type arg : Type.getArgumentTypes(method.desc)) {

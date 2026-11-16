@@ -1,7 +1,7 @@
 # Fabricated beyond modern NeoForge: the 1.20.1 and Forge evaluation
 
 Status: **in progress**: both Forge targets run the game on dedicated servers, `forge` at F4 and `forge-legacy` at L4
-(§7 has the detail; `roadmap.md`'s parity table compares the platforms). Written 2026-10-21; the owner's decisions are in §8 and
+(§7 has the detail; `COMPATIBILITY.md`'s support matrix compares the platforms). Written 2026-10-21; the owner's decisions are in §8 and
 `RESEARCH.md` §8. Of §6's seams on `main`, items 1 to 3 and the trigger part of 4 are done. NeoForge stays the primary
 platform: Minecraft 1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3, all five on stable NeoForge lines. This document
 says what of the engine carries over to Minecraft Forge for 1.20.1 and other legacy versions (branch
@@ -10,20 +10,21 @@ Facts about other projects cite their repository, ref and file; what could not b
 
 ## 1. Branch model
 
-| Branch | Platform | Phase | Its CI and README |
+| Branch | Platform | Phase | Its CI and documents |
 |---|---|---|---|
-| `main` | NeoForge 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | active, the primary platform | `build.yml`; the root `README.md` |
-| `forge` | Minecraft Forge for the versions `main` covers (Forge 61 for 1.21.11, 64 to 66 for 26.1.2 to 26.3) | F4: native modules on Forge's events (§7) | `build-forge.yml`; its own `README.md` and `docs/FORGE.md` |
-| `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1) and other legacy versions | L4: native modules on Forge 47's events (§7) | `build-forge-legacy.yml`; its own `README.md` and `docs/FORGE-LEGACY.md` |
+| `main` | NeoForge 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | active, the primary platform | `ci.yml`, the same workflow on every branch, with `ci/neoforge`; the root `README.md` |
+| `forge` | Minecraft Forge 61 for 1.21.11 and 64 to 66 for 26.1.2 to 26.3 | F4: native modules on Forge's events (§7) | `ci.yml`, with `ci/forge`; `COMPATIBILITY.md`'s *Forge* section |
+| `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1) and 1.21.1 (Forge 52) | L4: native modules on Forge 47's events (§7) | `ci.yml`, with `ci/forge-legacy`; `COMPATIBILITY.md`'s *Forge* section |
 
 NeoForge needs no legacy branch: its 1.20.1 build is a 2024 fork of Forge 47.1 (§3.1), so the legacy line is Forge's
 (the owner's decision, 2026-10-25).
 
 How code flows (the owner's decision, 2026-10-28). Each platform is on its own branch, with the same folder structure:
 `main` holds the shared modules (`core`, `api`, `fabric-loader-api`, `loader/common`, `mc/shared`, `mc/mc.gradle`, the
-Gradle wrapper, `ci/*.py`) and NeoForge's folders (`loader/neoforge`, `mc/neoforge/<version>`, `ci/neoforge`,
-`mc/platform-neoforge.gradle`); `forge` and `forge-legacy` hold the shared modules and their own platform's folders,
-with a copy each of the Forge platforms' shared ones (`loader/forge-shared`, `mc/forge-shared`). Shared changes go to
+Gradle wrapper, the shared CI in `ci`, and the code both Forge platforms share: `loader/forge-shared`,
+`mc/forge-shared`, `ci/forge-shared`) and NeoForge's folders (`loader/neoforge`, `mc/neoforge/<version>`,
+`ci/neoforge`, `mc/platform-neoforge.gradle`); `forge` and `forge-legacy` hold the shared modules and their own
+platform's folders (`mc/forge`, `ci/forge`; `mc/forge-legacy`, `ci/forge-legacy`). Shared changes go to
 `main` and reach the Forge branches by merge (`scripts/sync-platform-branch.sh`, which keeps the branch's own platform
 and leaves NeoForge's out, then a pull request into the branch); Forge work goes to its branch by pull request from a
 working branch made from it; a Forge branch is never merged into `main`. From 2026-10-26 to 2026-10-28 one working
@@ -198,7 +199,7 @@ Fallbacks, both read in source: return the language jar as a PLUGIN `Resource` f
 GAME code through a new public hook; `VanillaGameJar` needs Forge's server layout (on 1.21.11 the installer also
 writes `net.minecraft:<side>:<mc>:official` jars), and any change to it goes to `main`.
 
-| `loader/neoforge` | `loader/forge` | Change |
+| `loader/neoforge` | `loader/forge-shared` | Change |
 |---|---|---|
 | `FabricCandidateLocator` | `FabricModLocator implements IModLocator`: lists Fabric jars (no `META-INF/mods.toml`), returns the language provider's `ModFile` | small rewrite |
 | `FabricDependencyLocator` | same name: the `Pipeline.Input` assembly carries over; the glue (`FMLLoader` facts, `SecureJar` for `JarContents`, platform packages from the BOOT and SERVICE layers, warnings through `FabricatedState`, MixinExtras as data) is rewritten | about 40% rewritten |

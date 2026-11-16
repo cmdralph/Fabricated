@@ -14,7 +14,7 @@ public record MemberRef(String owner, String name, String desc, boolean fuzzy) {
 
 	public static MemberRef parse(String selector) {
 		// As Mixin: whitespace anywhere is ignored ("Owner.name (Desc)" is written in some mods).
-		String s = selector.replaceAll("\\s+", "");
+		String s = Refmap.stripped(selector);
 		if (s.isEmpty()) return new MemberRef(null, null, null, true);
 		if (s.startsWith("/") || s.contains("*") || s.contains("{") || s.startsWith("@")) {
 			return new MemberRef(null, null, null, true);
@@ -29,8 +29,7 @@ public record MemberRef(String owner, String name, String desc, boolean fuzzy) {
 			s = s.substring(semicolon + 1);
 		} else {
 			int dot = s.lastIndexOf('.', paren < 0 ? s.length() : paren);
-			int colon = s.indexOf(':');
-			if (dot > 0 && (colon < 0 || dot < colon)) {
+			if (dot > 0 && (firstColon < 0 || dot < firstColon)) {
 				owner = s.substring(0, dot).replace('.', '/');
 				s = s.substring(dot + 1);
 			}

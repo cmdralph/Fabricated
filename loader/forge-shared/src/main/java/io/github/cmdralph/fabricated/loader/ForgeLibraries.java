@@ -15,7 +15,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 
 /**
  * Where Forge's installer leaves the game: among the libraries, in {@code <libraries>/net/minecraft/<side>/<version>/},
- * the files {@link ForgeStack} names, which differ between Forge 47 and Forge 61 to 66.
+ * the files {@link ForgeStack} names, which differ between Forge 47 and Forge 52 and 61 to 66.
  */
 final class ForgeLibraries {
 	private ForgeLibraries() {

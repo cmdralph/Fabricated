@@ -10,7 +10,7 @@ import net.fabricmc.loader.api.ModContainer;
 
 /**
  * Holder for the active {@link FabricLoader} implementation. {@link FabricLoader#getInstance()} reads
- * {@link #INSTANCE}; Fabricated installs its runtime during NeoForge mod discovery.
+ * {@link #INSTANCE}; Fabricated installs its runtime during the platform's mod discovery.
  */
 public final class FabricLoaderImpl {
 	/** The installed loader, or {@code null} before Fabricated has bootstrapped. */

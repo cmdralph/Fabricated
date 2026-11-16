@@ -1,16 +1,17 @@
 # Fabricated's documentation
 
 Each fact lives in one document, and the others link to it. This table says which document holds what, and when it
-changes. `roadmap.md` changes with every step of the work.
+changes. The documents say what is true now, without the history of how a decision came about; `roadmap.md` changes
+with every step of the work.
 
 | Document | What it holds | Update it when |
 |---|---|---|
 | [`../README.md`](../README.md) | The users' guide: installing, what works, troubleshooting, the config file | What players see changes |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | The project's layout, building and testing, the code rules, adding a Minecraft version, releasing | The layout, the build or the release steps change |
 | [`claude.md`](claude.md) | The working rules, the branch model and a map of the code, for whoever works on it | A rule, the branch model or a seam changes |
-| [`roadmap.md`](roadmap.md) | The goals, the branch model, the current pass and its checkpoint, the open findings, what is unverified, the performance baselines | Every step of the work |
-| [`FINDINGS.md`](FINDINGS.md) | Every fixed finding: its cause, why the tests missed it, the fix and how it was verified | A finding is fixed (it moves here from `roadmap.md`) |
-| [`CHANGELOG.md`](CHANGELOG.md) | What each working session changed and how it was verified, newest first, with the release each entry is in | Every session |
+| [`roadmap.md`](roadmap.md) | The goals, the branch model, what comes next, the open findings, what is unverified, the performance baselines | Every step of the work |
+| [`FINDINGS.md`](FINDINGS.md) | Every fixed or closed finding, and the documented known limits: its cause, why the tests missed it, the fix and how it was verified | A finding is fixed or closed (it moves here from `roadmap.md`) |
+| [`CHANGELOG.md`](CHANGELOG.md) | User-facing history, newest first: what changed and how it was verified | Every change players or contributors see |
 | [`releases/`](releases) | Each release's notes, which the release workflow publishes | A release is cut |
 | [`COMPATIBILITY.md`](COMPATIBILITY.md) | The support matrix for every loader and Minecraft version (the source of truth), and per platform what works per Fabric API module, from CI | A CI run shows a change |
 | [`MIXINS.md`](MIXINS.md) | Every mixin Fabricated applies, with its target and injection point | A mixin config changes |

@@ -19,10 +19,10 @@ import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
 
 /**
- * What Forge 47 does below the game where Forge 61 to 66 do otherwise ({@code loader/forge-shared/src/modern}): its
- * securejarhandler 2.1.10, SpongePowered's Mixin 0.8.5, and the game in Mojang's class names and SRG's member names, as
- * its installer leaves it, its install profile naming the files (Forge's 1.20.1 {@code build.gradle}; which launchers
- * keep them is UNVERIFIED, docs/PORTING.md §3.1): in {@code <libraries>/net/minecraft/<side>/<mc>-<mcp>/},
+ * What Forge 47 does below the game where Forge 52 and 61 to 66 do otherwise ({@code loader/forge-shared/src/modern}):
+ * its securejarhandler 2.1.10, SpongePowered's Mixin 0.8.5, and the game in Mojang's class names and SRG's member
+ * names, as its installer leaves it, its install profile naming the files (Forge's 1.20.1 {@code build.gradle}; which
+ * launchers keep them is UNVERIFIED, docs/PORTING.md §3.1): in {@code <libraries>/net/minecraft/<side>/<mc>-<mcp>/},
  * {@code <side>-<mc>-<mcp>-mappings.txt} is Mojang's mappings (ProGuard) and {@code -srg.jar} vanilla's classes in the
  * names Forge runs them with; in {@code <libraries>/de/oceanlabs/mcp/mcp_config/<mc>-<mcp>/},
  * {@code mcp_config-<mc>-<mcp>-mappings.txt} is MCPConfig's obfuscated → SRG mappings (TSRG v2). The {@code minecraft}
