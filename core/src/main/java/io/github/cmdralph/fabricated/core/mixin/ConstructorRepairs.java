@@ -3,7 +3,6 @@ package io.github.cmdralph.fabricated.core.mixin;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -56,11 +55,11 @@ final class ConstructorRepairs extends PreflightPart {
 		if (points == null || (handler.access & Opcodes.ACC_STATIC) != 0 || matched.stream().noneMatch(m -> m.name.equals("<init>"))) return null;
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!points.contains(point)) continue;
 			String target = Annotations.value(at, "target") instanceof String t ? ctx.resolve(t) : null;
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
-			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
+			int opcode = InjectionPoints.opcodeOf(at);
 			AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
 			for (MethodNode m : matched) {
 				if (!m.name.equals("<init>")) continue;
@@ -108,7 +107,7 @@ final class ConstructorRepairs extends PreflightPart {
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
 		List<String> changed = new ArrayList<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			Integer shift = shift(at);
 			if (Boolean.TRUE.equals(Annotations.value(at, "unsafe"))) continue;
 			if (!returnsOnly && (point.equals("CTOR_HEAD") || point.equals("HEAD") && (handler.access & Opcodes.ACC_STATIC) != 0)) {
@@ -121,8 +120,8 @@ final class ConstructorRepairs extends PreflightPart {
 			}
 			if (!PLACED_POINTS.contains(point) || shift == null) continue;
 			String target = Annotations.value(at, "target") instanceof String t ? ctx.resolve(t) : null;
-			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
-			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+			int ordinal = InjectionPoints.ordinalOf(at);
+			int opcode = InjectionPoints.opcodeOf(at);
 			AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
 			boolean picked = false;
 			boolean afterDelegate = true;
@@ -382,7 +381,7 @@ final class ConstructorRepairs extends PreflightPart {
 	/** Whether every injection point is the method's end ({@code RETURN} or {@code TAIL}). */
 	static boolean atEndOnly(List<AnnotationNode> ats) {
 		for (AnnotationNode at : ats) {
-			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String point = InjectionPoints.pointOf(at);
 			if (!point.equals("RETURN") && !point.equals("TAIL")) return false;
 		}
 		return true;

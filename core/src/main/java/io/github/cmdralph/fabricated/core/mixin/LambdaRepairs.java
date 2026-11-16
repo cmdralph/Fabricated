@@ -5,7 +5,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiPredicate;
@@ -28,10 +27,8 @@ import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
-import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
-import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 /**
@@ -662,11 +659,11 @@ final class LambdaRepairs extends PreflightPart {
 		if (!CALL_SITE_INJECTORS.contains(injector.desc) || Annotations.value(injector, "slice") != null || ats.size() != 1 || cancellable == -2
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
 		AnnotationNode at = ats.get(0);
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		String point = InjectionPoints.pointOf(at);
 		if (!Set.of("INVOKE", "INVOKE_ASSIGN", "FIELD", "NEW").contains(point) || Annotations.value(at, "ordinal") != null
 				|| !(Annotations.value(at, "target") instanceof String raw)) return List.of();
 		String resolved = ctx.resolve(raw);
-		int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+		int opcode = InjectionPoints.opcodeOf(at);
 		List<String> added = new ArrayList<>();
 		for (MethodNode method : PreflightAsm.selectedMethods(injector, target, ctx)) {
 			if (InjectionPoints.count(point, resolved, -1, opcode, Range.ALL, method) != 0) continue;
@@ -846,19 +843,7 @@ final class LambdaRepairs extends PreflightPart {
 	 */
 	private static int builtBy(MethodNode method, int index) {
 		AbstractInsnNode ret = method.instructions.get(index);
-		Set<LabelNode> entered = new HashSet<>();
-		for (var block : method.tryCatchBlocks) entered.add(block.handler);
-		for (AbstractInsnNode insn : method.instructions) {
-			if (insn instanceof JumpInsnNode jump) entered.add(jump.label);
-			if (insn instanceof TableSwitchInsnNode table) {
-				entered.add(table.dflt);
-				entered.addAll(table.labels);
-			}
-			if (insn instanceof LookupSwitchInsnNode lookup) {
-				entered.add(lookup.dflt);
-				entered.addAll(lookup.labels);
-			}
-		}
+		Set<LabelNode> entered = PreflightAsm.jumpTargets(method);
 		for (AbstractInsnNode insn = ret.getPrevious(); insn != null; insn = insn.getPrevious()) {
 			if (insn instanceof LabelNode label && entered.contains(label)) return -1;
 			if (insn.getOpcode() < 0) continue;

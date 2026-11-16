@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Deque;
 import java.util.List;
-import java.util.Locale;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
@@ -70,7 +69,7 @@ final class SkippedCode extends PreflightPart {
 		List<Bypass> bypasses = bypasses(method);
 		if (bypasses.isEmpty() || !returnsOnlyAtTheEndOrBypasses(method, bypasses)) return List.of();
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
-		if (ats.isEmpty() || ats.stream().anyMatch(at -> !"TAIL".equals(point(at)) || Annotations.value(at, "shift") != null || Annotations.value(at, "by") != null)) {
+		if (ats.isEmpty() || ats.stream().anyMatch(at -> !"TAIL".equals(InjectionPoints.pointOf(at)) || Annotations.value(at, "shift") != null || Annotations.value(at, "by") != null)) {
 			return List.of();
 		}
 		for (AnnotationNode at : ats) Annotations.put(at, "value", "RETURN");
@@ -103,7 +102,7 @@ final class SkippedCode extends PreflightPart {
 		AnnotationNode at = ats.get(0);
 		Object shift = Annotations.value(at, "shift");
 		String shifted = shift instanceof String[] s && s.length == 2 ? s[1] : null;
-		if (!"INVOKE".equals(point(at)) || !(Annotations.value(at, "target") instanceof String raw) || Annotations.value(at, "by") != null
+		if (!"INVOKE".equals(InjectionPoints.pointOf(at)) || !(Annotations.value(at, "target") instanceof String raw) || Annotations.value(at, "by") != null
 				|| shift != null && !"BEFORE".equals(shifted) && !"AFTER".equals(shifted)
 				|| Annotations.value(at, "ordinal") instanceof Integer ordinal && ordinal > 0) return List.of();
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
@@ -150,8 +149,8 @@ final class SkippedCode extends PreflightPart {
 		MethodNode method = methods.get(0);
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.isEmpty()) return List.of();
-		boolean start = ats.stream().allMatch(at -> "HEAD".equals(point(at)));
-		boolean end = ats.stream().allMatch(at -> "TAIL".equals(point(at)) || "RETURN".equals(point(at)));
+		boolean start = ats.stream().allMatch(at -> "HEAD".equals(InjectionPoints.pointOf(at)));
+		boolean end = ats.stream().allMatch(at -> "TAIL".equals(InjectionPoints.pointOf(at)) || "RETURN".equals(InjectionPoints.pointOf(at)));
 		if (!start && !end || ats.stream().anyMatch(at -> Annotations.value(at, "shift") != null || Annotations.value(at, "by") != null)) return List.of();
 		MethodNode seam = PreflightAsm.declared(target, (start ? MixinNames.SEAM_START : MixinNames.SEAM_END) + method.name, method.desc);
 		if (seam == null) return List.of();
@@ -182,7 +181,7 @@ final class SkippedCode extends PreflightPart {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		MemberRef read = null;
 		for (AnnotationNode at : ats) {
-			if (!"FIELD".equals(point(at)) || !(Annotations.value(at, "opcode") instanceof Integer opcode) || opcode != Opcodes.GETFIELD
+			if (!"FIELD".equals(InjectionPoints.pointOf(at)) || !(Annotations.value(at, "opcode") instanceof Integer opcode) || opcode != Opcodes.GETFIELD
 					|| !(Annotations.value(at, "target") instanceof String raw)) return List.of();
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 			if (ref.fuzzy() || !target.name.equals(ref.owner()) || ref.name() == null || ref.desc() == null
@@ -229,7 +228,7 @@ final class SkippedCode extends PreflightPart {
 			for (int k = i + 1; k < insns.length; k++) {
 				AbstractInsnNode insn = insns[k];
 				int op = insn.getOpcode();
-				if (op >= Opcodes.IRETURN && op <= Opcodes.RETURN) {
+				if (PreflightAsm.isReturn(op)) {
 					if (handedTo != null) found.add(new Bypass(k, handedTo));
 					break;
 				}
@@ -282,7 +281,7 @@ final class SkippedCode extends PreflightPart {
 				} else if (insn instanceof LookupSwitchInsnNode lookup) {
 					work.push(method.instructions.indexOf(lookup.dflt));
 					lookup.labels.forEach(label -> work.push(method.instructions.indexOf(label)));
-				} else if (!(op >= Opcodes.IRETURN && op <= Opcodes.RETURN) && op != Opcodes.ATHROW) {
+				} else if (!PreflightAsm.isReturn(op) && op != Opcodes.ATHROW) {
 					work.push(i + 1);
 				}
 			}
@@ -308,11 +307,11 @@ final class SkippedCode extends PreflightPart {
 		int last = -1;
 		for (int i = 0; i < method.instructions.size(); i++) {
 			int op = method.instructions.get(i).getOpcode();
-			if (op >= Opcodes.IRETURN && op <= Opcodes.RETURN) last = i;
+			if (PreflightAsm.isReturn(op)) last = i;
 		}
 		for (int i = reached.nextSetBit(0); i >= 0; i = reached.nextSetBit(i + 1)) {
 			int op = method.instructions.get(i).getOpcode();
-			if (!(op >= Opcodes.IRETURN && op <= Opcodes.RETURN) || i == last) continue;
+			if (!PreflightAsm.isReturn(op) || i == last) continue;
 			int at = i;
 			if (bypasses.stream().noneMatch(b -> b.returned() == at)) return false;
 		}
@@ -376,10 +375,6 @@ final class SkippedCode extends PreflightPart {
 		Type[] params = Type.getArgumentTypes(handler.desc);
 		return params.length > 0 && PreflightAsm.isCallbackInfo(params[params.length - 1]) && PreflightAsm.handlerArgs(handler) != null
 				&& PreflightAsm.handlerArgs(handler).size() == params.length;
-	}
-
-	private static String point(AnnotationNode at) {
-		return Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 	}
 
 	private static String named(MethodInsnNode call) {

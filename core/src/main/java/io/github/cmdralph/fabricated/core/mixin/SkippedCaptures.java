@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -124,20 +123,16 @@ final class SkippedCaptures {
 	private static List<Integer> positions(AnnotationNode at, MethodNode method, Context ctx) {
 		if (Annotations.value(at, "shift") instanceof String[] shift && shift.length == 2 && !shift[1].equals("NONE")
 				|| Annotations.value(at, "by") instanceof Integer by && by != 0) return null;
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
-		int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		String point = InjectionPoints.pointOf(at);
+		int ordinal = InjectionPoints.ordinalOf(at);
 		List<Integer> found;
 		if (point.equals("RETURN") || point.equals("TAIL")) {
-			found = new ArrayList<>();
-			for (int i = 0; i < method.instructions.size(); i++) {
-				int op = method.instructions.get(i).getOpcode();
-				if (op >= Opcodes.IRETURN && op <= Opcodes.RETURN) found.add(i);
-			}
+			found = PreflightAsm.returns(method);
 			if (point.equals("TAIL")) return found.isEmpty() ? found : List.of(found.get(found.size() - 1));
 		} else if ((point.equals("INVOKE") || point.equals("FIELD")) && Annotations.value(at, "target") instanceof String raw) {
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 			if (ref.fuzzy()) return null;
-			found = PreflightAsm.matching(method, point, ref, Annotations.value(at, "opcode") instanceof Integer o ? o : -1);
+			found = PreflightAsm.matching(method, point, ref, InjectionPoints.opcodeOf(at));
 		} else {
 			return null;
 		}
@@ -185,7 +180,7 @@ final class SkippedCaptures {
 	private static void give(MethodNode method, int index, int slot, String[] local, boolean[] known) {
 		String covering = null;
 		for (LocalVariableNode lv : method.localVariables) {
-			if (lv.index == slot && method.instructions.indexOf(lv.start) <= index && index < method.instructions.indexOf(lv.end)) covering = lv.desc;
+			if (lv.index == slot && PreflightAsm.inScope(method, lv, index)) covering = lv.desc;
 		}
 		known[slot] = covering != null;
 		local[slot] = covering;
