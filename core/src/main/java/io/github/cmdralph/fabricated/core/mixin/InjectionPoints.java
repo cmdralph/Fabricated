@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 import org.objectweb.asm.Handle;
@@ -37,6 +38,8 @@ final class InjectionPoints {
 	/** The opcodes a field access's {@code opcode} is taken as: Mixin's {@code BeforeFieldAccess} reads any other as none. */
 	private static final Set<Integer> FIELD_OPCODES = Set.of(Opcodes.GETFIELD, Opcodes.PUTFIELD, Opcodes.GETSTATIC, Opcodes.PUTSTATIC);
 
+	/** The attributes a {@code @Constant} gives its value in, in the order they are read. */
+	private static final List<String> CONSTANT_VALUES = List.of("intValue", "floatValue", "longValue", "doubleValue", "stringValue", "classValue");
 	private static final Pattern PLAIN_DECIMAL = Pattern.compile("[+-]?(\\d+\\.?\\d*|\\.\\d+)([eE][+-]?\\d+)?[fFdD]?");
 
 	private InjectionPoints() {
@@ -60,7 +63,7 @@ final class InjectionPoints {
 	/** A {@code @Constant}'s value as the source would write it, or null when pre-flight can't judge it. */
 	static String constantDescription(AnnotationNode constant) {
 		if (Annotations.value(constant, "expandZeroConditions") != null) return null;
-		for (String key : List.of("intValue", "floatValue", "longValue", "doubleValue", "stringValue", "classValue")) {
+		for (String key : CONSTANT_VALUES) {
 			Object value = Annotations.value(constant, key);
 			if (value instanceof Type type) return type.getClassName() + ".class";
 			if (value instanceof String string) return "\"" + string + "\"";
@@ -81,7 +84,7 @@ final class InjectionPoints {
 	/** The instructions of {@code method} that are a {@code @Constant}'s value, in order, as Mixin matches constants (whatever its ordinal). */
 	static List<AbstractInsnNode> constantInsns(AnnotationNode constant, MethodNode method) {
 		Object wanted = null;
-		for (String key : List.of("intValue", "floatValue", "longValue", "doubleValue", "stringValue", "classValue")) {
+		for (String key : CONSTANT_VALUES) {
 			Object value = Annotations.value(constant, key);
 			if (value != null) wanted = value;
 		}
@@ -421,7 +424,7 @@ final class InjectionPoints {
 		}
 		MemberRef ref = MemberRef.parse(target);
 		if (taken < 0 || ref.fuzzy()) return null;
-		Set<Integer> passed = new java.util.TreeSet<>();
+		Set<Integer> passed = new TreeSet<>();
 		for (MethodNode method : methods) {
 			for (AbstractInsnNode insn : method.instructions) {
 				if (!(insn instanceof MethodInsnNode call)) continue;
