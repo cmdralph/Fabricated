@@ -226,7 +226,8 @@ public final class SeamConflicts {
 			ClassNode mixin = new ClassNode();
 			try {
 				new ClassReader(data).accept(mixin, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
-			} catch (RuntimeException e) {
+			} catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
+				// As ClassBytesSource.readNode: a class may nest annotations without end, or claim an attribute too large (SEC-6).
 				return new Read(listed, null, null, List.of());
 			}
 			// What its annotations' strings are read as: through its config's refmap, Forge 47's mods' development names the
