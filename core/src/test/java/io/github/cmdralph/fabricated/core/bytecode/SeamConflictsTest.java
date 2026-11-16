@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +22,9 @@ import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.objectweb.asm.AnnotationVisitor;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
 
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.testutil.TestSources;
@@ -112,6 +117,35 @@ class SeamConflictsTest {
 		ClassBytesSource game = classes::get;
 		assertEquals(new SeamConflicts.Conflict("moonlight", "com/moon/Gone", false),
 				SeamConflicts.find(game.readNode(RESOLVER, 0), nativeJar(classes, List.of("com/moon/Gone"))));
+	}
+
+	/**
+	 * A native mixin naming the class whose annotations nest too deep to read (ASM reads them recursively) keeps the class,
+	 * as one that doesn't parse does, instead of failing the discovery.
+	 */
+	@Test
+	void aNativeMixinNestedTooDeeplyToReadKeepsTheClass(@TempDir Path dir) throws Exception {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "com/moon/Deep", null, "java/lang/Object", null);
+		AnnotationVisitor root = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor targets = root.visitArray("targets");
+		targets.visit(null, "net.minecraft.world.level.block.piston.PistonStructureResolver");
+		targets.visitEnd();
+		Deque<AnnotationVisitor> open = new ArrayDeque<>();
+		AnnotationVisitor array = root.visitArray("value");
+		for (int i = 0; i < 200_000; i++) {
+			open.push(array);
+			array = array.visitArray(null);
+		}
+		array.visitEnd();
+		while (!open.isEmpty()) open.pop().visitEnd();
+		root.visitEnd();
+		cw.visitEnd();
+		Map<String, byte[]> classes = new HashMap<>(classes(dir, "", "net.minecraft.world.level.block.piston.PistonStructureResolver"));
+		classes.put("com/moon/Deep", cw.toByteArray());
+		ClassBytesSource game = classes::get;
+		assertEquals(new SeamConflicts.Conflict("moonlight", "com/moon/Deep", false),
+				SeamConflicts.find(game.readNode(RESOLVER, 0), nativeJar(classes, List.of("com/moon/Deep"))));
 	}
 
 	/**

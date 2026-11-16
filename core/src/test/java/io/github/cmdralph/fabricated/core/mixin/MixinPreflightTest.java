@@ -15115,6 +15115,727 @@ class MixinPreflightTest {
 		assertEquals(Set.of(resolver), after.restoredSeams());
 	}
 
+	private static final String ITERATOR = "Ljava/util/Iterator;";
+
+	/**
+	 * A game class whose {@code burn} walks its blocks with an enhanced {@code for} loop, calling {@code set} with each: the
+	 * loop's iterator is in slot 1, which the local variable table doesn't name, and the block in slot 2, which it does.
+	 * With {@code second}, the loop walks a second list beside the first, its iterator in slot 2 and the block in slot 3;
+	 * with {@code before}, {@code burn} calls {@code set} once before the second iterator is made, too.
+	 */
+	private static byte[] loopTarget(boolean second, boolean before) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor burn = cw.visitMethod(Opcodes.ACC_PUBLIC, "burn", "()V", null, null);
+		Label start = new Label();
+		Label head = new Label();
+		Label blockStart = new Label();
+		Label blockEnd = new Label();
+		Label out = new Label();
+		Label end = new Label();
+		int block = second ? 3 : 2;
+		burn.visitCode();
+		burn.visitLabel(start);
+		burn.visitVarInsn(Opcodes.ALOAD, 0);
+		burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "blocks", "()Ljava/util/List;", false);
+		burn.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "iterator", "()" + ITERATOR, true);
+		burn.visitVarInsn(Opcodes.ASTORE, 1);
+		if (before) {
+			burn.visitVarInsn(Opcodes.ALOAD, 0);
+			burn.visitVarInsn(Opcodes.ALOAD, 1);
+			burn.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Iterator", "next", "()Ljava/lang/Object;", true);
+			burn.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/String");
+			burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "set", "(Ljava/lang/String;)V", false);
+		}
+		if (second) {
+			burn.visitVarInsn(Opcodes.ALOAD, 0);
+			burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "others", "()Ljava/util/List;", false);
+			burn.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "iterator", "()" + ITERATOR, true);
+			burn.visitVarInsn(Opcodes.ASTORE, 2);
+		}
+		burn.visitLabel(head);
+		Object[] iterators = second ? new Object[] {"java/util/Iterator", "java/util/Iterator"} : new Object[] {"java/util/Iterator"};
+		burn.visitFrame(Opcodes.F_APPEND, iterators.length, iterators, 0, null);
+		for (int iterator = 1; iterator <= iterators.length; iterator++) {
+			burn.visitVarInsn(Opcodes.ALOAD, iterator);
+			burn.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Iterator", "hasNext", "()Z", true);
+			burn.visitJumpInsn(Opcodes.IFEQ, out);
+		}
+		if (second) {
+			burn.visitVarInsn(Opcodes.ALOAD, 2);
+			burn.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Iterator", "next", "()Ljava/lang/Object;", true);
+			burn.visitInsn(Opcodes.POP);
+		}
+		burn.visitVarInsn(Opcodes.ALOAD, 1);
+		burn.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Iterator", "next", "()Ljava/lang/Object;", true);
+		burn.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/String");
+		burn.visitVarInsn(Opcodes.ASTORE, block);
+		burn.visitLabel(blockStart);
+		burn.visitVarInsn(Opcodes.ALOAD, 0);
+		burn.visitVarInsn(Opcodes.ALOAD, block);
+		burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "set", "(Ljava/lang/String;)V", false);
+		burn.visitLabel(blockEnd);
+		burn.visitJumpInsn(Opcodes.GOTO, head);
+		burn.visitLabel(out);
+		burn.visitFrame(Opcodes.F_CHOP, iterators.length, null, 0, null);
+		burn.visitInsn(Opcodes.RETURN);
+		burn.visitLabel(end);
+		burn.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		burn.visitLocalVariable("block", "Ljava/lang/String;", null, blockStart, blockEnd, block);
+		burn.visitMaxs(0, 0);
+		burn.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** A mixin whose {@code fire} takes a local of type {@code local} by its type alone at {@code target}'s calls in {@code method}. */
+	private static byte[] localByType(String method, String target, String local, Integer require) {
+		return localsByType(method, List.<Object[]>of(new Object[] {"INVOKE", target, null}), List.of(local), require);
+	}
+
+	/**
+	 * A mixin whose {@code @Inject} {@code fire} takes a local of each of the types {@code locals} by its type alone, at the
+	 * instructions {@code ats} pick in {@code method}: each an {@code @At}'s value, target and ordinal (null for none).
+	 */
+	private static byte[] localsByType(String method, List<Object[]> ats, List<String> locals, Integer require) {
+		return mixin("com/example/mixin/Fire", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "fire", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;" + String.join("", locals) + ")V",
+					null, null);
+			for (int i = 0; i < locals.size(); i++) mv.visitParameterAnnotation(1 + i, LOCAL, false).visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, method);
+			methods.visitEnd();
+			AnnotationVisitor points = ann.visitArray("at");
+			for (Object[] point : ats) {
+				AnnotationVisitor at = points.visitAnnotation(null, AT);
+				at.visit("value", point[0]);
+				at.visit("target", point[1]);
+				if (point[2] != null) at.visit("ordinal", point[2]);
+				at.visitEnd();
+			}
+			points.visitEnd();
+			if (require != null) ann.visit("require", require);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 2 + locals.size());
+			mv.visitEnd();
+		});
+	}
+
+	private static List<PreflightFinding> checkLocalByType(byte[] target, byte[] mixin) throws Exception {
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Fire", mixin);
+		return preflight(new ClassIndex(Map.of(TARGET, target)::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Fire")), Refmap.EMPTY, Set.of());
+	}
+
+	/** A call in a method of a game class read with its frames: the method as Mixin's generated table types it, and the call's index. */
+	private record Call(GeneratedLocals generated, int index) {
+		MethodNode method() {
+			return generated.method;
+		}
+	}
+
+	/** The {@code ordinal}-th call of {@code called} in {@code name}'s method of a class, read with its frames. */
+	private static Call callIn(byte[] target, String name, String called, int ordinal) {
+		ClassNode node = new ClassNode();
+		new ClassReader(target).accept(node, 0);
+		MethodNode method = node.methods.stream().filter(m -> m.name.equals(name)).findFirst().orElseThrow();
+		int seen = 0;
+		for (int i = 0; i < method.instructions.size(); i++) {
+			if (method.instructions.get(i) instanceof MethodInsnNode call && call.name.equals(called) && seen++ == ordinal) {
+				return new Call(new GeneratedLocals(node, method, new ClassIndex(Map.of(node.name, target)::get)::get), i);
+			}
+		}
+		throw new AssertionError("no call of " + called);
+	}
+
+	@Test
+	void aLoopsIteratorTakenByItsTypeIsFoundWhereTheTableDoesNotNameIt() throws Exception {
+		// PRE-36: Ledger's ExplosionMixin takes @Local ObjectListIterator at the Level.setBlockAndUpdate call in
+		// Explosion.finalizeExplosion's fire loop. The iterator is the enhanced for loop's own, which javac leaves out of the
+		// local variable table; Mixin types its slot from the table it generates from the code, and finds one there.
+		byte[] target = loopTarget(false, false);
+		Call set = callIn(target, "burn", "set", 0);
+		assertEquals(1, MixinPreflight.localsOfTypeAt(Type.getType(ITERATOR), set.index(), set.generated()));
+		assertTrue(MixinPreflight.heldAt(Type.getType(ITERATOR), 1, set.index(), set.generated()));
+		List<PreflightFinding> found = checkLocalByType(target, localByType("burn", "L" + TARGET + ";set(Ljava/lang/String;)V", ITERATOR, 1));
+		assertTrue(found.isEmpty(), found.toString());
+		// A type neither the table nor the code has is still one the method doesn't declare.
+		List<PreflightFinding> none = checkLocalByType(target, localByType("burn", "L" + TARGET + ";set(Ljava/lang/String;)V", "Ljava/util/Optional;", 1));
+		assertEquals(1, none.size(), none.toString());
+		assertTrue(none.getFirst().message().contains("captures the local variable of type java.util.Optional, which burn in net.minecraft.world.Thing"
+				+ " doesn't hold where its @At points are"), none.toString());
+		// Where the point picks no instruction of the method, nothing is judged there: the table decides, as before.
+		List<PreflightFinding> nowhere = checkLocalByType(target, localByType("burn", "L" + TARGET + ";clear()V", ITERATOR, 0));
+		assertTrue(nowhere.stream().noneMatch(f -> f.message().contains("@At points are")), nowhere.toString());
+		assertTrue(nowhere.stream().anyMatch(f -> f.message().contains("captures the local variable of type java.util.Iterator, which burn in"
+				+ " net.minecraft.world.Thing does not declare")), nowhere.toString());
+	}
+
+	/**
+	 * A game class whose {@code use} tests the {@code CharSequence} it gets as a {@code String} in slot 2, which the local
+	 * variable table doesn't name, keeps the cast in slot 1 and stores what it holds in slot 2, both named, before it calls
+	 * {@code award}: LOCAL-6's shape.
+	 */
+	private static byte[] reusedSlotTarget() {
+		String entity = "Ljava/lang/CharSequence;";
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor use = cw.visitMethod(Opcodes.ACC_PUBLIC, "use", "()V", null, null);
+		Label start = new Label();
+		Label campfireStart = new Label();
+		Label heldStart = new Label();
+		Label out = new Label();
+		Label end = new Label();
+		use.visitCode();
+		use.visitLabel(start);
+		use.visitVarInsn(Opcodes.ALOAD, 0);
+		use.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "entity", "()" + entity, false);
+		use.visitVarInsn(Opcodes.ASTORE, 2);
+		use.visitVarInsn(Opcodes.ALOAD, 2);
+		use.visitTypeInsn(Opcodes.INSTANCEOF, "java/lang/String");
+		use.visitJumpInsn(Opcodes.IFEQ, out);
+		use.visitVarInsn(Opcodes.ALOAD, 2);
+		use.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/String");
+		use.visitVarInsn(Opcodes.ASTORE, 1);
+		use.visitLabel(campfireStart);
+		use.visitVarInsn(Opcodes.ALOAD, 0);
+		use.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "held", "()Ljava/lang/Integer;", false);
+		use.visitVarInsn(Opcodes.ASTORE, 2);
+		use.visitLabel(heldStart);
+		use.visitVarInsn(Opcodes.ALOAD, 0);
+		use.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "award", "()V", false);
+		use.visitLabel(out);
+		use.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+		use.visitInsn(Opcodes.RETURN);
+		use.visitLabel(end);
+		use.visitLocalVariable("held", "Ljava/lang/Integer;", null, heldStart, out, 2);
+		use.visitLocalVariable("campfire", "Ljava/lang/String;", null, campfireStart, out, 1);
+		use.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		use.visitMaxs(0, 0);
+		use.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aValueWhoseSlotIsReusedBeforeThePointIsNotFoundThere() throws Exception {
+		// LOCAL-6: Ledger's CampfireBlockMixin takes @Local BlockEntity at the Player.awardStat call in
+		// CampfireBlock.useItemOn, where NeoForge 21.1 and Forge 52 test the block entity in a slot the table doesn't name
+		// and store the held item in it before the call: the code holds one, but no slot does at the point, where Mixin
+		// finds none and the server would stop.
+		String entity = "Ljava/lang/CharSequence;";
+		byte[] target = reusedSlotTarget();
+		Call award = callIn(target, "use", "award", 0);
+		assertEquals(0, MixinPreflight.localsOfTypeAt(Type.getType(entity), award.index(), award.generated()));
+		// The value is in its slot until the held item is stored there: at the test, the table-typed judgement can't rule it out.
+		Call held = callIn(target, "use", "held", 0);
+		assertFalse(MixinPreflight.absentAt(Type.getType(entity), held.method(), held.index(), TARGET));
+		assertTrue(MixinPreflight.absentAt(Type.getType(entity), award.method(), award.index(), TARGET));
+		List<PreflightFinding> found = checkLocalByType(target, localByType("use", "L" + TARGET + ";award()V", entity, 1));
+		assertEquals(1, found.size(), found.toString());
+		assertEquals(Severity.LEFT_OUT, found.getFirst().severity(), found.toString());
+		assertTrue(found.getFirst().message().contains("captures the local variable of type java.lang.CharSequence, which use in net.minecraft.world.Thing"
+				+ " doesn't hold where its @At points are"), found.toString());
+	}
+
+	@Test
+	void twoLocalsOfTheTypeAtAPointDropThatPointAsMixinExtrasDoes() throws Exception {
+		// MixinExtras takes an @Local by its type alone with Mixin's discriminator, which needs exactly one local of the type
+		// at the instruction, and drops a point with several: the injector injects at its other points, which require judges.
+		String set = "L" + TARGET + ";set(Ljava/lang/String;)V";
+		byte[] both = loopTarget(true, false);
+		Call inLoop = callIn(both, "burn", "set", 0);
+		assertEquals(2, MixinPreflight.localsOfTypeAt(Type.getType(ITERATOR), inLoop.index(), inLoop.generated()));
+		List<PreflightFinding> found = checkLocalByType(both, localByType("burn", set, ITERATOR, 1));
+		assertEquals(1, found.size(), found.toString());
+		assertEquals(Severity.LEFT_OUT, found.getFirst().severity(), found.toString());
+		assertTrue(found.getFirst().message().contains("captures the local variable of type java.util.Iterator, which burn in net.minecraft.world.Thing"
+				+ " has more than one of where its @At points are"), found.toString());
+
+		// A call before the second iterator is made has one: the injector injects there alone, enough for one required.
+		byte[] first = loopTarget(true, true);
+		Call before = callIn(first, "burn", "set", 0);
+		assertEquals(1, MixinPreflight.localsOfTypeAt(Type.getType(ITERATOR), before.index(), before.generated()));
+		assertTrue(checkLocalByType(first, localByType("burn", set, ITERATOR, 1)).isEmpty());
+		List<PreflightFinding> two = checkLocalByType(first, localByType("burn", set, ITERATOR, 2));
+		assertEquals(1, two.size(), two.toString());
+		assertTrue(two.getFirst().message().contains("holds, with the other locals its handler takes, at fewer of its @At points than the injector requires"), two.toString());
+	}
+
+	private static final String SET = "L" + TARGET + ";set(Ljava/lang/String;)V";
+
+	/** A class with one of its methods changed, written with the frames it had. */
+	private static byte[] changed(byte[] target, String method, BiConsumer<ClassNode, MethodNode> change) {
+		ClassNode node = new ClassNode();
+		new ClassReader(target).accept(node, 0);
+		change.accept(node, node.methods.stream().filter(m -> m.name.equals(method)).findFirst().orElseThrow());
+		ClassWriter cw = new ClassWriter(0);
+		node.accept(cw);
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aPointCountsOnlyWhereEveryLocalOfTheHandlerIsFound() throws Exception {
+		// MixinExtras drops a point where any of a handler's @Locals finds none or several (SugarInjector.validateApplicators):
+		// one local at the first call and the other at the second leave the injector nowhere to inject, and Mixin stops.
+		String optional = "Ljava/util/Optional;";
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor burn = cw.visitMethod(Opcodes.ACC_PUBLIC, "burn", "()V", null, null);
+		Label start = new Label();
+		Label nameStart = new Label();
+		Label end = new Label();
+		burn.visitCode();
+		burn.visitLabel(start);
+		burn.visitVarInsn(Opcodes.ALOAD, 0);
+		burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "blocks", "()Ljava/util/List;", false);
+		burn.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "iterator", "()" + ITERATOR, true);
+		burn.visitVarInsn(Opcodes.ASTORE, 1);
+		burn.visitVarInsn(Opcodes.ALOAD, 0);
+		burn.visitVarInsn(Opcodes.ALOAD, 1);
+		burn.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Iterator", "next", "()Ljava/lang/Object;", true);
+		burn.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/String");
+		burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "set", "(Ljava/lang/String;)V", false);
+		// The iterator's slot is the name's from here, and the optional is made.
+		burn.visitVarInsn(Opcodes.ALOAD, 0);
+		burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "name", "()Ljava/lang/String;", false);
+		burn.visitVarInsn(Opcodes.ASTORE, 1);
+		burn.visitLabel(nameStart);
+		burn.visitVarInsn(Opcodes.ALOAD, 0);
+		burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "chosen", "()" + optional, false);
+		burn.visitVarInsn(Opcodes.ASTORE, 2);
+		burn.visitVarInsn(Opcodes.ALOAD, 0);
+		burn.visitVarInsn(Opcodes.ALOAD, 2);
+		burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/util/Optional", "get", "()Ljava/lang/Object;", false);
+		burn.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/String");
+		burn.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "set", "(Ljava/lang/String;)V", false);
+		burn.visitInsn(Opcodes.RETURN);
+		burn.visitLabel(end);
+		burn.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		burn.visitLocalVariable("name", "Ljava/lang/String;", null, nameStart, end, 1);
+		burn.visitMaxs(0, 0);
+		burn.visitEnd();
+		cw.visitEnd();
+		byte[] target = cw.toByteArray();
+		for (int call = 0; call < 2; call++) {
+			Call set = callIn(target, "burn", "set", call);
+			assertEquals(1 - call, MixinPreflight.localsOfTypeAt(Type.getType(ITERATOR), set.index(), set.generated()));
+			assertEquals(call, MixinPreflight.localsOfTypeAt(Type.getType(optional), set.index(), set.generated()));
+		}
+		// Each alone is found at one call, enough for one required.
+		assertTrue(checkLocalByType(target, localByType("burn", SET, ITERATOR, 1)).isEmpty());
+		assertTrue(checkLocalByType(target, localByType("burn", SET, optional, 1)).isEmpty());
+		List<PreflightFinding> found = checkLocalByType(target, localsByType("burn", List.<Object[]>of(new Object[] {"INVOKE", SET, null}), List.of(ITERATOR, optional), 1));
+		assertEquals(1, found.size(), found.toString());
+		assertEquals(Severity.LEFT_OUT, found.getFirst().severity(), found.toString());
+		assertTrue(found.getFirst().message().contains("captures the local variable of type java.util.Iterator, which burn in net.minecraft.world.Thing"
+				+ " holds, with the other locals its handler takes, at fewer of its @At points than the injector requires"), found.toString());
+	}
+
+	@Test
+	void aLocalTheTableNamesMustBeInScopeWhereTheOtherIsFound() throws Exception {
+		// The loop's iterator is held at the call before the loop, where the block the table names isn't in scope yet: Mixin
+		// has only the iterator there, and MixinExtras drops the point.
+		String block = "Ljava/lang/String;";
+		byte[] target = loopTarget(false, true);
+		List<PreflightFinding> first = checkLocalByType(target, localsByType("burn", List.<Object[]>of(new Object[] {"INVOKE", SET, 0}), List.of(ITERATOR, block), 1));
+		assertEquals(1, first.size(), first.toString());
+		assertTrue(first.getFirst().message().contains("captures the local variable of type java.util.Iterator, which burn in net.minecraft.world.Thing"
+				+ " holds, with the other locals its handler takes, at fewer of its @At points than the injector requires"), first.toString());
+		// In the loop both are there: the injector injects at that call alone.
+		List<Object[]> both = List.<Object[]>of(new Object[] {"INVOKE", SET, null});
+		assertTrue(checkLocalByType(target, localsByType("burn", both, List.of(ITERATOR, block), 1)).isEmpty());
+		assertFalse(checkLocalByType(target, localsByType("burn", both, List.of(ITERATOR, block), 2)).isEmpty());
+		// A local of the handler's that isn't judged there (a primitive, a LocalRef) leaves the table's verdict.
+		for (String other : List.of("I", "Lcom/llamalad7/mixinextras/sugar/ref/LocalRef;")) {
+			List<PreflightFinding> unjudged = checkLocalByType(target, localsByType("burn", both, List.of(ITERATOR, other), 1));
+			assertTrue(unjudged.stream().anyMatch(f -> f.message().contains("captures the local variable of type java.util.Iterator, which burn in"
+					+ " net.minecraft.world.Thing does not declare")), unjudged.toString());
+		}
+	}
+
+	@Test
+	void anInstructionTwoPointsPickCountsOnce() throws Exception {
+		// Mixin injects once at an instruction several of an injector's @Ats pick (Injector.findTargetNodes).
+		byte[] target = loopTarget(false, false);
+		List<Object[]> twice = List.<Object[]>of(new Object[] {"INVOKE", SET, null}, new Object[] {"INVOKE", SET, 0});
+		assertTrue(checkLocalByType(target, localsByType("burn", twice, List.of(ITERATOR), 1)).isEmpty());
+		List<PreflightFinding> found = checkLocalByType(target, localsByType("burn", twice, List.of(ITERATOR), 2));
+		assertTrue(found.stream().anyMatch(f -> f.message().contains("at fewer of its @At points than the injector requires")), found.toString());
+	}
+
+	@Test
+	void noSlotIsTypedWhereTheMethodNamesAClassTheRunningSideLacks() throws Exception {
+		// Mixin's verifier stops typing a method at a class it can't read, the generated table left as far as it got: a
+		// method naming a client class has no slot typed on a server.
+		byte[] target = changed(loopTarget(false, false), "burn",
+				(node, burn) -> burn.instructions.insert(new MethodInsnNode(Opcodes.INVOKESTATIC, "net/minecraft/client/Screen", "touch", "()V", false)));
+		assertTrue(callIn(loopTarget(false, false), "burn", "set", 0).generated().typed);
+		Call set = callIn(target, "burn", "set", 0);
+		assertFalse(set.generated().typed);
+		assertEquals(-1, MixinPreflight.localsOfTypeAt(Type.getType(ITERATOR), set.index(), set.generated()));
+		List<PreflightFinding> found = checkLocalByType(target, localByType("burn", SET, ITERATOR, 1));
+		assertEquals(1, found.size(), found.toString());
+		assertTrue(found.getFirst().message().contains("captures the local variable of type java.util.Iterator, which burn in net.minecraft.world.Thing"
+				+ " does not declare"), found.toString());
+		// With the class there, the slot is typed.
+		Map<String, byte[]> withScreen = Map.of(TARGET, target, "net/minecraft/client/Screen", emptyClass("net/minecraft/client/Screen"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Fire", localByType("burn", SET, ITERATOR, 1));
+		assertTrue(preflight(new ClassIndex(withScreen::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Fire")), Refmap.EMPTY, Set.of()).isEmpty());
+		// Nor in an interface's method, where SpongePowered's verifier stops at a value used as the interface.
+		byte[] iface = changed(loopTarget(false, false), "burn", (node, burn) -> node.access |= Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT);
+		assertFalse(callIn(iface, "burn", "set", 0).generated().typed);
+	}
+
+	private static byte[] emptyClass(String name) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null);
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aHookThatFindsItsLoopsIteratorStaysOutOfTheOverloadTheMethodCalls() throws Exception {
+		// The method keeps its loop and also calls its one overload, which makes the same call with a named iterator: the
+		// hook applies where it is, and isn't taken for one whose locals went with the code into the overload.
+		byte[] target = changed(loopTarget(false, false), "burn", (node, burn) -> {
+			AbstractInsnNode last = burn.instructions.getLast();
+			while (last.getOpcode() != Opcodes.RETURN) last = last.getPrevious();
+			InsnList call = new InsnList();
+			call.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			call.add(new InsnNode(Opcodes.ICONST_1));
+			call.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, TARGET, "burn", "(Z)V", false));
+			burn.instructions.insertBefore(last, call);
+			burn.maxStack = Math.max(burn.maxStack, 2);
+			MethodNode overload = new MethodNode(Opcodes.ACC_PUBLIC, "burn", "(Z)V", null, null);
+			Label start = new Label();
+			Label iteratorStart = new Label();
+			Label end = new Label();
+			overload.visitLabel(start);
+			overload.visitVarInsn(Opcodes.ALOAD, 0);
+			overload.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "blocks", "()Ljava/util/List;", false);
+			overload.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "iterator", "()" + ITERATOR, true);
+			overload.visitVarInsn(Opcodes.ASTORE, 2);
+			overload.visitLabel(iteratorStart);
+			overload.visitVarInsn(Opcodes.ALOAD, 0);
+			overload.visitVarInsn(Opcodes.ALOAD, 2);
+			overload.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Iterator", "next", "()Ljava/lang/Object;", true);
+			overload.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/String");
+			overload.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "set", "(Ljava/lang/String;)V", false);
+			overload.visitInsn(Opcodes.RETURN);
+			overload.visitLabel(end);
+			overload.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+			overload.visitLocalVariable("all", "Z", null, start, end, 1);
+			overload.visitLocalVariable("iterator", ITERATOR, null, iteratorStart, end, 2);
+			overload.visitMaxs(2, 3);
+			node.methods.add(overload);
+		});
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Fire", localByType("burn()V", SET, ITERATOR, 1));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Fire"));
+		List<PreflightFinding> notes = new ArrayList<>();
+		assertTrue(preflight(new ClassIndex(Map.of(TARGET, target)::get), mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).isEmpty(), notes.toString());
+		assertTrue(checkLocalByType(target, mod.get("com/example/mixin/Fire")).isEmpty());
+	}
+
+	@Test
+	void aModifiedLocalWhoseSlotIsReusedBeforeThePointIsNotThere() throws Exception {
+		// LOCAL-6's shape for a @ModifyVariable: the value the code keeps in a slot the table doesn't name is gone where the
+		// slot is stored again and named from there, and Mixin's discriminator finds no candidate at the point.
+		byte[] mixin = mixin("com/example/mixin/Fire", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "swap", "(Ljava/lang/CharSequence;)Ljava/lang/CharSequence;", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "use");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";award()V");
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 1);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 2);
+			mv.visitEnd();
+		});
+		List<PreflightFinding> found = checkLocalByType(reusedSlotTarget(), mixin);
+		assertTrue(found.stream().anyMatch(f -> f.message().contains("swap modifies a local of type java.lang.CharSequence in use()V in net.minecraft.world.Thing,"
+				+ " which that method doesn't have where its @At points are")), found.toString());
+	}
+
+	/** A static method of no parameters whose {@code code} ends at a call of {@code set}, and that call. */
+	private static Call walk(Consumer<MethodNode> code) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "walk", "()V", null, null);
+		code.accept(method);
+		method.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "set", "()V", false);
+		method.visitInsn(Opcodes.RETURN);
+		method.visitMaxs(1, 1);
+		ClassNode owner = new ClassNode();
+		owner.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		return new Call(new GeneratedLocals(owner, method, new ClassIndex(Map.of(TARGET, emptyClass(TARGET))::get)::get), method.instructions.size() - 2);
+	}
+
+	private static void storeIterator(MethodNode method) {
+		method.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "blocks", "()" + ITERATOR, false);
+		method.visitVarInsn(Opcodes.ASTORE, 0);
+	}
+
+	private static void loadIterator(MethodNode method) {
+		method.visitVarInsn(Opcodes.ALOAD, 0);
+		method.visitInsn(Opcodes.POP);
+	}
+
+	@Test
+	void aSlotHoldsItsValueOnlyWhereItsLoadIsTheStoresAlone() {
+		Type iterator = Type.getType(ITERATOR);
+		Function<Consumer<MethodNode>, Boolean> held = code -> {
+			Call walk = walk(code);
+			return MixinPreflight.heldAt(iterator, 0, walk.index(), walk.generated());
+		};
+		assertTrue(held.apply(m -> {
+			storeIterator(m);
+			m.visitInsn(Opcodes.NOP);
+			loadIterator(m);
+		}));
+		// A frame after the load may give the slot another local.
+		assertFalse(held.apply(m -> {
+			storeIterator(m);
+			m.visitInsn(Opcodes.NOP);
+			loadIterator(m);
+			m.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+		}));
+		// A load right after the store is covered by the generated table's entry before it.
+		assertFalse(held.apply(m -> {
+			storeIterator(m);
+			loadIterator(m);
+		}));
+		// A jump from before the store past it: the value loaded may be another.
+		assertFalse(held.apply(m -> {
+			Label past = new Label();
+			m.visitInsn(Opcodes.ICONST_0);
+			m.visitJumpInsn(Opcodes.IFEQ, past);
+			storeIterator(m);
+			m.visitLabel(past);
+			loadIterator(m);
+		}));
+		// The handler of a try block that stores another value to the slot: the value loaded there may be either.
+		assertFalse(held.apply(m -> {
+			Label from = new Label();
+			Label to = new Label();
+			Label handler = new Label();
+			m.visitTryCatchBlock(from, to, handler, "java/lang/RuntimeException");
+			storeIterator(m);
+			m.visitLabel(from);
+			m.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "others", "()Ljava/util/Optional;", false);
+			m.visitVarInsn(Opcodes.ASTORE, 0);
+			m.visitInsn(Opcodes.NOP);
+			m.visitLabel(to);
+			m.visitLabel(handler);
+			m.visitInsn(Opcodes.NOP);
+			loadIterator(m);
+		}));
+		// A jump back from after the point, with a store of another type to the slot on the way; a null stored there is
+		// the type's still.
+		for (boolean other : new boolean[] {true, false}) {
+			assertEquals(!other, held.apply(m -> {
+				Label head = new Label();
+				Label past = new Label();
+				storeIterator(m);
+				m.visitLabel(head);
+				loadIterator(m);
+				m.visitInsn(Opcodes.ICONST_0);
+				m.visitJumpInsn(Opcodes.IFEQ, past);
+				if (other) m.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "others", "()Ljava/util/Optional;", false);
+				else m.visitInsn(Opcodes.ACONST_NULL);
+				m.visitVarInsn(Opcodes.ASTORE, 0);
+				m.visitJumpInsn(Opcodes.GOTO, head);
+				m.visitLabel(past);
+				loadIterator(m);
+			}));
+		}
+		// A value of another type, or one copied from a local.
+		assertFalse(held.apply(m -> {
+			m.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "blocks", "()Ljava/util/ListIterator;", false);
+			m.visitVarInsn(Opcodes.ASTORE, 0);
+			m.visitInsn(Opcodes.NOP);
+			loadIterator(m);
+		}));
+	}
+
+	@Test
+	void aLoopsIteratorIsFoundAtAFieldAccessAndByAnotherInjector() throws Exception {
+		// At a field read in the loop.
+		byte[] target = changed(loopTarget(false, false), "burn", (node, burn) -> {
+			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE, "count", "I", null, null));
+			AbstractInsnNode set = burn.instructions.get(callIn(loopTarget(false, false), "burn", "set", 0).index());
+			InsnList read = new InsnList();
+			read.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			read.add(new FieldInsnNode(Opcodes.GETFIELD, TARGET, "count", "I"));
+			read.add(new InsnNode(Opcodes.POP));
+			burn.instructions.insert(set, read);
+		});
+		assertTrue(checkLocalByType(target, localsByType("burn", List.<Object[]>of(new Object[] {"FIELD", "L" + TARGET + ";count:I", null}), List.of(ITERATOR), 1))
+				.isEmpty());
+		// By a @ModifyExpressionValue of the loop's next() call.
+		byte[] modifier = mixin("com/example/mixin/Fire", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "next", "(Ljava/lang/Object;" + ITERATOR + ")Ljava/lang/Object;", null, null);
+			mv.visitParameterAnnotation(1, LOCAL, false).visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation("Lcom/llamalad7/mixinextras/injector/ModifyExpressionValue;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "burn");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "Ljava/util/Iterator;next()Ljava/lang/Object;");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visit("require", 1);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 1);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 3);
+			mv.visitEnd();
+		});
+		assertTrue(checkLocalByType(loopTarget(false, false), modifier).isEmpty());
+		// The same in LOCAL-6's shape is left out.
+		byte[] gone = mixin("com/example/mixin/Fire", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "held", "(Ljava/lang/Integer;Ljava/lang/CharSequence;)Ljava/lang/Integer;", null, null);
+			mv.visitParameterAnnotation(1, LOCAL, false).visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation("Lcom/llamalad7/mixinextras/injector/ModifyExpressionValue;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "use");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";award()V");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visit("require", 1);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 1);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 3);
+			mv.visitEnd();
+		});
+		List<PreflightFinding> found = checkLocalByType(reusedSlotTarget(), gone);
+		assertTrue(found.stream().anyMatch(f -> f.message().contains("captures the local variable of type java.lang.CharSequence, which use in"
+				+ " net.minecraft.world.Thing doesn't hold where its @At points are")), found.toString());
+	}
+
+	@Test
+	void aSlotStoredSeveralTypesMayHoldASuperclassOfThem() throws Exception {
+		// Mixin's verifier types the meeting of an ArrayList and a LinkedList as their superclass AbstractList: a slot stored
+		// both may hold one of that type, though nothing stores one, and holds none of an unrelated type.
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor pick = cw.visitMethod(Opcodes.ACC_PUBLIC, "pick", "(Z)V", null, null);
+		Label start = new Label();
+		Label linked = new Label();
+		Label join = new Label();
+		Label end = new Label();
+		pick.visitCode();
+		pick.visitLabel(start);
+		pick.visitVarInsn(Opcodes.ILOAD, 1);
+		pick.visitJumpInsn(Opcodes.IFEQ, linked);
+		for (String list : List.of("java/util/ArrayList", "java/util/LinkedList")) {
+			pick.visitTypeInsn(Opcodes.NEW, list);
+			pick.visitInsn(Opcodes.DUP);
+			pick.visitMethodInsn(Opcodes.INVOKESPECIAL, list, "<init>", "()V", false);
+			pick.visitVarInsn(Opcodes.ASTORE, 2);
+			if (list.endsWith("ArrayList")) {
+				pick.visitJumpInsn(Opcodes.GOTO, join);
+				pick.visitLabel(linked);
+				pick.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+			}
+		}
+		pick.visitLabel(join);
+		pick.visitFrame(Opcodes.F_APPEND, 1, new Object[] {"java/util/AbstractList"}, 0, null);
+		pick.visitVarInsn(Opcodes.ALOAD, 0);
+		pick.visitVarInsn(Opcodes.ALOAD, 2);
+		pick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "take", "(Ljava/util/AbstractList;)V", false);
+		pick.visitInsn(Opcodes.RETURN);
+		pick.visitLabel(end);
+		pick.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		pick.visitLocalVariable("first", "Z", null, start, end, 1);
+		pick.visitMaxs(0, 0);
+		pick.visitEnd();
+		cw.visitEnd();
+		byte[] target = cw.toByteArray();
+		Call take = callIn(target, "pick", "take", 0);
+		assertEquals(-1, MixinPreflight.localsOfTypeAt(Type.getObjectType("java/util/AbstractList"), take.index(), take.generated()));
+		assertEquals(-1, MixinPreflight.localsOfTypeAt(Type.getObjectType("java/util/AbstractCollection"), take.index(), take.generated()));
+		assertEquals(0, MixinPreflight.localsOfTypeAt(Type.getObjectType("java/util/Optional"), take.index(), take.generated()));
+		// Without the classes' superclasses, a slot stored several types isn't told.
+		assertFalse(MixinPreflight.absentAt(Type.getObjectType("java/util/Optional"), take.method(), take.index(), TARGET));
+		String takeCall = "L" + TARGET + ";take(Ljava/util/AbstractList;)V";
+		List<PreflightFinding> untold = checkLocalByType(target, localByType("pick", takeCall, "Ljava/util/AbstractList;", 1));
+		assertTrue(untold.stream().anyMatch(f -> f.message().contains("of type java.util.AbstractList, which pick in net.minecraft.world.Thing does not declare")),
+				untold.toString());
+		List<PreflightFinding> none = checkLocalByType(target, localByType("pick", takeCall, "Ljava/util/Optional;", 1));
+		assertTrue(none.stream().anyMatch(f -> f.message().contains("of type java.util.Optional, which pick in net.minecraft.world.Thing doesn't hold where its"
+				+ " @At points are")), none.toString());
+	}
+
+	@Test
+	void aLocalTheTableNamesIsFoundOnlyWhereNoOtherSlotMayStillHoldOne() throws Exception {
+		// Two named strings in scopes of their own, the second after a stack map frame: Mixin may still have the first in its
+		// slot there (it looks the slot up in its generated table at the frame, which types a slot holding nothing as it
+		// last was), so the second isn't told to be the only one.
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor pick = cw.visitMethod(Opcodes.ACC_PUBLIC, "pick", "(Z)V", null, null);
+		Label start = new Label();
+		Label firstStart = new Label();
+		Label skip = new Label();
+		Label secondStart = new Label();
+		Label end = new Label();
+		pick.visitCode();
+		pick.visitLabel(start);
+		pick.visitVarInsn(Opcodes.ILOAD, 1);
+		pick.visitJumpInsn(Opcodes.IFEQ, skip);
+		for (int slot = 2; slot <= 3; slot++) {
+			pick.visitVarInsn(Opcodes.ALOAD, 0);
+			pick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "name", "()Ljava/lang/String;", false);
+			pick.visitVarInsn(Opcodes.ASTORE, slot);
+			pick.visitLabel(slot == 2 ? firstStart : secondStart);
+			pick.visitVarInsn(Opcodes.ALOAD, 0);
+			pick.visitVarInsn(Opcodes.ALOAD, slot);
+			pick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "set", "(Ljava/lang/String;)V", false);
+			if (slot == 2) {
+				pick.visitLabel(skip);
+				pick.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+			}
+		}
+		pick.visitInsn(Opcodes.RETURN);
+		pick.visitLabel(end);
+		pick.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		pick.visitLocalVariable("all", "Z", null, start, end, 1);
+		pick.visitLocalVariable("first", "Ljava/lang/String;", null, firstStart, skip, 2);
+		pick.visitLocalVariable("second", "Ljava/lang/String;", null, secondStart, end, 3);
+		pick.visitMaxs(0, 0);
+		pick.visitEnd();
+		cw.visitEnd();
+		byte[] target = cw.toByteArray();
+		Type string = Type.getType(String.class);
+		Call first = callIn(target, "pick", "set", 0);
+		Call second = callIn(target, "pick", "set", 1);
+		assertEquals(1, MixinPreflight.tableLocalAt(string, -1, first.index(), false, first.generated()));
+		assertEquals(-1, MixinPreflight.tableLocalAt(string, -1, second.index(), false, second.generated()));
+		// The points are judged only for a handler taking a local the table doesn't name, which the table alone refused: one
+		// whose locals the table all names keeps the table's verdict, whatever is told of them at the points.
+		assertTrue(checkLocalByType(target, localByType("pick", SET, "Ljava/lang/String;", 1)).isEmpty());
+		assertTrue(checkLocalByType(target, localsByType("pick", List.<Object[]>of(new Object[] {"INVOKE", SET, 1}), List.of("Ljava/lang/String;"), 1)).isEmpty());
+	}
+
 	/** Pre-flight with no installed jars, and missing targets fatal unless said otherwise. */
 	private static MixinPreflight preflight(ClassIndex game, ClassBytesSource mod, ClassBytesSource untransformable, boolean clientSide) {
 		return preflight(game, mod, untransformable, clientSide, true);

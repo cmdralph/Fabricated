@@ -1,6 +1,6 @@
 # Fabricated — Architecture (Phase 1 proposal)
 
-> Status: **approved in Phase 1 and implemented**; the current version is 0.6.0-beta.2 (`fabricated_version` in
+> Status: **approved in Phase 1 and implemented**; the current version is 0.6.0-beta.3 (`fabricated_version` in
 > `gradle.properties`). §6.2 gives each Fabric API module's plan as the version plans hold it today; the measured
 > state for each version is in [`COMPATIBILITY.md`](COMPATIBILITY.md). Facts referenced here are verified in [`RESEARCH.md`](RESEARCH.md).
 > Items marked **[verify-in-build]** were confirmed in loader source code. They still get an automated test in Phase 2 before being relied on.
@@ -10,7 +10,7 @@
 **Goals**
 * Load as many Fabric mods and libraries as possible on NeoForge **1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3** from one
   codebase, and on Forge 52, 61 to 66 and 47 from their own branches ([`PORTING.md`](PORTING.md)), every platform held
-  to the same stability bar (`roadmap.md`, *What beta.2 means*).
+  to the same stability bar ([`CONTRIBUTING.md`](../CONTRIBUTING.md#releasing), *Releasing*).
 * Run the Fabric builds Sinytra Connector couldn't: renderer replacements and shader pipelines (Sodium, Iris), mods
   that load other mods (Essential), Fabric-only interface stacks (OneConfig, PolyPlus), with generic capabilities, and
   refuse only what can't run safely or correctly, saying why (`roadmap.md`, *Goals*).
@@ -98,14 +98,17 @@ Fabricated/
 │                            @Environment members, methods the platform made final, vanilla's methods put back),
 │                            in two variants: src/fml for FML 10 to 12
 │                            (1.21.11, 26.x), src/modlauncher for NeoForge 21.1's FML 4 on ModLauncher (1.21.1),
-│                            each behind its own Fml facade (the Forge platforms' are on their branches, forge and
-│                            forge-legacy, with the same structure)
+│                            each behind its own Fml facade; forge-shared/ (both Forge platforms' discovery
+│                            services, which the Forge branches build: src/modern for Forge 52 and 61 to 66,
+│                            src/fml47 for Forge 47)
 ├── api/                     Fabricated's own small public API for NeoForge mods (see API.md)
 ├── mc/
 │   ├── mc.gradle            Shared build logic: source sets, shared source folders, jars, test mods
 │   ├── platform-*.gradle    Each platform's part of it (plugin settings, mod descriptor, game dependencies)
 │   ├── shared/              Sources every platform compiles: src (broken test mods, stand-ins), and the Fabric
 │   │                        test mods by Minecraft version (1.20.1+, 1.21.1+, 1.21.x, 26.x, 26.1-26.2, 26.2+, ...)
+│   ├── forge-shared/        Code both Forge platforms compile, by the Minecraft versions it serves; built on the
+│   │                        Forge branches, whose own folders are mc/forge and mc/forge-legacy
 │   ├── neoforge/
 │   │   ├── common/          Code every NeoForge version compiles: bridges, mixins, the test mods' NeoForge half
 │   │   ├── common121/       Code 1.21.1 and 1.21.11 compile (transfer, networking, loot and biome ports)
