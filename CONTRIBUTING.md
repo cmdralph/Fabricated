@@ -140,7 +140,7 @@ NeoForge's five come from `main`, Forge 61 to 66's four from `forge`, and Forge 
 1. Merge the release's work into `main`, then sync `forge` and `forge-legacy` with it
    (`scripts/sync-platform-branch.sh`, a pull request each), all three with their CI green. `fabricated_version` in
    `gradle.properties` must be the tag's version, without its `v`, on each: the workflow stops otherwise.
-2. Write the notes as `docs/releases/<tag>.md` (for example `docs/releases/v0.6.0-beta.2.md`), titled with a `# `
+2. Write the notes as `docs/releases/<tag>.md` (for example `docs/releases/v0.6.0-beta.3.md`), titled with a `# `
    heading naming the version, and merge them into `main`. The workflow appends the commits the jars were built from
    and the jars' SHA-256 checksums, and that text is the GitHub release's and, after its title, each CurseForge
    file's changelog, so its links are full URLs (a relative link resolves against the release page).
