@@ -18,6 +18,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Function;
+import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -46,16 +47,13 @@ import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
-import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LineNumberNode;
 import org.objectweb.asm.tree.LocalVariableNode;
-import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.MultiANewArrayInsnNode;
-import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
@@ -2259,7 +2257,7 @@ public final class MixinPreflight extends PreflightPart {
 			}
 		}
 
-		MissingLocal missingLocal = missingLocal(handler, matched, type -> lackedAtPoints(type, ann, matched, target, require, ctx));
+		MissingLocal missingLocal = missingLocal(handler, ann, matched, target, require, classes, ctx);
 		if (missingLocal != null) {
 			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + missingLocal.local() + ", which "
 							+ matched.get(0).name + " in " + target.name.replace('/', '.') + " " + missingLocal.lack(),
@@ -2971,34 +2969,41 @@ public final class MixinPreflight extends PreflightPart {
 	 * the held item in, which the table names from there on).
 	 */
 	static boolean absentAt(Type type, MethodNode method, int point, String owner) {
-		return absentAt(type, method, point, owner, -1, null);
+		return absentAt(type, method, point, owner, slot -> false, null);
 	}
 
 	/**
-	 * {@link #absentAt(Type, MethodNode, int, String)} of every slot but {@code but} (-1 for none). With {@code hierarchy}
-	 * the values stored are typed as Mixin's generated table types them, its verifier's types ({@link #flowType}): a
-	 * slot stored values of several types holds one of them, or a superclass of one where they meet, so none of that type
-	 * where it is neither one of them nor a superclass of one, as far as {@code hierarchy} tells ({@link #mayBeTyped}); a
-	 * parameter's slot holds its type too; a slot nothing gives a local up to the point holds none, {@code method} read
-	 * with its frames ({@link #untouched}); nothing is told of {@code Object}, which the verifier types a null and unlike
-	 * values. Without it (null), one type per slot.
+	 * {@link #absentAt(Type, MethodNode, int, String)} of every slot but those {@code but} takes. With {@code generated},
+	 * of a method read with its frames, the values stored are typed as Mixin's generated table types them, its verifier's
+	 * types ({@link #flowType}): a slot stored values of several types holds one of them, or a superclass of one where
+	 * they meet, so none of that type where it is neither one of them nor a superclass of one, as far as the classes'
+	 * superclasses tell ({@link #mayBeTyped}); a parameter's slot holds its type too; a slot nothing gives a local up to
+	 * the point holds none ({@link #untouched}), nor one that neither the method's table nor the generated one types so
+	 * anywhere from its last store before the point on ({@link #cleared}); nothing is told of {@code Object}, which the
+	 * verifier types a null and unlike values. Without it (null), one type per slot.
 	 */
-	static boolean absentAt(Type type, MethodNode method, int point, String owner, int but, Function<String, ClassIndex.ClassInfo> hierarchy) {
+	static boolean absentAt(Type type, MethodNode method, int point, String owner, IntPredicate but, GeneratedLocals generated) {
+		Function<String, ClassIndex.ClassInfo> hierarchy = generated == null ? null : generated.hierarchy;
 		InsnList insns = method.instructions;
 		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
-		if (!isStatic && Type.getObjectType(owner).equals(type) || List.of(Type.getArgumentTypes(method.desc)).contains(type)) return false;
+		if (!isStatic && Type.getObjectType(owner).equals(type) && !but.test(0)) return false;
+		int parameter = isStatic ? 0 : 1;
+		for (Type arg : Type.getArgumentTypes(method.desc)) {
+			if (arg.equals(type) && !but.test(parameter)) return false;
+			parameter += arg.getSize();
+		}
 		String desc = type.getDescriptor();
 		if (hierarchy != null && desc.equals("Ljava/lang/Object;")) return false;
 		Map<Integer, Integer> lastEnd = new HashMap<>();
 		for (LocalVariableNode local : method.localVariables) {
-			if (!local.desc.equals(desc) || local.index == but) continue;
+			if (!local.desc.equals(desc) || but.test(local.index)) continue;
 			int start = insns.indexOf(local.start);
 			int end = insns.indexOf(local.end);
 			if (start <= point && end > point) return false;
 			lastEnd.merge(local.index, end <= point ? end : 0, Math::max);
 		}
 		for (Map.Entry<Integer, Integer> slot : lastEnd.entrySet()) {
-			if (!overwritten(method, slot.getKey(), slot.getValue(), point)) return false;
+			if (!overwritten(method, slot.getKey(), slot.getValue(), point) && !cleared(type, slot.getKey(), point, generated)) return false;
 		}
 		Map<AbstractInsnNode, String> handlers = catchTypes(method);
 		int argSlots = isStatic ? 0 : 1;
@@ -3013,7 +3018,7 @@ public final class MixinPreflight extends PreflightPart {
 			AbstractInsnNode insn = insns.get(i);
 			if (insn.getOpcode() != Opcodes.ASTORE) continue;
 			int slot = ((VarInsnNode) insn).var;
-			if (slot == but || lastEnd.containsKey(slot)) continue;
+			if (but.test(slot) || lastEnd.containsKey(slot)) continue;
 			Type stored = hierarchy == null ? storedType(method, i, owner, isStatic, argSlots, handlers) : flowType(method, i, owner, isStatic, argSlots, handlers);
 			if (stored == null || stored.equals(type)) suspect.add(slot);
 			else if (stored.getSort() != Type.VOID) slotTypes.computeIfAbsent(slot, k -> new HashSet<>()).add(stored);
@@ -3022,8 +3027,29 @@ public final class MixinPreflight extends PreflightPart {
 			if (types.size() > 1 && (hierarchy == null || types.stream().anyMatch(stored -> mayBeTyped(stored, type, hierarchy)))) suspect.add(slot);
 		});
 		for (int slot : suspect) {
-			if (slot == but || lastEnd.containsKey(slot)) continue;
-			if (!overwritten(method, slot, 0, point) && !(hierarchy != null && slot >= argSlots && untouched(method, slot, point))) return false;
+			if (but.test(slot) || lastEnd.containsKey(slot)) continue;
+			if (!overwritten(method, slot, 0, point) && !(generated != null && slot >= argSlots && untouched(method, slot, point))
+					&& !cleared(type, slot, point, generated)) return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Whether no local Mixin gives {@code slot} from its last store before the instruction at {@code point} on (from the
+	 * method's start, for a slot past the parameters never stored to before it) is of the reference type {@code type}: at
+	 * each instruction from the one after that store to the point, where a load or a stack map frame may look the slot up,
+	 * the method's local variable table covers the slot with an entry of another type, or the generated table's entry is of
+	 * another ({@link GeneratedLocals}). False where that isn't told, or without the generated table.
+	 */
+	private static boolean cleared(Type type, int slot, int point, GeneratedLocals generated) {
+		if (generated == null || !generated.typed) return false;
+		MethodNode method = generated.method;
+		int from = Math.min(point, method.instructions.size()) - 1;
+		while (from >= 0 && !storesTo(method.instructions.get(from), slot)) from--;
+		if (from < 0 && slot < OverloadRepairs.firstLocalSlot(method)) return false;
+		for (int i = from + 1; i <= point; i++) {
+			String covering = coveringType(method, i, slot);
+			if (covering.equals(UNTOLD) ? generated.typeAt(type, slot, i) != GeneratedLocals.NOT : covering.equals(type.getDescriptor())) return false;
 		}
 		return true;
 	}
@@ -3047,75 +3073,19 @@ public final class MixinPreflight extends PreflightPart {
 	 * {@code for} loop, which javac leaves out of the table). The last thing to give the slot a local up to the point must
 	 * be a load of it, no stack map frame after it (a frame may give each slot another local, by Mixin's count of its
 	 * locals, which differs between versions and frame encodings): Mixin gives the slot the generated entry covering the
-	 * load. That table has an entry for each run of instructions, in their order, over which its verifier types the slot
-	 * alike, starting at the first of them where that is a label and after it otherwise. So the value loaded must be one
-	 * stored by the last store to the slot before the load, of that type as the verifier reads it ({@link #flowType}),
-	 * with an instruction between them, and reach the load from that store alone: the instructions from the store on are
-	 * entered only through it, as far as a jump or a try block from further on reaches back among them, and none stores
-	 * to the slot again. {@code method} is read with its frames.
+	 * load, which must be of that type ({@link GeneratedLocals}: the value loaded is of it whichever way the load is
+	 * reached, and was so the instruction before; a load right after its store is covered by the entry before).
 	 */
-	static boolean heldAt(Type type, MethodNode method, int slot, int point, String owner) {
-		InsnList insns = method.instructions;
-		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
-		int argSlots = isStatic ? 0 : 1;
-		for (Type arg : Type.getArgumentTypes(method.desc)) argSlots += arg.getSize();
-		if (slot < argSlots) return false;
-		int load = -1;
-		for (int i = Math.min(point, insns.size() - 1); i >= 0 && load < 0; i--) {
+	static boolean heldAt(Type type, int slot, int point, GeneratedLocals generated) {
+		InsnList insns = generated.method.instructions;
+		for (int i = Math.min(point, insns.size() - 1); i >= 0; i--) {
 			AbstractInsnNode insn = insns.get(i);
-			if (insn instanceof FrameNode) return false;
-			if (storesTo(insn, slot)) return false;
+			if (insn instanceof FrameNode || storesTo(insn, slot)) return false;
 			if (insn instanceof VarInsnNode var && var.var == slot) {
-				if (var.getOpcode() != Opcodes.ALOAD) return false;
-				load = i;
+				return var.getOpcode() == Opcodes.ALOAD && !covered(generated.method, slot, i) && generated.typeAt(type, slot, i) == GeneratedLocals.IS;
 			}
 		}
-		if (load < 0 || covered(method, slot, load)) return false;
-		int store = load - 1;
-		while (store >= 0 && !storesTo(insns.get(store), slot)) store--;
-		if (store < 0 || store == load - 1 || insns.get(store).getOpcode() != Opcodes.ASTORE || ((VarInsnNode) insns.get(store)).var != slot
-				|| !type.equals(flowType(method, store, owner, isStatic, argSlots, catchTypes(method)))) return false;
-		// The instructions from the store on that only it leads into, up to end.
-		int end = load;
-		for (boolean grown = true; grown;) {
-			grown = false;
-			for (int i = 0; i < insns.size(); i++) {
-				AbstractInsnNode insn = insns.get(i);
-				if (insn.getOpcode() == Opcodes.JSR || insn.getOpcode() == Opcodes.RET) return false;
-				List<LabelNode> targets = insn instanceof JumpInsnNode jump ? List.of(jump.label)
-						: insn instanceof TableSwitchInsnNode table ? withDefault(table.labels, table.dflt)
-						: insn instanceof LookupSwitchInsnNode lookup ? withDefault(lookup.labels, lookup.dflt) : List.of();
-				for (LabelNode target : targets) {
-					int to = insns.indexOf(target);
-					if (to <= store || to > end) continue;
-					if (i <= store) return false;
-					if (i > end) {
-						end = i;
-						grown = true;
-					}
-				}
-			}
-			for (TryCatchBlockNode block : method.tryCatchBlocks) {
-				int handler = insns.indexOf(block.handler);
-				if (handler <= store || handler > end) continue;
-				if (insns.indexOf(block.start) <= store) return false;
-				int last = insns.indexOf(block.end) - 1;
-				if (last > end) {
-					end = last;
-					grown = true;
-				}
-			}
-		}
-		for (int i = store + 1; i <= end; i++) {
-			if (storesTo(insns.get(i), slot)) return false;
-		}
-		return true;
-	}
-
-	private static List<LabelNode> withDefault(List<LabelNode> labels, LabelNode dflt) {
-		List<LabelNode> all = new ArrayList<>(labels);
-		all.add(dflt);
-		return all;
+		return false;
 	}
 
 	/** Whether an instruction stores to {@code slot}: a store there, or of a long or double in the slot before it. */
@@ -3128,24 +3098,82 @@ public final class MixinPreflight extends PreflightPart {
 	 * How many locals of the reference type {@code type} Mixin's discriminator finds at the instruction at {@code point} of
 	 * a method whose local variable table has none of that type, among those Mixin types from the table it generates from
 	 * the method's code: 0 ({@link #absentAt}), 1 (one slot holds one, {@link #heldAt}, and no other can), 2 for more
-	 * (several slots hold one), -1 where that can't be told. No slot is told to hold one in an interface's method:
-	 * SpongePowered's Mixin types the code with a verifier taking every class for no interface, which stops, the table left
-	 * as far as it got, at the first value used as the interface itself (read in 0.8.7, {@code MixinVerifier}; so in
-	 * Forge 52's {@code DispenseItemBehavior.bootStrap}). {@code method} is read with its frames.
+	 * (several slots hold one), -1 where that can't be told. No slot is told to hold one where Mixin's verifier may not
+	 * type the method ({@link #verifierTypes}).
 	 */
-	static int localsOfTypeAt(Type type, MethodNode method, int point, String owner, boolean inInterface, Function<String, ClassIndex.ClassInfo> hierarchy) {
+	static int localsOfTypeAt(Type type, int point, GeneratedLocals generated) {
+		MethodNode method = generated.method;
 		int held = -1;
-		for (int slot = 0; slot < method.maxLocals && !inInterface; slot++) {
-			if (!heldAt(type, method, slot, point, owner)) continue;
+		for (int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1; slot < method.maxLocals; slot++) {
+			if (!heldAt(type, slot, point, generated)) continue;
 			if (held >= 0) return 2;
 			held = slot;
 		}
-		if (!absentAt(type, method, point, owner, held, hierarchy)) return -1;
+		int holding = held;
+		if (!absentAt(type, method, point, generated.owner, slot -> slot == holding, generated)) return -1;
 		return held < 0 ? 0 : 1;
 	}
 
+	/**
+	 * Whether Mixin's verifier types the whole of a method, so that the table Mixin generates from it has each slot's
+	 * types ({@link GeneratedLocals}); where it stops, the table is left as far as it got, and a slot the code types may
+	 * have no local. It stops in an interface's method: SpongePowered's verifier takes every class for no interface, and fails at
+	 * the first value used as the interface itself (read in 0.8.5 and 0.8.7, {@code MixinVerifier}; so in Forge 52's
+	 * {@code DispenseItemBehavior.bootStrap}). And it stops at a class it can't read where it compares two types (Fabric's
+	 * and SpongePowered's alike): so every class the method names, in its descriptor, its instructions' owners,
+	 * descriptors and types and its try blocks, must be one the game or the libraries have on the running side
+	 * ({@code hierarchy}), as must the class's own supertypes: a method of the game's naming a client class has none of
+	 * its slots typed on a server.
+	 */
+	static boolean verifierTypes(ClassNode owner, MethodNode method, Function<String, ClassIndex.ClassInfo> hierarchy) {
+		if ((owner.access & Opcodes.ACC_INTERFACE) != 0) return false;
+		Set<String> named = new HashSet<>();
+		named.add(owner.name);
+		if (owner.superName != null) named.add(owner.superName);
+		if (owner.interfaces != null) named.addAll(owner.interfaces);
+		addNamed(named, Type.getMethodType(method.desc));
+		for (TryCatchBlockNode block : method.tryCatchBlocks) {
+			if (block.type != null) named.add(block.type);
+		}
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof MethodInsnNode call) {
+				addNamed(named, Type.getObjectType(call.owner));
+				addNamed(named, Type.getMethodType(call.desc));
+			} else if (insn instanceof FieldInsnNode field) {
+				addNamed(named, Type.getObjectType(field.owner));
+				addNamed(named, Type.getType(field.desc));
+			} else if (insn instanceof TypeInsnNode type) {
+				addNamed(named, Type.getObjectType(type.desc));
+			} else if (insn instanceof MultiANewArrayInsnNode array) {
+				addNamed(named, Type.getType(array.desc));
+			} else if (insn instanceof InvokeDynamicInsnNode dynamic) {
+				addNamed(named, Type.getMethodType(dynamic.desc));
+			} else if (insn instanceof LdcInsnNode ldc && ldc.cst instanceof Type constant) {
+				addNamed(named, constant);
+			}
+		}
+		for (String name : named) {
+			if (hierarchy.apply(name) == null) return false;
+		}
+		return true;
+	}
+
+	/** Adds the classes a type names: itself, an array's elements', a method type's parameters' and result's. */
+	private static void addNamed(Set<String> named, Type type) {
+		switch (type.getSort()) {
+			case Type.OBJECT -> named.add(type.getInternalName());
+			case Type.ARRAY -> addNamed(named, type.getElementType());
+			case Type.METHOD -> {
+				for (Type arg : type.getArgumentTypes()) addNamed(named, arg);
+				addNamed(named, type.getReturnType());
+			}
+			default -> {
+			}
+		}
+	}
+
 	/** The type each exception handler of the method catches, by its label; null where its try blocks catch different types. */
-	private static Map<AbstractInsnNode, String> catchTypes(MethodNode method) {
+	static Map<AbstractInsnNode, String> catchTypes(MethodNode method) {
 		Map<AbstractInsnNode, String> handlers = new HashMap<>();
 		for (TryCatchBlockNode block : method.tryCatchBlocks) {
 			String caught = block.type == null ? "java/lang/Throwable" : block.type;
@@ -3203,7 +3231,7 @@ public final class MixinPreflight extends PreflightPart {
 	 * are the same, or {@code type} is a superclass of {@code stored}'s (an interface type only ever comes from a value of
 	 * it). True where that can't be told (an array, a class the hierarchy doesn't have).
 	 */
-	private static boolean mayBeTyped(Type stored, Type type, Function<String, ClassIndex.ClassInfo> hierarchy) {
+	static boolean mayBeTyped(Type stored, Type type, Function<String, ClassIndex.ClassInfo> hierarchy) {
 		if (stored.equals(type)) return true;
 		if (stored.getSort() == Type.ARRAY || type.getSort() == Type.ARRAY) return stored.getSort() == Type.ARRAY && type.getSort() == Type.ARRAY;
 		if (stored.getSort() != Type.OBJECT) return false;
@@ -3351,7 +3379,7 @@ public final class MixinPreflight extends PreflightPart {
 	 * but for the copy of a local, whose values the verifier types as they were stored, not as the local variable table
 	 * declares it. Only the copy of {@code this} or of a parameter the method never stores to is read, as its type.
 	 */
-	private static Type flowType(MethodNode method, int index, String owner, boolean isStatic, int argSlots, Map<AbstractInsnNode, String> handlers) {
+	static Type flowType(MethodNode method, int index, String owner, boolean isStatic, int argSlots, Map<AbstractInsnNode, String> handlers) {
 		AbstractInsnNode producer = method.instructions.get(index).getPrevious();
 		while (producer instanceof LineNumberNode) producer = producer.getPrevious();
 		if (!(producer instanceof VarInsnNode load) || load.getOpcode() != Opcodes.ALOAD) return storedType(method, index, owner, isStatic, argSlots, handlers);
@@ -3394,22 +3422,17 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * The first local a handler's {@code @Local} parameter asks for that no target method's local variable table has, or
-	 * null: a name ({@code @Local(name = ...)}) none declares, as that name, or a type none has a local of (a parameter,
-	 * with {@code argsOnly}), as "of type" and the type. Only targets that carry local variable names are judged.
-	 */
-	static String missingLocal(MethodNode handler, List<MethodNode> targets) {
-		MissingLocal missing = missingLocal(handler, targets, type -> "does not declare");
-		return missing == null ? null : missing.local();
-	}
-
-	/**
-	 * {@link #missingLocal(MethodNode, List)}, with how the methods lack the local. A type their local variable tables
+	 * The first local a handler's {@code @Local} parameter asks for that the target methods lack, or null: a name
+	 * ({@code @Local(name = ...)}) none of their local variable tables declares, or a type none has a local of (a
+	 * parameter, with {@code argsOnly}). Only targets that carry local variable names are judged. A type their tables
 	 * don't name may still be a local's, as Mixin types a slot the table doesn't cover from the table it generates from the
-	 * method's code: {@code byTypeAlone} says how the methods lack a local of a reference type taken by its type alone (no
-	 * ordinal), null where they have it ({@link #lackedAtPoints}, PRE-36).
+	 * method's code: where a reference type taken by its type alone (no ordinal) is one, the handler's locals are judged
+	 * where the injector applies ({@link #lackedAtPoints}, PRE-36).
+	 *
+	 * @param require how many of its points the injector must inject at
 	 */
-	private static MissingLocal missingLocal(MethodNode handler, List<MethodNode> targets, Function<Type, String> byTypeAlone) {
+	static MissingLocal missingLocal(MethodNode handler, AnnotationNode injector, List<MethodNode> targets, ClassNode owner, int require,
+			PreflightClasses classes, Context ctx) {
 		Type[] params = Type.getArgumentTypes(handler.desc);
 		for (int i = 0; i < params.length; i++) {
 			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
@@ -3427,7 +3450,7 @@ public final class MixinPreflight extends PreflightPart {
 					}
 				} else if (judgedMissing(targets, local -> local.desc.equals(type.getDescriptor()))) {
 					String lack = Annotations.value(a, "ordinal") != null || type.getSort() != Type.OBJECT && type.getSort() != Type.ARRAY ? "does not declare"
-							: byTypeAlone.apply(type);
+							: lackedAtPoints(handler, type, injector, targets, owner, require, classes, ctx);
 					if (lack != null) return new MissingLocal("of type " + type.getClassName(), lack);
 				}
 			}
@@ -3441,51 +3464,194 @@ public final class MixinPreflight extends PreflightPart {
 	 * @param local what the handler asks for: its name, or "of type" and its type
 	 * @param lack  how the method lacks it, as the report says it after the method's name
 	 */
-	private record MissingLocal(String local, String lack) {
+	record MissingLocal(String local, String lack) {
 	}
 
 	/**
-	 * How the target methods lack a local of the reference type {@code type}, which an {@code @Local} takes by its type
-	 * alone and none of their local variable tables names; null where Mixin finds it at as many of the injector's points
-	 * as the injector requires. MixinExtras takes the local with Mixin's discriminator at each instruction the injector
-	 * picks, which needs exactly one local of that type there ("Found 0 candidate variables but exactly 1 is required"),
-	 * and drops a point where there are none or several: the injector injects at the others, which {@code require} judges
-	 * ({@code LocalSugarApplicator.validate}, {@code SugarInjector.validateApplicators}). So each point is judged
-	 * as Mixin's generated table gives its locals ({@link #localsOfTypeAt}), in the method read with its frames: Ledger's
-	 * {@code ExplosionMixin} takes the iterator of the fire loop in {@code Explosion.finalizeExplosion} at its
-	 * {@code Level.setBlockAndUpdate} call, the loop's own, which javac leaves out of the table (PRE-36), while its
+	 * How the target methods lack a local of the reference type {@code type}, which an {@code @Local} of {@code handler}
+	 * takes by its type alone and none of their local variable tables names; null where Mixin finds it, and the
+	 * handler's other locals, at as many of the injector's points as the injector requires. MixinExtras takes each local
+	 * with Mixin's discriminator at each instruction the injector picks, which needs exactly one local of that type there
+	 * ("Found 0 candidate variables but exactly 1 is required"), and drops a point where any of the handler's locals
+	 * finds none or several: the injector injects at the others, which {@code require} judges
+	 * ({@code LocalSugarApplicator.validate}, {@code SugarInjector.validateApplicators}, read in MixinExtras 0.5.4). So
+	 * each instruction the points pick, once where several pick it (as Mixin's {@code Injector.findTargetNodes} has them),
+	 * counts where every {@code @Local} of the handler finds its local there ({@link #resolvesAt}), in the method read
+	 * with its frames: Ledger's {@code ExplosionMixin} takes the iterator of the fire loop in
+	 * {@code Explosion.finalizeExplosion} at its {@code Level.setBlockAndUpdate} call, the loop's own, which javac leaves
+	 * out of the table, and the position the loop walks, which the table names (PRE-36), while its
 	 * {@code CampfireBlockMixin} takes a block entity where NeoForge 21.1's and Forge 52's {@code CampfireBlock.useItemOn}
 	 * hold none any more (LOCAL-6). Where a point can't be judged (no frames, another point than a call or field access, a
-	 * shift, a slice that can't be worked out, a slot whose local can't be told), or the points pick no instruction of the
-	 * methods, the table decides, as before: the method doesn't declare one.
+	 * shift, a slice that can't be worked out, a local of the handler's that can't be told there), or the points pick no
+	 * instruction of the methods, the table decides, as before: the method doesn't declare one.
 	 */
-	private String lackedAtPoints(Type type, AnnotationNode injector, List<MethodNode> targets, ClassNode owner, int require, Context ctx) {
+	private static String lackedAtPoints(MethodNode handler, Type type, AnnotationNode injector, List<MethodNode> targets, ClassNode owner, int require,
+			PreflightClasses classes, Context ctx) {
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
+		Type[] params = Type.getArgumentTypes(handler.desc);
 		int found = 0;
+		int held = 0;
 		int points = 0;
 		boolean told = true;
 		boolean several = false;
-		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
-			for (MethodNode target : targets) {
-				MethodNode m = classes.withFrames(owner.name, target);
-				List<Integer> picked = m == null ? null : pickedAt(at, slices, m, ctx);
-				if (picked == null) {
-					told = false;
-					continue;
+		for (MethodNode target : targets) {
+			MethodNode m = classes.withFrames(owner.name, target);
+			Set<Integer> picked = new TreeSet<>();
+			for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
+				List<Integer> atPoint = m == null ? null : pickedAt(at, slices, m, ctx);
+				if (atPoint == null) told = false;
+				else picked.addAll(atPoint);
+			}
+			if (picked.isEmpty()) continue;
+			GeneratedLocals generated = new GeneratedLocals(owner, m, classes::info);
+			for (int index : picked) {
+				points++;
+				int count = localsOfTypeAt(type, index, generated);
+				if (count == 1) held++;
+				several |= count > 1;
+				// The point counts where each of the handler's locals is found, and is dropped where one isn't.
+				boolean dropped = false;
+				boolean untold = false;
+				for (int p = 0; p < params.length && !dropped; p++) {
+					for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+						if (!local.desc.equals(MixinNames.LOCAL)) continue;
+						int resolved = resolvesAt(local, params[p], index, generated, classes.keepsLocalsPastScope);
+						dropped |= resolved == 0;
+						untold |= resolved < 0;
+					}
 				}
-				for (int index : picked) {
-					int count = localsOfTypeAt(type, m, index, owner.name, (owner.access & Opcodes.ACC_INTERFACE) != 0, classes::info);
-					if (count == 1) found++;
-					told &= count >= 0;
-					several |= count > 1;
-					points++;
-				}
+				if (!dropped && !untold) found++;
+				told &= dropped || !untold;
 			}
 		}
 		if (found >= Math.max(require, 1)) return null;
 		if (!told || points == 0) return "does not declare";
-		if (found > 0) return "holds at fewer of its @At points than the injector requires";
+		if (held > 0) return "holds, with the other locals its handler takes, at fewer of its @At points than the injector requires";
 		return several ? "has more than one of where its @At points are" : "doesn't hold where its @At points are";
+	}
+
+	/**
+	 * Whether an {@code @Local} of a handler finds its local at the instruction at {@code point} of {@code m}, read with its
+	 * frames: 1 where it does, 0 where it doesn't (MixinExtras drops the point), -1 where that isn't told. By its type
+	 * alone, a reference type the method's local variable table doesn't name is found where Mixin's generated table gives
+	 * exactly one ({@link #localsOfTypeAt}); one the table names, or an ordinal among those of such a type, as
+	 * {@link #tableLocalAt} tells; by a name, where the table has a local of that name
+	 * and type in scope; by its slot, where the table has one of the type in scope there, and not told otherwise. Among
+	 * the parameters ({@code argsOnly}), where exactly one has the type, or more than the ordinal. Not told: a primitive
+	 * (Mixin's generated table types every {@code int}-like slot an {@code int}), a {@code LocalRef}, whose type is in its
+	 * signature, an ordinal among those of a type the table doesn't name.
+	 */
+	private static int resolvesAt(AnnotationNode local, Type param, int point, GeneratedLocals generated, boolean kept) {
+		MethodNode m = generated.method;
+		if (param.getSort() != Type.OBJECT && param.getSort() != Type.ARRAY || param.getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) return -1;
+		String desc = param.getDescriptor();
+		int ordinal = Annotations.value(local, "ordinal") instanceof Integer o && o >= 0 ? o : -1;
+		boolean named = Annotations.value(local, "name") instanceof List<?> names && !names.isEmpty();
+		int slot = Annotations.value(local, "index") instanceof Integer index && index >= 0 ? index : -1;
+		if (Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))) {
+			if (named || slot >= 0 && ordinal < 0) return -1;
+			long count = List.of(Type.getArgumentTypes(m.desc)).stream().filter(param::equals).count();
+			return (ordinal >= 0 ? count > ordinal : count == 1) ? 1 : 0;
+		}
+		int base = (m.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		if (ordinal < 0 && (named || slot >= 0)) {
+			for (LocalVariableNode lv : m.localVariables) {
+				if (lv.index < base || !lv.desc.equals(desc) || m.instructions.indexOf(lv.start) > point || point >= m.instructions.indexOf(lv.end)) continue;
+				if (named ? ((List<?>) Annotations.value(local, "name")).contains(lv.name) : lv.index == slot) return 1;
+			}
+			return named ? 0 : -1;
+		}
+		if (m.localVariables.stream().noneMatch(lv -> lv.desc.equals(desc))) {
+			if (ordinal >= 0) return -1;
+			int count = localsOfTypeAt(param, point, generated);
+			return count < 0 ? -1 : count == 1 ? 1 : 0;
+		}
+		return tableLocalAt(param, ordinal, point, kept, generated);
+	}
+
+	/**
+	 * Whether an {@code @Local} taking a local of the reference type {@code type}, which the method's local variable table
+	 * names, by its type alone ({@code ordinal} -1) or by an ordinal among those of the type, finds it at the instruction at
+	 * {@code point} of the method, read with its frames: 1, 0, or -1 where that isn't told. The slots that may hold one are
+	 * those the table has in scope past {@code this}, those the running Mixin keeps once their scope has ended
+	 * ({@link #tableLocalsAt}), the parameters of the type, any slot Mixin's generated table types so ({@link #heldAt}),
+	 * and those Mixin surely gave one ({@link #givenAt}). By its type alone the local is found where they are one slot,
+	 * which Mixin surely gave it, and no other slot can hold one ({@link #absentAt}: one whose local of the type went out
+	 * of scope may still hold it, as Mixin keeps a local a frame dropped for an instruction and brings it back at a load
+	 * or store past its slot); not where they are none or several. A slot in scope whose local Mixin may have dropped at a
+	 * stack map frame since (FRAME-2) isn't told.
+	 */
+	static int tableLocalAt(Type type, int ordinal, int point, boolean kept, GeneratedLocals generated) {
+		MethodNode m = generated.method;
+		String desc = type.getDescriptor();
+		int base = (m.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		Set<Integer> given = givenAt(desc, m, point);
+		Set<Integer> slots = tableLocalsAt(desc, m, point, generated.owner, kept);
+		slots.addAll(given);
+		int parameter = base;
+		for (Type arg : Type.getArgumentTypes(m.desc)) {
+			if (arg.equals(type)) slots.add(parameter);
+			parameter += arg.getSize();
+		}
+		for (int s = base; s < m.maxLocals; s++) {
+			if (heldAt(type, s, point, generated)) slots.add(s);
+		}
+		if (ordinal >= 0) return given.size() > ordinal ? 1 : slots.size() <= ordinal ? 0 : -1;
+		if (slots.size() != 1) return 0;
+		return given.equals(slots) && absentAt(type, m, point, generated.owner, slot -> slot < base || slots.contains(slot), generated) ? 1 : -1;
+	}
+
+	/**
+	 * The slots past {@code this} Mixin surely gives a local of type {@code desc}, one the local variable table names, at
+	 * the instruction at {@code point} of a method read with its frames: a parameter of the type the method never stores
+	 * to, and a slot whose last load or store up to the point, with no stack map frame after it, is covered by an entry of
+	 * that type (the load, or the instruction after the store, where Mixin gives the slot the entry; a frame may give it
+	 * another local or drop it).
+	 */
+	static Set<Integer> givenAt(String desc, MethodNode m, int point) {
+		Set<Integer> given = new HashSet<>();
+		int base = (m.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		int parameter = base;
+		for (Type arg : Type.getArgumentTypes(m.desc)) {
+			int slot = parameter;
+			parameter += arg.getSize();
+			if (!arg.getDescriptor().equals(desc)) continue;
+			boolean stored = false;
+			for (AbstractInsnNode insn : m.instructions) stored |= storesTo(insn, slot);
+			if (!stored) given.add(slot);
+		}
+		Set<Integer> seen = new HashSet<>();
+		for (int i = Math.min(point, m.instructions.size() - 1); i >= 0 && !(m.instructions.get(i) instanceof FrameNode); i--) {
+			if (!(m.instructions.get(i) instanceof VarInsnNode var) || var.var < base || var.getOpcode() == Opcodes.RET) continue;
+			boolean load = var.getOpcode() >= Opcodes.ILOAD && var.getOpcode() <= Opcodes.ALOAD;
+			// A store gives its slot a local from the next instruction on, and a long's or double's empties the slot after it.
+			if (!load && i == point) continue;
+			if (!load && (var.getOpcode() == Opcodes.LSTORE || var.getOpcode() == Opcodes.DSTORE)) seen.add(var.var + 1);
+			if (seen.add(var.var) && desc.equals(coveringType(m, load ? i : i + 1, var.var))) given.add(var.var);
+		}
+		return given;
+	}
+
+	/**
+	 * The slots past {@code this} holding a local of type {@code desc} at the instruction at {@code point}, as the method's
+	 * local variable table has them in scope there, and, with {@code kept}, as the running Mixin keeps them once their
+	 * scope has ended ({@link #keptLocalTypes}, PRE-26; {@code m} then read with its frames).
+	 */
+	static Set<Integer> tableLocalsAt(String desc, MethodNode m, int point, String owner, boolean kept) {
+		// Mixin's discriminator, MixinExtras' too, looks from the first slot past this (baseArgIndex).
+		int base = (m.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		Set<Integer> found = new HashSet<>();
+		for (LocalVariableNode lv : m.localVariables) {
+			if (lv.index < base || !lv.desc.equals(desc) || m.instructions.indexOf(lv.start) > point || point >= m.instructions.indexOf(lv.end)) continue;
+			found.add(lv.index);
+		}
+		if (kept) {
+			String[] types = keptLocalTypes(m, owner, point);
+			for (int slot = base; slot < types.length; slot++) {
+				if (desc.equals(types[slot])) found.add(slot);
+			}
+		}
+		return found;
 	}
 
 	/**
@@ -3532,24 +3698,11 @@ public final class MixinPreflight extends PreflightPart {
 				if (target.localVariables == null || target.localVariables.isEmpty()) return null;
 				MethodNode framed = keepsLocalsPastScope ? classes.withFrames(owner, target) : null;
 				MethodNode m = framed != null ? framed : target;
-				// Mixin's discriminator, MixinExtras' too, looks from the first slot past this (baseArgIndex).
-				int base = (m.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
 				List<Integer> points = LocalRepairs.mixinPoints(injector, m, ctx);
 				if (points == null) return null;
 				for (int i : points) {
-					Set<Integer> found = new HashSet<>();
-					for (LocalVariableNode lv : m.localVariables) {
-						if (lv.index < base || !lv.desc.equals(type) || m.instructions.indexOf(lv.start) > i || i >= m.instructions.indexOf(lv.end)) continue;
-						found.add(lv.index);
-					}
-					ambiguousInScope |= found.size() > 1;
-					if (framed != null) {
-						String[] kept = keptLocalTypes(framed, owner, i);
-						for (int slot = base; slot < kept.length; slot++) {
-							if (type.equals(kept[slot])) found.add(slot);
-						}
-					}
-					ambiguous |= found.size() > 1;
+					ambiguousInScope |= tableLocalsAt(type, m, i, owner, false).size() > 1;
+					ambiguous |= tableLocalsAt(type, m, i, owner, framed != null).size() > 1;
 				}
 			}
 			if (ambiguous) return new Ambiguity(byType.get(t).getClassName(), !ambiguousInScope, modifiesByType && t == byType.size() - 1);

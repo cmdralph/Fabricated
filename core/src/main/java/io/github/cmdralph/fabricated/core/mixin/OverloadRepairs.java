@@ -182,7 +182,8 @@ final class OverloadRepairs extends PreflightPart {
 			String why = "";
 			List<AnnotationNode> found;
 			Verdict inChosen = InjectionPoints.pointsIn(ats, slices, chosen, ctx);
-			boolean localsGone = inject && inChosen == Verdict.FOUND && MixinPreflight.missingLocal(handler, List.of(chosen)) != null;
+			boolean localsGone = inject && inChosen == Verdict.FOUND
+					&& MixinPreflight.missingLocal(handler, injector, List.of(chosen), target, ctx.require(handler, injector), classes, ctx) != null;
 			if (inChosen == Verdict.MISSING || localsGone) {
 				overload = calledOverload(chosen, target);
 				MethodNode replacement = overload == null ? replacementOf(chosen, target) : null;
