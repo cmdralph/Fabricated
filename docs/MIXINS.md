@@ -14,8 +14,8 @@ Path shorthands: `N/` = `io/github/cmdralph/fabricated/neoforge/`, `n.m.` = `net
 
 Fabricated-owned (shipped in `game-mod.jar`, registered in `mc/neoforge/common/src/main/resources/META-INF/neoforge.mods.toml`;
 a version's own configs come in through `version_mixin_configs` in its `gradle.properties`: every version's
-`fabricated-biome.mixins.json`, and on 1.21.1 also `fabricated-entity-events`, `fabricated-object-builder` and
-`fabricated-particles`). Each version takes a config from its own folder, else from the shared folder its
+`fabricated-biome.mixins.json`, on 1.21.1 also `fabricated-entity-events`, `fabricated-object-builder` and
+`fabricated-particles`, and from 1.21.11 `fabricated-resource-loader`). Each version takes a config from its own folder, else from the shared folder its
 `shared_sources` lists that has it:
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
@@ -39,6 +39,7 @@ a version's own configs come in through `version_mixin_configs` in its `gradle.p
 | `mc/neoforge/common12111/src/main/resources/fabricated-lookup.mixins.json` | same | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 2 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.1 | mixins 4 | 1 | true | none |
 | `mc/neoforge/common12111/src/main/resources/fabricated-loot.mixins.json` | same | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 5 | 1 | true | none |
+| `mc/neoforge/common12111/src/main/resources/fabricated-resource-loader.mixins.json` | `net.fabricmc.fabric.mixin.resource` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 1 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-object-builder.mixins.json` | `net.fabricmc.fabric.mixin.object.builder` | 1.21.1 | mixins 2, client 2 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.21.1 | client 4 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-renderer.mixins.json` | `io.github.cmdralph.fabricated.neoforge.rendering.mixin` | 1.21.1, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 8 | 1 | true | none |
@@ -834,6 +835,14 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `net.fabricmc.fabric.mixin.loot
 | mixins | LootTableMixin | 1.21.11 (1.21.11) | n.m.world.level.storage.loot.LootTable prio=3000 | @WrapMethod → fabric$modifyDrops | "getRandomItemsRaw(L…/LootContext;L…/Consumer;)V" |  | — | default |
 | mixins | LootTableMixin | common26 (26.1.2,26.2,26.3) | n.m.world.level.storage.loot.LootTable prio=3000 | @WrapMethod → fabric$modifyDrops | "getRandomItemsRaw(L…/LootContext;L…/Consumer;)V" |  | — | default |
 
+### `mc/neoforge/common12111/src/main/resources/fabricated-resource-loader.mixins.json`
+
+Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `net.fabricmc.fabric.mixin.resource` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | PackMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.repository.Pack | @ModifyReturnValue → fabricated$hiddenByFabric (a pack a Fabric mod hides through its parents predicate is hidden as NeoForge hides its own, PROVIDER-23); implements FabricPack (upstream's, without its pack source tracking); adds methods fabric$isHidden, fabric$parentsEnabled, fabric$setParentsPredicate; @Unique field parentsPredicate | "isHidden" | RETURN | — | default |
+
 ### `mc/neoforge/common26/src/main/resources/fabricated-transfer.mixins.json`
 
 Versions: 26.1.2, 26.2, 26.3 · package `net.fabricmc.fabric.mixin.transfer` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true
@@ -1172,7 +1181,7 @@ Every Forge version's (47, 52, 61 to 66), with its `UtilMixin` from the version 
 | mixins | UtilMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1, 1.21.1) | n.m.Util | @Inject → fabricated$diagnose (records a Fabric mod's mixin the throwable a game worker thread stops on says failed as Mixin applied it, for the next launch to leave out, APPLY-3, and logs the diagnostics block) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
 | mixins | UtilMixin | mc/forge-shared/1.21.11+ (1.21.11, 26.1.2, 26.2, 26.3) | n.m.util.Util | @Inject → fabricated$diagnose (the same) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
 
-## Forge 61 to 66 (`forge`): 93 mixins in 26 configs
+## Forge 61 to 66 (`forge`): 95 mixins in 27 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1191,6 +1200,7 @@ Every Forge version's (47, 52, 61 to 66), with its `UtilMixin` from the version 
 | `mc/forge/26.3/src/main/resources/fabricated-forge-advancement.mixins.json` | `io.github.cmdralph.fabricated.forge.advancement.mixin` | 26.3 | mixins 1 | 1 | — | none |
 | `mc/forge/26.3/src/main/resources/fabricated-forge-frapi-breaking.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.breaking` | 26.3 | client 1 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge/26.3/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 26.3 | mixins 4 | 1 | — | none |
+| `mc/forge/26.3/src/main/resources/fabricated-forge-shutdown.mixins.json` | `io.github.cmdralph.fabricated.forge.shutdown.mixin` | 26.3 | client 1 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge-entity.mixins.json` | `io.github.cmdralph.fabricated.forge.entity.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 2 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 1 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge-screen.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | client 2 | 1 | — | none |
@@ -1393,6 +1403,14 @@ Versions: 26.3 · package `io.github.cmdralph.fabricated.forge.loot.mixin` · re
 | mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (26.3) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 | mixins | ResourceManagerRegistryLoadTaskMixin | 26.3 (26.3) | n.m.resources.ResourceManagerRegistryLoadTask | @WrapOperation → fabricated$modifyLootTable | "/^lambda\$load\$\d+$/" | INVOKE `L…/RegistryLoadTask$PendingRegistration;loadFromResource(L…/Decoder;L…/RegistryOps;L…/ResourceKey;L…/Resource;)L…/Either;` | — | default |
 
+### `mc/forge/26.3/src/main/resources/fabricated-forge-shutdown.mixins.json`
+
+Versions: 26.3 · package `io.github.cmdralph.fabricated.forge.shutdown.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| client | MinecraftCloseMixin | 26.3 (26.3) | n.m.client.Minecraft | @Inject → fabricated$stopDefaultFileWatcher (night-config's default file watcher, Forge's copy a Fabric mod watches its config files with, stopped where Forge stops its own config watchers, CORPUS-116) | "close" | INVOKE `L…/ConfigTracker;forceUnload()V` shift=AFTER remap=false | — | default |
+
 ### `mc/forge/common/src/main/resources/fabricated-forge-entity.mixins.json`
 
 Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.forge.entity.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
@@ -1453,6 +1471,7 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 | mixins | GameDataFreezeMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.registries.GameData | @Inject → fabricated$freezeBuiltInRegistries | "freezeData" | HEAD | — | default |
 | mixins | TagFileRemoveMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.tags.TagFile | @Inject → fabricated$readFabricRemove; @Shadow @Mutable CODEC | "<clinit>" | TAIL | — | default |
 | mixins | IngredientNetworkCodecMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.crafting.Ingredient | @Inject → fabricated$sendAsUpstream; @Shadow @Mutable CONTENTS_STREAM_CODEC, @Mutable OPTIONAL_CONTENTS_STREAM_CODEC, VANILLA_CONTENTS_STREAM_CODEC | "<clinit>" | TAIL | — | default |
+| mixins | IngredientJsonCodecMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.crafting.Ingredient | @WrapOperation → fabricated$writeAsUpstream (a Fabric mod's own ingredient written as JSON by vanilla's codec, CORPUS-115) | "<clinit>" | INVOKE `L…/ForgeHooks;ingredientBaseCodec(L…/Codec;)L…/Codec;` remap=false | — | default |
 | mixins | ForgePayloadEncodeMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.network.protocol.common.custom.CustomPacketPayload$1 (`targets`) | @WrapOperation → fabricated$writeForgePayload | "writeCap" | INVOKE `L…/StreamCodec;encode(L…/Object;L…/Object;)V` | — | default |
 | mixins | ResourcePackLoaderKnownPackMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.resource.ResourcePackLoader | @ModifyArg → fabricated$knownPack | "findPacks" | INVOKE `L…/PackLocationInfo;<init>(L…/String;L…/Component;L…/PackSource;L…/Optional;)V` index=3 | 0 | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.BucketItem | @WrapOperation → fabricated$delegateIfRegistered; @Shadow @Mutable fluidSupplier | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | INVOKE `L…/IForgeRegistry;getDelegateOrThrow(L…/Object;)L…/Holder$Reference;` | — | default |
@@ -1836,18 +1855,18 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.testmod.frapi.mixin` 
 |---|---|---|---|---|---|---|---|---|
 | client | McRuntimeTestHoldMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedFrapiTest$holdForMovingBlocks | "tickHook" | HEAD cancellable=true | — | default |
 
-## Forge 52 (`forge`): 75 mixins in 15 configs
+## Forge 52 (`forge`): 76 mixins in 15 configs
 
 Minecraft 1.21.1, in Mojang's names without a refmap, as on Forge 61 to 66. The mixins come from `mc/forge-shared` and its
 groups, as the source column says, but `NamespacedWrapperAliasMixin`, over 1.21.1's lookups, `LoadingRegistriesMixin`, on
 1.21.1's tagless wrapper of the registries, `LiquidBlockRendererSpritesMixin`, Forge 52's fluid sprites (FLUID-4), the
 item hooks Forge 52 names its own way (ITEM-1), the renderer seams in its section compiler and piston renderer and on
-1.21.1's weighted model (FRAPI-11), its screen input hook (LAMBDA-10), its HUD layer stacks' vanilla lists (HUD-6), its ingredient codec, of which Forge 52 keeps no
-vanilla form (NET-13), and the bridges of the fields it replaced, named after Mojang's names of them (ACC-5).
+1.21.1's weighted model (FRAPI-11), its screen input hook (LAMBDA-10), its HUD layer stacks' vanilla lists (HUD-6), its ingredient codecs, of which Forge 52 keeps no
+vanilla network form (NET-13) and whose JSON form it makes with its own hook (CORPUS-115), and the bridges of the fields it replaced, named after Mojang's names of them (ACC-5).
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/forge/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 26, client 6 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge/1.21.1/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.1 | mixins 27, client 6 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge/1.21.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.1 | mixins 4 | 1 | true | none |
 | `mc/forge/1.21.1/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 1.21.1 | mixins 2 | 1 | — | none |
 | `mc/forge/1.21.1/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.1 | mixins 1 | 1 | — | none |
@@ -1888,6 +1907,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | GameDataFreezeMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.registries.GameData | @Inject → fabricated$freezeBuiltInRegistries | "freezeData" | HEAD | — | default |
 | mixins | TagFileRemoveMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.tags.TagFile | @Inject → fabricated$readFabricRemove; @Shadow @Mutable CODEC | "<clinit>" | TAIL | — | default |
 | mixins | IngredientNetworkCodecMixin | 1.21.1 (1.21.1) | n.m.world.item.crafting.Ingredient | @Inject → fabricated$sendAsUpstream (a Fabric mod's own ingredient in 1.21.1's vanilla form, which Forge 52 keeps no codec of, NET-13); @Shadow @Mutable CONTENTS_STREAM_CODEC | "<clinit>" | TAIL | — | default |
+| mixins | IngredientJsonCodecMixin | 1.21.1 (1.21.1) | n.m.world.item.crafting.Ingredient | @WrapOperation → fabricated$writeAsUpstream (a Fabric mod's own ingredient written as JSON by vanilla's codec, with Fabric API's custom form upstream's hook gives it, for CODEC and CODEC_NONEMPTY, CORPUS-115) | "<clinit>" | INVOKE `L…/ForgeHooks;enhanceIngredientCodec(L…/Codec;)L…/Codec;` remap=false | — | default (2 calls) |
 | mixins | ForgePayloadEncodeMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.network.protocol.common.custom.CustomPacketPayload$1 (`targets`) | @WrapOperation → fabricated$writeForgePayload | "writeCap" | INVOKE `L…/StreamCodec;encode(L…/Object;L…/Object;)V` | — | default |
 | mixins | ResourcePackLoaderKnownPackMixin | mc/forge-shared/1.21.1+ (1.21.1) | forge.resource.ResourcePackLoader | @ModifyArg → fabricated$knownPack (a Fabric mod's pack gets Fabric API's known-pack identity, PACK-10) | "findPacks" | INVOKE `L…/PackLocationInfo;<init>(L…/String;L…/Component;L…/PackSource;L…/Optional;)V` index=3 | 0 | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.1) | n.m.world.item.BucketItem | @WrapOperation → fabricated$delegateIfRegistered; @Shadow @Mutable fluidSupplier | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | INVOKE `L…/IForgeRegistry;getDelegateOrThrow(L…/Object;)L…/Holder$Reference;` | — | default |
