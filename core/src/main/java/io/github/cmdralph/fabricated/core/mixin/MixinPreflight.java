@@ -454,7 +454,7 @@ public final class MixinPreflight extends PreflightPart {
 	private static boolean isSeamNote(PreflightFinding f) {
 		return f.severity() == Severity.INFO && f.handler() != null && f.mixin() != null
 				&& (f.message().endsWith("(SEAM-1)") || f.message().endsWith("(SEAM-3)") || f.message().endsWith("(SEAM-4)") || f.message().endsWith("(SEAM-6)")
-						|| f.message().endsWith("(SEAM-8)"));
+						|| f.message().endsWith("(SEAM-8)") || f.message().endsWith("(SEAM-13)"));
 	}
 
 	/** A left-out injector's key: its mixin and handler, or its mixin alone where all of it is. */
@@ -1408,7 +1408,7 @@ public final class MixinPreflight extends PreflightPart {
 	/**
 	 * Notes each of the mixin's members that hooks a vanilla method the platform took out of the target and Fabricated
 	 * puts back ({@link VanillaSeams}, SEAM-1): an injector or invoker naming it, through the refmap, or a shadow of it;
-	 * or an injector of a method of the target naming vanilla's call Fabricated puts back there (SEAM-3, SEAM-4, SEAM-6, SEAM-8). Each note is the
+	 * or an injector of a method of the target naming vanilla's call Fabricated puts back there (SEAM-3, SEAM-4, SEAM-6, SEAM-8, SEAM-13). Each note is the
 	 * member's (its handler's), and the target is recorded among the classes rewritten as they load ({@link #restoredSeams})
 	 * once the config's checks leave the member in, and only then.
 	 */
@@ -1460,7 +1460,9 @@ public final class MixinPreflight extends PreflightPart {
 	 * which explains why the hook finds nothing, is the mixin's.)
 	 */
 	private void seamNote(Context ctx, MethodNode member, String target, String message) {
-		ctx.out().add(new PreflightFinding(Severity.INFO, ctx.configName(), ctx.mixinDotted(), message, "", member.name + member.desc));
+		// Once for a member: two seams put back one call (the shovel's path and its dousing ask getBlock alike, SEAM-13).
+		PreflightFinding note = new PreflightFinding(Severity.INFO, ctx.configName(), ctx.mixinDotted(), message, "", member.name + member.desc);
+		if (!ctx.out().contains(note)) ctx.out().add(note);
 		seamNotes.add(new SeamNote(ctx.mixinDotted(), member.name + member.desc, target));
 	}
 
