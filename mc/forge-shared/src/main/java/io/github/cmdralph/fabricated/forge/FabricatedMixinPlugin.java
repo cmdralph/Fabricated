@@ -9,21 +9,25 @@ import org.slf4j.LoggerFactory;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 
+import io.github.cmdralph.fabricated.diagnostics.CrashDiagnostics;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 
 /**
  * The plugin of Fabricated's first mixin config on Forge, whose {@link #onLoad} runs as Mixin selects the configs, before
  * it applies any mixin and before any Fabric mod's mixin plugin loads: every translated mod loads after Fabricated, Forge
  * hands Mixin the mod files in that order, and Mixin registers each file's configs (its manifest's) and loads their
- * plugins in that order. It registers Fabricated's Mixin extensions ({@link MixinExtensions}, CORPUS-63) and creates the
- * Fabric mods' language adapters, as Fabric Loader does before Mixin starts (some mods declare an adapter only to run
- * code that early). It changes nothing about which mixins apply. Shared by Forge 47, 52 and 61 to 66.
+ * plugins in that order. It starts seeing the failures the game stops on: the Fabric mods' mixins that fail as Mixin
+ * applies them, for the next launch to leave out (APPLY-1), and the diagnostics block naming the Fabric mods a failure
+ * involves ({@link CrashDiagnostics}). It registers Fabricated's Mixin extensions ({@link MixinExtensions}, CORPUS-63) and
+ * creates the Fabric mods' language adapters, as Fabric Loader does before Mixin starts (some mods declare an adapter
+ * only to run code that early). It changes nothing about which mixins apply. Shared by Forge 47, 52 and 61 to 66.
  */
 public final class FabricatedMixinPlugin implements IMixinConfigPlugin {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 
 	@Override
 	public void onLoad(String mixinPackage) {
+		CrashDiagnostics.install();
 		MixinExtensions.install();
 		FabricatedState state = FabricatedState.get();
 		if (state == null) return;

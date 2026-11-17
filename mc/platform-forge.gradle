@@ -138,12 +138,14 @@ tasks.register('forgeClasspathReport') {
 // mixin configs from its manifest: Fabricated's own, upstream's loot mixins (fabric-loot-api-v3, native), the loot
 // module's hooks into Forge's loot table loading, Fabric's interaction and block break events in Forge's interaction
 // hooks and block breaking (BREAK-1), its sleep events in Forge's bed handling (SLEEP-1), its screen input events in
-// Forge's screen input hooks (SCREEN-1), Forge's item and block hooks answered from Fabric's item and block APIs, those
-// of them the version's sources have (Forge 61 to 66's all, from mc/forge/common; Forge 52's some), and those a version's
-// project names (game_mod_mixins). checkForgeJar refuses a config of the jar that none of them names.
+// Forge's screen input hooks (SCREEN-1), Forge's item and block hooks answered from Fabric's item and block APIs, the
+// hooks that see the failures the game stops on (APPLY-3: the crash report, mod loading's crash report and the worker
+// threads', from mc/forge-shared), those of them the version's sources have (Forge 61 to 66's all, from mc/forge/common;
+// Forge 52's some), and those a version's project names (game_mod_mixins). checkForgeJar refuses a config of the jar
+// that none of them names.
 def gameModMixins = ['fabricated-forge.mixins.json', 'fabricated-loot.mixins.json', 'fabricated-forge-loot.mixins.json',
         'fabricated-forge-interaction.mixins.json', 'fabricated-forge-entity.mixins.json', 'fabricated-forge-screen.mixins.json',
-        'fabricated-forge-item.mixins.json', 'fabricated-forge-block.mixins.json'].findAll { config ->
+        'fabricated-forge-item.mixins.json', 'fabricated-forge-block.mixins.json', 'fabricated-forge-diagnostics.mixins.json'].findAll { config ->
             sourceSets.main.resources.srcDirs.any { new File(it, config).isFile() }
         } + (project.findProperty('game_mod_mixins') ?: '').toString().split(',')*.trim().findAll { it }
 

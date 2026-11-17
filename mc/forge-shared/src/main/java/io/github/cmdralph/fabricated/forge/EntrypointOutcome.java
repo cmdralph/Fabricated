@@ -10,12 +10,14 @@ import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
+import io.github.cmdralph.fabricated.diagnostics.CrashDiagnostics;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 
 /**
  * What Forge's in-game mod does once the Fabric initializers have run, on Forge 47 to 66 alike, as NeoForge's does
  * ({@code EntrypointBridge.finish}): each failure goes to the report and to Forge's loading warnings (the client shows
- * them on its warnings screen, the server logs them), then Fabricated's API runs what waited for the initializers
+ * them on its warnings screen, the server logs them), a mixin it says failed as Mixin applied it is recorded for the next
+ * launch to leave out ({@link CrashDiagnostics}), then Fabricated's API runs what waited for the initializers
  * ({@code Fabricated.get().afterEntrypoints}), the failed mods known. Forge's loading goes on after a failure whichever
  * {@code onEntrypointFailure} is set: stopping it there, as NeoForge's error screen does with {@code error}, isn't
  * supported on Forge.
@@ -38,6 +40,8 @@ final class EntrypointOutcome {
 					: "The mod was marked as failed and the game continues; parts of it may not work.");
 			state.report().line("Entrypoint failures", text);
 			warning.accept(text);
+			// A mixin that failed as Mixin applied it to a class the entrypoint loaded: left out from the next launch on (APPLY-1).
+			CrashDiagnostics.record(failure.error());
 		}
 		state.api().markEntrypointsComplete(failed, (action, e) -> {
 			String text = "An action waiting for Fabric mods' initializers (" + action.getClass().getName() + ") threw " + e;

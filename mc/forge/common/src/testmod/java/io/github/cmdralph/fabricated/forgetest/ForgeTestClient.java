@@ -10,8 +10,9 @@ import net.minecraft.client.Minecraft;
  * Forge's half of the CI test mod's client entrypoint, which Fabric Loader runs from {@code Minecraft}'s constructor
  * after the main ones: Fabric Loader's game instance is the {@code Minecraft} instance, a key mapping is registered,
  * checked once the game has started ({@link ForgeKeyMappingTest}), and with Fabric API's rendering module HUD elements
- * and the HUD callback on Forge 61, checked as they are drawn ({@link ForgeHudTest}), and with its particles module, on
- * Forge 61, a check of the block dust tint event ({@link ForgeParticleTintTest}).
+ * and the HUD callback on Forge 61, checked as they are drawn ({@link ForgeHudTest}), with its particles module, on
+ * Forge 61, a check of the block dust tint event ({@link ForgeParticleTintTest}), and a config file watched with
+ * night-config's default file watcher ({@link ForgeConfigWatcherTest}).
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeTestClient implements ClientModInitializer {
@@ -43,5 +44,7 @@ public final class ForgeTestClient implements ClientModInitializer {
 				ForgeTestMod.LOGGER.error("FABRICATED-TEST block dust tint event FAILED: not registered", e);
 			}
 		}
+		// A config file watched as Forge Config API Port's Fabric build watches its own (see ForgeConfigWatcherTest).
+		ForgeConfigWatcherTest.start();
 	}
 }

@@ -1289,9 +1289,10 @@ public final class ModTranslator {
 		}
 		String read = readers.isEmpty() ? "" : "; the mod's " + readers.size() + " class(es) reading them as fields of the enum, which a mixin can't add,"
 				+ " read them from " + holder.replace('/', '.');
+		String others = result.otherMethods() ? "; its other methods stay a mixin into it" : "";
 		findings.add(new PreflightFinding(Severity.INFO, configName, dotted, "Its constants (" + String.join(", ", result.constants())
 				+ ") " + why + ": a mixin into its class initializer adds them" + with + ", as mods' own " + env.descriptor().loaderName() + " builds do"
-				+ read, ""));
+				+ read + others, ""));
 		return true;
 	}
 
