@@ -13,7 +13,7 @@ import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 
 /**
- * The forge-legacy test mod's part for fabric-screen-api-v1's mouse and key events (with Fabric API's jar only): the
+ * The Forge 47 and 52 test mods' part for fabric-screen-api-v1's mouse and key events (with Fabric API's jar only): the
  * first time a screen ticks with no overlay up, the client presses and releases a mouse button and a key through the
  * game's own handlers ({@code MouseHandler.onPress}, {@code KeyboardHandler.keyPress}), as GLFW would. The test mod's
  * listeners refuse each, so the screen sees none of them, and all four must be asked. Forge 47's patch made the mouse

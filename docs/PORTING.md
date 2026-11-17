@@ -13,8 +13,8 @@ Facts about other projects cite their repository, ref and file; what could not b
 | Branch | Platform | Phase | Its CI and documents |
 |---|---|---|---|
 | `main` | NeoForge 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | active, the primary platform | `ci.yml`, the same workflow on every branch, with `ci/neoforge`; the root `README.md` |
-| `forge` | Minecraft Forge 61 for 1.21.11 and 64 to 66 for 26.1.2 to 26.3 | F4: native modules on Forge's events (§7) | `ci.yml`, with `ci/forge`; `COMPATIBILITY.md`'s *Forge* section |
-| `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1) and 1.21.1 (Forge 52) | L4: native modules on Forge 47's events (§7) | `ci.yml`, with `ci/forge-legacy`; `COMPATIBILITY.md`'s *Forge* section |
+| `forge` | Minecraft Forge 52 for 1.21.1, 61 for 1.21.11 and 64 to 66 for 26.1.2 to 26.3 | F4: native modules on Forge's events (§7) | `ci.yml`, with `ci/forge`; `COMPATIBILITY.md`'s *Forge* section |
+| `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1), then 1.19.2 | L4: native modules on Forge 47's events (§7) | `ci.yml`, with `ci/forge-legacy`; `COMPATIBILITY.md`'s *Forge* section |
 
 NeoForge needs no legacy branch: its 1.20.1 build is a 2024 fork of Forge 47.1 (§3.1), so the legacy line is Forge's
 (the owner's decision, 2026-10-25).
