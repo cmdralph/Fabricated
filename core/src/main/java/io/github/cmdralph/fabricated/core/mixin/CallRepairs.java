@@ -96,8 +96,12 @@ final class CallRepairs extends PreflightPart {
 	 * on the receiver it was given ({@link HandlerBridges#passesOwnReceiver}): the operation casts it back to the
 	 * subtype. NeoForge 21.1's and Forge's {@code KeyboardHandler.charTyped} lambdas call the screen's {@code charTyped},
 	 * where vanilla's call a {@code GuiEventListener}'s, which owo-lib's braid layer wraps (LAMBDA-14).
+	 * <p>
+	 * Only where vanilla's methods, as the mod's selectors pick them ({@code declared}), make the named call, which Fabric's
+	 * Mixin finds there (VANILLA-1; a wrapper only where vanilla's class tells): where vanilla's too makes it through the
+	 * subtype, the injector finds nothing on Fabric either, and a mod's own injector for the subtype's call applies there.
 	 */
-	List<String> subtypeCallRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+	List<String> subtypeCallRepairs(MethodNode handler, AnnotationNode injector, List<?> declared, ClassNode target, Context ctx) {
 		boolean pointOnly = injector.desc.equals(MixinNames.INJECT) || injector.desc.equals(MixinNames.MODIFY_EXPRESSION_VALUE);
 		boolean wrapper = injector.desc.equals(MixinNames.REDIRECT) || injector.desc.equals(MixinNames.WRAP_OPERATION)
 				|| MixinNames.WRAP_WITH_CONDITION.contains(injector.desc);
@@ -129,6 +133,8 @@ final class CallRepairs extends PreflightPart {
 			}
 			int ordinal = InjectionPoints.ordinalOf(at);
 			if (named || subtype == null || ambiguous || ordinal >= calls) continue;
+			Boolean inVanilla = vanillaMakes(injector, declared, at, target, ctx);
+			if (Boolean.FALSE.equals(inVanilla) || wrapper && inVanilla == null) continue;
 			if (wrapper && !takesReceiverAs(handler, injector, ref)) continue;
 			String retargeted = "L" + subtype + ";" + ref.name() + ref.desc();
 			Annotations.put(at, "target", retargeted);
@@ -138,6 +144,28 @@ final class CallRepairs extends PreflightPart {
 					+ (wrapper ? ", the handler taking the receiver as it is written for, a " + ref.owner().replace('/', '.') : ""));
 		}
 		return moved;
+	}
+
+	/**
+	 * Whether vanilla's version of the methods an injector's selectors, as the mod declares them, pick in the target makes
+	 * the call {@code at} names, which Fabric's Mixin then finds there (VANILLA-1). Null where vanilla's class isn't at hand,
+	 * the selectors pick nothing in it, or a point can't be told.
+	 */
+	private Boolean vanillaMakes(AnnotationNode injector, List<?> declared, AnnotationNode at, ClassNode target, Context ctx) {
+		ClassNode original = vanillaClass(target.name);
+		if (original == null || declared.isEmpty()) return null;
+		AnnotationNode asDeclared = new AnnotationNode(injector.desc);
+		asDeclared.values = new ArrayList<>(List.of("method", new ArrayList<>(declared)));
+		List<MethodNode> methods = PreflightAsm.selectedMethods(asDeclared, original, ctx);
+		if (methods.isEmpty()) return null;
+		boolean found = true;
+		for (MethodNode method : methods) {
+			InjectionPoints.Verdict verdict = method.instructions == null ? InjectionPoints.Verdict.UNKNOWN
+					: InjectionPoints.pointsIn(List.of(at), List.of(), method, ctx);
+			if (verdict == InjectionPoints.Verdict.MISSING) return false;
+			found &= verdict == InjectionPoints.Verdict.FOUND;
+		}
+		return found ? Boolean.TRUE : null;
 	}
 
 	/**
@@ -810,7 +838,7 @@ final class CallRepairs extends PreflightPart {
 	 * none of the mixin's own state with its other injectors ({@link MixinPreflight#independentHandlers}) (HOOK-2).
 	 * Returns a description of each move.
 	 */
-	List<String> insertedArgumentRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+	List<String> insertedArgumentRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<?> declared, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
 		// Only the point moves for these: their handlers don't see the call's arguments.
 		boolean pointOnly = injector.desc.equals(MixinNames.INJECT) || injector.desc.equals(MixinNames.MODIFY_EXPRESSION_VALUE);
@@ -902,10 +930,13 @@ final class CallRepairs extends PreflightPart {
 					: replacement == null && !constructor ? insertedArgumentOf(owner, name, desc, overload) : insertedArgument(desc, overload);
 			int count = block == null ? 1 : block[1];
 			// A wrapper's handler takes the receiver as the call's class, which Mixin takes for the subtype as it coerces it, where
-			// the original call it makes is made on that receiver.
+			// the original call it makes is made on that receiver, and where vanilla's methods make the call the mod names (VANILLA-1).
+			// Not a redirect's: it replaces the hook's call, with the platform's events around it, and makes the call itself, on any
+			// value of the call's class, which the hook can't take (narrowedHookHint says so).
 			boolean coerced = false;
 			if (narrowed != null && !pointOnly) {
-				if (!takesReceiverAs(handler, injector, new MemberRef(owner, name, original, false))) continue;
+				if (injector.desc.equals(MixinNames.REDIRECT) || !Boolean.TRUE.equals(vanillaMakes(injector, declared, at, target, ctx))
+						|| !takesReceiverAs(handler, injector, new MemberRef(owner, name, original, false))) continue;
 				coerced = HandlerBridges.coerceParameter(handler, 0);
 			}
 			// A hook taking just the call's receiver and arguments takes the handlers as they are.
@@ -1205,6 +1236,29 @@ final class CallRepairs extends PreflightPart {
 			}
 		}
 		return found;
+	}
+
+	/**
+	 * Why a {@code @Redirect} of an instance call this build makes only inside the platform's hook, which takes the receiver
+	 * as a subtype of the call's class ({@link #subtypeReceiver}), stays out, as {@link #insertedArgumentRepairs} leaves it:
+	 * the redirect would replace the hook's call, with the platform's events around it, and its handler makes the call
+	 * itself on any value of the call's class, which the hook can't take (Forge 52's {@code ForgeHooksClient.onScreenCharTyped}
+	 * takes a {@code Screen}, where vanilla calls a {@code GuiEventListener}'s {@code charTyped}; LAMBDA-14). Null for any
+	 * other injector or call.
+	 */
+	String narrowedHookHint(AnnotationNode injector, String resolved, List<MethodNode> methods) {
+		if (!injector.desc.equals(MixinNames.REDIRECT) || resolved == null) return null;
+		MemberRef ref = MemberRef.parse(resolved);
+		if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null || isStaticCall(ref.owner(), ref.name(), ref.desc())) return null;
+		Overloads found = overloadsCalled(methods, ref.owner(), ref.name(), ref.desc(), false, false);
+		MethodInsnNode hook = found.named() || found.overload() != null ? null : hookCall(methods, ref.owner(), ref.name(), ref.desc(), false);
+		Type[] taken = hook == null ? new Type[0] : Type.getArgumentTypes(hook.desc);
+		if (taken.length == 0 || taken[0].getSort() != Type.OBJECT) return null;
+		String receiver = taken[0].getInternalName();
+		if (receiver.equals(ref.owner()) || !isSubtype(receiver, ref.owner())) return null;
+		return loader + " makes the call inside its hook " + hook.owner.replace('/', '.') + "." + hook.name + hook.desc + ", which takes the receiver as a "
+				+ receiver.replace('/', '.') + ": a redirect would replace the hook's call, with " + loader + "'s events around it, and its handler makes the"
+				+ " call itself on any " + ref.owner().replace('/', '.') + ", which the hook can't take; the mod needs an update or this mixin must be skipped.";
 	}
 
 	/**

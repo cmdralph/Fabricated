@@ -608,13 +608,16 @@ public final class MixinPreflight extends PreflightPart {
 	/**
 	 * The handlers (name and descriptor) of a mixin that keep no state with its other injectors: none of the fields they
 	 * use, themselves or through the mixin's own methods, is used by another injector's handler. A private field only the
-	 * mixin's constructors and static initialiser write, of a primitive type, a string or a game class, is no state between
-	 * them: what each handler reads of it is set as the target is made, wherever the others inject, and a game object it
-	 * refers to is the game's, which each reaches anyway (FancyMenu's mouse hooks read the client they keep in a final
-	 * field; LAMBDA-14). One of another type may hold the mixin's state in the object (owo-lib's {@code ThreadLocal} of the
-	 * key modifiers, which one hook sets for another).
+	 * mixin's constructors and static initialiser write is no state between them where what it holds can't change: a
+	 * primitive or a string, set as the target is made, wherever the others inject, or a game object the game itself holds
+	 * in a static field ({@link #theGames}), which each handler reaches anyway (FancyMenu's mouse hooks read the client they
+	 * keep in a final field, {@code Minecraft.getInstance()}; LAMBDA-14). Any other object may hold the mixin's state: one
+	 * the mixin makes ({@code new BlockPos.MutableBlockPos()}, a {@code ThreadLocal}, owo-lib's of the key modifiers, which
+	 * one hook sets for another) or the game makes for it ({@code NonNullList.create()}).
+	 *
+	 * @param game the game's classes by internal name, to read a static getter's code ({@link #theGames}); null for none
 	 */
-	static Set<String> independentHandlers(ClassNode mixin) {
+	static Set<String> independentHandlers(ClassNode mixin, Function<String, ClassNode> game) {
 		if (mixin == null) return Set.of();
 		Set<String> written = new HashSet<>();
 		for (MethodNode method : mixin.methods) {
@@ -632,7 +635,7 @@ public final class MixinPreflight extends PreflightPart {
 		}
 		Set<String> ownFields = new HashSet<>();
 		for (FieldNode field : mixin.fields) {
-			if (Annotations.find(field, MixinNames.SHADOW) == null && (written.contains(field.name + ":" + field.desc) || !constant(field))) {
+			if (Annotations.find(field, MixinNames.SHADOW) == null && (written.contains(field.name + ":" + field.desc) || !constant(mixin, field, game))) {
 				ownFields.add(field.name + ":" + field.desc);
 			}
 		}
@@ -656,12 +659,49 @@ public final class MixinPreflight extends PreflightPart {
 		return independent;
 	}
 
-	/** Whether a field of a mixin holds a value no other code reaches to change: private, of a primitive type, a string or a game class. */
-	private static boolean constant(FieldNode field) {
+	/**
+	 * Whether a private field of a mixin, which only its constructors and static initialiser write, holds a value that can't
+	 * keep the mixin's state: a primitive, a string, or a game class's object each write takes from the game, the object the
+	 * game holds ({@link #theGames}) or null.
+	 */
+	private static boolean constant(ClassNode mixin, FieldNode field, Function<String, ClassNode> game) {
 		if ((field.access & Opcodes.ACC_PRIVATE) == 0) return false;
 		Type type = Type.getType(field.desc);
-		return type.getSort() < Type.ARRAY || type.getSort() == Type.OBJECT
-				&& (type.getInternalName().equals("java/lang/String") || PreflightAsm.isGameClass(type.getInternalName()));
+		if (type.getSort() < Type.ARRAY || type.getDescriptor().equals("Ljava/lang/String;")) return true;
+		if (type.getSort() != Type.OBJECT || !PreflightAsm.isGameClass(type.getInternalName())) return false;
+		boolean any = false;
+		for (MethodNode method : mixin.methods) {
+			if (method.instructions == null || !method.name.equals("<init>") && !method.name.equals("<clinit>")) continue;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (!(insn instanceof FieldInsnNode put) || put.getOpcode() != Opcodes.PUTFIELD && put.getOpcode() != Opcodes.PUTSTATIC
+						|| !put.owner.equals(mixin.name) || !put.name.equals(field.name) || !put.desc.equals(field.desc)) continue;
+				AbstractInsnNode value = put.getPrevious();
+				while (value != null && value.getOpcode() < 0) value = value.getPrevious();
+				if (value == null || value.getOpcode() != Opcodes.ACONST_NULL && !theGames(value, game)) return false;
+				any = true;
+			}
+		}
+		return any;
+	}
+
+	/**
+	 * Whether an instruction pushes an object the game holds in a static field: a read of a game class's static field, or a
+	 * call of a game class's static method without arguments whose code only returns one (a singleton's getter, as
+	 * {@code Minecraft.getInstance()}). A method making a new object ({@code NonNullList.create()}) is none.
+	 */
+	private static boolean theGames(AbstractInsnNode insn, Function<String, ClassNode> game) {
+		if (insn instanceof FieldInsnNode read) return read.getOpcode() == Opcodes.GETSTATIC && PreflightAsm.isGameClass(read.owner);
+		if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC || !PreflightAsm.isGameClass(call.owner)
+				|| Type.getArgumentTypes(call.desc).length > 0 || game == null) return false;
+		ClassNode owner = game.apply(call.owner);
+		MethodNode getter = owner == null ? null : PreflightAsm.declared(owner, call.name, call.desc);
+		if (getter == null || getter.instructions == null) return false;
+		List<AbstractInsnNode> code = new ArrayList<>();
+		for (AbstractInsnNode each : getter.instructions) {
+			if (each.getOpcode() >= 0) code.add(each);
+		}
+		return code.size() == 2 && code.get(0) instanceof FieldInsnNode held && held.getOpcode() == Opcodes.GETSTATIC
+				&& PreflightAsm.isGameClass(held.owner) && code.get(1).getOpcode() == Opcodes.ARETURN;
 	}
 
 	/**
@@ -2445,6 +2485,9 @@ public final class MixinPreflight extends PreflightPart {
 								: notPutBackHint(target, matched.get(0), rawTarget, ctx) != null ? notPutBackHint(target, matched.get(0), rawTarget, ctx)
 								: vanillaLacksHint(target, matched, point, rawTarget == null ? null : ctx.resolve(rawTarget), ordinal, opcode, slice, ctx) != null
 										? vanillaLacksHint(target, matched, point, ctx.resolve(rawTarget), ordinal, opcode, slice, ctx)
+								: point.equals("INVOKE") && slice == null && ctx.owner() == null && rawTarget != null
+										&& repairer.narrowedHookHint(ann, ctx.resolve(rawTarget), matched) != null
+										? repairer.narrowedHookHint(ann, ctx.resolve(rawTarget), matched)
 								: ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 				return;
 			}

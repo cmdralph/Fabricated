@@ -139,11 +139,12 @@ abstract class PreflightPart {
 	 * group is then that alternative alone, on Fabric as here, and repairing it is repairing an injector alone (LAMBDA-14).
 	 * ReplayMod's jGui hooks a screen's char typed lambdas with two alternatives each, vanilla's lambda and OptiFine's
 	 * ({@code lambda$onCharEvent$6}, by its own name), which no build here has. A member that can't be told (a pattern,
-	 * a slice or an expression pre-flight doesn't read) makes it not judged.
+	 * a slice or an expression pre-flight doesn't read) makes it not judged. Nor is one whose repairs could make more
+	 * injections than its group allows ({@link PreflightClasses#notSole}).
 	 */
 	boolean soleAlternative(ClassNode mixin, MethodNode handler, AnnotationNode own, List<ClassNode> targets, Context ctx) {
 		String group = PreflightAsm.group(handler);
-		if (group == null) return false;
+		if (group == null || classes.notSole.contains(mixin.name + " " + handler.name + handler.desc)) return false;
 		List<ClassNode> originals = new ArrayList<>();
 		for (ClassNode target : targets) {
 			ClassNode original = vanillaClass(target.name);

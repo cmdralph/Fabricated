@@ -20,6 +20,7 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
@@ -4869,12 +4870,18 @@ class MixinPreflightTest {
 		});
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Typed"));
 		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Typed", original));
-		assertEquals(3, preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+		// Vanilla's method makes the call on the listener (VANILLA-1).
+		Map<String, byte[]> vanilla = new HashMap<>(listenerAndScreen());
+		vanilla.put(TARGET, typingTarget(LISTENER, Opcodes.INVOKEINTERFACE, LISTENER, "typed", TYPED));
+		Supplier<MixinPreflight> preflight = () -> new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get);
+		assertEquals(3, preflight.get().check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
 				.filter(f -> f.message().contains("which does not occur in that method")).count());
+		// Without vanilla's classes, which tell whether Fabric's Mixin finds the call, no wrapper moves.
+		assertTrue(preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>())
+				.isEmpty());
 
 		List<PreflightFinding> notes = new ArrayList<>();
-		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
-				.get("com/example/mixin/Typed.class");
+		byte[] repaired = preflight.get().repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Typed.class");
 		assertEquals(2, notes.size(), notes.toString());
 		assertTrue(notes.stream().allMatch(n -> n.message().contains("expects a call to net.minecraft.world.Listener.typed, which this game build calls through"
 				+ " net.minecraft.world.Screen (the same method); the injection point is pointed there, the handler taking the receiver as it is written for,"
@@ -4889,14 +4896,20 @@ class MixinPreflightTest {
 		}
 		assertEquals("L" + LISTENER + ";typed" + TYPED, atTarget(methods.get("elsewhere")));
 		assertFalse(coerces(methods.get("elsewhere"), 0));
+		// The redirect makes the call on the listener it is given, as it is written: its class verifies.
+		ClassWriter operation = new ClassWriter(0);
+		String operationName = OPERATION.substring(1, OPERATION.length() - 1);
+		operation.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, operationName, null, "java/lang/Object", null);
+		operation.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_VARARGS, "call", "([Ljava/lang/Object;)Ljava/lang/Object;", null, null).visitEnd();
+		operation.visitEnd();
+		new BytesClassLoader(Map.of("com/example/mixin/Typed", withMaxes(repaired), LISTENER, classes.get(LISTENER), SCREEN, classes.get(SCREEN), operationName,
+				operation.toByteArray())).loadClass("com.example.mixin.Typed").getDeclaredMethods();
 		mod.put("com/example/mixin/Typed", repaired);
-		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		List<PreflightFinding> after = preflight.get().check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertEquals(1, after.size(), after.toString());
 		assertTrue(after.getFirst().message().startsWith("@WrapOperation in typed expects"), after.toString());
 
 		// Vanilla's call on the listener itself: nothing to move.
-		Map<String, byte[]> vanilla = new HashMap<>(listenerAndScreen());
-		vanilla.put(TARGET, typingTarget(LISTENER, Opcodes.INVOKEINTERFACE, LISTENER, "typed", TYPED));
 		List<PreflightFinding> none = new ArrayList<>();
 		assertTrue(preflight(new ClassIndex(vanilla::get), Map.of("com/example/mixin/Typed", original)::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), none).isEmpty(), none.toString());
@@ -4929,12 +4942,16 @@ class MixinPreflightTest {
 			atTypedCall(cw, INJECT, "inject", "(" + CALLBACK_INFO + ")V", null);
 			atTypedCall(cw, WRAP_OPERATION, "wrap", "(" + listener + "CI" + OPERATION + ")Z", mv -> mv.visitVarInsn(Opcodes.ALOAD, 0));
 			atTypedCall(cw, WRAP_OPERATION, "elsewhere", "(" + listener + "CI" + OPERATION + ")Z", mv -> mv.visitInsn(Opcodes.ACONST_NULL));
+			// A redirect would replace the hook's call and make the call itself, on any listener, which the hook can't take.
+			atTypedCall(cw, REDIRECT, "redirect", "(" + listener + "CI)Z", null);
 		});
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Typed"));
 		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Typed", original));
+		Map<String, byte[]> vanilla = new HashMap<>(listenerAndScreen());
+		vanilla.put(TARGET, typingTarget(LISTENER, Opcodes.INVOKEINTERFACE, LISTENER, "typed", TYPED));
+		Supplier<MixinPreflight> preflight = () -> new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get);
 		List<PreflightFinding> notes = new ArrayList<>();
-		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
-				.get("com/example/mixin/Typed.class");
+		byte[] repaired = preflight.get().repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Typed.class");
 		assertEquals(2, notes.size(), notes.toString());
 		assertTrue(notes.stream().allMatch(n -> n.message().contains("net.minecraft.world.Listener.typed(CI)Z, which this game build makes inside NeoForge's hook"
 				+ " net.neoforged.Hooks.typed" + hookDesc + "; the injection point is pointed at the hook's call")), notes.toString());
@@ -4950,10 +4967,16 @@ class MixinPreflightTest {
 		assertTrue(node.methods.stream().noneMatch(m -> m.name.contains("$fabricated")), "the hook takes the call's arguments: no bridge");
 		assertEquals("L" + LISTENER + ";typed" + TYPED, atTarget(methods.get("elsewhere")));
 		assertFalse(coerces(methods.get("elsewhere"), 0), "a wrapper left where it is keeps its handler as it was");
+		assertEquals("L" + LISTENER + ";typed" + TYPED, atTarget(methods.get("redirect")));
+		assertFalse(coerces(methods.get("redirect"), 0));
 		mod.put("com/example/mixin/Typed", repaired);
-		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
-		assertEquals(1, after.size(), after.toString());
-		assertTrue(after.getFirst().message().startsWith("@WrapOperation in typed expects"), after.toString());
+		List<PreflightFinding> after = preflight.get().check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(2, after.size(), after.toString());
+		assertTrue(after.stream().anyMatch(f -> f.message().startsWith("@WrapOperation in typed expects")), after.toString());
+		assertTrue(after.stream().anyMatch(f -> f.message().startsWith("@Redirect in typed expects") && f.suggestion().equals("NeoForge makes the call inside its hook"
+				+ " net.neoforged.Hooks.typed" + hookDesc + ", which takes the receiver as a net.minecraft.world.Screen: a redirect would replace the hook's call,"
+				+ " with NeoForge's events around it, and its handler makes the call itself on any net.minecraft.world.Listener, which the hook can't take; the mod"
+				+ " needs an update or this mixin must be skipped.")), after.toString());
 	}
 
 	@Test
@@ -5191,22 +5214,60 @@ class MixinPreflightTest {
 		assertTrue(refused.stream().noneMatch(n -> n.message().contains("subtype")), refused.toString());
 	}
 
+	/**
+	 * {@link #TARGET} with a static {@code instance} field, its getter {@code getInstance()} (a singleton's, as
+	 * {@code Minecraft.getInstance()}) and {@code create()}, which makes a new one (as {@code NonNullList.create()}).
+	 */
+	private static byte[] singletonTarget() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "instance", "L" + TARGET + ";", null, null).visitEnd();
+		MethodVisitor get = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "getInstance", "()L" + TARGET + ";", null, null);
+		get.visitCode();
+		get.visitFieldInsn(Opcodes.GETSTATIC, TARGET, "instance", "L" + TARGET + ";");
+		get.visitInsn(Opcodes.ARETURN);
+		get.visitMaxs(0, 0);
+		get.visitEnd();
+		MethodVisitor create = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "create", "()L" + TARGET + ";", null, null);
+		create.visitCode();
+		create.visitTypeInsn(Opcodes.NEW, TARGET);
+		create.visitInsn(Opcodes.DUP);
+		create.visitMethodInsn(Opcodes.INVOKESPECIAL, TARGET, "<init>", "()V", false);
+		create.visitInsn(Opcodes.ARETURN);
+		create.visitMaxs(0, 0);
+		create.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
 	@Test
 	void aFieldOnlyTheConstructorsWriteKeepsNoStateBetweenHandlersUnlessItsObjectMayHoldSome() {
-		// LAMBDA-14: FancyMenu's mouse hooks read the client they keep in a final field; owo-lib's keep the key modifiers in a
-		// ThreadLocal one hook sets for another.
+		// LAMBDA-14: FancyMenu's mouse hooks read the client they keep in a final field, Minecraft.getInstance(); owo-lib's
+		// keep the key modifiers in a ThreadLocal one hook sets for another. A game object the mixin makes, or the game makes for
+		// it, may hold state too: a MutableBlockPos one hook sets for another.
 		ClassNode mixin = new ClassNode();
+		String thing = "L" + TARGET + ";";
 		new ClassReader(mixin("com/example/mixin/Fields", false, cw -> {
-			cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "client", "L" + TARGET + ";", null, null).visitEnd();
+			cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "client", thing, null, null).visitEnd();
+			cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "made", thing, null, null).visitEnd();
+			cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "created", thing, null, null).visitEnd();
 			cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "mods", "Ljava/lang/ThreadLocal;", null, null).visitEnd();
 			cw.visitField(Opcodes.ACC_PRIVATE, "count", "I", null, null).visitEnd();
 			MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
 			init.visitCode();
 			init.visitVarInsn(Opcodes.ALOAD, 0);
-			init.visitInsn(Opcodes.ACONST_NULL);
-			init.visitFieldInsn(Opcodes.PUTFIELD, "com/example/mixin/Fields", "client", "L" + TARGET + ";");
+			init.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "getInstance", "()" + thing, false);
+			init.visitFieldInsn(Opcodes.PUTFIELD, "com/example/mixin/Fields", "client", thing);
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitTypeInsn(Opcodes.NEW, TARGET);
+			init.visitInsn(Opcodes.DUP);
+			init.visitMethodInsn(Opcodes.INVOKESPECIAL, TARGET, "<init>", "()V", false);
+			init.visitFieldInsn(Opcodes.PUTFIELD, "com/example/mixin/Fields", "made", thing);
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "create", "()" + thing, false);
+			init.visitFieldInsn(Opcodes.PUTFIELD, "com/example/mixin/Fields", "created", thing);
 			init.visitInsn(Opcodes.RETURN);
-			init.visitMaxs(2, 1);
+			init.visitMaxs(3, 1);
 			init.visitEnd();
 			BiConsumer<String, Consumer<MethodVisitor>> handler = (name, body) -> {
 				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, name, "(" + CALLBACK_INFO + ")V", null, null);
@@ -5232,6 +5293,15 @@ class MixinPreflightTest {
 			};
 			handler.accept("firstClient", readsClient);
 			handler.accept("secondClient", readsClient);
+			for (String field : List.of("made", "created")) {
+				Consumer<MethodVisitor> reads = mv -> {
+					mv.visitVarInsn(Opcodes.ALOAD, 0);
+					mv.visitFieldInsn(Opcodes.GETFIELD, "com/example/mixin/Fields", field, thing);
+					mv.visitInsn(Opcodes.POP);
+				};
+				handler.accept("sets" + field, reads);
+				handler.accept("gets" + field, reads);
+			}
 			handler.accept("setsMods", readsMods);
 			handler.accept("getsMods", readsMods);
 			handler.accept("setsCount", mv -> {
@@ -5245,9 +5315,21 @@ class MixinPreflightTest {
 				mv.visitInsn(Opcodes.POP);
 			});
 		})).accept(mixin, 0);
-		Set<String> independent = MixinPreflight.independentHandlers(mixin);
+		Map<String, byte[]> game = Map.of(TARGET, singletonTarget());
+		Function<String, ClassNode> classes = name -> {
+			ClassNode node = new ClassNode();
+			if (!game.containsKey(name)) return null;
+			new ClassReader(game.get(name)).accept(node, 0);
+			return node;
+		};
+		Set<String> independent = MixinPreflight.independentHandlers(mixin, classes);
 		String desc = "(" + CALLBACK_INFO + ")V";
 		assertTrue(independent.containsAll(Set.of("firstClient" + desc, "secondClient" + desc)), independent.toString());
+		for (String field : List.of("made", "created")) {
+			assertFalse(independent.contains("sets" + field + desc) || independent.contains("gets" + field + desc), "a new object holds state: " + independent);
+		}
+		// The getter's code can't be read: the client may be anything.
+		assertFalse(MixinPreflight.independentHandlers(mixin, name -> null).contains("firstClient" + desc));
 		assertFalse(independent.contains("setsMods" + desc) || independent.contains("getsMods" + desc), "a ThreadLocal holds the state: " + independent);
 		assertFalse(independent.contains("setsCount" + desc) || independent.contains("readsCount" + desc), independent.toString());
 	}
@@ -16557,6 +16639,214 @@ class MixinPreflightTest {
 	}
 
 	/** Pre-flight with no installed jars, and missing targets fatal unless said otherwise. */
+	/** A class's bytes with each method's maximum stack and locals worked out (the test mixins leave them 0), for the verifier. */
+	private static byte[] withMaxes(byte[] bytes) {
+		ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		new ClassReader(bytes).accept(writer, 0);
+		return writer.toByteArray();
+	}
+
+	/** NeoForge's hooks class for {@link #typingTarget}: {@code typed(screen, c, modifiers)} makes the screen's call. */
+	private static byte[] screenCharHooks(String hookDesc) {
+		ClassWriter hooks = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		hooks.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, HOOKS, null, "java/lang/Object", null);
+		MethodVisitor typed = hooks.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "typed", hookDesc, null, null);
+		typed.visitCode();
+		typed.visitVarInsn(Opcodes.ALOAD, 0);
+		typed.visitVarInsn(Opcodes.ILOAD, 1);
+		typed.visitVarInsn(Opcodes.ILOAD, 2);
+		typed.visitMethodInsn(Opcodes.INVOKEVIRTUAL, SCREEN, "typed", TYPED, false);
+		typed.visitInsn(Opcodes.IRETURN);
+		typed.visitMaxs(0, 0);
+		typed.visitEnd();
+		hooks.visitEnd();
+		return hooks.toByteArray();
+	}
+
+	@Test
+	void aRedirectAtAHookTakingTheReceiverAsASubtypeStaysOutWithItsReason() throws Exception {
+		// LAMBDA-14: Forge 52's ForgeHooksClient.onScreenCharTyped takes the screen, where vanilla calls a GuiEventListener's
+		// charTyped. A redirect there would replace the hook's call, and CORPUS-61 routes its own call through the hook, which
+		// can't take the listener the handler is written for: the class wouldn't verify, and the client would stop.
+		String listener = "L" + LISTENER + ";";
+		String hookDesc = "(L" + SCREEN + ";CI)Z";
+		Map<String, byte[]> classes = new HashMap<>(listenerAndScreen());
+		classes.put(TARGET, typingTarget(SCREEN, Opcodes.INVOKESTATIC, HOOKS, "typed", hookDesc));
+		classes.put(HOOKS, screenCharHooks(hookDesc));
+		ClassIndex game = new ClassIndex(classes::get);
+		Map<String, byte[]> vanilla = new HashMap<>(listenerAndScreen());
+		vanilla.put(TARGET, typingTarget(LISTENER, Opcodes.INVOKEINTERFACE, LISTENER, "typed", TYPED));
+		byte[] original = mixin("com/example/mixin/Typed", false, cw -> atTypedCall(cw, REDIRECT, "redirect", "(" + listener + "CI)Z", null));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Typed"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Typed", original));
+		Supplier<MixinPreflight> preflight = () -> new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get);
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight.get().repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertTrue(repaired.isEmpty() && notes.isEmpty(), notes.toString());
+		// The mod's class as it is verifies.
+		new BytesClassLoader(Map.of("com/example/mixin/Typed", withMaxes(original), LISTENER, classes.get(LISTENER), SCREEN, classes.get(SCREEN), HOOKS,
+				classes.get(HOOKS))).loadClass("com.example.mixin.Typed").getDeclaredMethods();
+		List<PreflightFinding> after = preflight.get().check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, after.size(), after.toString());
+		assertTrue(after.getFirst().message().startsWith("@Redirect in typed expects @At(\"INVOKE\", target=\"L" + LISTENER + ";typed" + TYPED + "\")"), after.toString());
+		assertTrue(after.getFirst().suggestion().startsWith("NeoForge makes the call inside its hook net.neoforged.Hooks.typed" + hookDesc
+				+ ", which takes the receiver as a net.minecraft.world.Screen: a redirect would replace the hook's call"), after.toString());
+	}
+
+	/** A mixin keeping a game object its constructor makes in a private final field, which one handler changes and another reads. */
+	private static byte[] keepsObject(String fieldType) {
+		String name = "com/example/mixin/Keeps";
+		String fieldDesc = "L" + fieldType + ";";
+		return mixin(name, false, cw -> {
+			cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "pos", fieldDesc, null, null).visitEnd();
+			MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+			init.visitCode();
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitTypeInsn(Opcodes.NEW, fieldType);
+			init.visitInsn(Opcodes.DUP);
+			init.visitMethodInsn(Opcodes.INVOKESPECIAL, fieldType, "<init>", "()V", false);
+			init.visitFieldInsn(Opcodes.PUTFIELD, name, "pos", fieldDesc);
+			init.visitInsn(Opcodes.RETURN);
+			init.visitMaxs(3, 1);
+			init.visitEnd();
+			// @ModifyArg at helper(I)V: pos.set(x, 0, 0), the object changing, no field written.
+			atHelperCall(cw, "Lorg/spongepowered/asm/mixin/injection/ModifyArg;", "capture", "(I)I", mv -> {
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitFieldInsn(Opcodes.GETFIELD, name, "pos", fieldDesc);
+				mv.visitVarInsn(Opcodes.ILOAD, 1);
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, fieldType, "set", "(III)" + fieldDesc, false);
+				mv.visitInsn(Opcodes.POP);
+				mv.visitVarInsn(Opcodes.ILOAD, 1);
+				mv.visitInsn(Opcodes.IRETURN);
+				mv.visitMaxs(4, 2);
+				mv.visitEnd();
+			});
+			// @Inject after helper(I)V: reads pos.getX().
+			grouped(cw, INJECT, "after", "(" + CALLBACK_INFO + ")V", "L" + TARGET + ";helper(I)V", true, null, mv -> {
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitFieldInsn(Opcodes.GETFIELD, name, "pos", fieldDesc);
+				mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, fieldType, "getX", "()I", false);
+				mv.visitInsn(Opcodes.POP);
+				mv.visitInsn(Opcodes.RETURN);
+				mv.visitMaxs(1, 2);
+				mv.visitEnd();
+			});
+		});
+	}
+
+	@Test
+	void aGameObjectTheMixinMakesInAFieldOnlyItsConstructorWritesIsStateItsHooksKeepTogether() throws Exception {
+		// STATE-1, HOOK-2: a MutableBlockPos (or a PoseStack, an ItemStack, a CompoundTag) the mixin makes and one hook changes
+		// for another is state between them, as an AtomicInteger is: the @Inject after the call NeoForge's hook took over moves
+		// only with the @ModifyArg at it, which the hook can't take. Alone, with require 0, it would apply without its partner.
+		String plain = "(L" + TARGET + ";I)V";
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingHook(plain), HOOKS, hooks(plain, true))::get);
+		Map<String, byte[]> vanilla = Map.of(TARGET, targetClass());
+		String afterKey = "after(" + CALLBACK_INFO + ")V";
+		for (String required : List.of("", ",\"injectors\":{\"defaultRequire\":1}")) {
+			MixinConfigFile config = MixinConfigFile.parse("{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Keeps\"]" + required + "}");
+			for (String type : List.of("net/minecraft/core/BlockPos$MutableBlockPos", "java/util/concurrent/atomic/AtomicInteger")) {
+				byte[] bytes = keepsObject(type);
+				ClassNode node = new ClassNode();
+				new ClassReader(bytes).accept(node, 0);
+				assertFalse(MixinPreflight.independentHandlers(node, neoForge::readNode).contains(afterKey), type);
+				Map<String, byte[]> mod = Map.of("com/example/mixin/Keeps", bytes);
+				List<PreflightFinding> notes = new ArrayList<>();
+				Map<String, byte[]> repaired = new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+						.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+				assertTrue(repaired.isEmpty() && notes.isEmpty(), type + required + ": " + notes);
+				List<PreflightFinding> after = new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+						.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+				assertEquals(2, after.size(), type + required + ": " + after);
+				assertTrue(after.stream().anyMatch(f -> f.message().startsWith("@Inject in tick expects")
+						|| f.message().startsWith("The injector of " + afterKey + " goes with that of capture(I)I")), type + required + ": " + after);
+			}
+		}
+	}
+
+	@Test
+	void aSubtypeWrapperStaysWhereVanillaMakesTheCallThroughTheSubtypeToo() throws Exception {
+		// LAMBDA-14, VANILLA-1: where vanilla's method calls the screen's typed as this build does, a mod's hooks of the listener's
+		// call find nothing on Fabric either (Mixin matches the owner exactly), and its own hook of the screen's applies there:
+		// pointed at the screen's call, they would apply here and wrap it twice.
+		String listener = "L" + LISTENER + ";";
+		Map<String, byte[]> classes = new HashMap<>(listenerAndScreen());
+		classes.put(TARGET, typingTarget(SCREEN, Opcodes.INVOKEVIRTUAL, SCREEN, "typed", TYPED));
+		ClassIndex game = new ClassIndex(classes::get);
+		Map<String, byte[]> vanilla = new HashMap<>(classes);
+		byte[] original = mixin("com/example/mixin/Typed", false, cw -> {
+			atTypedCall(cw, WRAP_OPERATION, "wrapListener", "(" + listener + "CI" + OPERATION + ")Z", mv -> mv.visitVarInsn(Opcodes.ALOAD, 0));
+			atTypedCall(cw, INJECT, "inject", "(" + CALLBACK_INFO + ")V", null);
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Typed"));
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = new MixinPreflight(game, InstalledClasses.NONE, Map.of("com/example/mixin/Typed", original)::get, ClassBytesSource.EMPTY, false,
+				true, vanilla::get).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertTrue(repaired.isEmpty() && notes.isEmpty(), notes.toString());
+	}
+
+	/** {@link #TARGET} whose {@code tick} calls {@code Hooks.draw(this, 0)} twice, where vanilla's calls {@code helper} once. */
+	private static byte[] callingHookTwice(String hookDesc) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+		tick.visitCode();
+		for (int i = 0; i < 2; i++) {
+			tick.visitVarInsn(Opcodes.ALOAD, 0);
+			tick.visitInsn(Opcodes.ICONST_0);
+			tick.visitMethodInsn(Opcodes.INVOKESTATIC, HOOKS, "draw", hookDesc, false);
+		}
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		MethodVisitor helper = cw.visitMethod(Opcodes.ACC_PUBLIC, "helper", "(I)V", null, null);
+		helper.visitCode();
+		helper.visitInsn(Opcodes.RETURN);
+		helper.visitMaxs(0, 0);
+		helper.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aSoleAlternativeWhoseRepairsMakeMoreInjectionsThanItsGroupAllowsStaysAsItIs() throws Exception {
+		// LAMBDA-14: a group's one alternative that can apply is repaired as an injector alone, but Mixin still counts the
+		// group's injections against its max (jGui's char typed groups set max = 1): moved to a hook this build calls twice, where
+		// vanilla makes the call once, it would inject twice, and Mixin's group validation would stop the game.
+		String plain = "(L" + TARGET + ";I)V";
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingHookTwice(plain), HOOKS, hooks(plain, true))::get);
+		Map<String, byte[]> vanilla = Map.of(TARGET, targetClass());
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Grouped"));
+		for (int max : new int[] {1, 2, -1}) {
+			byte[] bytes = mixin("com/example/mixin/Grouped", false, cw -> {
+				grouped(cw, "sole", "g", 1, max, "L" + TARGET + ";helper(I)V");
+				grouped(cw, "optifine", "g", 1, max, "L" + TARGET + ";optifineOnly()V");
+			});
+			Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Grouped", bytes));
+			List<PreflightFinding> notes = new ArrayList<>();
+			byte[] repaired = new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Grouped.class");
+			if (max == 1) {
+				assertNull(repaired, notes.toString());
+				assertTrue(notes.isEmpty(), notes.toString());
+				assertTrue(new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+						.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+						.anyMatch(f -> f.message().startsWith("@Group g needs 1 of its 2 injectors to apply, and none can")));
+				continue;
+			}
+			assertNotNull(repaired, max + ": " + notes);
+			assertTrue(notes.stream().anyMatch(n -> n.message().startsWith("@Inject sole expects a call to net.minecraft.world.Thing.helper(I)V, which this game"
+					+ " build makes inside NeoForge's hook")), notes.toString());
+			mod.put("com/example/mixin/Grouped", repaired);
+			assertTrue(new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+					.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT), max + "");
+		}
+	}
+
 	private static MixinPreflight preflight(ClassIndex game, ClassBytesSource mod, ClassBytesSource untransformable, boolean clientSide) {
 		return preflight(game, mod, untransformable, clientSide, true);
 	}

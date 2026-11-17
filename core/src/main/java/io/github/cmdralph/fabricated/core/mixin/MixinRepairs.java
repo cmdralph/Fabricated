@@ -65,6 +65,8 @@ final class MixinRepairs extends PreflightPart {
 	private final LocalRepairs locals = new LocalRepairs(classes);
 	private final SkippedCode skipped = new SkippedCode(classes);
 	private final ReplacedMethods replacedMethods = new ReplacedMethods(classes);
+	/** Whether the mixin being repaired has a group's sole alternative its repairs gave more injections than the group allows. */
+	private boolean overGroupMax;
 
 	/** @param checker the run's checker, which judges whether a mixin fits a target */
 	MixinRepairs(PreflightClasses classes, MixinPreflight checker) {
@@ -78,191 +80,207 @@ final class MixinRepairs extends PreflightPart {
 		Map<String, byte[]> repaired = new TreeMap<>();
 		for (String mixin : config.mixinsFor(clientSide)) {
 			if (skip.contains(mixin)) continue;
-			String internal = config.internalName(mixin);
-			ClassNode node = modClasses.readNode(internal, 0);
-			if (node == null) continue;
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Map.of(), Set.of(), out, null, loader,
-					new java.util.HashSet<>());
-			boolean changed = false;
-			// First, as it takes the constructor from the mixin parsed again.
-			List<String> outlined = restrictsInitialisers ? Initialisers.outline(node, () -> modClasses.readNode(internal, ClassReader.EXPAND_FRAMES)) : List.of();
-			if (!outlined.isEmpty()) {
-				changed = true;
-				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "The initialisers of its field(s) " + String.join(", ", outlined)
-						+ " branch or load or store an array element, which " + loader + "'s Mixin refuses as it merges them into the constructors of"
-						+ " its target; each value is computed by a method the mixin adds (fabricated$init$<field>), as Fabric's Mixin merges them (PRE-28)", ""));
+			// A group's sole alternative that its repairs give more injections than the group allows is left as the mod has it:
+			// the mixin is repaired again, from its bytes, without it (soleAlternative).
+			while (true) {
+				Map<String, byte[]> made = new TreeMap<>();
+				List<PreflightFinding> found = new ArrayList<>();
+				overGroupMax = false;
+				repairMixin(configName, config, refmap, config.internalName(mixin), made, found);
+				if (overGroupMax) continue;
+				repaired.putAll(made);
+				out.addAll(found);
+				break;
 			}
-			for (String moved : anonymousTargetRepairs(node, ctx)) {
-				changed = true;
-				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "Target class " + moved, ""));
-			}
-			// Before anything that reads the handlers' descriptors.
-			List<String> named = MixinPreflight.targetsOf(node, ctx);
-			int retargeted = named.size() == 1 && !copiesInnerClasses(node, config) ? SelfTypeRepairs.retarget(node, named.get(0)) : 0;
-			if (retargeted > 0) {
-				changed = true;
-				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), retargeted + " descriptor(s) of the mixin name its own class "
-						+ "where Mixin needs its target's; they name " + named.get(0).replace('/', '.') + ", as Fabric's Mixin does as it merges a mixin", ""));
-			}
-			independent.put(node, MixinPreflight.independentHandlers(node));
-			classes.stateGroups.put(node, MixinPreflight.stateGroups(node));
-			changed |= singleInjectionPoints(node);
-			Set<String> unfound = withoutUnfoundLocals(node);
-			if (!unfound.isEmpty()) {
-				changed = true;
-				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "The debug tables of the mixin's methods name local "
-						+ "variables of " + String.join(", ", unfound.stream().map(t -> t.replace('/', '.')).toList()) + ", not found on this side, "
-						+ "which " + loader + "'s Mixin stops on as it applies the mixin; those locals are left out of the tables, which only "
-						+ "debuggers read (LVT-1)", ""));
-			}
-			List<ClassNode> targets = new ArrayList<>();
-			for (String target : MixinPreflight.targetsOf(node, ctx)) {
-				ClassNode targetNode = gameTarget(target);
-				if (targetNode == null) {
-					targets = List.of();
-					break;
-				}
-				targets.add(targetNode);
-			}
-			if (targets.isEmpty()) {
-				// Not a game class's: only the injection points are made single.
-				if (changed) repaired.put(internal + ".class", write(node));
-				continue;
-			}
-			for (String values : extensibleValuesRepair(node, targets, ctx)) {
-				changed = true;
-				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), values + ", which stops the game as the enum loads: "
-						+ loader + " makes the enum extensible, and its enum extender, which runs after Mixin, finds the array only while it is "
-						+ "final (\"could not find $VALUES\"). It is no longer @Mutable: the extender makes the array writable itself, for the "
-						+ "mixin's writes too (ENUM-8)", ""));
-			}
-			for (MethodNode method : List.copyOf(node.methods)) {
-				MemberRef inherited = inheritedShadowRepair(node, method, targets, ctx);
-				if (inherited == null) continue;
-				changed = true;
-				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Shadow method " + inherited.name() + inherited.desc()
-						+ " is one " + targets.get(0).name.replace('/', '.') + " inherits from " + inherited.owner().replace('/', '.') + ", and "
-						+ loader + "'s Mixin finds a @Shadow method only among the target's own; the shadow is dropped, so the mixin's calls of "
-						+ "it reach the inherited method (CORPUS-84)", ""));
-			}
-			List<MethodNode> bridges = new ArrayList<>();
-			List<MethodNode> kept = new ArrayList<>();
-			for (MethodNode method : node.methods) {
-				for (AnnotationNode ann : Annotations.all(method)) {
-					if (PreflightAsm.isInjector(ann.desc) && repairInjector(new RepairSite(node, method, ann, targets, ctx, bridges), out)) changed = true;
-				}
-				if (superOnlyIntrinsic(node, method, targets)) {
-					kept.add(method);
-					changed = true;
-					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Intrinsic " + method.name + method.desc
-							+ " only calls the superclass's method, and " + targets.get(0).name.replace('/', '.') + " already declares it (added by "
-							+ loader + " or this Minecraft version), which Mixin rejects in a class mixin; the target's own method is kept, "
-							+ "as @Intrinsic keeps a method its target has (CORPUS-69)", ""));
-					continue;
-				}
-				if ((node.access & Opcodes.ACC_INTERFACE) == 0 || (method.access & Opcodes.ACC_STATIC) != 0) continue;
-				AnnotationNode accessor = Annotations.find(method, MixinNames.ACCESSOR);
-				String kind = accessor != null ? "@Accessor" : Annotations.find(method, MixinNames.INVOKER) != null ? "@Invoker" : null;
-				if (kind == null) continue;
-				if (targets.stream().allMatch(t -> declaresInstance(t, method.name, method.desc))) {
-					if (method.visibleAnnotations != null) method.visibleAnnotations.removeIf(MixinRepairs::isAccessorAnnotation);
-					if (method.invisibleAnnotations != null) method.invisibleAnnotations.removeIf(MixinRepairs::isAccessorAnnotation);
-					if (method.visibleAnnotations == null) method.visibleAnnotations = new ArrayList<>();
-					method.visibleAnnotations.add(new AnnotationNode(MixinNames.SHADOW));
-					method.access |= Opcodes.ACC_SYNTHETIC;
-					changed = true;
-					boolean madePublic = false;
-					for (ClassNode t : targets) {
-						if (declaresPublicInstance(t, method.name, method.desc)) continue;
-						widened.add("public " + t.name.replace('/', '.') + " " + method.name + method.desc);
-						madePublic = true;
-					}
-					out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), kind + " " + method.name + method.desc
-							+ " already exists " + (madePublic ? "" : "publicly ") + "in " + targets.get(0).name.replace('/', '.')
-							+ " (added by " + loader + " or this Minecraft version); the mixin uses that method instead of generating one"
-							+ (madePublic ? ", made public for it" : ""), ""));
-				} else if (accessor != null) {
-					String field = capturedFieldRepair(method, accessor, targets, ctx);
-					if (field != null) {
-						changed = true;
-						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Accessor " + method.name + method.desc
-								+ " targets the captured variable field " + field + " in " + targets.get(0).name.replace('/', '.')
-								+ ", which this game build names differently", ""));
-						continue;
-					}
-					String bridge = retypedFieldBridge(method, accessor, targets, ctx);
-					if (bridge == null) continue;
-					changed = true;
-					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Accessor " + method.name + method.desc
-							+ " targets a field " + loader + " gave another type or replaced in " + targets.get(0).name.replace('/', '.') + "; it invokes "
-							+ bridge + ", which Fabricated adds there to " + (bridge.startsWith(MixinNames.BRIDGE_SETTER) ? "set" : "get")
-							+ " what vanilla's field holds, as vanilla's type (CORPUS-37, CORPUS-94)", ""));
-				} else {
-					String bridge = changedMethodBridge(method, Annotations.find(method, MixinNames.INVOKER), targets, ctx);
-					if (bridge == null) continue;
-					changed = true;
-					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Invoker " + method.name + method.desc
-							+ " targets a method " + loader + " gave other parameters in " + targets.get(0).name.replace('/', '.') + "; it invokes "
-							+ bridge + ", which Fabricated adds there to call " + loader + "'s method as vanilla's does (LEAVE-5)", ""));
-				}
-			}
-			// The unique fields renamed, keyed name:desc as the mixin had them, for its nested classes' uses (CORPUS-95).
-			Map<String, String> uniqueRenames = new TreeMap<>();
-			for (FieldNode field : node.fields) {
-				String captured = capturedShadowRepair(node, field, targets, ctx);
-				if (captured != null) {
-					changed = true;
-					out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Shadow field " + captured + " is a captured variable field of "
-							+ targets.get(0).name.replace('/', '.') + ", which this game build names " + field.name + "; the mixin uses that", ""));
-					continue;
-				}
-				InstalledClasses.AddedMember shared = sharedFieldRepair(field, targets, ctx);
-				if (shared != null) {
-					changed = true;
-					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Shadow field " + field.name + " is one "
-							+ MixinPreflight.addedBy(shared) + " adds to " + targets.get(0).name.replace('/', '.') + ", and " + loader + "'s Mixin finds "
-							+ "a @Shadow field only among the target's own; the mixin declares the field as that mixin does, which Mixin merges with "
-							+ "it into one field, as Fabric's Mixin binds the shadow to it (CORPUS-74)", ""));
-					continue;
-				}
-				String unique = field.name;
-				InstalledClasses.AddedMember other = uniqueFieldRepair(node, field, targets);
-				if (other != null) {
-					changed = true;
-					uniqueRenames.put(unique + ":" + field.desc, field.name);
-					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Unique field " + unique + " is also one "
-							+ MixinPreflight.addedBy(other) + " adds to " + targets.get(0).name.replace('/', '.') + ", and " + loader + "'s Mixin "
-							+ "would merge the two into one field the mixins share; it is renamed " + field.name + ", so it stays the mixin's own, "
-							+ "as Fabric's Mixin renames it (CORPUS-95)", ""));
-					continue;
-				}
-				if (!platformFinalFieldRepair(node, field, targets)) continue;
-				changed = true;
-				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "Field " + field.name + " is the mixin's own, and "
-						+ targets.get(0).name.replace('/', '.') + " already declares it final (added by " + loader + " or this Minecraft version): "
-						+ "Mixin merges the two, and the mixin's writes of the final field outside a constructor would fail; it is declared "
-						+ "@Shadow @Final @Mutable, so Mixin makes the field writable, as the mixin's own is on Fabric (CORPUS-101)", ""));
-			}
-			if (!uniqueRenames.isEmpty()) repaired.putAll(nestedFieldRenames(node, config, uniqueRenames));
-			node.methods.removeAll(kept);
-			node.methods.addAll(bridges);
-			if ((node.access & Opcodes.ACC_INTERFACE) != 0 && !interfaceInjectors) {
-				// After the injector repairs, which may point the selectors elsewhere (INTERFACE-1).
-				for (MethodNode method : List.copyOf(node.methods)) {
-					AnnotationNode injector = Annotations.all(method).stream().filter(a -> PreflightAsm.isInjector(a.desc)).findFirst().orElse(null);
-					if (injector == null) continue;
-					String handler = "@" + PreflightAsm.simpleName(injector.desc) + " handler " + method.name + method.desc + " is an injector in an"
-							+ " interface mixin, which " + loader + "'s Mixin doesn't apply (Mixin does from 0.8.6)";
-					String refused = InterfaceInjects.mark(node, method, injector, targets, ctx::resolve, config.defaultRequire());
-					if (refused == null) changed = true;
-					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), refused == null
-							? handler + "; Fabricated applies it as the mixin applies, as Mixin would (INTERFACE-1)"
-							: handler + "; Fabricated applies " + InterfaceInjects.APPLIED + " itself, but not this one: " + refused + " (INTERFACE-1)", ""));
-				}
-			}
-			if (changed) repaired.put(internal + ".class", write(node));
 		}
 		return repaired;
+	}
+
+	/** Repairs one mixin of a config ({@link #repairs}), its rewritten classes put in {@code repaired}, each repair reported. */
+	private void repairMixin(String configName, MixinConfigFile config, Refmap refmap, String internal, Map<String, byte[]> repaired,
+			List<PreflightFinding> out) {
+		ClassNode node = modClasses.readNode(internal, 0);
+		if (node == null) return;
+		Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Map.of(), Set.of(), out, null, loader,
+				new java.util.HashSet<>());
+		boolean changed = false;
+		// First, as it takes the constructor from the mixin parsed again.
+		List<String> outlined = restrictsInitialisers ? Initialisers.outline(node, () -> modClasses.readNode(internal, ClassReader.EXPAND_FRAMES)) : List.of();
+		if (!outlined.isEmpty()) {
+			changed = true;
+			out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "The initialisers of its field(s) " + String.join(", ", outlined)
+					+ " branch or load or store an array element, which " + loader + "'s Mixin refuses as it merges them into the constructors of"
+					+ " its target; each value is computed by a method the mixin adds (fabricated$init$<field>), as Fabric's Mixin merges them (PRE-28)", ""));
+		}
+		for (String moved : anonymousTargetRepairs(node, ctx)) {
+			changed = true;
+			out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "Target class " + moved, ""));
+		}
+		// Before anything that reads the handlers' descriptors.
+		List<String> named = MixinPreflight.targetsOf(node, ctx);
+		int retargeted = named.size() == 1 && !copiesInnerClasses(node, config) ? SelfTypeRepairs.retarget(node, named.get(0)) : 0;
+		if (retargeted > 0) {
+			changed = true;
+			out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), retargeted + " descriptor(s) of the mixin name its own class "
+					+ "where Mixin needs its target's; they name " + named.get(0).replace('/', '.') + ", as Fabric's Mixin does as it merges a mixin", ""));
+		}
+		independent.put(node, MixinPreflight.independentHandlers(node, classes::gameTarget));
+		classes.stateGroups.put(node, MixinPreflight.stateGroups(node));
+		changed |= singleInjectionPoints(node);
+		Set<String> unfound = withoutUnfoundLocals(node);
+		if (!unfound.isEmpty()) {
+			changed = true;
+			out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "The debug tables of the mixin's methods name local "
+					+ "variables of " + String.join(", ", unfound.stream().map(t -> t.replace('/', '.')).toList()) + ", not found on this side, "
+					+ "which " + loader + "'s Mixin stops on as it applies the mixin; those locals are left out of the tables, which only "
+					+ "debuggers read (LVT-1)", ""));
+		}
+		List<ClassNode> targets = new ArrayList<>();
+		for (String target : MixinPreflight.targetsOf(node, ctx)) {
+			ClassNode targetNode = gameTarget(target);
+			if (targetNode == null) {
+				targets = List.of();
+				break;
+			}
+			targets.add(targetNode);
+		}
+		if (targets.isEmpty()) {
+			// Not a game class's: only the injection points are made single.
+			if (changed) repaired.put(internal + ".class", write(node));
+			return;
+		}
+		for (String values : extensibleValuesRepair(node, targets, ctx)) {
+			changed = true;
+			out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), values + ", which stops the game as the enum loads: "
+					+ loader + " makes the enum extensible, and its enum extender, which runs after Mixin, finds the array only while it is "
+					+ "final (\"could not find $VALUES\"). It is no longer @Mutable: the extender makes the array writable itself, for the "
+					+ "mixin's writes too (ENUM-8)", ""));
+		}
+		for (MethodNode method : List.copyOf(node.methods)) {
+			MemberRef inherited = inheritedShadowRepair(node, method, targets, ctx);
+			if (inherited == null) continue;
+			changed = true;
+			out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Shadow method " + inherited.name() + inherited.desc()
+					+ " is one " + targets.get(0).name.replace('/', '.') + " inherits from " + inherited.owner().replace('/', '.') + ", and "
+					+ loader + "'s Mixin finds a @Shadow method only among the target's own; the shadow is dropped, so the mixin's calls of "
+					+ "it reach the inherited method (CORPUS-84)", ""));
+		}
+		List<MethodNode> bridges = new ArrayList<>();
+		List<MethodNode> kept = new ArrayList<>();
+		for (MethodNode method : node.methods) {
+			for (AnnotationNode ann : Annotations.all(method)) {
+				if (PreflightAsm.isInjector(ann.desc) && repairInjector(new RepairSite(node, method, ann, targets, ctx, bridges), out)) changed = true;
+			}
+			if (superOnlyIntrinsic(node, method, targets)) {
+				kept.add(method);
+				changed = true;
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Intrinsic " + method.name + method.desc
+						+ " only calls the superclass's method, and " + targets.get(0).name.replace('/', '.') + " already declares it (added by "
+						+ loader + " or this Minecraft version), which Mixin rejects in a class mixin; the target's own method is kept, "
+						+ "as @Intrinsic keeps a method its target has (CORPUS-69)", ""));
+				continue;
+			}
+			if ((node.access & Opcodes.ACC_INTERFACE) == 0 || (method.access & Opcodes.ACC_STATIC) != 0) continue;
+			AnnotationNode accessor = Annotations.find(method, MixinNames.ACCESSOR);
+			String kind = accessor != null ? "@Accessor" : Annotations.find(method, MixinNames.INVOKER) != null ? "@Invoker" : null;
+			if (kind == null) continue;
+			if (targets.stream().allMatch(t -> declaresInstance(t, method.name, method.desc))) {
+				if (method.visibleAnnotations != null) method.visibleAnnotations.removeIf(MixinRepairs::isAccessorAnnotation);
+				if (method.invisibleAnnotations != null) method.invisibleAnnotations.removeIf(MixinRepairs::isAccessorAnnotation);
+				if (method.visibleAnnotations == null) method.visibleAnnotations = new ArrayList<>();
+				method.visibleAnnotations.add(new AnnotationNode(MixinNames.SHADOW));
+				method.access |= Opcodes.ACC_SYNTHETIC;
+				changed = true;
+				boolean madePublic = false;
+				for (ClassNode t : targets) {
+					if (declaresPublicInstance(t, method.name, method.desc)) continue;
+					widened.add("public " + t.name.replace('/', '.') + " " + method.name + method.desc);
+					madePublic = true;
+				}
+				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), kind + " " + method.name + method.desc
+						+ " already exists " + (madePublic ? "" : "publicly ") + "in " + targets.get(0).name.replace('/', '.')
+						+ " (added by " + loader + " or this Minecraft version); the mixin uses that method instead of generating one"
+						+ (madePublic ? ", made public for it" : ""), ""));
+			} else if (accessor != null) {
+				String field = capturedFieldRepair(method, accessor, targets, ctx);
+				if (field != null) {
+					changed = true;
+					out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Accessor " + method.name + method.desc
+							+ " targets the captured variable field " + field + " in " + targets.get(0).name.replace('/', '.')
+							+ ", which this game build names differently", ""));
+					continue;
+				}
+				String bridge = retypedFieldBridge(method, accessor, targets, ctx);
+				if (bridge == null) continue;
+				changed = true;
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Accessor " + method.name + method.desc
+						+ " targets a field " + loader + " gave another type or replaced in " + targets.get(0).name.replace('/', '.') + "; it invokes "
+						+ bridge + ", which Fabricated adds there to " + (bridge.startsWith(MixinNames.BRIDGE_SETTER) ? "set" : "get")
+						+ " what vanilla's field holds, as vanilla's type (CORPUS-37, CORPUS-94)", ""));
+			} else {
+				String bridge = changedMethodBridge(method, Annotations.find(method, MixinNames.INVOKER), targets, ctx);
+				if (bridge == null) continue;
+				changed = true;
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Invoker " + method.name + method.desc
+						+ " targets a method " + loader + " gave other parameters in " + targets.get(0).name.replace('/', '.') + "; it invokes "
+						+ bridge + ", which Fabricated adds there to call " + loader + "'s method as vanilla's does (LEAVE-5)", ""));
+			}
+		}
+		// The unique fields renamed, keyed name:desc as the mixin had them, for its nested classes' uses (CORPUS-95).
+		Map<String, String> uniqueRenames = new TreeMap<>();
+		for (FieldNode field : node.fields) {
+			String captured = capturedShadowRepair(node, field, targets, ctx);
+			if (captured != null) {
+				changed = true;
+				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Shadow field " + captured + " is a captured variable field of "
+						+ targets.get(0).name.replace('/', '.') + ", which this game build names " + field.name + "; the mixin uses that", ""));
+				continue;
+			}
+			InstalledClasses.AddedMember shared = sharedFieldRepair(field, targets, ctx);
+			if (shared != null) {
+				changed = true;
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Shadow field " + field.name + " is one "
+						+ MixinPreflight.addedBy(shared) + " adds to " + targets.get(0).name.replace('/', '.') + ", and " + loader + "'s Mixin finds "
+						+ "a @Shadow field only among the target's own; the mixin declares the field as that mixin does, which Mixin merges with "
+						+ "it into one field, as Fabric's Mixin binds the shadow to it (CORPUS-74)", ""));
+				continue;
+			}
+			String unique = field.name;
+			InstalledClasses.AddedMember other = uniqueFieldRepair(node, field, targets);
+			if (other != null) {
+				changed = true;
+				uniqueRenames.put(unique + ":" + field.desc, field.name);
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Unique field " + unique + " is also one "
+						+ MixinPreflight.addedBy(other) + " adds to " + targets.get(0).name.replace('/', '.') + ", and " + loader + "'s Mixin "
+						+ "would merge the two into one field the mixins share; it is renamed " + field.name + ", so it stays the mixin's own, "
+						+ "as Fabric's Mixin renames it (CORPUS-95)", ""));
+				continue;
+			}
+			if (!platformFinalFieldRepair(node, field, targets)) continue;
+			changed = true;
+			out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "Field " + field.name + " is the mixin's own, and "
+					+ targets.get(0).name.replace('/', '.') + " already declares it final (added by " + loader + " or this Minecraft version): "
+					+ "Mixin merges the two, and the mixin's writes of the final field outside a constructor would fail; it is declared "
+					+ "@Shadow @Final @Mutable, so Mixin makes the field writable, as the mixin's own is on Fabric (CORPUS-101)", ""));
+		}
+		if (!uniqueRenames.isEmpty()) repaired.putAll(nestedFieldRenames(node, config, uniqueRenames));
+		node.methods.removeAll(kept);
+		node.methods.addAll(bridges);
+		if ((node.access & Opcodes.ACC_INTERFACE) != 0 && !interfaceInjectors) {
+			// After the injector repairs, which may point the selectors elsewhere (INTERFACE-1).
+			for (MethodNode method : List.copyOf(node.methods)) {
+				AnnotationNode injector = Annotations.all(method).stream().filter(a -> PreflightAsm.isInjector(a.desc)).findFirst().orElse(null);
+				if (injector == null) continue;
+				String handler = "@" + PreflightAsm.simpleName(injector.desc) + " handler " + method.name + method.desc + " is an injector in an"
+						+ " interface mixin, which " + loader + "'s Mixin doesn't apply (Mixin does from 0.8.6)";
+				String refused = InterfaceInjects.mark(node, method, injector, targets, ctx::resolve, config.defaultRequire());
+				if (refused == null) changed = true;
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), refused == null
+						? handler + "; Fabricated applies it as the mixin applies, as Mixin would (INTERFACE-1)"
+						: handler + "; Fabricated applies " + InterfaceInjects.APPLIED + " itself, but not this one: " + refused + " (INTERFACE-1)", ""));
+			}
+		}
+		if (changed) repaired.put(internal + ".class", write(node));
 	}
 
 	/**
@@ -465,13 +483,13 @@ final class MixinRepairs extends PreflightPart {
 			RepairStep.stopIfMoved(),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.constantSplitRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, moved) -> "@ModifyConstant " + s.handler().name + " targets " + moved),
-			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.subtypeCallRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.subtypeCallRepairs(s.handler(), s.injector(), s.declared(), s.target(), s.ctx()),
 					(s, moved) -> s.named() + " expects a call to " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> lambdas.lambdaCallRepairs(s.injector(), s.handler(), s.target(), s.ctx()),
 					(s, lambda) -> s.named() + " expects a call " + lambda),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.hookArgumentRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, moved) -> s.named() + " expects " + moved),
-			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.insertedArgumentRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.insertedArgumentRepairs(s.mixin(), s.handler(), s.injector(), s.declared(), s.target(), s.ctx(), s.bridges()),
 					(s, moved) -> s.named() + " expects a call to " + moved),
 			RepairStep.stopIfMoved(),
 			// Where the parameters can't be matched by type (one the method has twice), in order, around one added.
@@ -661,6 +679,11 @@ final class MixinRepairs extends PreflightPart {
 		return true;
 	}
 
+	/** {@link CallRepairs#narrowedHookHint}, for the check's line of a point that stays out. */
+	String narrowedHookHint(AnnotationNode injector, String resolved, List<MethodNode> methods) {
+		return calls.narrowedHookHint(injector, resolved, methods);
+	}
+
 	/** Runs {@link #injectorRepairs} on one injector, reporting each move; returns whether any changed the mixin. */
 	private boolean repairInjector(RepairSite site, List<PreflightFinding> out) {
 		boolean changed = false;
@@ -676,6 +699,12 @@ final class MixinRepairs extends PreflightPart {
 				out.add(new PreflightFinding(step.severity(), site.ctx().configName(), site.ctx().mixinDotted(), step.message().apply(site, item), ""));
 			}
 		}
+		// A group's sole alternative is repaired as an injector alone, but Mixin still counts the group's injections against its
+		// max: where the repairs may make more, the mixin is repaired again without them (LAMBDA-14).
+		if (changed && sole && exceedsGroupMax(site)) {
+			classes.notSole.add(site.mixin().name + " " + site.handler().name + site.handler().desc);
+			overGroupMax = true;
+		}
 		// A repair may have pointed the injector at another constructor, whose points the running Mixin then takes only as
 		// the constructor point repair marks them (CTOR-7).
 		if (changed) {
@@ -684,6 +713,48 @@ final class MixinRepairs extends PreflightPart {
 			}
 		}
 		return changed;
+	}
+
+	/**
+	 * Whether a repaired injector's {@code @Group} (on its handler, or on the bridge the injector moved to) sets a max its
+	 * injections in a target may exceed, as its points now count there ({@link #injections}), or can't be counted. Mixin's
+	 * group validation fails then ("maximum of 1 invocation(s) allowed"): jGui's char typed groups (ReplayMod) set max = 1.
+	 */
+	private boolean exceedsGroupMax(RepairSite site) {
+		MethodNode holder = site.handler();
+		for (MethodNode bridge : site.bridges()) {
+			if (Annotations.all(bridge).contains(site.injector())) holder = bridge;
+		}
+		AnnotationNode group = Annotations.find(holder, MixinNames.GROUP);
+		if (group == null || !(Annotations.value(group, "max") instanceof Integer max) || max <= 0) return false;
+		for (ClassNode target : site.targets()) {
+			int n = injections(site.injector(), target, site.ctx());
+			if (n < 0 || n > max) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * The injections an injector's points make in the methods it selects in {@code target}, as Mixin counts them; -1 where a
+	 * point's can't be counted.
+	 */
+	static int injections(AnnotationNode injector, ClassNode target, Context ctx) {
+		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
+		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
+		int n = 0;
+		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
+			String resolved = Annotations.value(at, "target") instanceof String raw ? ctx.resolve(raw) : null;
+			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+			AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
+			for (MethodNode method : methods) {
+				InjectionPoints.Range range = slice == null ? InjectionPoints.Range.ALL : InjectionPoints.sliceRange(slice, method, ctx);
+				int each = method.instructions == null ? -1
+						: InjectionPoints.count(InjectionPoints.pointOf(at), resolved, InjectionPoints.ordinalOf(at), opcode, range, method);
+				if (each < 0) return -1;
+				n += each;
+			}
+		}
+		return n;
 	}
 
 	/**
