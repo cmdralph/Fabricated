@@ -13,6 +13,8 @@ PROPERTIES = {
     ("neoforge", "1.21.11"): "neoforge_version=21.11.45\njava_version=21\n",
     ("neoforge", "26.1.2"): "neoforge_version=26.1.2.116\njava_version=25\nci_renderers=sodium@x iris@y\n",
     ("forge", "26.3"): "forge_version=66.1.0\njava_version=25\nci_plugin_hosts=wthit@w\n",
+    ("forge-legacy", "1.19.2"): "forge_version=1.19.2-43.5.2\njava_version=17\n",
+    ("forge-legacy", "1.20.1"): "forge_version=1.20.1-47.4.28\njava_version=17\n",
 }
 
 
@@ -92,6 +94,14 @@ class TargetsTest(unittest.TestCase):
         (self.root / "mc/neoforge/26.1.2/gradle.properties").write_text("neoforge_version=1;rm -rf /\njava_version=25\n")
         with self.assertRaises(SystemExit):
             plan.target(self.root, "neoforge", "26.1.2")
+
+    def test_a_platforms_shared_folder_touches_its_versions_oldest_first(self):
+        root = tree("forge-legacy")
+        self.assertEqual([t["minecraft"] for t in plan.targets(root, ["mc/forge-legacy/common/x"])], ["1.19.2", "1.20.1"])
+        self.assertEqual([t["minecraft"] for t in plan.targets(root, ["mc/forge-legacy/1.19.2/x"])], ["1.19.2"])
+        self.assertEqual([t["minecraft"] for t in plan.targets(root, ["mc/forge-legacy/1.19.2/x"], quick=True)], ["1.19.2"])
+        self.assertEqual([t["minecraft"] for t in plan.targets(root, ["mc/forge-legacy/common/x"], quick=True)], ["1.20.1"])
+        self.assertEqual(plan.target(root, "forge-legacy", "1.19.2")["loader"], "1.19.2-43.5.2")
 
     def test_a_version_or_platform_the_tree_lacks_is_named(self):
         for platform, version in (("neoforge", "9.9"), ("fabric", "26.1.2")):
