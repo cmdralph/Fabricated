@@ -173,6 +173,51 @@ class LinkageCheckerTest {
 		assertEquals(ClassIndex.Resolution.MISSING, index.resolveField("net/minecraft/Util", "added:I"), "fields resolve by name and type");
 	}
 
+	/**
+	 * ENUM-10: an enum mixin's constant is typed as the mixin, and Mixin's enum extensions (0.17.1 on, NeoForge 26.x) add it
+	 * to the target enum as the enum's type, which the mod's code reads it as: Flashback's {@code FLASHBACK_R32_FLOAT} of
+	 * {@code TextureFormat}, Farmer's Delight's {@code FARMERSDELIGHT_COOKING} of {@code SearchRecipeBookCategory}. The
+	 * linkage check reported the read as a missing field.
+	 */
+	@Test
+	void anEnumMixinsConstantsCountAsTheTargetEnums() {
+		ClassWriter format = new ClassWriter(0);
+		format.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_ENUM, "net/minecraft/Format", null, "java/lang/Enum", null);
+		format.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_ENUM, "RGBA", "Lnet/minecraft/Format;", null, null).visitEnd();
+		format.visitEnd();
+		ClassWriter mixin = new ClassWriter(0);
+		mixin.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_ENUM, "m/FormatMixin", null, "java/lang/Enum", null);
+		AnnotationVisitor ann = mixin.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = ann.visitArray("value");
+		values.visit(null, Type.getObjectType("net/minecraft/Format"));
+		values.visitEnd();
+		ann.visitEnd();
+		mixin.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_ENUM, "MOD_R32", "Lm/FormatMixin;", null, null).visitEnd();
+		mixin.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "$VALUES", "[Lm/FormatMixin;", null, null).visitEnd();
+		mixin.visitEnd();
+		ClassWriter reader = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		reader.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "m/Export", null, "java/lang/Object", null);
+		MethodVisitor mv = reader.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "format", "()Ljava/lang/Object;", null, null);
+		mv.visitCode();
+		mv.visitFieldInsn(Opcodes.GETSTATIC, "net/minecraft/Format", "MOD_R32", "Lnet/minecraft/Format;");
+		mv.visitInsn(Opcodes.ARETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		reader.visitEnd();
+
+		Map<String, List<String>> added = new java.util.HashMap<>();
+		LinkageAnalysis.mixinAdditions(mixin.toByteArray(), added);
+		assertEquals(List.of("MOD_R32:Lnet/minecraft/Format;"), added.get("net/minecraft/Format"));
+
+		Map<String, byte[]> game = Map.of("net/minecraft/Format", format.toByteArray());
+		List<LinkageChecker.Issue> without = new ArrayList<>();
+		new LinkageChecker(new ClassIndex(game::get), LinkageAnalysis.CHECKED, true).check(reader.toByteArray(), without);
+		assertEquals(List.of("m.Export -> missing field net.minecraft.Format.MOD_R32"), without.stream().map(Object::toString).toList());
+		List<LinkageChecker.Issue> with = new ArrayList<>();
+		new LinkageChecker(new ClassIndex(game::get, added), LinkageAnalysis.CHECKED, true).check(reader.toByteArray(), with);
+		assertTrue(with.isEmpty(), with.toString());
+	}
+
 	private static TranslatedMod mod(Path dir, String id, TestJars jar) throws Exception {
 		Path file = jar.fabricModJson(TestJars.modJson(id, "1.0", "")).write(dir.resolve(id + ".jar"));
 		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(TestJars.modJson(id, "1.0", "")), id + ".jar", null, 0,
