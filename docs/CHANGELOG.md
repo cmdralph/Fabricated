@@ -3,6 +3,15 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-17: CI runs every branch once a week
+
+- **A weekly run** (CI only): every Monday, `.github/workflows/weekly.yml` starts CI's full matrix with the extended
+  runs on the heads of `main`, `forge` and `forge-legacy`. Every loader and Minecraft version builds, boots a dedicated
+  server and starts a client headlessly with the test mods, and runs the newest loader build and the mod corpora. What
+  changes while nothing is pushed then shows up within a week: a new loader build, a Fabric mod's new release, a
+  download host that moved. The workflow is `main`'s alone: `scripts/sync-platform-branch.sh` leaves it out of the
+  platform branches, as it does the release workflow (`ci/test_sync_platform_branch.py`).
+
 ## 2026-11-16: Forge for Minecraft 1.21.1 builds from the `forge` branch
 
 - **The branch layout changed:** Forge 52 (Minecraft 1.21.1) moved from the `forge-legacy` branch to `forge`. `forge`
