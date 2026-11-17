@@ -3,6 +3,27 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-17: Screen input hooks on NeoForge 21.1 and Forge, Essential's draw screen event, and the HUD and screen hooks the report now explains
+
+- **LAMBDA-14** (P1), fixed: Fabric mods' hooks of a screen's key, character and mouse input now apply where NeoForge or
+  Forge hand the input to the screen their own way. On NeoForge 21.1 and Forge 52, owo-lib's braid layers get typed
+  characters; on Forge 52, JEI's character hooks apply, as they did on NeoForge 21.1 and Forge 47; on Forge 61 to 66,
+  Architectury's screen click and release events fire; ReplayMod's character hooks apply on NeoForge 21.1. Not yet
+  checked in a game: ReplayMod's on Forge 47 and 52, Essential's key and character hooks on NeoForge 21.1, Forge 47
+  and 52, and FancyMenu's mouse drag hook on Forge 61 to 66.
+- **SCREEN-3** (P1), fixed: SpruceUI's screen render events apply on Forge 64, and Essential's draw screen hooks on
+  NeoForge and on Forge 47 to 64 (Essential's, and SpruceUI's on Forge 61, not yet checked in a game).
+- **Known limits the report now names**, each in `COMPATIBILITY.md`: NeoForge's HUD layers, which split vanilla's
+  hotbar and player health methods (Farmer's Delight Refabricated's comfort and nourishment overlays, Artifacts',
+  GlitchCore's, Apoli's, Puzzles Lib's and Do a Barrel Roll's HUD hooks; HUD-8); Forge 52's mouse input, which Forge
+  hands the screen inside its own event factory (owo-lib's and Architectury's mouse wrappers); the Controls screen's
+  reset of every key, which resets key modifiers the platforms' way (JEI's); and Forge 61 to 66's item tooltips in
+  container screens (ShulkerBoxTooltip's previews; SCREEN-3).
+- **Verified:** core's tests; NeoForge 1.21.1's, Forge 52's and Forge 64's server and client parts, with new checks of
+  a wrapper of the typed character's call (NeoForge 1.21.1, Forge 52) and of the screen's click and release calls
+  (Forge 64 to 66); the corpus clients of NeoForge 1.21.1, Forge 52 and Forge 64 and NeoForge 1.21.1's advanced corpus
+  client, where the hooks named above as fixed apply and those named as known limits carry them in the report.
+
 ## 2026-11-17: Forge 43 for Minecraft 1.19.2 builds on the `forge-legacy` branch
 
 - **A second legacy Forge version:** `forge-legacy` builds Fabricated for Minecraft 1.19.2 on Forge 43.5.2
