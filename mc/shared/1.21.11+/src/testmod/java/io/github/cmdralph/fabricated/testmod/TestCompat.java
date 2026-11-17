@@ -7,6 +7,7 @@ import java.util.Set;
 
 import org.jspecify.annotations.Nullable;
 
+import com.mojang.serialization.Codec;
 import com.mojang.serialization.Lifecycle;
 
 import net.minecraft.SharedConstants;
@@ -129,6 +130,11 @@ public final class TestCompat {
 	/** An ingredient of the tag's items. */
 	public static Ingredient ingredient(TagKey<Item> tag) {
 		return Ingredient.of(BuiltInRegistries.ITEM.getOrThrow(tag));
+	}
+
+	/** The codec recipes write ingredients as JSON with. */
+	public static List<Codec<Ingredient>> ingredientCodecs() {
+		return List.of(Ingredient.CODEC);
 	}
 
 	/** A recipe's slot on the network, as a recipe's codec writes its slots, an empty one as an empty item list. */
