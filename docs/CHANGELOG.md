@@ -23,11 +23,15 @@ What changed, and how it was verified, newest first. What is open and what comes
 - **APPLY-3** (P0), fixed: on Forge (47, 52 and 61 to 66), a Fabric mod's mixin that passed pre-flight but failed as
   Mixin applied it stopped every launch the same way. It is now recorded in `.fabricated/mixin-failures.json` and left
   out from the next launch, as on NeoForge, until the mod's jar, Fabricated, Minecraft or Forge changes.
+- **APPLY-4** (P0), fixed: on NeoForge 1.21.11 to 26.3, a Fabric mod's mixin that failed as a class the dedicated
+  server's start loads after mod loading first loaded stopped every launch and was never recorded: the server's start
+  catches the error and only logs it. It is recorded and left out from the next launch now, as on Forge.
 - **Verified:** the core unit tests (what the block names, and only where it is certain, its bounds, Forge's names of a
-  mixin, the record's class), CI's script tests and the mixin inventory; the server part of CI's runs on local dedicated
-  servers of Forge 1.20.1, 1.21.1, 1.21.11 and 26.3 and NeoForge 1.21.1 and 26.1.2, the three launches of the
-  impossible-mixin test mod and the block's checks passing on each; a Forge 1.21.11 client the impossible mixin stops as
-  it starts has the block in its log and its crash report.
+  mixin, the record's class, Fabricated's release on the Loader line), CI's script tests and the mixin inventory; the
+  server part of CI's runs on local dedicated servers of NeoForge 1.21.1 and 26.1.2 and Forge 1.20.1, 1.21.11 and 26.3,
+  the four launches of the impossible-mixin test mod and the block's checks passing on each (on Forge 1.21.1, the first
+  three launches); a Forge 1.21.11 client the impossible mixin stops as it starts has the block in its log and its crash
+  report.
 
 ## 2026-11-17: CI runs every branch once a week
 
