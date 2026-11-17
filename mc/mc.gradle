@@ -432,7 +432,7 @@ def brokenMods = [
         'missing' : [],
         'badmixin': ['io/github/cmdralph/fabricated/testmod/broken/mixin/ImpossibleMixin.class',
                      'io/github/cmdralph/fabricated/testmod/broken/mixin/UnmatchedCallMixin.class',
-                     'io/github/cmdralph/fabricated/testmod/broken/mixin/DedicatedServerMixin.class'],
+                     'io/github/cmdralph/fabricated/testmod/broken/mixin/DedicatedServerSettingsMixin.class'],
         'shade'   : ['com/google/gson/internal/FabricatedShadedCopy.class'],
         'badplugin': ['io/github/cmdralph/fabricated/testmod/broken/plugin/FailingPlugin.class',
                       'io/github/cmdralph/fabricated/testmod/broken/plugin/LeftOutMixin.class'],
