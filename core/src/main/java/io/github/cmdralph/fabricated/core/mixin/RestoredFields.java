@@ -35,7 +35,9 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * field of one of Fabricated's mixins counts when it is neither shadowed nor unique (named for Fabricated alone). So do
  * the methods they add for a field the platform gave another type or replaced ({@link MixinNames#BRIDGE_GETTER}),
  * which a Fabric mod's accessor of the field invokes (CORPUS-37, CORPUS-94), and its own reads of the field call
- * (CORPUS-107), and the seams they add for a method the platform never calls ({@link MixinNames#SEAM_START},
+ * (CORPUS-107), the methods they add for a method the platform gave other parameters ({@link MixinNames#BRIDGE_INVOKER}),
+ * which a Fabric mod's invoker of vanilla's method invokes (LEAVE-5), and the seams they add for a method the platform
+ * never calls ({@link MixinNames#SEAM_START},
  * {@link MixinNames#SEAM_END}), which Fabric mods' hooks into that method are pointed at (HUD-4); pre-flight reads their
  * declarations, not their code. A seam for a read the platform's constructor never makes ({@link MixinNames#SEAM_READ},
  * HUD-7) keeps its code, its mixin's name made the game class's, as Mixin merges it: pre-flight finds the read and the
@@ -218,8 +220,8 @@ public final class RestoredFields {
 			List<AddedMethod> methods = new ArrayList<>();
 			for (MethodNode method : node.methods) {
 				boolean bridge = method.name.startsWith(MixinNames.BRIDGE_GETTER) || method.name.startsWith(MixinNames.BRIDGE_SETTER)
-						|| method.name.startsWith(MixinNames.SEAM_START) || method.name.startsWith(MixinNames.SEAM_END)
-						|| method.name.startsWith(MixinNames.SEAM_READ);
+						|| method.name.startsWith(MixinNames.BRIDGE_INVOKER) || method.name.startsWith(MixinNames.SEAM_START)
+						|| method.name.startsWith(MixinNames.SEAM_END) || method.name.startsWith(MixinNames.SEAM_READ);
 				if (bridge && (method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC)) == 0 && (method.access & Opcodes.ACC_PUBLIC) != 0
 						&& Annotations.find(method, SHADOW) == null) {
 					methods.add(new AddedMethod(method.access, method.name, method.desc, method.signature, node.name, priority,
