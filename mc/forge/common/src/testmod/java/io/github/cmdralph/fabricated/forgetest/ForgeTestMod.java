@@ -28,8 +28,9 @@ import net.minecraftforge.event.AttachCapabilitiesEvent;
  * ({@link ForgeDamageTest}) events, the resource conditions module's load conditions in data files and registry entries
  * ({@link ForgeConditionsTest}), a Fabric mod's stable registry entries ({@link ForgePackTest}), ingredients on the
  * network ({@link ForgeIngredientCodecTest}), the registry sync module's aliases ({@link ForgeRegistryAliasTest}) and
- * entry added events ({@link ForgeRegistryEntryAddedTest}), and on a client the colour providers
- * ({@link ForgeColorTest}) and the key mapping ({@link ForgeKeyMappingTest}).
+ * entry added events ({@link ForgeRegistryEntryAddedTest}), a Fabric mod's accessor of a mob bucket's entity type
+ * ({@link ForgeMobBucketTest}), and on a client the colour providers ({@link ForgeColorTest}) and the key mapping
+ * ({@link ForgeKeyMappingTest}).
  */
 public final class ForgeTestMod implements ModInitializer {
 	/** The namespace of the content and data of Forge's half. */
@@ -73,6 +74,7 @@ public final class ForgeTestMod implements ModInitializer {
 		run("block break check", "fabric-events-interaction-v0", () -> ForgeBlockBreakTest.check(level));
 		run("sleep check", "fabric-entity-events-v1", () -> ForgeSleepTest.check(level));
 		run("damage check", "fabric-entity-events-v1", () -> ForgeDamageTest.check(level));
+		run("mob bucket accessor check", null, ForgeMobBucketTest::check);
 		if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) {
 			run("colour provider check", "fabric-rendering-v1", ForgeColorTest::check);
 			run("key mapping check", null, ForgeKeyMappingTest::check);
