@@ -273,7 +273,12 @@ class KnownLimitsTest {
 			String limit = KnownLimits.ofFinding("Forge", reported(line));
 			assertTrue(limit != null && limit.endsWith("(LAMBDA-14)") && limit.contains("Forge 52"), line + " -> " + limit);
 			assertNull(KnownLimits.ofFinding("NeoForge", reported(line)), "NeoForge hands the screen its mouse input in the lambdas");
+			// Another mod's line is none: the limit names owo-lib's and Architectury's hooks.
+			assertNull(KnownLimits.ofFinding("Forge", reported(otherMod(line))), line);
 		}
+		// Nor an @Inject at the call, which the limit's text doesn't say: only wrappers and redirects take the screen's answer.
+		assertNull(KnownLimits.ofFinding("Forge", reported("owo: LEFT_OUT [owo.mixins.json io.wispforest.owo.mixin.ui.layers.MouseMixin] @Inject in lambda$onPress$0"
+				+ " expects @At(\"INVOKE\", target=\"Lnet/minecraft/client/gui/screens/Screen;mouseClicked(DDI)Z\"), which does not occur in that method - " + forgeChanged)));
 		// owo-lib's hook keeping the modifiers, left out with another of its injectors, or another mod's, is none.
 		assertNull(KnownLimits.ofFinding("Forge", reported("owo: LEFT_OUT [owo.mixins.json io.wispforest.owo.mixin.ui.layers.MouseMixin] The injector of"
 				+ " captureMods(JIIILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V goes with that of captureScreenMouseDrag(DD)V,"
@@ -302,6 +307,7 @@ class KnownLimitsTest {
 							+ declared)) {
 				String limit = KnownLimits.ofFinding(loader, reported(line));
 				assertTrue(limit != null && limit.endsWith("(CORPUS-57)"), line + " -> " + limit);
+				assertNull(KnownLimits.ofFinding(loader, reported(otherMod(line))), line);
 			}
 		}
 		// A hook of setKey elsewhere, or a modifier of another listener, is none.
@@ -310,6 +316,15 @@ class KnownLimitsTest {
 		assertNull(KnownLimits.ofFinding("NeoForge", finding(Severity.LEFT_OUT, "@ModifyVariable wrap modifies argument 0 among those of type"
 				+ " net.minecraft.client.gui.components.events.GuiEventListener of lambda$charTyped$6(Lnet/minecraft/client/gui/components/events/GuiEventListener;II)V"
 				+ " in net.minecraft.client.KeyboardHandler, which that method doesn't have")));
+		// Nor another mod's modifier in any Forge 47 method taking a screen first.
+		assertNull(KnownLimits.ofFinding("Forge", finding(Severity.LEFT_OUT, "@ModifyVariable wrap modifies argument 0 among those of type"
+				+ " net.minecraft.client.gui.components.events.GuiEventListener of m_90889_(Lnet/minecraft/client/gui/screens/Screen;II)V"
+				+ " in net.minecraft.client.KeyboardHandler, which that method doesn't have")));
+	}
+
+	/** A report's line with its mod, config and mixin another mod's. */
+	private static String otherMod(String line) {
+		return line.replaceFirst("^\\S+: (\\w+) \\[\\S+ \\S+\\]", "other: $1 [other.mixins.json com.example.mixin.OtherMixin]");
 	}
 
 	/**
@@ -331,6 +346,10 @@ class KnownLimitsTest {
 			String limit = KnownLimits.ofFinding(line[0], finding);
 			assertTrue(limit != null && limit.endsWith("(" + line[1] + ")"), line[2] + " -> " + limit);
 			assertNull(KnownLimits.ofFinding(line[0].equals("Forge") ? "NeoForge" : "Forge", finding), line[2]);
+			// The player health limit names Apoli's, GlitchCore's and Puzzles Lib's hooks: another mod's line is none.
+			if (line[2].contains("PlayerHealth expects")) assertNull(KnownLimits.ofFinding(line[0], reported(otherMod(line[2]))), line[2]);
+			// The tooltip limit says wrappers and redirects: an @Inject at the call is none.
+			if (line[1].equals("SCREEN-3")) assertNull(KnownLimits.ofFinding(line[0], reported(line[2].replace("] @Redirect in ", "] @Inject in "))), line[2]);
 		}
 		// Another mod's hook keeping state with one of those, or another hook in vanilla's Gui, is none.
 		assertNull(KnownLimits.ofFinding("NeoForge", reported("other: LEFT_OUT [other.mixins.json com.example.mixin.GuiMixin] The injector of onRender(Lnet/minecraft/"
@@ -339,6 +358,23 @@ class KnownLimitsTest {
 				+ " they keep state together in this mixin's field state")));
 		assertNull(KnownLimits.ofFinding("NeoForge", finding(Severity.LEFT_OUT, "@Inject in renderCrosshair expects @At(\"INVOKE\", target=\"Lnet/minecraft/"
 				+ "client/gui/GuiGraphics;blitSprite(Lnet/minecraft/resources/ResourceLocation;IIII)V\"), which does not occur in that method")));
+	}
+
+	/**
+	 * SCREEN-3: FancyMenu's condition on vanilla's drawing of the version string in the title screen, which NeoForge 21.1
+	 * draws as its branding lines (the release's line); another version's call, another platform or another mod is none.
+	 */
+	@Test
+	void fancyMenusTitleScreenVersionTextHookIsNamedOnNeoForge21() {
+		String line = "fancymenu: LEFT_OUT [fancymenu.fabric.mixins.json de.keksuccino.fancymenu.mixin.mixins.fabric.client.MixinFabricTitleScreen]"
+				+ " @WrapWithCondition in render expects @At(\"INVOKE\", target=\"Lnet/minecraft/client/gui/GuiGraphics;drawString(Lnet/minecraft/client/gui/Font;"
+				+ "Ljava/lang/String;III)I\"), which does not occur in that method - NeoForge or this Minecraft version changed the method body; the mod needs an"
+				+ " update or this mixin must be skipped.";
+		String limit = KnownLimits.ofFinding("NeoForge", reported(line));
+		assertTrue(limit != null && limit.endsWith("(SCREEN-3)") && limit.contains("BrandingControl"), limit);
+		assertNull(KnownLimits.ofFinding("Forge", reported(line)));
+		assertNull(KnownLimits.ofFinding("NeoForge", reported(otherMod(line))));
+		assertNull(KnownLimits.ofFinding("NeoForge", reported(line.replace("III)I", "III)V"))), "1.21.11's call isn't the one judged");
 	}
 
 	@Test
