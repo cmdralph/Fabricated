@@ -61,7 +61,7 @@ def servingGroups = { String folder -> rootProject.file(folder).listFiles().find
 // changed the APIs that code uses), and 26.2 and 26.3 (common26late). Forge's are named alike. An entry with a slash is
 // a path from the repository root, for a folder two platforms share, with its groups that serve the version:
 // mc/forge-shared holds the code every Forge version compiles as it is, Forge 47's and 52's in its group 1.20.1-1.21.1,
-// Forge 52's and 61 to 66's in 1.21.1+.
+// Forge 52's and 61 to 66's in 1.21.1+, and those Forge 43 (1.19.2) shares in the groups that start at 1.19.2.
 def platform = projectDir.parentFile.name
 if (!(platform in ['neoforge', 'forge', 'forge-legacy'])) {
     throw new GradleException("${projectDir} is not in a platform's folder: mc/neoforge, mc/forge or mc/forge-legacy")
@@ -104,8 +104,8 @@ def testJava = { String sourceSet -> renamedJava(sourceSet, testSources.collect 
 // folder's src/main, which is both's. NeoForge's: those of FML 10 and later, on FML's own jar contents and class
 // processors (loader/neoforge/src/fml, the default), and those of NeoForge 21.1's FML 4, which runs on ModLauncher
 // (src/modlauncher). Forge's: those of Forge 52 and 61 to 66, on securemodules, Mixin 0.8.7 and Mojang's names
-// (loader/forge-shared/src/modern, the default), and those of Forge 47, on securejarhandler, Mixin 0.8.5 and SRG's
-// names (src/fml47).
+// (loader/forge-shared/src/modern, the default), and those of Forge 43 and 47, on securejarhandler, Mixin 0.8.5 and
+// SRG's names (src/fml47).
 def loaderDir = platform == 'neoforge' ? 'loader/neoforge' : 'loader/forge-shared'
 def loaderVariant = project.findProperty('loader_variant') ?: (platform == 'neoforge' ? 'fml' : 'modern')
 
@@ -122,8 +122,10 @@ sourceSets {
         java.srcDirs = ['src/main/java', 'src/fabricapi/java']
         java.srcDir sharedJava('main')
         // The in-game mod's sources every platform shares, in mc/shared: Mod Menu's API, whose screens each platform's
-        // mod list shows, and the /fabricated command, which each platform registers.
-        java.srcDir renamedJava('everyPlatformMain', [rootProject.file('mc/shared/src/main/java')])
+        // mod list shows, and the /fabricated command, which each platform registers; with the parts of them a version's
+        // game takes otherwise in the groups that serve it (the command's feedback: mc/shared/<group>/src/main).
+        java.srcDir renamedJava('everyPlatformMain', [rootProject.file('mc/shared/src/main/java')] +
+                servingGroups('mc/shared').collect { rootProject.file("$it/src/main/java") })
         resources.srcDirs = ['src/main/resources'] + sharedSources.collect { rootProject.file("$it/src/main/resources") }
     }
     testmod {
@@ -140,9 +142,11 @@ sourceSets {
         java.srcDir renamedJava('testmodbroken', [rootProject.file('mc/shared/src/testmodbroken/java')])
     }
     // stand-ins for other mods' plugin interfaces, which the test mod compiles against (never packaged), with the Mod Menu
-    // API the in-game mod provides (not the in-game mod's own classes there),
+    // API the in-game mod provides (not the in-game mod's own classes there) and the platform's own stand-ins its versions
+    // share (in their shared sources),
     testmodstubs {
-        java.srcDir renamedJava('testmodstubs', [rootProject.file('mc/shared/src/testmodstubs/java'), rootProject.file('mc/shared/src/main/java')])
+        java.srcDir renamedJava('testmodstubs', [rootProject.file('mc/shared/src/testmodstubs/java'), rootProject.file('mc/shared/src/main/java')] +
+                sharedSources.collect { rootProject.file("$it/src/testmodstubs/java") })
         java.exclude 'io/github/cmdralph/fabricated/**'
     }
     // and stand-ins for the APIs of Fabric libraries Fabricated bridges when a mod brings them (Team Reborn's energy
@@ -513,12 +517,17 @@ testSources.each {
 // (remapFabricApi). fabricApi(modules) gives those modules' jars so, and fabricApi() all of them, to a version's own
 // build script too.
 def fabricApiPlan = new groovy.json.JsonSlurper().parse(file('src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json'))
-def fabricApiRelease = configurations.detachedConfiguration(dependencies.create("net.fabricmc.fabric-api:fabric-api:${fabricApiPlan.fabricApiVersion}"))
+// The release, and its deprecated modules where its POM leaves them out (Fabric API 0.77, 1.19.2's, publishes them in a
+// POM of their own, fabric-api-deprecated, which later releases' POMs list): the test mods compile against them too.
+def fabricApiArtifacts = ['fabric-api'] + (project.findProperty('fabric_api_deprecated_pom') == 'separate' ? ['fabric-api-deprecated'] : [])
+def fabricApiRelease = configurations.detachedConfiguration(*fabricApiArtifacts.collect {
+    dependencies.create("net.fabricmc.fabric-api:${it}:${fabricApiPlan.fabricApiVersion}")
+})
 // The modules' own jars (every module's for null), not the release's jar, which nests them.
 def publishedModules = { Collection<String> modules ->
     fabricApiRelease.incoming.artifactView {
         componentFilter {
-            it instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier && it.module != 'fabric-api' && (modules == null || it.module in modules)
+            it instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier && !(it.module in fabricApiArtifacts) && (modules == null || it.module in modules)
         }
     }.artifacts
 }
