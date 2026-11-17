@@ -10,7 +10,7 @@ import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
 
 /**
  * Fabricated's native fabric-loot-api-v3 on Forge 52 and 61 to 66, when another mod provides the module (the stand-ins'
- * run, ci/forge/standins.py and ci/forge-legacy/standins.py): Fabricated's hooks into Forge's loot table loading stand
+ * run, ci/forge/standins.py): Fabricated's hooks into Forge's loot table loading stand
  * down with its copy of the module, so none of the loading events may come from them. The stand-in has no hooks of its
  * own.
  */
