@@ -1,0 +1,96 @@
+name: Bug report
+description: A crash, a Fabric mod that doesn't load or work, or something that behaves differently than on Fabric
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Fabricated writes `logs/fabric-bridge-report.txt` on every launch: it says what loaded and why anything didn't, and is the first thing we read. Please fill in every required field; a report without the versions, the mod list and a log usually can't be reproduced.
+  - type: dropdown
+    id: loader
+    attributes:
+      label: Loader
+      options:
+        - NeoForge
+        - Forge
+    validations:
+      required: true
+  - type: input
+    id: loader-version
+    attributes:
+      label: Loader version
+      description: The NeoForge or Forge version, as the launcher or the first lines of `logs/latest.log` show it.
+      placeholder: "NeoForge 21.1.265, Forge 47.4.28, ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: minecraft
+    attributes:
+      label: Minecraft version
+      options:
+        - "1.20.1"
+        - "1.21.1"
+        - "1.21.11"
+        - "26.1.2"
+        - "26.2"
+        - "26.3"
+        - Another version (say which below)
+    validations:
+      required: true
+  - type: input
+    id: fabricated-version
+    attributes:
+      label: Fabricated version
+      description: From the jar's name, `fabricated-<loader>-<version>+mc<minecraft>.jar`, or `/fabricated` in game.
+      placeholder: "0.6.0-beta.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: side
+    attributes:
+      label: Where it happens
+      options:
+        - Client (singleplayer)
+        - Client (joining a server)
+        - Dedicated server
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what you expected
+      description: The steps that lead to it, if you know them. Say which Fabric mod is involved if you can tell.
+    validations:
+      required: true
+  - type: textarea
+    id: mods
+    attributes:
+      label: Mod list
+      description: Every jar in the `mods` folder, Fabric and NeoForge or Forge alike, with versions (the file names are enough). Say whether it still happens with only Fabricated, Fabric API and the one mod.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: logs/fabric-bridge-report.txt
+      description: Attach the file (drag it in) or paste it. It lists your mods and file paths, which can include your user name: edit that out if you prefer.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: logs/latest.log or the crash report
+      description: Attach `logs/latest.log` (or `logs/debug.log`), and the file from `crash-reports` if the game crashed. Please attach files rather than screenshots.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send
+      options:
+        - label: I searched the open issues and `docs/COMPATIBILITY.md` for this mod or problem.
+          required: true
+        - label: Sinytra Connector is not installed, and there is only one Fabricated jar in `mods`.
+          required: true

@@ -10,7 +10,7 @@ import io.github.cmdralph.fabricated.testmod.TestMod;
 import net.fabricmc.fabric.api.registry.FuelRegistry;
 
 /**
- * The forge-legacy test mods' part for fabric-content-registries-v0's fuel registry (FUEL-1, FUEL-2; with Fabric API's
+ * The Forge 47 and 52 test mods' part for fabric-content-registries-v0's fuel registry (FUEL-1, FUEL-2; with Fabric API's
  * jar only): the test item, registered as a fuel through {@code FuelRegistry}, must be in vanilla's fuel table
  * ({@code getFuel}, which Fabricated's in-game mod adds Fabric's fuels to, as upstream's hook, left out on Forge 47 and
  * 52, did) and a fuel to the furnace ({@code isFuel}), which Forge answers from its own burn times, read from that

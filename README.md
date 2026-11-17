@@ -31,8 +31,8 @@ says what works on each loader and Minecraft version, and
 | Branch | Platform | Minecraft | Jars |
 |---|---|---|---|
 | [`main`](https://github.com/cmdralph/Fabricated/tree/main) | NeoForge | 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-neoforge-<version>+mc<minecraft>.jar` |
-| [`forge`](https://github.com/cmdralph/Fabricated/tree/forge) | Minecraft Forge 61 to 66 | 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-forge-<version>+mc<minecraft>.jar` |
-| [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) | Forge 47 and Forge 52 | 1.20.1, 1.21.1 | `fabricated-forge-<version>+mc<minecraft>.jar` |
+| [`forge`](https://github.com/cmdralph/Fabricated/tree/forge) | Minecraft Forge 52 and 61 to 66 | 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-forge-<version>+mc<minecraft>.jar` |
+| [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) | Minecraft Forge 47 | 1.20.1 | `fabricated-forge-<version>+mc<minecraft>.jar` |
 
 Each platform is on its own branch: `main` holds the shared engine and NeoForge, `forge` and `forge-legacy` the shared
 engine and their own platform, which they get from `main` by merge.

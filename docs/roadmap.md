@@ -28,8 +28,8 @@ of the support matrix that isn't supported says why.
 | Branch | Contains |
 |---|---|
 | `main` | The shared code (`core`, `api`, `fabric-loader-api`, `loader/common`, `mc/shared`, the code both Forge platforms share, the shared CI and the documents) and NeoForge for all its versions |
-| `forge` | Modern Forge platform code: Forge 61 to 66, Minecraft 1.21.11 and later |
-| `forge-legacy` | Legacy Forge platform code: Forge 47 (1.20.1) and Forge 52 (1.21.1) |
+| `forge` | Modern Forge platform code: Forge 52 (Minecraft 1.21.1) and Forge 61 to 66 (1.21.11 and later) |
+| `forge-legacy` | Legacy Forge platform code: Forge 47 (1.20.1), then 1.19.2 |
 
 - Work happens on `claude/dev` (pull requests into `main`), and for Forge-only changes on `claude/dev-forge` and
   `claude/dev-forge-legacy`, cut from `forge` and `forge-legacy` with pull requests back into them.
@@ -42,20 +42,21 @@ of the support matrix that isn't supported says why.
 
 ## What comes next
 
+The branch restructure is done: Forge for Minecraft 1.21.1 (Forge 52) moved from `forge-legacy` to `forge`. `forge`
+holds modern Forge (1.21.1, and 1.21.11 and later) and `forge-legacy` legacy Forge (1.20.1, with 1.19.2 next).
+
 In this order:
 
-1. **v0.6.0-beta.3**, a compatibility release on the branch layout above. What it contains is in its
+1. **v0.6.0-beta.3**, a compatibility release. What it contains is in its
    [release notes](releases/v0.6.0-beta.3.md) and in [`CHANGELOG.md`](CHANGELOG.md).
-2. **The branch restructure.** Forge for Minecraft 1.21.1 (Forge 52) moves from `forge-legacy` to `forge`. Afterwards
-   `forge` holds modern Forge (1.21.1, and 1.21.11 and later) and `forge-legacy` legacy Forge (1.20.1, then 1.19.2).
-3. **Forge for Minecraft 1.19.2 (Forge 43)** on `forge-legacy`, sharing its code with 1.20.1. Its scope is settled
+2. **Forge for Minecraft 1.19.2 (Forge 43)** on `forge-legacy`, sharing its code with 1.20.1. Its scope is settled
    before the work starts.
-4. **A bug-hunting pass, with no new features.** The representative mod set, popular combinations of mods and the
+3. **A bug-hunting pass, with no new features.** The representative mod set, popular combinations of mods and the
    difficult mods run on every loader and Minecraft version. Failures are grouped by root cause and fixed by impact; a
    parity gap between loaders or versions counts as a bug; every fix gets a regression test. The pass ends when the set
    loads and runs everywhere, and every failure that remains is documented and says so in the game, with a clear
    message.
-5. **Finishing touches**, alongside the pass:
+4. **Finishing touches**, alongside the pass:
    - a smoke-boot CI job for every loader and Minecraft version;
    - one readable diagnostics block for a failure: which Fabric mod, which mixin or class, which loader and version;
    - GitHub issue forms;
@@ -75,7 +76,7 @@ that fixes or closes it.
 | MODIFIER-4 | P3, no case seen | `ModTranslator` (MODIFIER-3) | A Fabric jar's Forge structure modifiers stay as they are: Forge has no structure modifier that changes nothing but `forge:none`, one object, which a registry refuses under a second name. On Forge one of them would change the structures as the mod's Fabric code does too (MODIFIER-2's case), and one of a type only its Forge build registers wouldn't decode. No corpus jar carries one. | Open: if one is seen, a structure modifier type that changes nothing and decodes to a new object for each file, registered by the in-game mod on every Forge version. |
 | FRAME-2 | P2, UNVERIFIED on real mods | NeoForge's patched game classes, which NeoForge compiles from its sources; Fabric's Mixin's local computation (`Locals.getLocalsAt`, FRAME-1) | NeoForge's classes have other frames than vanilla's, and Mixin counts their locals otherwise: in NeoForge 26.1.2's server game, 125 methods whose vanilla code Mixin counts right lose a live local at some frame (`LivingEntity.knockback`, `LivingEntity.startUsingItem`, `ServerLevel.sendBlockUpdated`, `Entity.collideWithShapes` among them), and 79 whose vanilla code loses one are counted right (every method with frames, its frames recorded and walked as Mixin does and counted as `getLocalsAt` counts them; 1,093 of vanilla's 14,102 lose one on Fabric too; the client's classes unscanned). A Fabric mod's local capture, `@ModifyVariable` or `@Local` at such a point finds other locals than on Fabric, as Resourceful Lib's did in Forge's patched `renderScreenEffect` (CORPUS-79); no mod seen failing so: Ledger's campfire hook, left out on NeoForge 21.1 and Forge 52, isn't one (LOCAL-6), nor was its explosion fire hook (PRE-36), Mixin finding the same locals there with the frames recorded expanded. Fabric mods accepting Fabric Loader below 0.12 (or any) get Mixin's behaviour 0.9.2 on Fabric, whose local computation counts each frame's own size, and at least 0.16.5 on NeoForge (FML's floor, `MixinCompat.clampForNeoForge`). | Open until a Fabric mod is seen failing so: then record a method's frames again, as Forge's repair does, only where vanilla's method counts right and NeoForge's doesn't at a Fabric injector's point (pre-flight has vanilla's classes, VANILLA-1, and each injector's target), which keeps Fabric's count elsewhere. Running Forge's repair on NeoForge as it is would also change the count where Fabric's Mixin miscounts, and Fabric's Mixin has no `ClassInfo.getMixins()` for it to call. |
 | PRE-27 | P2, no case seen | `MixinPreflight.narrowLocalsAtMost` (PRE-25), `LocalRepairs` (LOCAL-2, LOCAL-4, PRE-25's ordinals) | PRE-25's bound counts the locals Mixin can find from the method's stores, loads and frames, but pre-flight reads game classes without their frames, so the frames' slots, which only widen what Mixin finds, are never counted: the bound can be too low, and a modifier that would apply left out. On SpongePowered's Mixin the ordinal repairs count from the local variable table, where a local Mixin keeps past its scope in a lower slot (PRE-26) would shift the ordinal it means. | Open: count with the frames `PreflightClasses.withFrames` gives (the points' indexes taken in that method), then check Apoli's hook on a Forge 47 server again; count kept locals in the ordinal repairs where `keepsLocalsPastScope` holds. |
-| CI-8 | — (CI only) | Forge 52's test mods (`mc/forge-legacy/1.21.1`, `mc/forge-shared`) | Forge 47's own test mod's brewing recipe and recipe condition checks aren't Forge 52's: they're written in 1.20.1's APIs (`FabricBrewingRecipeRegistry`, `PotionUtils` and a static `PotionBrewing`; Fabric API 0.92's resource conditions in Forge 47's recipe `conditions` list), which 1.21.1 replaced (`FabricBrewingRecipeRegistryBuilder`; Forge 52 reads one `forge:condition`), so whether Forge 52 brews a Fabric mod's potion recipe, and asks a Fabric resource condition named in Forge's field, is unchecked: `ci/checks.tsv` marks both for 1.21.1. The rest of Forge 47's own checks, and Forge 61 to 66's ingredients on the network, load conditions and damage events, run on Forge 52 from `mc/forge-shared` (MODEL-5, NET-13, DROP-1, ACC-5); its registration order and brewing mix checks have nothing of Forge 52's to check, and `recipe-custom-ingredient` and `forge-fapi-network-ingredients` check on Forge 52 what its custom ingredient check checks. | Open |
+| CI-8 | — (CI only) | Forge 52's test mods (`mc/forge/1.21.1`, `mc/forge-shared`) | Forge 47's own test mod's brewing recipe and recipe condition checks aren't Forge 52's: they're written in 1.20.1's APIs (`FabricBrewingRecipeRegistry`, `PotionUtils` and a static `PotionBrewing`; Fabric API 0.92's resource conditions in Forge 47's recipe `conditions` list), which 1.21.1 replaced (`FabricBrewingRecipeRegistryBuilder`; Forge 52 reads one `forge:condition`), so whether Forge 52 brews a Fabric mod's potion recipe, and asks a Fabric resource condition named in Forge's field, is unchecked: `ci/checks.tsv` marks both for 1.21.1. The rest of Forge 47's own checks, and Forge 61 to 66's ingredients on the network, load conditions and damage events, run on Forge 52 from `mc/forge-shared` (MODEL-5, NET-13, DROP-1, ACC-5); its registration order and brewing mix checks have nothing of Forge 52's to check, and `recipe-custom-ingredient` and `forge-fapi-network-ingredients` check on Forge 52 what its custom ingredient check checks. | Open |
 | IRIS-3 | P2, UNVERIFIED in play | Iris 1.8's `fabric.MixinLevelRenderer` (a redirect of `ParticleEngine.render` in `renderLevel`), NeoForge 21.1's `LevelRenderer` | On NeoForge 1.21.1 pre-flight leaves the redirect out, where Forge 52 repairs it: NeoForge's `renderLevel` calls the particle engine's overload taking a frustum. What Iris loses with it (its particle pass's choice of particles drawn with the level) is unchecked. | Open |
 | HANG-1 | P2, intermittent, cause UNVERIFIED | Essential's Fabric build, second launch (`client-essential`), on Forge 66 (26.3) | In extended run 42682670119 the client stopped logging just after it created its window and never reached its entrypoints, with no crash and no game thread in the harness's dump, until the run's timeout; the same job passed on its re-run, as it did in the extended run before. | Open: watch the next extended runs; a second hang there makes it a fault to trace from the run's logs |
 | MIX-3 | P3, no case seen | The Forge branches' mixin configs but `fabricated-loot` (`MIXINS.md`, *Forge configs*) | They leave `overwrites.requireAnnotations` unset, which every NeoForge config sets: a method a Forge mixin adds that its target already declares replaces the target's silently, without an `@Overwrite`, where on NeoForge the launch would stop on it. | Open: set it on each, checking every method the configs' mixins add against their targets on every version first, in its own pull request on each Forge branch (each launch applies them all, so CI shows a collision). |
@@ -240,6 +241,9 @@ end; `main`'s 43311682436 to 43906671666, `forge`'s 43313486666 and 43341842127,
 | `main` pull request, NeoForge's five versions | 6 to 8 min | 23 |
 | `forge` pull request, four versions | 5 min | 19 |
 | `forge-legacy` pull request, 1.20.1 and 1.21.1 | 6 to 9 min | 11 |
+
+The two Forge rows were measured with 1.21.1 on `forge-legacy`; with it on `forge`, neither branch's matrix is measured
+yet.
 
 The fast check on a push (the unit tests and one version booted) took 2.5 minutes and 3 job-minutes in `ci.yml`'s first
 runs; it and the matrix's job-minutes aren't measured since.
