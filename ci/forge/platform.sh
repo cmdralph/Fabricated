@@ -1,5 +1,5 @@
-# Forge 61 to 66's part of CI (the forge branch's ci/forge/platform.sh): its build (ci.yml), and what sets it apart
-# from Forge 47 for the harness; the rest is ci/forge-shared/platform.sh's. Sourced with root, platform, mc (the
+# Forge 52 and 61 to 66's part of CI (the forge branch's ci/forge/platform.sh): its build (ci.yml), and what sets it
+# apart from Forge 47 for the harness; the rest is ci/forge-shared/platform.sh's. Sourced with root, platform, mc (the
 # Minecraft version) and loader (the Forge build, without Minecraft's version) set.
 # shellcheck shell=bash disable=SC2034,SC2154 # the harness reads these, and sets what it is sourced with
 forge_id="$mc-$loader"
@@ -14,3 +14,10 @@ gradle_tasks() {
 
 # shellcheck source=ci/forge-shared/platform.sh
 source "$root/ci/forge-shared/platform.sh"
+
+# Forge 52's stand-ins have the Fabric jars of the mods Fabricated stands in for too (standins.py's replaced-mods), as
+# Forge 47's have: Forge 61 to 66's runs don't check them yet.
+standins() {
+	if [ "$mc" = 1.21.1 ] && [ $# = 2 ]; then set -- "$@" replaced-mods; fi
+	python3 -I "$root/ci/$platform/standins.py" "$@"
+}

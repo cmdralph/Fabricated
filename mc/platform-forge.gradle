@@ -1,6 +1,6 @@
-// Minecraft Forge's part of the build for the versions ForgeGradle 7 builds (mc/mc.gradle applies this): Forge 61 to 66
-// (mc/forge), and Forge 52 (forge-legacy's mc/forge-legacy/1.21.1, whose platform_build names this). ForgeGradle's
-// settings, the in-game mod's mods.toml, and how a source set gets the game to compile against.
+// Minecraft Forge's part of the build (mc/mc.gradle applies this), for the versions of mc/forge, which ForgeGradle 7
+// builds: Forge 52 and 61 to 66. ForgeGradle's settings, the in-game mod's mods.toml, and how a source set gets the game
+// to compile against.
 
 def forgeArtifact = "net.minecraftforge:forge:${project.minecraft_version}-${project.forge_version}"
 
