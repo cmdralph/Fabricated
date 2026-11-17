@@ -48,6 +48,11 @@ public final class TestCompat {
 		return new ResourceLocation(namespace, path);
 	}
 
+	/** The id of a mod's built-in pack the resource loader registers under the id: the id itself. */
+	static String builtinPackId(String namespace, String path) {
+		return namespace + ":" + path;
+	}
+
 	static <T> T value(Registry<T> registry, ResourceLocation id) {
 		return registry.get(id);
 	}

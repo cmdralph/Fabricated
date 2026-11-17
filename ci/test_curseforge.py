@@ -18,6 +18,7 @@ TOKEN = "0f9e8d7c-aaaa-bbbb-cccc-0123456789ab"
 
 TYPES = [
     {"id": 1, "name": "Bukkit", "slug": "bukkit"},
+    {"id": 73407, "name": "Minecraft 1.19", "slug": "minecraft-1-19"},
     {"id": 75124, "name": "Minecraft 1.20", "slug": "minecraft-1-20"},
     {"id": 77784, "name": "Minecraft 1.21", "slug": "minecraft-1-21"},
     {"id": 80001, "name": "Minecraft 26.1", "slug": "minecraft-26-1"},
@@ -28,6 +29,7 @@ TYPES = [
     {"id": 75208, "name": "Environment", "slug": "environment"},
 ]
 VERSIONS = [
+    {"id": 9366, "gameVersionTypeID": 73407, "name": "1.19.2", "slug": "1-19-2"},
     {"id": 9990, "gameVersionTypeID": 75124, "name": "1.20.1", "slug": "1-20-1"},
     {"id": 11779, "gameVersionTypeID": 77784, "name": "1.21.1", "slug": "1-21-1"},
     {"id": 11780, "gameVersionTypeID": 77784, "name": "1.21-Snapshot", "slug": "1-21-snapshot"},
@@ -84,6 +86,7 @@ class Pure(unittest.TestCase):
         self.assertEqual(curseforge.parse_jar("fabricated-forge-0.6.0-beta.2+mc1.20.1.jar"),
                          ("forge", "0.6.0-beta.2", "1.20.1"))
         self.assertEqual(curseforge.parse_jar("fabricated-forge-1.0.0+mc1.21.11.jar"), ("forge", "1.0.0", "1.21.11"))
+        self.assertEqual(curseforge.parse_jar("fabricated-forge-0.6.0-beta.3+mc1.19.2.jar"), ("forge", "0.6.0-beta.3", "1.19.2"))
         for name in ("fabricated-0.6.0+mc26.3.jar", "fabricated-forge-0.6.0+mc26.3.jar.sha1",
                      "fabricated-fabric-0.6.0+mc26.3.jar", "fabricated-neoforge-0.6+mc26.3.jar",
                      "fabricated-neoforge-0.6.0+26.3.jar", 'fabricated-neoforge-0.6.0-"x+mc26.3.jar'):
@@ -91,7 +94,7 @@ class Pure(unittest.TestCase):
                 curseforge.parse_jar(name)
 
     def test_java(self):
-        for minecraft, java in (("1.20.1", 17), ("1.20.6", 21), ("1.21.1", 21), ("1.21.11", 21), ("26.1.2", 25),
+        for minecraft, java in (("1.19.2", 17), ("1.20.1", 17), ("1.20.6", 21), ("1.21.1", 21), ("1.21.11", 21), ("26.1.2", 25),
                                 ("26.3", 25)):
             with self.subTest(minecraft):
                 self.assertEqual(curseforge.java_version(minecraft), java)
@@ -119,6 +122,7 @@ class Pure(unittest.TestCase):
         self.assertEqual(ids("neoforge", "1.21.1"),
                          [(11779, None), (10150, None), (11135, None), (9638, None), (9639, None)])
         self.assertEqual([i for i, _ in ids("forge", "1.20.1")], [9990, 7498, 8326, 9638, 9639])
+        self.assertEqual([i for i, _ in ids("forge", "1.19.2")], [9366, 7498, 8326, 9638, 9639])
         self.assertEqual([i for i, _ in ids("neoforge", "26.3")], [13003, 10150, 13500, 9638, 9639])
         self.assertEqual(ids("forge", "26.1.2")[0], (13001, None))
         game_id, why = ids("forge", "26.2")[0]
