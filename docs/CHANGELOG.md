@@ -20,8 +20,8 @@ What changed, and how it was verified, newest first. What is open and what comes
   code there doesn't answer as vanilla's does for every block or fluid keeping their defaults. The report now names
   each a known limit, saying what doesn't work.
 - Verified: core's tests; the test mod's new `vanilla-shovel` check (a FrozenLib-style behaviour, a path, a doused
-  campfire and a block overriding the platform's extension) on NeoForge 1.21.1 and 26.1.2 and Forge 52; NeoForge 1.21.1's
-  server and client parts and Forge 47's server part; on the advanced corpus servers FrozenLib's shovel hooks apply (its left-out rows from 5 to 1 on NeoForge
+  campfire and a block overriding the platform's extension) on NeoForge 1.21.1 and 26.1.2 and Forge 43, 47 and 52;
+  NeoForge 1.21.1's server and client parts and Forge 47's server part; on the advanced corpus servers FrozenLib's shovel hooks apply (its left-out rows from 5 to 1 on NeoForge
   1.21.1, 9 to 5 on NeoForge 26.1.2, 4 to 0 on Forge 52 and 6 to 2 on Forge 47), each run passing, and the hooks left
   out for SEAM-12, SEAM-14 and SEAM-9 carry their known limits.
 
