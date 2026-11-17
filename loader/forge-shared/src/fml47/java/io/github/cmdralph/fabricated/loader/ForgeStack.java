@@ -19,15 +19,16 @@ import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
 
 /**
- * What Forge 47 does below the game where Forge 52 and 61 to 66 do otherwise ({@code loader/forge-shared/src/modern}):
- * its securejarhandler 2.1.10, SpongePowered's Mixin 0.8.5, and the game in Mojang's class names and SRG's member
- * names, as its installer leaves it, its install profile naming the files (Forge's 1.20.1 {@code build.gradle}; which
- * launchers keep them is UNVERIFIED, docs/PORTING.md §3.1): in {@code <libraries>/net/minecraft/<side>/<mc>-<mcp>/},
- * {@code <side>-<mc>-<mcp>-mappings.txt} is Mojang's mappings (ProGuard) and {@code -srg.jar} vanilla's classes in the
- * names Forge runs them with; in {@code <libraries>/de/oceanlabs/mcp/mcp_config/<mc>-<mcp>/},
- * {@code mcp_config-<mc>-<mcp>-mappings.txt} is MCPConfig's obfuscated → SRG mappings (TSRG v2). The {@code minecraft}
- * mod file is that {@code -srg.jar}, in a union with the installer's {@code -extra.jar} beside it, which holds vanilla's
- * resources (assets and data) and no class (the logs of forge-legacy's server smoke on #125).
+ * What Forge 47 and 43 do below the game where Forge 52 and 61 to 66 do otherwise
+ * ({@code loader/forge-shared/src/modern}): their securejarhandler (2.1.10, Forge 43's 2.1.4), SpongePowered's Mixin
+ * 0.8.5, and the game in Mojang's class names and SRG's member names, as their installer leaves it, its install profile
+ * naming the files (Forge's 1.20.1 {@code build.gradle}; which launchers keep them is UNVERIFIED, docs/PORTING.md
+ * §3.1): in {@code <libraries>/net/minecraft/<side>/<mc>-<mcp>/}, {@code <side>-<mc>-<mcp>-mappings.txt} is Mojang's
+ * mappings (ProGuard) and {@code -srg.jar} vanilla's classes in the names Forge runs them with; in
+ * {@code <libraries>/de/oceanlabs/mcp/mcp_config/<mc>-<mcp>/}, {@code mcp_config-<mc>-<mcp>-mappings.txt} is
+ * MCPConfig's obfuscated → SRG mappings (TSRG v2). The {@code minecraft} mod file is that {@code -srg.jar}, in a union
+ * with the installer's {@code -extra.jar} beside it, which holds vanilla's resources (assets and data) and no class
+ * (the logs of forge-legacy's server smoke on #125).
  */
 final class ForgeStack {
 	/**
@@ -42,9 +43,9 @@ final class ForgeStack {
 	private ForgeStack() {
 	}
 
-	/** Forge 47's ({@link ForgeDescriptor}), for its one Minecraft version. */
+	/** Forge 47's or Forge 43's ({@link ForgeDescriptor}), for its Minecraft version. */
 	static PlatformDescriptor descriptor(String minecraftVersion) {
-		return ForgeDescriptor.INSTANCE;
+		return ForgeDescriptor.of(minecraftVersion);
 	}
 
 	/**
@@ -83,7 +84,7 @@ final class ForgeStack {
 		return List.of(locateSrgMappings(minecraftVersion, gameFile), mojang);
 	}
 
-	/** Intermediary composed with MCPConfig's and Mojang's mappings into Forge 47's names ({@link MappingComposer#composeSrg}). */
+	/** Intermediary composed with MCPConfig's and Mojang's mappings into Forge's names ({@link MappingComposer#composeSrg}). */
 	static MappingTable compose(Reader intermediary, List<Path> files) throws MappingException, IOException {
 		try (Reader srg = Files.newBufferedReader(files.get(0), StandardCharsets.UTF_8);
 				Reader mojang = Files.newBufferedReader(files.get(1), StandardCharsets.UTF_8)) {

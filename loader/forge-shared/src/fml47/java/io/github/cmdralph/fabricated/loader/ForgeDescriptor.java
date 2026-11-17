@@ -14,19 +14,18 @@ import io.github.cmdralph.fabricated.core.translate.ModsTomlWriter;
 import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
 
 /**
- * Forge 47's descriptor: Forge's ({@link PlatformDescriptor.Forge}, its dialect, packages and loot modifiers among the
- * rest), with Forge Config API Port among its replaced mods (CORPUS-81), Forge 47's coremods and private fields, and a
- * {@code pack.mcmeta} in Minecraft 1.20.1's format. It extends Forge's, so it answers as Forge's does for everything it
- * doesn't change, the methods added to the descriptor later among them (PLAT-6, CORPUS-98). Forge 47 builds each mod's
- * pack with vanilla's {@code Pack.readMetaAndCreate} (its {@code ServerLifecycleHooks}), which gives no pack for metadata
- * without a {@code pack_format}, the field 1.20.1 requires where Forge 61 to 66's versions read {@code min_format} and
- * {@code max_format}.
+ * Forge 47's and Forge 43's descriptor: Forge's ({@link PlatformDescriptor.Forge}, its dialect, packages and loot
+ * modifiers among the rest), with Forge Config API Port among its replaced mods (CORPUS-81), the version's coremods and
+ * private fields, and a {@code pack.mcmeta} in its Minecraft version's formats. It extends Forge's, so it answers as
+ * Forge's does for everything it doesn't change, the methods added to the descriptor later among them (PLAT-6,
+ * CORPUS-98). Forge 43 and 47 build each mod's pack with vanilla's {@code Pack.readMetaAndCreate} (their
+ * {@code ServerLifecycleHooks}), which gives no pack for metadata without a {@code pack_format}, the field 1.19.2 and
+ * 1.20.1 require where Forge 61 to 66's versions read {@code min_format} and {@code max_format}. Minecraft 1.19.2's
+ * resource packs have a format of their own, which Forge 43 reads from {@code forge:resource_pack_format}
+ * ({@code ForgeHooks.readTypedPackFormats}).
  */
 final class ForgeDescriptor extends PlatformDescriptor.Forge {
-	/** Minecraft 1.20.1's resource and data pack format. */
-	static final int PACK_FORMAT = 15;
 	private static final Map<String, String> REPLACED_MODS = withConfigPort(FORGE.replacedMods());
-	static final PlatformDescriptor INSTANCE = new ForgeDescriptor();
 	private static final Map<String, String> PRIVATE_FIELDS = Map.of(
 			"net/minecraft/world/level/biome/Biome f_47437_", "getModifiedClimateSettings",
 			"net/minecraft/world/level/biome/Biome f_47443_", "getModifiedSpecialEffects",
@@ -71,21 +70,40 @@ final class ForgeDescriptor extends PlatformDescriptor.Forge {
 	private static final String FINALIZE_SPAWN = "(Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/world/DifficultyInstance;"
 			+ "Lnet/minecraft/world/entity/MobSpawnType;Lnet/minecraft/world/entity/SpawnGroupData;Lnet/minecraft/nbt/CompoundTag;)"
 			+ "Lnet/minecraft/world/entity/SpawnGroupData;";
-	private static final PlatformCoremods COREMODS = coremods();
+	/** Forge 47's, for Minecraft 1.20.1: its data and resource packs have one format. */
+	static final ForgeDescriptor FORGE_47 = new ForgeDescriptor("1.20.1", 15, 15, coremods(true));
+	/** Forge 43's, for Minecraft 1.19.2: its coremods redirect no call of {@code finalizeSpawn} yet. */
+	static final ForgeDescriptor FORGE_43 = new ForgeDescriptor("1.19.2", 10, 9, coremods(false));
 
-	private ForgeDescriptor() {
+	private final String minecraftVersion;
+	private final int dataPackFormat;
+	private final int resourcePackFormat;
+	private final PlatformCoremods coremods;
+
+	private ForgeDescriptor(String minecraftVersion, int dataPackFormat, int resourcePackFormat, PlatformCoremods coremods) {
+		this.minecraftVersion = minecraftVersion;
+		this.dataPackFormat = dataPackFormat;
+		this.resourcePackFormat = resourcePackFormat;
+		this.coremods = coremods;
+	}
+
+	/** The descriptor of the Forge build for the Minecraft version, Forge 47's for any but 1.19.2. */
+	static ForgeDescriptor of(String minecraftVersion) {
+		return FORGE_43.minecraftVersion.equals(minecraftVersion) ? FORGE_43 : FORGE_47;
 	}
 
 	/**
-	 * Forge 47's coremods that change game classes, read in Forge 47.4's sources ({@code META-INF/coremods.json}): its
-	 * {@code method_redirector.js}, which replaces every {@code INVOKEVIRTUAL} of {@code m_6518_} ({@code finalizeSpawn})
-	 * with that descriptor, whatever its owner, in {@link #SPAWN_TARGETS}, with a call of
-	 * {@code ForgeEventFactory.onFinalizeSpawn} taking the mob first; and its {@code field_to_method.js}, whose
-	 * {@code redirectFieldToMethod} reads {@link #PRIVATE_FIELDS} through their getters, as NeoForge's does. Its
-	 * {@code field_to_instanceof.js} has no targets on 1.20.1 and {@code add_bouncer_method.js} targets a class 1.20.1
-	 * doesn't have. Pre-flight reads the game's classes as they leave them (CORPUS-61).
+	 * The coremods that change game classes, read in Forge 47.4's and 43.5's sources ({@code META-INF/coremods.json}):
+	 * Forge 47's {@code method_redirector.js}, which replaces every {@code INVOKEVIRTUAL} of {@code m_6518_}
+	 * ({@code finalizeSpawn}) with that descriptor, whatever its owner, in {@link #SPAWN_TARGETS}, with a call of
+	 * {@code ForgeEventFactory.onFinalizeSpawn} taking the mob first (Forge 43 has no such coremod); and both's
+	 * {@code field_to_method.js}, the same on both, whose {@code redirectFieldToMethod} reads {@link #PRIVATE_FIELDS}
+	 * through their getters, as NeoForge's does. Their {@code field_to_instanceof.js} has no targets and
+	 * {@code add_bouncer_method.js} targets a class neither game has. Pre-flight reads the game's classes as they leave
+	 * them (CORPUS-61).
 	 */
-	private static PlatformCoremods coremods() {
+	private static PlatformCoremods coremods(boolean finalizeSpawnRedirects) {
+		if (!finalizeSpawnRedirects) return PlatformCoremods.of(Map.of(), PRIVATE_FIELDS);
 		PlatformCoremods.Redirect finalizeSpawn = new PlatformCoremods.Redirect(Opcodes.INVOKEVIRTUAL, "m_6518_", FINALIZE_SPAWN,
 				"net/minecraftforge/event/ForgeEventFactory", "onFinalizeSpawn", "(Lnet/minecraft/world/entity/Mob;" + FINALIZE_SPAWN.substring(1));
 		Map<String, List<PlatformCoremods.Redirect>> redirects = new HashMap<>();
@@ -111,16 +129,16 @@ final class ForgeDescriptor extends PlatformDescriptor.Forge {
 		return Map.copyOf(replaced);
 	}
 
-	/** Forge 47's ({@link #coremods()}); none for a version this descriptor isn't for. */
+	/** The version's ({@link #coremods(boolean)}); none for a version this descriptor isn't for. */
 	@Override
 	public PlatformCoremods coremods(String minecraftVersion) {
-		return "1.20.1".equals(minecraftVersion) ? COREMODS : PlatformCoremods.NONE;
+		return this.minecraftVersion.equals(minecraftVersion) ? coremods : PlatformCoremods.NONE;
 	}
 
 	/**
-	 * The fields Forge 47's {@code field_to_method.js} coremod redirects to a getter, in SRG's names as Forge 47 runs the
-	 * game (read in Forge 47.4's sources): its {@code redirectFieldToMethod} needs them private, as Forge 61 to 66's
-	 * transformer does (PLAT-4).
+	 * The fields Forge 43's and 47's {@code field_to_method.js} coremod redirects to a getter, in SRG's names as they run
+	 * the game (read in Forge 43.5's and 47.4's sources): its {@code redirectFieldToMethod} needs them private, as Forge 61
+	 * to 66's transformer does (PLAT-4).
 	 */
 	@Override
 	public Map<String, String> privateFields() {
@@ -131,7 +149,8 @@ final class ForgeDescriptor extends PlatformDescriptor.Forge {
 	public byte[] packMetadata(ModsTomlWriter.Spec spec) {
 		Map<String, Object> pack = new LinkedHashMap<>();
 		pack.put("description", spec.displayName());
-		pack.put("pack_format", PACK_FORMAT);
+		pack.put("pack_format", dataPackFormat);
+		if (resourcePackFormat != dataPackFormat) pack.put("forge:resource_pack_format", resourcePackFormat);
 		return (Json.write(Map.of("pack", pack), true) + "\n").getBytes(StandardCharsets.UTF_8);
 	}
 }

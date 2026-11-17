@@ -20,11 +20,11 @@ This product includes third-party material:
    mc/<platform>/<version>/src/fabricapi/UPSTREAM.properties. Files Fabricated changed are marked in a comment, or
    live in mc/<platform>/<version>/src/fabricapi-overrides/.
 
-3. Fabric Intermediary mappings for Minecraft 1.20.1, 1.21.1 and 1.21.11, each bundled in the builds for that
-   version (NeoForge's and Forge's).
+3. Fabric Intermediary mappings for Minecraft 1.19.2, 1.20.1, 1.21.1 and 1.21.11, each bundled in the builds for
+   that version (NeoForge's and Forge's).
    By FabricMC, dedicated to the public domain under CC0 1.0 Universal:
    https://creativecommons.org/publicdomain/zero/1.0/
-   Source: https://github.com/FabricMC/intermediary (1.20.1 and 1.21.11 at commit
+   Source: https://github.com/FabricMC/intermediary (1.19.2, 1.20.1 and 1.21.11 at commit
    916868752f6935dda70c4490404641a701335d81, 1.21.1 at commit 2f69d5496ad149fcbd63cab81bd0e3b33297734c; each
    version's intermediary_commit property).
 
@@ -38,11 +38,12 @@ This product includes third-party material:
 For interoperability, com.terraformersmc.modmenu.api.ModMenuApi and ConfigScreenFactory are clean-room interfaces
 with the names and method signatures of Mod Menu's API (https://github.com/TerraformersMC/ModMenu, MIT); no Mod Menu
 code is included. Likewise, the fuzs.forgeconfigapiport types (mc/neoforge/common on main, mc/forge/1.21.1 on the
-forge branch, mc/forge-legacy/1.20.1 on the forge-legacy branch) are clean-room types with the names and method
-signatures of Forge Config API Port's Fabric API (https://github.com/Fuzss/forgeconfigapiport, MPL-2.0), implemented
-on the platform's own config system; no Forge Config API Port code is included. Fabricated reads the calls mods make
-to Fabric ASM's enum API (ClassTinkerers and EnumAdder, https://github.com/Chocohead/Fabric-ASM, MPL-2.0); that reading
-was written from Fabric ASM's README, not its code, and no Fabric ASM code is included.
+forge branch, mc/forge-legacy/1.20.1 on the forge-legacy branch), and the net.minecraftforge.api types of its version
+4, for Minecraft 1.19.2 (mc/forge-legacy/1.19.2 on the forge-legacy branch), are clean-room types with the names and
+method signatures of Forge Config API Port's Fabric API (https://github.com/Fuzss/forgeconfigapiport, MPL-2.0),
+implemented on the platform's own config system; no Forge Config API Port code is included. Fabricated reads the
+calls mods make to Fabric ASM's enum API (ClassTinkerers and EnumAdder, https://github.com/Chocohead/Fabric-ASM,
+MPL-2.0); that reading was written from Fabric ASM's README, not its code, and no Fabric ASM code is included.
 
 Fabricated does not include or redistribute Minecraft, NeoForge, Mojang's official mappings,
 Fabric API release jars, Sinytra Connector, Forgified Fabric API, Launchpad or Adapter.
