@@ -3,6 +3,28 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-17: FrozenLib's shovel behaviours on NeoForge and Forge (SEAM-13); the report names the plant, hopper and fluid hooks Fabricated can't serve (SEAM-12, SEAM-14, SEAM-9)
+
+- **SEAM-13** (P1), fixed: FrozenLib's shovel behaviours, which Wilder Wild's blocks use, were left out on NeoForge
+  1.21.1 to 26.2 and Forge 47 to 65. Their hooks look for vanilla's path lookup, its campfire check and its air check above
+  the path in `ShovelItem.useOn`, which the platforms make through the block state's tool modifications (and Forge
+  through the level's empty block check). Fabricated now puts vanilla's calls back there for the blocks and levels
+  keeping the platforms' defaults, after the platform's tool modification event and the held item's check of the action,
+  as those defaults make them: a block of a NeoForge or Forge mod answering its tool modifications itself, and an event
+  listener's answer, work as before. 26.3's shovels flatten through their item's data, with no `ShovelItem`.
+- **SEAM-12**, **SEAM-14**, **SEAM-9** (P2), open: where the platforms ask a soil's extensions in plant growth and
+  survival (Balm's custom farmland, Farmer's Delight Refabricated's rich soil), look a hopper's containers up their own
+  way (FrozenLib's hopper API on NeoForge 1.21.11 to 26.3, Lithium's hopper on Forge 47), or check and push fluids
+  through their fluid types (Lithium's fluid caches, Wilder Wild's mesoglea, FrozenLib's water-like fluids,
+  Expandability's swimming events, Artifacts' underwater mining speed, Milk Lib), the hooks stay out: the platforms'
+  code there doesn't answer as vanilla's does for every block or fluid keeping their defaults. The report now names
+  each a known limit, saying what doesn't work.
+- Verified: core's tests; the test mod's new `vanilla-shovel` check (a FrozenLib-style behaviour, a path, a doused
+  campfire and a block overriding the platform's extension) on NeoForge 1.21.1 and 26.1.2 and Forge 52; NeoForge 1.21.1's
+  server and client parts and Forge 47's server part; on the advanced corpus servers FrozenLib's shovel hooks apply (its left-out rows from 5 to 1 on NeoForge
+  1.21.1, 9 to 5 on NeoForge 26.1.2, 4 to 0 on Forge 52 and 6 to 2 on Forge 47), each run passing, and the hooks left
+  out for SEAM-12, SEAM-14 and SEAM-9 carry their known limits.
+
 ## 2026-11-17: Fabric ingredients as JSON on Forge, Farmer's Delight on Forge 52 clients, REI's and Puzzles Lib's packs on NeoForge, Forge 66 clients exit as they close
 
 - **CORPUS-115** (P2), fixed: on Forge 52, Fabric API's custom ingredients couldn't be written as JSON ("Modders must

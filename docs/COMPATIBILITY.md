@@ -1572,6 +1572,14 @@ hook of vanilla's call there is left out, a known limit the report names. From 1
 sweep's box for an overload of its own, which isn't put back: a hook of vanilla's box in `doSweepAttack` applies there,
 but vanilla's method isn't called, which pre-flight notes, a known limit the report names.
 
+The shovel's `useOn` on 1.21.1 to 26.2 asks the block state's `getToolModifiedState` of NeoForge's flatten action where
+vanilla looks the block up in its `FLATTENABLES` map, and of its douse action where vanilla checks for a lit campfire and
+douses it. Where a Fabric mod's mixin hooks those calls (FrozenLib's shovel behaviours, which Wilder Wild's blocks use),
+vanilla's lookup and dousing are put back for the blocks whose classes keep both extensions' defaults, after NeoForge's
+tool modification event and the held item's check of the action, as those defaults make them; the event's own answer,
+and a block overriding the extension (a NeoForge mod's), are the platform's, without the hook (SEAM-13). The campfire is
+doused before the level event's fizz, as NeoForge's default does. 26.3's shovels flatten through their item's data.
+
 Putting the methods back moves the resolver's `isStickyBlock` and `canStickTo` calls into them, so where a NeoForge
 mod's mixin hooks those calls, or a place the move shifts in the methods holding them, they aren't put back: the
 resolver stays as NeoForge has it, so the NeoForge mod's mixin applies, and the Fabric mods' hooks of the stickiness
@@ -1583,7 +1591,24 @@ mod's hook of them has a line saying so. Carpet's and FrozenLib's sticky blocks 
 NeoForge mod's mixin of the resolver hooks can't be told (a wildcard, a method name the class doesn't have), the
 methods aren't put back either.
 
-What this can't match of Fabric, seen in a reference pack (2026-10-28):
+What this can't match of Fabric, seen in a reference pack (2026-10-28) and in the corpora:
+
+- **Plant growth and survival.** NeoForge's `CropBlock.getGrowthSpeed` takes the crop's state where vanilla's takes its
+  block, and asks the soil's `canSustainPlant`, which answers in three ways, and `isFertile` where vanilla checks for moist
+  farmland; a stem's fruit asks `canSustainPlant` too. Hooks of vanilla's method and checks are left out, a known limit
+  the report names (SEAM-12): Balm's custom farmland doesn't speed crops up, and Farmer's Delight Refabricated's rich soil
+  doesn't speed them up or take stems' fruit through its hooks (1.21.1, 1.21.11).
+- **Hoppers' containers.** From 1.21.11 NeoForge's hopper looks the container it moves items to and from up through a
+  lookup of its own, answering a container or an item handler, where vanilla's `getAttachedContainer` and
+  `getSourceContainer` were. FrozenLib's hooks of them are left out, a known limit the report names (SEAM-14): hoppers
+  move items to and from the containers FrozenLib's hopper API keeps them from.
+- **Fluid checks and pushing.** NeoForge asks its fluid types where vanilla asks for water or lava, and pushes an entity
+  through every fluid type at once, in code of its own (on 26.x in `EntityFluidInteraction`). Hooks of vanilla's calls
+  there are left out, a known limit the report names (SEAM-9): Lithium's fluid pushing caches (entities are pushed as
+  NeoForge has it, without them), Wilder Wild's mesoglea and FrozenLib's water-like fluids in entities' fluid checks,
+  Expandability's swimming and fluid pushing events, Artifacts' underwater mining speed (26.1.2) and FrozenLib's air
+  bubbles in the HUD (26.2, 26.3). The calls aren't put back: NeoForge's answer for a mod's fluid isn't vanilla's, and
+  its pushing isn't vanilla's code.
 
 - **A field NeoForge retyped.** NeoForge makes `KeyMapping.MAP` its own `KeyMappingLookup`, not vanilla's `Map`, so an
   accessor to it as a `Map` is left out, and the mod's call to it throws `NoSuchMethodError`. OneConfig's keybind
@@ -2252,6 +2277,13 @@ What else differs on Forge, for Fabric mods in general:
   `Leashable.angularFriction`, an interface's method, is left out, a known limit the report names. Beside Forgified
   Fabric API on Forge 47 `LivingEntity` keeps Forge's calls, as the report says: its entity events mixin names
   `m_260785_` beside `lambda$stopSleeping$11`, and a method the class doesn't have can't be told from what moves.
+- The shovel's `useOn` on Forge 47 to 65 asks the block state's `getToolModifiedState` of Forge's flatten action where
+  vanilla looks the block up in its `FLATTENABLES` map, and the level's `isEmptyBlock` where vanilla asks whether the
+  block above is air. Where a Fabric mod's mixin hooks those calls (FrozenLib's shovel behaviours, which Wilder Wild's
+  blocks use), vanilla's lookup is put back for the blocks whose classes keep both extensions' defaults, after Forge's
+  tool modification event and the held item's check of the action, as those defaults make them, and vanilla's air check
+  for the levels keeping `LevelReader`'s `isEmptyBlock`; the event's own answer, a block overriding the extension (a Forge
+  mod's) and a level overriding the check are Forge's, without the hook (SEAM-13), under its SRG names on Forge 47.
 - **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
   into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't
@@ -2361,6 +2393,20 @@ instead.
   left out, as on Forge 52: Forge replaced the calls two of its handlers hook, and the other two hand state to them
   (ITEM-2); Forge's own hook answers from Fabric's remainder (*Items* above).
 - **Sound (Forge 47).** A Fabric sound instance's own audio stream (`FabricSoundInstance.getAudioStream`).
+- **Plant growth and survival.** Forge asks the soil's `canSustainPlant` and `isFertile` where vanilla checks for moist
+  farmland in a crop's growth speed, and `canSustainPlant` where vanilla checks a cactus's (Forge 47, 52 and 61), a
+  mushroom's (Forge 52 and 61) and a stem's fruit's (Forge 61) soil, whose default asks the plant's own checks and plant
+  type. Hooks of vanilla's checks are left out, a known limit the report names (SEAM-12): Balm's custom farmland doesn't
+  speed crops up, and Farmer's Delight Refabricated's rich soil doesn't take cactus, mushrooms or stems' fruit through its
+  hooks.
+- **Forge 47's hopper.** Forge 47 replaced vanilla's private `ejectItems` with one of its own, to which only an
+  `@Inject` moves (STRUCT-1): Lithium's other hooks there are left out, a known limit the report names (SEAM-14), and
+  hoppers eject items as Forge has it, without Lithium's optimisation of it.
+- **Fluid checks and pushing.** Forge asks its fluid types where vanilla asks for water or lava, and pushes an entity
+  through every fluid type at once, in code of its own. Hooks of vanilla's calls there are left out, a known limit the
+  report names (SEAM-9): Lithium's fluid pushing caches (Forge 52, 61), Wilder Wild's mesoglea and FrozenLib's water-like
+  fluids in entities' fluid checks, Expandability's swimming and fluid pushing events, and Milk Lib's effect clearing in
+  milk (Forge 47).
 - **Other hooks inside the HUD method.** A Fabric mod's mixin inside vanilla's HUD method (`Gui.render`; on Forge 64
   `Gui.extractRenderState`, on 65 and 66 `Hud.extractRenderState`) that wraps or redirects one of vanilla's calls,
   hooks in at a field, a constant or a jump, or at a call cancels, captures locals or takes arguments the called
