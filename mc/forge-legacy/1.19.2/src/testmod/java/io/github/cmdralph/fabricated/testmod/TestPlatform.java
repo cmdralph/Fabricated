@@ -1,0 +1,104 @@
+package io.github.cmdralph.fabricated.testmod;
+
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+
+import com.mojang.brigadier.CommandDispatcher;
+
+import net.fabricmc.fabric.api.event.registry.RegistryAttribute;
+import net.fabricmc.fabric.api.event.registry.RegistryAttributeHolder;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Registry;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraftforge.client.ConfigScreenHandler;
+import net.minecraftforge.common.ForgeHooks;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.common.util.FakePlayer;
+import net.minecraftforge.common.util.FakePlayerFactory;
+import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.fml.ModList;
+
+/**
+ * What the test mod's shared checks (mc/shared) ask of the platform they run on, Forge 43 here. Every platform's test mod
+ * has this class with these methods, so the checks compile against each platform's.
+ */
+final class TestPlatform {
+	private TestPlatform() {
+	}
+
+	/**
+	 * Whether the platform loaded a mod of its own with this id (ci/forge-legacy/standins.py's, Forgified Fabric API's):
+	 * Forge's mod list has the Fabric mods Fabricated's language loader loads too, Fabric API's modules among them, which
+	 * aren't.
+	 */
+	static boolean isModLoaded(String modId) {
+		return ModList.get().getModContainerById(modId)
+				.filter(c -> c.getModInfo().getOwningFile().requiredLanguageLoaders().stream().noneMatch(l -> l.languageName().equals("fabricated")))
+				.isPresent();
+	}
+
+	/** Client only: whether the platform's mod list has a config screen for the mod. */
+	static boolean hasConfigScreen(String modId) {
+		return ModList.get().getModContainerById(modId).flatMap(c -> c.getCustomExtension(ConfigScreenHandler.ConfigScreenFactory.class)).isPresent();
+	}
+
+	/**
+	 * Forge makes a mod's registries in its NewRegistryEvent only, which it posts before Fabric's initializers run: no
+	 * Forge mod makes one later, so there is none to make.
+	 */
+	static <T> void createTrackedRegistry(ResourceKey<Registry<T>> key) {
+		throw new UnsupportedOperationException("Forge makes a mod's registries in its NewRegistryEvent only, which it posts before Fabric's"
+				+ " initializers run, so no Forge mod makes one later (" + key.location() + ")");
+	}
+
+	/** Whether a left click starting to break a block, as the platform's hook fires it, was cancelled. */
+	static boolean leftClickBlockCancelled(Player player, BlockPos pos) {
+		return ForgeHooks.onLeftClickBlock(player, pos, Direction.UP).isCanceled();
+	}
+
+	/** Registers server commands each time the platform builds the command tree. */
+	static void registerCommands(Consumer<CommandDispatcher<CommandSourceStack>> commands) {
+		MinecraftForge.EVENT_BUS.addListener((RegisterCommandsEvent event) -> commands.accept(event.getDispatcher()));
+	}
+
+	/** Whether the platform takes the player for a fake one: Forge's own fake players (Fabric API 0.77 has none). */
+	static boolean isFakePlayer(Player player) {
+		return player instanceof FakePlayer;
+	}
+
+	/** A fake player in the level, as a Fabric mod for 1.19.2 gets one: Forge's, as Fabric API 0.77 has none of its own. */
+	static FakePlayer fakePlayer(ServerLevel level) {
+		return FakePlayerFactory.getMinecraft(level);
+	}
+
+	/**
+	 * Whether the registry's entries are synced to clients: Forge syncs its own registries only, and Fabric API's registry
+	 * sync module those with Fabric's synced attribute.
+	 */
+	static boolean syncs(Registry<?> registry) {
+		return RegistryAttributeHolder.get(registry).hasAttribute(RegistryAttribute.SYNCED);
+	}
+
+	/**
+	 * A block overriding the platform's extensions for a player's break (SEAM-3) and harvest check (SEAM-4): it leaves
+	 * amethyst, and answers its harvest check itself ({@link BreakOverride}).
+	 */
+	static Block breakOverride(BlockBehaviour.Properties properties) {
+		return new BreakOverride(properties);
+	}
+
+	/** Lets players harvest the blocks {@code granted} accepts, as a mod of the platform's does through its harvest check event. */
+	static void grantHarvest(Predicate<BlockState> granted) {
+		MinecraftForge.EVENT_BUS.addListener((PlayerEvent.HarvestCheck event) -> {
+			if (granted.test(event.getTargetBlock())) event.setCanHarvest(true);
+		});
+	}
+}
