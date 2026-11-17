@@ -47,6 +47,19 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(git(self.repo, "show", "HEAD:shared.txt"), "2\n")
         self.assertEqual(len(git(self.repo, "rev-list", "--parents", "-n", "1", "HEAD").split()), 3)
 
+    def test_main_s_own_workflows_stay_on_main(self):
+        git(self.repo, "checkout", "-q", "main")
+        write(self.repo, {".github/workflows/ci.yml": "c\n", ".github/workflows/release.yml": "r\n", ".github/workflows/weekly.yml": "w\n"})
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "workflows")
+        git(self.repo, "checkout", "-q", "claude/dev-forge")
+        result = subprocess.run(["bash", str(SCRIPT), "forge", "main"], cwd=self.repo, env=ENV, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        tree = git(self.repo, "ls-tree", "-r", "--name-only", "HEAD").split()
+        self.assertIn(".github/workflows/ci.yml", tree)
+        self.assertNotIn(".github/workflows/release.yml", tree)
+        self.assertNotIn(".github/workflows/weekly.yml", tree)
+
 
 if __name__ == "__main__":
     unittest.main()

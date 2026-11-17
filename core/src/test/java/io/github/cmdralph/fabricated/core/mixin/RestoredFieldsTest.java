@@ -60,6 +60,8 @@ class RestoredFieldsTest {
 		mixin.methods.add(method(Opcodes.ACC_PUBLIC, "fabricated$get$f_43532_", "()Ljava/lang/Object;"));
 		// A seam for a method the platform never calls, which Fabric mods' hooks into the method are pointed at (HUD-4).
 		mixin.methods.add(method(Opcodes.ACC_PUBLIC, "fabricated$end$m_43535_", "()Ljava/lang/Object;"));
+		// A bridge for a method the platform gave other parameters, which an invoker of vanilla's invokes (LEAVE-5).
+		mixin.methods.add(method(Opcodes.ACC_PUBLIC, "fabricated$invoke$m_43536_", "(I)Ljava/lang/Object;"));
 		// Not a bridge: a mixin's own helper, which a mod has no use for.
 		mixin.methods.add(method(Opcodes.ACC_PUBLIC, "fabricated$holder", "()" + HOLDER));
 		Files.createDirectories(dir.resolve("fabricated/mixin"));
@@ -85,10 +87,12 @@ class RestoredFieldsTest {
 		// Pre-flight sees the bridge declared on the game's class, which an accessor of the field invokes (CORPUS-37).
 		assertTrue(seen.methods.stream().anyMatch(m -> m.name.equals("fabricated$get$f_43532_") && m.desc.equals("()Ljava/lang/Object;")));
 		assertTrue(seen.methods.stream().anyMatch(m -> m.name.equals("fabricated$end$m_43535_")), "the seam is the game class's too");
+		assertTrue(seen.methods.stream().anyMatch(m -> m.name.equals("fabricated$invoke$m_43536_") && m.desc.equals("(I)Ljava/lang/Object;")),
+				"so is the invoker's bridge");
 		assertTrue(seen.methods.stream().noneMatch(m -> m.name.equals("fabricated$holder")));
 		assertEquals(1, seen.fields.size(), "the shadowed field is the game's own");
 		// Each is a method Fabricated's mixin merged, as Mixin marks it: no selector matching any number of methods takes it.
-		for (String added : List.of("fabricated$get$f_43532_", "fabricated$end$m_43535_")) {
+		for (String added : List.of("fabricated$get$f_43532_", "fabricated$end$m_43535_", "fabricated$invoke$m_43536_")) {
 			MethodNode method = seen.methods.stream().filter(m -> m.name.equals(added)).findFirst().orElseThrow();
 			AnnotationNode mark = Annotations.find(method, "Lorg/spongepowered/asm/mixin/transformer/meta/MixinMerged;");
 			assertEquals("fabricated.mixin.MixBridge", Annotations.value(mark, "mixin"), added);

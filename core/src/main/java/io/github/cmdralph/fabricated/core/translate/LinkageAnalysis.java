@@ -209,29 +209,36 @@ public final class LinkageAnalysis {
 	/**
 	 * Adds what a mixin class adds to each of its targets: the interfaces it implements, and the fields and methods
 	 * it merges into them (not shadows, uniques, injectors or accessors), in {@link ClassIndex}'s
-	 * {@code name:desc} / {@code name(args)ret} form. Ignores non-mixin classes.
+	 * {@code name:desc} / {@code name(args)ret} form. Ignores non-mixin classes. A descriptor naming the mixin's own class
+	 * names each target there, as Mixin merges the member: an enum mixin's constant, typed as the mixin, is a constant of
+	 * the target enum, and the mod's code reads it as one (Farmer's Delight's recipe book category and Flashback's texture
+	 * format on NeoForge 26.x, ENUM-10).
 	 */
 	public static void mixinAdditions(byte[] data, Map<String, List<String>> added) {
 		ClassNode node = new ClassNode();
 		new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
 		AnnotationNode mixin = Annotations.find(node.invisibleAnnotations, Annotations.MIXIN);
 		if (mixin == null) return;
-		List<String> additions = new ArrayList<>(node.interfaces == null ? List.of() : node.interfaces);
+		List<String> members = new ArrayList<>();
 		for (FieldNode field : node.fields) {
-			if (merged(field.access, field.visibleAnnotations, field.invisibleAnnotations)) additions.add(field.name + ":" + field.desc);
+			if (merged(field.access, field.visibleAnnotations, field.invisibleAnnotations)) members.add(field.name + ":" + field.desc);
 		}
 		for (MethodNode method : node.methods) {
 			if (!method.name.startsWith("<") && merged(method.access, method.visibleAnnotations, method.invisibleAnnotations)) {
-				additions.add(method.name + method.desc);
+				members.add(method.name + method.desc);
 			}
 		}
-		if (additions.isEmpty()) return;
+		if (members.isEmpty() && (node.interfaces == null || node.interfaces.isEmpty())) return;
+		String self = "L" + node.name + ";";
 		for (String key : List.of("value", "targets")) {
 			if (!(Annotations.value(mixin, key) instanceof List<?> list)) continue;
 			for (Object target : list) {
 				String internal = target instanceof Type type ? type.getInternalName()
 						: target instanceof String str ? str.replace('.', '/') : null;
-				if (internal != null) added.computeIfAbsent(internal, k -> new ArrayList<>()).addAll(additions);
+				if (internal == null) continue;
+				List<String> into = added.computeIfAbsent(internal, k -> new ArrayList<>());
+				if (node.interfaces != null) into.addAll(node.interfaces);
+				for (String member : members) into.add(member.replace(self, "L" + internal + ";"));
 			}
 		}
 	}
