@@ -11,8 +11,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Fabric API's block break events (fabric-events-interaction-v0, passed through) where Forge 47, 52 and 61 to 66 break
- * a player's block (BREAK-1). Forge's {@code destroyBlock} no longer calls {@code Block.playerWillDestroy} and
+ * Fabric API's block break events (fabric-events-interaction-v0, passed through) where Forge 43, 47, 52 and 61 to 66
+ * break a player's block (BREAK-1). Forge's {@code destroyBlock} no longer calls {@code Block.playerWillDestroy} and
  * {@code Block.destroy} itself, where upstream's hooks fire {@code BEFORE} and {@code AFTER}: both moved into a private
  * {@code removeBlock} Forge added. The plan leaves upstream's two hooks out, and {@code ServerPlayerGameModeBreakMixin}
  * fires the events at the same points of Forge's method instead.

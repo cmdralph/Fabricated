@@ -1,9 +1,0 @@
-{
-  "required": true,
-  "package": "io.github.cmdralph.fabricated.testmod.tools",
-  "compatibilityLevel": "JAVA_21",
-  "mixins": ["ShovelBehaviourMixin"],
-  "injectors": {
-    "defaultRequire": 1
-  }
-}

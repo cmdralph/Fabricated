@@ -1946,7 +1946,7 @@ by the server runs (the colours, screens, key mappings and config screens by the
 - **Config file watchers (Forge 61 to 66):** a Fabric mod watching its config file with night-config's default file
   watcher, as Forge Config API Port's Fabric build does, gets Forge's night-config, whose watcher runs a change on a
   thread that isn't a daemon, where the night-config the mod bundles runs it on a daemon thread (client run). On Forge
-  66, whose client no longer exits once its main thread ends, Fabricated stops that watcher as the client closes, where
+  65 and 66, whose clients no longer exit once their main thread ends, Fabricated stops that watcher as the client closes, where
   Forge stops its own config watchers, so the game exits; that thread kept it up until the client's shutdown watchdog
   wrote a crash report and stopped it (CORPUS-116).
 - **Failed initializers:** a Fabric mod whose entrypoint throws is named in the report and in Forge's loading warnings,
@@ -2277,13 +2277,13 @@ What else differs on Forge, for Fabric mods in general:
   `Leashable.angularFriction`, an interface's method, is left out, a known limit the report names. Beside Forgified
   Fabric API on Forge 47 `LivingEntity` keeps Forge's calls, as the report says: its entity events mixin names
   `m_260785_` beside `lambda$stopSleeping$11`, and a method the class doesn't have can't be told from what moves.
-- The shovel's `useOn` on Forge 47 to 65 asks the block state's `getToolModifiedState` of Forge's flatten action where
+- The shovel's `useOn` on Forge 43 to 65 asks the block state's `getToolModifiedState` of Forge's flatten action where
   vanilla looks the block up in its `FLATTENABLES` map, and the level's `isEmptyBlock` where vanilla asks whether the
   block above is air. Where a Fabric mod's mixin hooks those calls (FrozenLib's shovel behaviours, which Wilder Wild's
   blocks use), vanilla's lookup is put back for the blocks whose classes keep both extensions' defaults, after Forge's
   tool modification event and the held item's check of the action, as those defaults make them, and vanilla's air check
   for the levels keeping `LevelReader`'s `isEmptyBlock`; the event's own answer, a block overriding the extension (a Forge
-  mod's) and a level overriding the check are Forge's, without the hook (SEAM-13), under its SRG names on Forge 47.
+  mod's) and a level overriding the check are Forge's, without the hook (SEAM-13), under its SRG names on Forge 43 and 47.
 - **Mixin field initialisers that branch:** Forge's Mixin refuses a mixin whose field initialisers, which Mixin merges
   into the target's constructors, branch or load or store an array element, which Fabric's Mixin takes. Pre-flight
   computes such a field's value in a method the mixin adds, which the initialiser calls, and leaves out a mixin it can't
@@ -2415,6 +2415,16 @@ instead.
 - **Data generation only.** Removing entries through a Fabric tag appender, Fabric's key sort orders in generated files,
   and, by version, the advancement builder's Fabric interface and vanilla's block loot provider limited to vanilla's
   blocks; a Fabric model provider also writes item definitions for other mods' block items.
+- **Forge 43 (Minecraft 1.19.2).** The hooks this list names for Forge 47 are left out on Forge 43 too, where Forge's
+  code is the same: the recipe remainder hook, `BLOCK_ENTITY_UNLOAD` on the client, the remapping of block and item
+  colours and particles by id, upgrading a world from before 1.18 with other mods' structures, a sound instance's own
+  audio stream, a fluid render handler's overlay sprite beside glass or leaves, the injectors in an interface mixin
+  Fabricated doesn't apply itself (Forge 43's Mixin is 0.8.5 too) and hooks inside the HUD method but at its start and
+  end. Beyond those, Fabricated doesn't bridge Fabric's renderer API there: Indigo's hooks miss Forge's chunk section
+  compiler and block renderer, which call Forge's overloads taking model data and a render type, and nothing draws a
+  Fabric block model with its own emitter (one that isn't a vanilla adapter) in their place, so such a model is drawn
+  from the quads it gives Forge's renderer: one wrapping another model, as connected-texture models do, shows the
+  wrapped model's quads, and one with no quads of its own shows nothing. The renderer API test mod doesn't run there.
 
 **Known limits** (the report says so where each shows, with its finding):
 

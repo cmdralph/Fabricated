@@ -153,6 +153,35 @@ class RestoredFieldsTest {
 	}
 
 	@Test
+	void aVanillaMethodTheInGameModRestoresUnderItsSrgNameIsTheGameClasss(@TempDir Path dir) throws Exception {
+		String properties = "net/minecraft/client/renderer/item/ItemProperties";
+		String clamped = "Lnet/minecraft/client/renderer/item/ClampedItemPropertyFunction;";
+		String desc = "(Lnet/minecraft/resources/ResourceLocation;" + clamped + ")" + clamped;
+		ClassNode mixin = new ClassNode();
+		mixin.visit(Opcodes.V17, Opcodes.ACC_ABSTRACT, "fabricated/mixin/PropertiesOverloads", null, "java/lang/Object", null);
+		AnnotationNode target = new AnnotationNode(Annotations.MIXIN);
+		target.values = new ArrayList<>(List.of("value", new ArrayList<>(List.of(Type.getObjectType(properties)))));
+		mixin.invisibleAnnotations = new ArrayList<>(List.of(target));
+		// Vanilla 1.19.2's private registerGeneric taking a clamped function, which Forge 43 removed, by its SRG name.
+		mixin.methods.add(method(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "m_174581_", desc));
+		// A helper of the mixin's own, with no SRG name: not the game's.
+		mixin.methods.add(method(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "fabricated$clamp", desc));
+		Files.createDirectories(dir.resolve("fabricated/mixin"));
+		Files.write(dir.resolve("fabricated/mixin/PropertiesOverloads.class"), write(mixin));
+		Files.writeString(dir.resolve("fabricated.mixins.json"), "{\"package\": \"fabricated.mixin\", \"client\": [\"PropertiesOverloads\"]}");
+		RestoredFields restored = RestoredFields.of(List.of(dir));
+
+		ClassNode game = new ClassNode();
+		game.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, properties, null, "java/lang/Object", null);
+		byte[] forge = write(game);
+		ClassNode seen = new ClassNode();
+		new ClassReader(restored.over(name -> properties.equals(name) ? forge : null).read(properties)).accept(seen, 0);
+		// A Fabric mod's invoker of the vanilla method finds it, as Mixin merges it.
+		assertTrue(seen.methods.stream().anyMatch(m -> m.name.equals("m_174581_") && m.desc.equals(desc) && (m.access & Opcodes.ACC_STATIC) != 0));
+		assertTrue(seen.methods.stream().noneMatch(m -> m.name.equals("fabricated$clamp")));
+	}
+
+	@Test
 	void withoutTheInGameModsMixinsThereAreNoBridges(@TempDir Path dir) {
 		RestoredFields restored = RestoredFields.of(List.of(dir.resolve("missing.jar")));
 		assertEquals(Map.of(), restored.bridgedFields());

@@ -9,7 +9,7 @@ import net.minecraftforge.fml.loading.moddiscovery.AbstractJarFileModProvider;
  * files they hand over finds the in-game mod's {@code @Mod} class.
  */
 public abstract class ForgeModProvider extends AbstractJarFileModProvider {
-	/** Forge 47 leaves this to each provider (Forge 61's base class has it): no arguments are read. */
+	/** Forge 43 and 47 leave this to each provider (Forge 61's base class has it): no arguments are read. */
 	@Override
 	public void initArguments(Map<String, ?> arguments) {
 	}
