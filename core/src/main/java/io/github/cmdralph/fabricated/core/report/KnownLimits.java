@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.core.report;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -11,8 +12,8 @@ import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 /**
  * What Fabricated reports and can't fix: each known limit with the one line the report adds to what matches it, naming
  * its finding (COMPATIBILITY.md, FINDINGS.md). A pre-flight finding that leaves a hook out or disables its mod matches by
- * the platform and its message or suggestion, an entrypoint's failure by the class and message of what it threw, at the
- * root of its causes. Nothing else changes.
+ * the platform and its message or suggestion, and a limit of one mod's hooks also by their config and mixin, each named;
+ * an entrypoint's failure by the class and message of what it threw, at the root of its causes. Nothing else changes.
  */
 public final class KnownLimits {
 	/**
@@ -22,12 +23,56 @@ public final class KnownLimits {
 	 *                  differ
 	 * @param applied   whether it matches pre-flight's note of a hook that applies and never runs, rather than a finding
 	 *                  leaving one out
+	 * @param mixins    the mixins it matches, each as its config and class ({@code "<config> <mixin>"}); empty for one of
+	 *                  any mod's
 	 */
-	private record Limit(Set<String> loaders, String exception, Pattern pattern, String reason, boolean applied) {
+	private record Limit(Set<String> loaders, String exception, Pattern pattern, String reason, boolean applied, Set<String> mixins) {
 		Limit(Set<String> loaders, String exception, Pattern pattern, String reason) {
-			this(loaders, exception, pattern, reason, false);
+			this(loaders, exception, pattern, reason, false, Set.of());
+		}
+
+		Limit(Set<String> loaders, String exception, Pattern pattern, String reason, boolean applied) {
+			this(loaders, exception, pattern, reason, applied, Set.of());
+		}
+
+		/** A limit of one mod's hooks: those of {@code mixins} on {@code loaders} whose message matches {@code pattern}. */
+		static Limit ofMod(Set<String> loaders, Set<String> mixins, Pattern pattern, String reason) {
+			return new Limit(loaders, null, pattern, reason, false, mixins);
 		}
 	}
+
+	/** The keys of a config's mixins in a package: {@code "<config> <package>.<name>"}. */
+	private static Set<String> mixins(String config, String pkg, String... names) {
+		Set<String> keys = new LinkedHashSet<>();
+		for (String name : names) keys.add(config + " " + pkg + "." + name);
+		return keys;
+	}
+
+	@SafeVarargs
+	private static Set<String> union(Set<String>... sets) {
+		Set<String> all = new LinkedHashSet<>();
+		for (Set<String> set : sets) all.addAll(set);
+		return all;
+	}
+
+	/** Porting Lib's mixins whose hooks Forge 47 leaves out (HOOK-5), as its Forge 47 corpus runs list them. */
+	private static final Set<String> PORTING_LIB = union(
+			mixins("porting_lib_base.mixins.json", "io.github.fabricators_of_create.porting_lib.mixin", "client.AbstractClientPlayerMixin",
+					"client.AbstractContainerScreenMixin", "client.BlockRenderDispatcherMixin", "client.BoatRendererMixin", "client.HumanoidArmorLayerMixin",
+					"client.ItemFrameRendererMixin", "client.LevelRendererMixin", "client.MinecraftMixin", "client.ModelBlockRendererMixin",
+					"client.ParticleEngineMixin", "common.AxeItemMixin", "common.BeaconBlockEntityMixin", "common.BlockBehavior$PropertiesMixin",
+					"common.BlockGetterMixin", "common.BlockItemMixin", "common.BlockLightEngineMixin", "common.EnchantmentHelperMixin",
+					"common.ExperienceOrbMixin", "common.ItemStackMixin", "common.LightEngineMixin", "common.LivingEntityMixin",
+					"common.PistonMovingBlockEntityMixin", "common.ServerPlayerGameModeMixin", "common.ShapedRecipeMixin",
+					"common.ShapelessRecipe$SerializerMixin", "common.SignalGetterMixin", "common.StructureTemplateMixin", "common.WitherBossMixin"),
+			mixins("porting_lib_entity.mixins.json", "io.github.fabricators_of_create.porting_lib.entity.mixin", "client.EffectRenderingInventoryScreenMixin",
+					"common.LootItemRandomChanceWithLootingConditionMixin", "common.LootingEnchantFunctionMixin",
+					"common.ServerGamePacketListenerImplInteractHandlerMixin", "common.SpreadPlayersCommandMixin"),
+			mixins("porting_lib_fluids.mixins.json", "io.github.fabricators_of_create.porting_lib.fluids.mixin", "FlowingFluidMixin", "LiquidBlockMixin"),
+			mixins("porting_lib_loot.mixins.json", "io.github.fabricators_of_create.porting_lib.loot.mixin", "LootDataTypeMixin"),
+			mixins("porting_lib_models.mixins.json", "io.github.fabricators_of_create.porting_lib.models.mixin.client", "ItemRendererMixin",
+					"ScreenEffectRendererMixin"),
+			mixins("porting_lib_tool_actions.mixins.json", "io.github.fabricators_of_create.porting_lib.tool.mixin", "LivingEntityMixin", "PlayerMixin"));
 
 	private static final List<Limit> LIMITS = List.of(
 			// A hook of vanilla's spawn checks, which the platforms make inside their spawn event's hook (Mojang's and SRG's names).
@@ -96,7 +141,59 @@ public final class KnownLimits {
 			new Limit(Set.of(), IllegalArgumentException.class.getName(),
 					Pattern.compile("\\{(\\p{XDigit}+)} has been registered twice, using the names .*\\{(\\p{XDigit}+)}\\)$", Pattern.DOTALL),
 					"Forge's registries take two equal entries for one, so the mod's second one can't be registered;"
-							+ " use NeoForge or the mod's Forge build (REG-13)"));
+							+ " use NeoForge or the mod's Forge build (REG-13)"),
+			// Supplementaries' invoker of vanilla's FireBlock.checkBurnOut, which NeoForge 21.1 and Forge 52 give the side the
+			// fire comes from too: pre-flight's hint names the platform's parameters.
+			Limit.ofMod(Set.of("NeoForge", "Forge"), mixins("supplementaries.mixins.json", "net.mehvahdjukaar.supplementaries.mixins.fabric", "FireBlockAccessor"),
+					Pattern.compile("^@Invoker target method checkBurnOut\\(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;ILnet/minecraft/util/RandomSource;I\\)V"
+							+ " does not exist in net\\.minecraft\\.world\\.level\\.block\\.FireBlock\\n.*FireBlock\\.checkBurnOut takes"
+							+ " \\(Level, BlockPos, int, RandomSource, int, Direction\\)", Pattern.DOTALL),
+					"the platform's FireBlock.checkBurnOut also takes the side the fire comes from, which vanilla's never had, so Supplementaries'"
+							+ " invoker of vanilla's method has nothing to call: lit lumisene's call of it fails (NoSuchMethodError), and as the call is"
+							+ " made in its block tick, the server stops once lumisene burns the blocks around it; use Supplementaries' NeoForge build,"
+							+ " on NeoForge (LEAVE-5)"),
+			// Additional Entity Attributes' hooks of vanilla's water sinking constant in goDownInWater (Forge 47's m_21208_),
+			// which the platforms replace with the fluid type's sinkInFluid.
+			Limit.ofMod(Set.of("NeoForge", "Forge"), union(mixins("additionalentityattributes.mixins.json", "de.dafuqs.additionalentityattributes.mixin.common",
+							"LivingEntityMixin"), mixins("additionalentityattributes.mixins.json", "de.dafuqs.additionalentityattributes.mixin.compat.connectormod.absent",
+							"ClientLivingEntityMixin")),
+					Pattern.compile("^@ModifyExpressionValue in (?:goDownInWater|m_21208_) expects @At\\(\"CONSTANT\", args=\\[doubleValue=-0\\.03999999910593033D]\\)"),
+					"NeoForge and Forge move vanilla's water sinking speed into the fluid type's sinkInFluid, which every fluid uses, so a hook of"
+							+ " vanilla's water constant would act in other mods' fluids too, unlike on Fabric: Additional Entity Attributes' water-speed"
+							+ " attribute doesn't change how fast an entity sinks in water (FLUID-5)"),
+			// Reach Entity Attributes' hooks of vanilla's reach constants and container checks, which Forge 47 makes from its own
+			// reach attributes: the methods named by their SRG names, and the lambda Forge's container check has.
+			Limit.ofMod(Set.of("Forge"), mixins("mixins.reach-entity-attributes.json", "com.jamieswhiteshirt.reachentityattributes.mixin", "ItemMixin",
+							"ServerPlayNetworkHandlerMixin", "ScreenHandlerMixin", "InventoryValidationMixin", "VehicleInventoryValidationMixin",
+							"client.ClientPlayerInteractionManagerMixin", "client.GameRendererMixin"),
+					Pattern.compile("^@(?:ModifyConstant in (?:m_41435_|m_105286_) expects the constant 5\\.0|ModifyConstant in m_109087_ expects the constant 6\\.0"
+							+ "|ModifyConstant in m_6371_ expects the constant 64\\.0|ModifyConstant handler getActualReachDistance\\(DLnet/minecraft/world/level/block/Block;"
+							+ "Lnet/minecraft/world/entity/player/Player;\\)D does not match the parameters of lambda\\$stillValid\\$0\\("
+							+ "|(?:Inject handler checkWithinActualReach|ModifyConstant handler getActualReachDistance) is an injector in an interface mixin, .* finds no"
+							+ " (?:INVOKE Lnet/minecraft/core/BlockPos;m_123341_\\(\\)I in m_271806_\\(|CONSTANT 8\\.0 in m_219954_\\())", Pattern.DOTALL),
+					"Forge 47 works out reach from its own attributes (ForgeMod.BLOCK_REACH and ENTITY_REACH), and the constants, the call and the"
+							+ " container checks Reach Entity Attributes' hooks change are gone from the methods it hooks, so its reach attributes don't"
+							+ " change reach, and a Fabric mod giving reach through them gives none (ATTR-2)"),
+			// Porting Lib's ports of Forge's hooks, which Forge 47's own code makes where vanilla's code they hook is now Forge's:
+			// the hooks of game methods named by their SRG names, and those left out with them.
+			Limit.ofMod(Set.of("Forge"), PORTING_LIB,
+					Pattern.compile("^(?:@\\w+ .*\\bm_\\d+_\\b|The injector of .* goes with that of )", Pattern.DOTALL),
+					"Forge 47's own code makes the hooks Porting Lib ports, where vanilla's code they hook is now Forge's, so they are left out;"
+							+ " Porting Lib's block and entity interfaces carry Forge's extension names and descriptors, so Forge's own calls reach a block"
+							+ " implementing one (read in the hooks, not checked in game) (HOOK-5)"),
+			// Ledger's hook taking the block entity CampfireBlock.useItemOn keeps in a local, a slot the platforms' recompiled
+			// method reuses before the hook's point.
+			Limit.ofMod(Set.of("NeoForge", "Forge"), mixins("ledger.mixins.json", "com.github.quiltservertools.ledger.mixin.blocks", "CampfireBlockMixin"),
+					Pattern.compile("^@Inject handler logCampfireAddItem captures the local variable of type net\\.minecraft\\.world\\.level\\.block\\.entity\\.BlockEntity,"
+							+ " which useItemOn in net\\.minecraft\\.world\\.level\\.block\\.CampfireBlock doesn't hold where its @At points are"),
+					"the platform's CampfireBlock.useItemOn, compiled from the game's decompiled sources, reuses the block entity's local before the"
+							+ " player's stat is awarded, so Ledger's hook taking it there is left out, and an item put on a campfire isn't logged (LOCAL-6)"),
+			// OneConfig's accessor of KeyMapping.MAP as vanilla's Map, which NeoForge makes its own KeyMappingLookup.
+			Limit.ofMod(Set.of("NeoForge"), mixins("mixins.oneconfigv1.json", "org.polyfrost.oneconfig.internal.mixin.keybind", "KeyMappingRegistryAccessor"),
+					Pattern.compile("^@Accessor target field MAP in net\\.minecraft\\.client\\.KeyMapping has a different type than Ljava/util/Map;"),
+					"NeoForge makes KeyMapping.MAP its own KeyMappingLookup, so OneConfig's accessor of it as a Map is left out: OneConfig catches"
+							+ " the failed call, warns that its keybinds may shadow Minecraft's, and leaves the mirrors of its keybinds it adds to the"
+							+ " Controls screen registered, where Minecraft's own bindings of their keys still work (KEYMAP-1)"));
 
 	private KnownLimits() {
 	}
@@ -111,6 +208,7 @@ public final class KnownLimits {
 		if (!note && finding.severity() != Severity.LEFT_OUT && finding.severity() != Severity.FAIL) return null;
 		for (Limit limit : LIMITS) {
 			if (limit.exception() == null && limit.applied() == note && limit.loaders().contains(loader)
+					&& (limit.mixins().isEmpty() || limit.mixins().contains(finding.config() + " " + finding.mixin()))
 					&& matches(limit, finding.message() + "\n" + finding.suggestion())) {
 				return "Known limit: " + limit.reason();
 			}
