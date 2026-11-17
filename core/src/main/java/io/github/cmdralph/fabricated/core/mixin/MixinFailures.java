@@ -43,13 +43,18 @@ public final class MixinFailures {
 	private static final int MAX_MESSAGE = 16 << 10;
 	private static final int MAX_FIELD = 200;
 	private static final int VERSION = 1;
-	/** A mixin as Mixin names it in its messages: {@code <config>:<mixin> from mod <id>}. */
-	private static final String NAME = "([A-Za-z0-9_.$-]{1,200}\\.json):([A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*) from mod ([^\\s\\]]{1,100})";
+	/**
+	 * A mixin as Mixin names it in its messages: {@code <config>:<mixin>}, then {@code from mod <id>} where the platform's
+	 * Mixin names its mod (Fabric's fork, which NeoForge runs; Forge's Mixin names none).
+	 */
+	private static final String NAME = "([A-Za-z0-9_.$-]{1,200}\\.json):([A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*)(?: from mod ([^\\s\\]]{1,100}))?";
 	private static final Pattern NAMED = Pattern.compile(NAME);
 	/** Mixin's error for a mixin that failed ({@code MixinApplyError}, {@code MixinPrepareError}): it names that one. */
 	private static final Pattern FAILED = Pattern.compile("Mixin \\[" + NAME + "\\] from phase \\[[^\\]]*\\] in config \\[[^\\]]*\\] FAILED during [A-Z]+");
 	private static final Pattern MIXIN = Pattern.compile("[A-Za-z0-9_.$-]{1,200}\\.json:[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*");
 	private static final Pattern MOD_ID = Pattern.compile("[A-Za-z0-9_.-]{1,64}");
+	/** A class Mixin applied a mixin to, by its binary name. */
+	private static final Pattern CLASS = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*){0,40}");
 	private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
 	/** The packages of the throwables whose messages name a mixin that failed: Mixin's and MixinExtras'. */
 	private static final List<String> MIXIN_PACKAGES = List.of("org.spongepowered.asm.mixin.", "com.llamalad7.mixinextras.");
@@ -82,14 +87,26 @@ public final class MixinFailures {
 	 * A mixin that failed, as Mixin names it.
 	 *
 	 * @param mixin         its {@code skipMixins} entry ({@code <config>:<mixin>})
-	 * @param platformModId the id Mixin gives its mod: the translated mod's id on the platform
+	 * @param platformModId the id Mixin gives its mod (the translated mod's id on the platform), or null where Mixin names
+	 *                      none: its config then tells the mod
 	 * @param reason        why it failed
+	 * @param target        the class Mixin applied it to, where Mixin said (its error handlers do), else empty
 	 */
-	public record Named(String mixin, String platformModId, String reason) {
+	public record Named(String mixin, String platformModId, String reason, String target) {
 		public Named {
 			Objects.requireNonNull(mixin, "mixin");
-			Objects.requireNonNull(platformModId, "platformModId");
 			reason = reason == null ? "" : clean(reason, MAX_REASON);
+			target = binaryName(target);
+		}
+
+		public Named(String mixin, String platformModId, String reason) {
+			this(mixin, platformModId, reason, "");
+		}
+
+		/** Its config's name ({@code <config>} of {@code <config>:<mixin>}). */
+		public String config() {
+			int colon = mixin.indexOf(':');
+			return colon < 0 ? mixin : mixin.substring(0, colon);
 		}
 	}
 
@@ -100,13 +117,19 @@ public final class MixinFailures {
 	 * @param sha256 the hash of the mod's jar
 	 * @param mixin  the mixin's {@code skipMixins} entry ({@code <config>:<mixin>})
 	 * @param reason why it failed
+	 * @param target the class Mixin applied it to, where Mixin said, else empty
 	 */
-	public record Failure(String mod, String sha256, String mixin, String reason) {
+	public record Failure(String mod, String sha256, String mixin, String reason, String target) {
 		public Failure {
 			Objects.requireNonNull(mod, "mod");
 			Objects.requireNonNull(sha256, "sha256");
 			Objects.requireNonNull(mixin, "mixin");
 			reason = reason == null ? "" : clean(reason, MAX_REASON);
+			target = binaryName(target);
+		}
+
+		public Failure(String mod, String sha256, String mixin, String reason) {
+			this(mod, sha256, mixin, reason, "");
 		}
 
 		boolean valid() {
@@ -177,14 +200,21 @@ public final class MixinFailures {
 	/** The mixin {@code m} found in {@code chain[at]}, with the deepest message from there on that names it as why. */
 	private static Named named(List<Thrown> chain, int at, Matcher m) {
 		String mixin = m.group(1) + ":" + m.group(2);
-		String named = mixin + " from mod ";
+		Pattern named = Pattern.compile(Pattern.quote(mixin) + "(?![A-Za-z0-9_$.])");
 		Thrown why = chain.get(at);
 		for (int i = at + 1; i < chain.size(); i++) {
 			Thrown t = chain.get(i);
-			if (t.message() != null && t.message().contains(named) && MIXIN_PACKAGES.stream().anyMatch(t.className()::startsWith)) why = t;
+			if (t.message() != null && MIXIN_PACKAGES.stream().anyMatch(t.className()::startsWith) && named.matcher(t.message()).find()) why = t;
 		}
 		String simpleName = why.className().substring(why.className().lastIndexOf('.') + 1);
 		return new Named(mixin, m.group(3), simpleName + ": " + why.message());
+	}
+
+	/** A class name as Mixin gives it ({@code a.b.C} or {@code a/b/C}) in its binary form; empty for what isn't one. */
+	static String binaryName(String name) {
+		if (name == null) return "";
+		String dotted = name.replace('/', '.');
+		return dotted.length() <= MAX_FIELD && CLASS.matcher(dotted).matches() ? dotted : "";
 	}
 
 	/** Control characters as spaces, runs of white space as one, at most {@code max} characters. */
@@ -321,6 +351,7 @@ public final class MixinFailures {
 			m.put("sha256", f.sha256());
 			m.put("mixin", f.mixin());
 			m.put("reason", f.reason());
+			if (!f.target().isEmpty()) m.put("target", f.target());
 			m.put("fabricated", launch.fabricatedVersion());
 			m.put("build", launch.fabricatedBuild());
 			m.put("minecraft", launch.minecraftVersion());
@@ -331,7 +362,7 @@ public final class MixinFailures {
 
 		private static Failure failure(Map<?, ?> m) {
 			if (!(m.get("mod") instanceof String mod) || !(m.get("sha256") instanceof String sha) || !(m.get("mixin") instanceof String mixin)) return null;
-			Failure f = new Failure(mod, sha, mixin, m.get("reason") instanceof String r ? r : "");
+			Failure f = new Failure(mod, sha, mixin, m.get("reason") instanceof String r ? r : "", m.get("target") instanceof String t ? t : "");
 			return f.valid() ? f : null;
 		}
 

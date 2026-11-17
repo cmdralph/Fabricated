@@ -53,6 +53,7 @@ import io.github.cmdralph.fabricated.core.remap.LazyMappingTable;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.remap.Supertypes;
+import io.github.cmdralph.fabricated.core.report.DiagnosticsBlock;
 import io.github.cmdralph.fabricated.core.report.KnownLimits;
 import io.github.cmdralph.fabricated.core.report.LaunchPhases;
 import io.github.cmdralph.fabricated.core.report.Report;
@@ -354,8 +355,8 @@ public final class Pipeline {
 	private final List<Candidate> otherSide = new ArrayList<>();
 	/** Compat patches already reported as ignored ("mod target"): patches are worked out again every round. */
 	private final Set<String> ignoredPatches = new HashSet<>();
-	/** The mixins that failed as Mixin applied them in an earlier launch, by Fabric mod id: each one's {@code skipMixins} entry and why. */
-	private final Map<String, Map<String, String>> failedLastLaunch = new HashMap<>();
+	/** The mixins that failed as Mixin applied them in an earlier launch, by Fabric mod id and then {@code skipMixins} entry. */
+	private final Map<String, Map<String, MixinFailures.Failure>> failedLastLaunch = new HashMap<>();
 	/** Where the run's time goes, in the report (a launch with everything cached still scans and checks). */
 	private final LaunchPhases phases = new LaunchPhases();
 
@@ -428,6 +429,28 @@ public final class Pipeline {
 	public static MixinFailures.Log mixinFailures(Input in) {
 		return new MixinFailures.Log(MixinFailures.file(in.gameDir()),
 				new MixinFailures.Launch(in.fabricatedVersion(), in.fabricatedBuild(), in.minecraftVersion(), in.neoForgeVersion()));
+	}
+
+	/** The launch as Fabricated's diagnostics block names it ({@link DiagnosticsBlock}): the loader and the versions. */
+	public static DiagnosticsBlock.Launch launch(Input in) {
+		return new DiagnosticsBlock.Launch(in.descriptor().loaderName(), in.neoForgeVersion(), in.minecraftVersion(), in.fabricatedVersion());
+	}
+
+	/**
+	 * What the platform's glue needs as a launch stops on a Fabric mod's failure: where it records a mixin that failed
+	 * as Mixin applied it (APPLY-1), the launch the diagnostics block names, and whether the platform's Mixin names a
+	 * mixin's mod in the handlers it merges ({@link PlatformDescriptor#mixinNamesMods}).
+	 */
+	public record Diagnostics(MixinFailures.Log mixinFailures, DiagnosticsBlock.Launch launch, boolean mixinNamesMods) {
+	}
+
+	public static Diagnostics diagnostics(Input in) {
+		return new Diagnostics(mixinFailures(in), launch(in), in.descriptor().mixinNamesMods());
+	}
+
+	/** What the diagnostics block says of a Fabric mod ({@link DiagnosticsBlock}): its id, name, version and jar. */
+	public static DiagnosticsBlock.Mod diagnosed(Candidate c) {
+		return new DiagnosticsBlock.Mod(c.id(), c.metadata().getName(), c.version(), c.origin());
 	}
 
 	private static List<Builtin> builtins(Input in, Set<String> providedElsewhere) {
@@ -871,7 +894,7 @@ public final class Pipeline {
 		for (Candidate c : scanned) jars.put(c.id(), c.sha256());
 		List<String> notes = new ArrayList<>();
 		for (MixinFailures.Failure f : mixinFailures(in).load(jars, notes)) {
-			failedLastLaunch.computeIfAbsent(f.mod(), k -> new TreeMap<>()).put(f.mixin(), f.reason());
+			failedLastLaunch.computeIfAbsent(f.mod(), k -> new TreeMap<>()).put(f.mixin(), f);
 		}
 		notes.forEach(n -> report.line(FAILED_LAST_LAUNCH, n));
 	}
@@ -1333,7 +1356,7 @@ public final class Pipeline {
 	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues, Map<String, String> leftOutMixins) {
 		Candidate c = t.candidate();
 		String loader = in.descriptor().loaderName();
-		Map<String, String> failed = failedLastLaunch.getOrDefault(c.id(), Map.of());
+		Map<String, MixinFailures.Failure> failed = failedLastLaunch.getOrDefault(c.id(), Map.of());
 		long leftOut = t.findings().stream().filter(f -> f.severity() == Severity.LEFT_OUT).map(f -> f.config() + " " + f.mixin()).distinct().count();
 		String detail = (millis == null ? "cached" : "translated in " + millis + " ms")
 				+ (t.accessTransformers() > 0 ? ", " + t.accessTransformers() + " access transformer(s)" : "")
@@ -1348,9 +1371,14 @@ public final class Pipeline {
 			report.line(f.severity() == Severity.LEFT_OUT ? leftOutSection(loader) : "Mixin pre-flight warnings", findingLine(c.id(), f));
 		}
 		leftOutMixins.values().forEach(issue -> report.line(NEEDING_UNLOADED, c.id() + ": " + issue.substring(issue.indexOf("] ") + 2)));
-		failed.forEach((mixin, why) -> report.line(FAILED_LAST_LAUNCH, c.id() + ": " + mixin + " failed as Mixin applied it in the last launch ("
-				+ why + "). It is left out until this mod's jar, Fabricated, Minecraft or " + loader + " changes; delete .fabricated/"
-				+ MixinFailures.FILE_NAME + " to try it again, and report it to Fabricated with this report."));
+		for (MixinFailures.Failure f : failed.values()) {
+			report.line(FAILED_LAST_LAUNCH, c.id() + ": " + f.mixin() + " failed as Mixin applied it in the last launch (" + f.reason() + ")");
+			// The diagnostics block the launch it failed in wrote, saying what this launch does about it.
+			String block = DiagnosticsBlock.render(List.of(new DiagnosticsBlock.Entry(diagnosed(c), f.mixin(), f.target(), null)), launch(in),
+					"leaves it out until this mod's jar, Fabricated, Minecraft or " + loader + " changes; delete .fabricated/" + MixinFailures.FILE_NAME
+							+ " to try it again, and report it to Fabricated with this report");
+			for (String line : block.split("\n")) report.line(FAILED_LAST_LAUNCH, "  " + line);
+		}
 		for (String n : t.notes()) report.line("Translation notes", c.id() + ": " + n);
 		FabricApiPlan.Module planned = plan.module(c.id());
 		if (planned != null && !planned.skipMixins().isEmpty()) {

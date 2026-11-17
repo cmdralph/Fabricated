@@ -62,6 +62,7 @@ import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingComposer;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
+import io.github.cmdralph.fabricated.core.report.DiagnosticsBlock;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.DownloadedMods;
@@ -3493,7 +3494,7 @@ class PipelineTest {
 		Pipeline.Input in = input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null);
 		List<String> notes = new ArrayList<>();
 		assertTrue(Pipeline.mixinFailures(in).record(new MixinFailures.Failure("failing-mod", Hashing.sha256(jar), "failing.mixins.json:Failed",
-				"InvalidInjectionException: it failed"), notes), notes.toString());
+				"InvalidInjectionException: it failed", "net.minecraft.world.Thing"), notes), notes.toString());
 
 		Pipeline.Result result = Pipeline.run(in);
 		String report = result.report().render();
@@ -3501,6 +3502,15 @@ class PipelineTest {
 		assertTrue(report.contains(Pipeline.FAILED_LAST_LAUNCH), report);
 		assertTrue(report.contains("failing-mod: failing.mixins.json:Failed failed as Mixin applied it in the last launch (InvalidInjectionException: it failed)"),
 				report);
+		// The diagnostics block of the launch it failed in, under that line: the jar by its file name only.
+		List<String> section = result.report().lines(Pipeline.FAILED_LAST_LAUNCH);
+		assertEquals(List.of("  " + DiagnosticsBlock.HEADER, "  Fabric mod:  failing-mod (failing-mod) 1.0, failing.jar",
+				"  Mixin:       failing.mixins.json:Failed, into net.minecraft.world.Thing",
+				"  Loader:      " + in.descriptor().loaderName() + " " + in.neoForgeVersion() + ", Minecraft " + in.minecraftVersion() + ", Fabricated "
+						+ in.fabricatedVersion(),
+				"  Fabricated:  leaves it out until this mod's jar, Fabricated, Minecraft or " + in.descriptor().loaderName() + " changes; delete"
+						+ " .fabricated/mixin-failures.json to try it again, and report it to Fabricated with this report"), section.subList(1, section.size()));
+		section.forEach(line -> assertFalse(line.contains(game.toString()), "no path of the player's: " + line));
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("failing-mod")).findFirst().orElseThrow();
 		assertTrue(row.detail().contains("1 mixin(s) left out that failed as Mixin applied them in the last launch"), row.detail());
 		assertFalse(report.contains("names no mixin of this mod"), report);
