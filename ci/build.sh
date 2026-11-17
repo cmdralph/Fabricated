@@ -17,7 +17,7 @@ work=
 # shellcheck source=ci/smoke-lib.sh
 source ci/smoke-lib.sh
 # shellcheck disable=SC2046 # one task or option per word
-./gradlew $(gradle_tasks) --stacktrace "$@"
+ci/retry-downloads.sh ./gradlew $(gradle_tasks) --stacktrace "$@"
 jar=$(fabricated_jar)
 echo "Built ${jar#"$root"/}"
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
