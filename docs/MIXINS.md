@@ -1152,10 +1152,11 @@ them, with that folder's version groups that serve the version (`mc/forge-shared
 `overwrites.requireAnnotations`, which every NeoForge config sets: in the others, a method a mixin adds that its
 target already declares replaces the target's without an `@Overwrite` (MIX-3).
 
-## Forge 61 to 66 (`forge`): 89 mixins in 24 configs
+## Forge 61 to 66 (`forge`): 93 mixins in 26 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
+| `mc/forge/1.21.11/src/main/resources/fabricated-forge-bridge.mixins.json` | `io.github.cmdralph.fabricated.forge.bridge.mixin` | 1.21.11 | client 1 | 1 | — | none |
 | `mc/forge/1.21.11/src/main/resources/fabricated-forge-color.mixins.json` | `io.github.cmdralph.fabricated.forge.color.mixin` | 1.21.11 | client 1 | 1 | — | none |
 | `mc/forge/1.21.11/src/main/resources/fabricated-forge-conditions.mixins.json` | `io.github.cmdralph.fabricated.forge.resource.mixin` | 1.21.11 | mixins 2 | 1 | — | none |
 | `mc/forge/1.21.11/src/main/resources/fabricated-forge-damage.mixins.json` | `io.github.cmdralph.fabricated.forge.damage.mixin` | 1.21.11 | mixins 1 | 1 | — | none |
@@ -1163,6 +1164,7 @@ target already declares replaces the target's without an `@Overwrite` (MIX-3).
 | `mc/forge/1.21.11/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 1.21.11 | mixins 2 | 1 | — | none |
 | `mc/forge/1.21.11/src/main/resources/fabricated-forge-particle.mixins.json` | `io.github.cmdralph.fabricated.forge.particle.mixin` | 1.21.11 | client 1 | 1 | — | none |
 | `mc/forge/1.21.11/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.21.11 | client 1 | 1 | — | none |
+| `mc/forge/26.1.2/src/main/resources/fabricated-forge-bridge.mixins.json` | `io.github.cmdralph.fabricated.forge.bridge.mixin` | 26.1.2 | client 1 | 1 | — | none |
 | `mc/forge/26.1.2/src/main/resources/fabricated-forge-damage.mixins.json` | `io.github.cmdralph.fabricated.forge.damage.mixin` | 26.1.2 | mixins 1 | 1 | — | none |
 | `mc/forge/26.1.2/src/main/resources/fabricated-forge-frapi-breaking.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.breaking` | 26.1.2 | client 1 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge/26.2/src/main/resources/fabricated-forge-frapi-breaking.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.breaking` | 26.2 | client 1 | 1 | — | `FrapiMixinPlugin` |
@@ -1172,14 +1174,22 @@ target already declares replaces the target's without an `@Overwrite` (MIX-3).
 | `mc/forge/common/src/main/resources/fabricated-forge-entity.mixins.json` | `io.github.cmdralph.fabricated.forge.entity.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 2 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 1 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge-screen.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | client 2 | 1 | — | none |
-| `mc/forge/common/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 25 | 1 | — | `FabricatedMixinPlugin` |
+| `mc/forge/common/src/main/resources/fabricated-forge.mixins.json` | `io.github.cmdralph.fabricated.forge.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 26 | 1 | — | `FabricatedMixinPlugin` |
 | `mc/forge/common/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 5 | 1 | true | none |
-| `mc/forge/common/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | client 1 | 1 | — | none |
+| `mc/forge/common/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 1, client 1 | 1 | — | none |
 | `mc/forge/common26/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 26.1.2, 26.2, 26.3 | client 10 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge/common26/src/main/resources/fabricated-forge-screen-chars.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.chars.mixin` | 26.1.2, 26.2, 26.3 | client 1 | 1 | — | none |
 | `mc/forge/common26/src/main/resources/fabricated-keymapping.mixins.json` | `net.fabricmc.fabric.mixin.client.keymapping` | 26.1.2, 26.2, 26.3 | client 1 | 1 | — | none |
 | `mc/forge/common26/src/testmodfrapi/resources/fabricated-testmod-frapi-forge.mixins.json` | `io.github.cmdralph.fabricated.testmod.frapi.forgemixin` | 26.1.2, 26.2, 26.3 | client 3 | 1 | true | none |
 | `mc/forge/common26early/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 26.1.2, 26.2 | mixins 2 | 1 | — | none |
+
+### `mc/forge/1.21.11/src/main/resources/fabricated-forge-bridge.mixins.json`
+
+Versions: 1.21.11 · package `io.github.cmdralph.fabricated.forge.bridge.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| client | LevelRendererBlockEntitiesBridgeMixin | 1.21.11 (1.21.11) | n.m.client.renderer.LevelRenderer | no injectors; adds methods fabricated$invoke$extractVisibleBlockEntities (vanilla's parameters, calling Forge 61's method, which takes a frustum too, with one every box is visible in, LEAVE-5); @Shadow extractVisibleBlockEntities | | | | |
 
 ### `mc/forge/1.21.11/src/main/resources/fabricated-forge-color.mixins.json`
 
@@ -1300,6 +1310,14 @@ Versions: 1.21.11 · package `net.fabricmc.fabric.mixin.client.keybinding` · re
 |---|---|---|---|---|---|---|---|---|
 | client | KeyMappingCategoryMixin | 1.21.11 (1.21.11) | n.m.client.KeyMapping$Category | @Inject → onReturnRegister; @Shadow SORT_ORDER | "register(Lnet/minecraft/resources/Identifier;)Lnet/minecraft/client/KeyMapping$Category;" | RETURN | — | default |
 
+### `mc/forge/26.1.2/src/main/resources/fabricated-forge-bridge.mixins.json`
+
+Versions: 26.1.2 · package `io.github.cmdralph.fabricated.forge.bridge.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| client | LevelRendererBlockEntitiesBridgeMixin | 26.1.2 (26.1.2) | n.m.client.renderer.LevelRenderer | no injectors; adds methods fabricated$invoke$extractVisibleBlockEntities (vanilla's parameters, calling Forge 64's method, which takes a frustum too, with one every box is visible in, LEAVE-5); @Shadow extractVisibleBlockEntities | | | | |
+
 ### `mc/forge/26.1.2/src/main/resources/fabricated-forge-damage.mixins.json`
 
 Versions: 26.1.2 · package `io.github.cmdralph.fabricated.forge.damage.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=—
@@ -1418,6 +1436,7 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 | mixins | ResourcePackLoaderKnownPackMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | forge.resource.ResourcePackLoader | @ModifyArg → fabricated$knownPack | "findPacks" | INVOKE `L…/PackLocationInfo;<init>(L…/String;L…/Component;L…/PackSource;L…/Optional;)V` index=3 | 0 | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.BucketItem | @WrapOperation → fabricated$delegateIfRegistered; @Shadow @Mutable fluidSupplier | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | INVOKE `L…/IForgeRegistry;getDelegateOrThrow(L…/Object;)L…/Holder$Reference;` | — | default |
 | mixins | BucketItemEarlyFluidMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.BucketItem | @Inject → fabricated$fluidItselfIfUnregistered | "<init>(Lnet/minecraft/world/level/material/Fluid;Lnet/minecraft/world/item/Item$Properties;)V" | TAIL | — | default |
+| mixins | MobBucketItemBridgeMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.world.item.MobBucketItem | no injectors; adds methods fabricated$get$type (named after Mojang's name of the field, ACC-5, LEAVE-5); @Shadow getFishType | | | | |
 | mixins | PlayerListViewMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (Forge's unmodifiable view follows the list in the field, POLY-2) | "getPlayers" | RETURN | — | default |
 | mixins | PoiTypesMixin | mc/forge-shared/1.21.1+ (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.ai.village.poi.PoiTypes | @Inject → fabricated$withoutCallbackEntries | "registerBlockStates" | HEAD | — | default |
 | mixins | PackRepositorySourcesMixin | mc/forge-shared (1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.repository.PackRepository | @Inject → fabricated$keepSourcesMutable (a set a Fabric mod made immutable is made mutable again before Forge adds a pack finder, PACK-1, PACK-11); @Shadow @Mutable sources | "addPackFinder" remap=false | HEAD | — | default |
@@ -1472,6 +1491,8 @@ Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
+| mixins | MobBucketItemAccessor | 1.21.11 (1.21.11) | n.m.world.item.MobBucketItem | @Accessor → fabricatedtest$type | "field_7991" remap=false |  | — | default |
+| mixins | MobBucketItemAccessor | common26 (26.1.2,26.2,26.3) | n.m.world.item.MobBucketItem | @Accessor → fabricatedtest$type | "type" remap=false |  | — | default |
 | client | HudHooksMixin | 1.21.11 (1.21.11) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheEnd | "render" | TAIL | — | default |
 | client | HudHooksMixin | 1.21.11 (1.21.11) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheCrosshair | "render" | INVOKE `L…/Gui;renderCrosshair(L…/GuiGraphics;L…/DeltaTracker;)V` | — | default |
 | client | HudHooksMixin | 26.1.2 (26.1.2) | n.m.client.gui.Gui | @Inject → fabricatedForgeTest$atTheEnd | "extractRenderState" | TAIL | — | default |
@@ -1855,7 +1876,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forge.mixin` · requi
 | mixins | LivingEntityDropCaptureMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @Inject → fabricated$captureAfterForgesEvent (Forge 47's or Forge 52's event, whichever the method asks) | "dropAllDeathLoot" | INVOKE `L…/ForgeHooks;onLivingDrops(L…/LivingEntity;L…/DamageSource;L…/Collection;IZ)Z` shift=AFTER remap=false, INVOKE `L…/ForgeEventFactory;onLivingDrops(L…/LivingEntity;L…/DamageSource;L…/Collection;Z)Z` shift=AFTER remap=false | — | default |
 | mixins | LivingEntityDropCaptureMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @WrapWithCondition → fabricated$keepDropsCaptured | "dropAllDeathLoot" | INVOKE `L…/Collection;forEach(L…/Consumer;)V` remap=false | — | default |
 | mixins | LivingEntityDropCaptureMixin | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.world.entity.LivingEntity prio=Integer.MAX_VALUE | @Inject → fabricated$addCapturedDrops | "dropAllDeathLoot" | RETURN | — | default |
-| mixins | MobBucketItemBridgeMixin | 1.21.1 (1.21.1) | n.m.world.item.MobBucketItem | no injectors; adds methods fabricated$get$type (named after Mojang's name of the field, ACC-5); @Shadow getFishType | | | | |
+| mixins | MobBucketItemBridgeMixin | mc/forge-shared/1.21.1+ (1.21.1) | n.m.world.item.MobBucketItem | no injectors; adds methods fabricated$get$type (named after Mojang's name of the field, ACC-5); @Shadow getFishType | | | | |
 | mixins | BiomeWeatherWriteMixin | mc/forge-shared/1.21.1+ (1.21.1) | fapi.impl.biome.modification.BiomeModificationContextImpl$WeatherContextImpl (`targets`) (@Pseudo) | @Redirect → fabricated$setClimate (the climate into the field and Forge's biome info, BIOME-3) | "setPrecipitation", "setTemperature", "setTemperatureModifier", "setDownfall" | FIELD `L…/Biome;climateSettings:L…/Biome$ClimateSettings;` opcode=PUTFIELD | — | default |
 | mixins | BiomeClimateAccessor | mc/forge-shared/1.21.1+ (1.21.1) | n.m.world.level.biome.Biome | @Accessor @Mutable → fabricated$setClimateSettings | "climateSettings" |  | — | default |
 | mixins | ModifiableBiomeInfoAccessor | mc/forge-shared/1.21.1+ (1.21.1) | forge.common.world.ModifiableBiomeInfo | @Accessor @Mutable → fabricated$setOriginalBiomeInfo; @Accessor → fabricated$setModifiedBiomeInfo | "originalBiomeInfo", "modifiedBiomeInfo" |  | — | default |
