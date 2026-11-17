@@ -3,6 +3,66 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-17: Fabric ingredients as JSON on Forge, Farmer's Delight on Forge 52 clients, REI's and Puzzles Lib's packs on NeoForge, Forge 66 clients exit as they close
+
+- **CORPUS-115** (P2), fixed: on Forge 52, Fabric API's custom ingredients couldn't be written as JSON ("Modders must
+  implement Ingredient.codec"), so Supplementaries' dynamic sign post recipes weren't generated; on Forge 52 and 61 to
+  66 the same held for a Fabric mod's own ingredient. Such an ingredient is now written as on Fabric, by the vanilla
+  codec Forge's wraps, Fabric API's custom form included, and read back by Forge's codec.
+- **ENUM-9** (P1), fixed: Farmer's Delight Refabricated loads on Forge 52 clients. Its mixin into
+  `RecipeBookCategories` adds the cooking pot's recipe book categories and injects into `getCategories`; Forge 52
+  makes the categories with the enum's own factory, and the injector now stays in the mixin that adds them, where it
+  was refused before and the mod disabled.
+- **PROVIDER-23** (P2), fixed: on NeoForge 1.21.11 to 26.3 the native resource loader has what REI's and Puzzles Lib's
+  Fabric builds call of Fabric API's internals. A mod resource pack creator a mod makes with the pack type alone
+  offers the mods' packs and the built-in ones, so REI's fallback of recipes read from the data packs, where the
+  server sends none, has the mods' recipes; and a pack a mod hides through Fabric API's pack interface is hidden as
+  NeoForge hides its own, so Puzzles Lib's mods' internal packs are no longer in the pack screens. Traveler's
+  Backpack's hook that keeps its menus closed in a ReplayMod replay, and Polymer's hooks of Fabric's registry sync,
+  have nothing to apply to on NeoForge, whose menus and registry sync replace upstream's: `COMPATIBILITY.md` says so.
+- **CORPUS-116** (P2), fixed: a Forge 66 client with Forge Config API Port's Fabric build, or any Fabric mod watching
+  a file with night-config's default file watcher, wrote a crash report after the player quit and exited 15 s later.
+  The watcher Forge's night-config runs kept the game up; Fabricated now stops it as the client closes, where Forge
+  stops its own config watchers.
+- **Verified:** core's tests and CI's script tests; NeoForge 1.21.11 and 26.1.2 and Forge 52 and 66 built, their
+  server and client parts pass, with new checks of a Fabric mod's own ingredient and Fabric API's custom one written
+  as JSON (Forge), of the resource loader's creator and pack interface (NeoForge from 1.21.11), and of a Fabric mod's
+  config file watch, after which the client must still exit (Forge 61 to 66). Forge 66's client run fails the exit
+  check without the fix, as its corpus client did. Forge 52's corpus server generates Supplementaries' sign post
+  recipes, its corpus client loads Farmer's Delight, and NeoForge 26.1.2's corpus server no longer reports REI's and
+  Puzzles Lib's calls of the internals. NeoForge 26.2 and 26.3 don't build locally, and Forge 61, 64 and 65 weren't
+  built.
+
+## 2026-11-17: A diagnostics block names the Fabric mod a crash involves; Forge leaves out a mixin that failed (APPLY-3)
+
+- **The diagnostics block:** when the game stops on an error a Fabric mod is involved in, Fabricated writes one block,
+  in the log and at the start of the crash report's details, on every loader and Minecraft version:
+  ```
+  ---- Fabricated: a Fabric mod was involved ----
+  Fabric mod:  Ledger (ledger) 1.3.5, ledger-1.3.5+1.21.1.jar
+  Mixin:       ledger.mixins.json:AnvilScreenHandlerMixin, into net.minecraft.world.inventory.AnvilMenu
+  Loader:      NeoForge 21.1.200, Minecraft 1.21.1, Fabricated 0.6.0-beta.3
+  Fabricated:  leaves this mixin out from the next launch (logs/fabric-bridge-report.txt says why)
+  ```
+  It names the Fabric mod (its name, id, version and jar file), its mixin and the class Mixin applied it to, or the
+  mod's class in the stack trace, the loader and the versions, and what Fabricated does about it; with several mods,
+  up to three, the most likely first. It names a mod only where that is certain, and an error it can't tie to a Fabric
+  mod gets no block. `COMPATIBILITY.md` says how to read it, under *Troubleshooting: the diagnostics block*.
+- **The report** has the block too, under each mixin left out for failing in the last launch, in *Mixins left out
+  (they failed as Mixin applied them in the last launch)*.
+- **APPLY-3** (P0), fixed: on Forge (47, 52 and 61 to 66), a Fabric mod's mixin that passed pre-flight but failed as
+  Mixin applied it stopped every launch the same way. It is now recorded in `.fabricated/mixin-failures.json` and left
+  out from the next launch, as on NeoForge, until the mod's jar, Fabricated, Minecraft or Forge changes.
+- **APPLY-4** (P0), fixed: on NeoForge 1.21.11 to 26.3, a Fabric mod's mixin that failed as a class the dedicated
+  server's start loads after mod loading first loaded stopped every launch and was never recorded: the server's start
+  catches the error and only logs it. It is recorded and left out from the next launch now, as on Forge.
+- **Verified:** the core unit tests (what the block names, and only where it is certain, its bounds, Forge's names of a
+  mixin, the record's class, Fabricated's release on the Loader line), CI's script tests and the mixin inventory; the
+  server part of CI's runs on local dedicated servers of NeoForge 1.21.1 and 26.1.2 and Forge 1.20.1, 1.21.11 and 26.3,
+  the four launches of the impossible-mixin test mod and the block's checks passing on each (on Forge 1.21.1, the first
+  three launches); a Forge 1.21.11 client the impossible mixin stops as it starts has the block in its log and its crash
+  report.
+
 ## 2026-11-17: Iris's shadows and Inventory Profiles Next's mob buckets on Forge 61 to 66 (LEAVE-5); the report names more known limits (LIMIT-3) and no longer lists enum constants Mixin adds as missing (ENUM-10)
 
 - **LEAVE-5** (P0 on Forge 61 and 64 with Iris and a shader pack casting shadows), fixed where Fabricated can make the

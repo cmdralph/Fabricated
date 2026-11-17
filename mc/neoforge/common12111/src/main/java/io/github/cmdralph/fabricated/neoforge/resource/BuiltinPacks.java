@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.neoforge.resource;
 
 import java.nio.file.Files;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -15,7 +17,11 @@ import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.PathPackResources;
 import net.minecraft.server.packs.repository.KnownPack;
 import net.minecraft.server.packs.repository.Pack;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.event.AddPackFindersEvent;
+import net.neoforged.neoforge.resource.ResourcePackLoader;
+import net.neoforged.neoforgespi.language.IModFileInfo;
+import net.neoforged.neoforgespi.locating.IModFile;
 
 /**
  * Offers the built-in packs Fabric mods register ({@code ResourceLoader.registerBuiltinPack}) to every pack
@@ -25,6 +31,8 @@ import net.neoforged.neoforge.event.AddPackFindersEvent;
  * <p>Activation: {@code ALWAYS_ENABLED} packs are required (cannot be turned off); {@code DEFAULT_ENABLED} data
  * packs are added to new worlds automatically, and {@code DEFAULT_ENABLED} resource packs are switched on the first
  * time they are offered ({@link DefaultResourcePacks}).
+ *
+ * <p>A creator a mod makes itself offers the mods' packs first ({@link #offerModPacks}), as upstream's does.
  */
 public final class BuiltinPacks {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -37,6 +45,17 @@ public final class BuiltinPacks {
 	/** Gives the pack repository upstream's pack finder, whose instance mods' mixins hook (PROVIDER-22). */
 	static void onAddPackFinders(AddPackFindersEvent event) {
 		event.addRepositorySource(new ModResourcePackCreator(event.getPackType(), event.isTrusted()));
+	}
+
+	/**
+	 * Offers the mods' packs for {@code type}, each on its own, to a {@link ModResourcePackCreator} a mod made itself:
+	 * upstream's offers Fabric's mod packs so (PROVIDER-23). They are NeoForge's, as its own pack finder builds them for
+	 * the pack repositories it makes, the packs it nests in its mod data or resources pack included.
+	 */
+	public static void offerModPacks(PackType type, Consumer<Pack> consumer) {
+		Map<IModFile, Pack.ResourcesSupplier> packs = new LinkedHashMap<>();
+		for (IModFileInfo file : ModList.get().getModFiles()) packs.put(file.getFile(), ResourcePackLoader.createPackForMod(file));
+		ResourcePackLoader.buildPackFinder(packs, type).loadPacks(pack -> pack.streamSelfAndChildren().forEach(consumer));
 	}
 
 	/** Offers the built-in packs for {@code type} to a repository scanning its {@link ModResourcePackCreator}. */
