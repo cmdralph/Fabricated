@@ -1773,8 +1773,8 @@ class PipelineTest {
 	void anEnumMixinBecomesAMixinAddingItsConstantsWhereMixinAppliesNoEnumMixins(@TempDir Path game) throws Exception {
 		// ENUM-7: Friends and Foes' mob categories on Forge 61 to 66, whose Mixin 0.8.7 applies no enum mixins (the
 		// constructor its enum mixin shadows stopped the corpus clients' bootstrap). An ordinary mixin adding the constants
-		// takes its place; where none can, as the enum mixin has a method of its own, pre-flight disables the mod, which
-		// Mixin would stop the game on.
+		// takes its place; where none can, as a method of the enum mixin makes an instance of it, which an ordinary mixin
+		// can't, pre-flight disables the mod, which Mixin would stop the game on.
 		String category = "net/minecraft/world/Category";
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path friends = TestJars.create().fabricModJson(TestJars.modJson("friends", "1.0", "\"mixins\":[\"friends.mixins.json\"]"))
@@ -1789,8 +1789,10 @@ class PipelineTest {
 						List.of(TestEnums.Constant.plain("FOES_RASCALS")), cw -> {
 							MethodVisitor rascal = cw.visitMethod(Opcodes.ACC_PUBLIC, "rascal", "()V", null, null);
 							rascal.visitCode();
+							rascal.visitTypeInsn(Opcodes.NEW, "com/foes/mixin/CategoryMixin");
+							rascal.visitInsn(Opcodes.POP);
 							rascal.visitInsn(Opcodes.RETURN);
-							rascal.visitMaxs(0, 1);
+							rascal.visitMaxs(1, 1);
 							rascal.visitEnd();
 						}))
 				.write(mods.resolve("foes.jar"));
@@ -1826,6 +1828,118 @@ class PipelineTest {
 		assertEquals(List.of("friends"), neoForge.mods().stream().map(m -> m.translated().candidate().id()).toList(), neoForge.report().render());
 		try (SafeArchive overlay = SafeArchive.open(neoForge.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			assertNull(overlay.read("com/friends/mixin/CategoryMixin.class"), "the mod's own enum mixin");
+		}
+	}
+
+	@Test
+	void anEnumMixinWithAnInjectorKeepsItWhereMixinAppliesNoEnumMixinsAndForgeMakesTheEnumExtensible(@TempDir Path game) throws Exception {
+		// ENUM-9: Farmer's Delight on Forge 52, whose Mixin 0.8.7 applies no enum mixins. Its mixin into RecipeBookCategories,
+		// which Forge makes extensible, adds four constants and injects into getCategories, reading them; pre-flight
+		// disabled it on Forge 52 clients, where NeoForge 21.1 loads it (its enum extension file, its injector a mixin
+		// beside it: CORPUS-65). The constants come from Forge's create factory, and the injector stays in the mixin, its
+		// reads of the constants going to the holder, as the mod's own classes' do.
+		String categories = "net/minecraft/client/RecipeBookCategories";
+		String stack = "net/minecraft/world/item/ItemStack";
+		String self = "L" + categories + ";";
+		String handlerDesc = "(Ljava/lang/Object;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V";
+		ClassWriter reader = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		reader.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, "com/cooking/client/Categories", null, "java/lang/Object", null);
+		reader.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "SEARCH", self, null, null).visitEnd();
+		MethodVisitor readerInit = reader.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+		readerInit.visitCode();
+		readerInit.visitFieldInsn(Opcodes.GETSTATIC, categories, "COOKING_SEARCH", self);
+		readerInit.visitFieldInsn(Opcodes.PUTSTATIC, "com/cooking/client/Categories", "SEARCH", self);
+		readerInit.visitInsn(Opcodes.RETURN);
+		readerInit.visitMaxs(0, 0);
+		readerInit.visitEnd();
+		reader.visitEnd();
+		String mixinName = "com/cooking/mixin/CategoriesMixin";
+		byte[] mixin = TestEnums.mixin(mixinName, categories, List.of(new TestEnums.Constant("COOKING_SEARCH", "([L" + stack + ";)V", mv -> {
+			mv.visitInsn(Opcodes.ICONST_0);
+			mv.visitTypeInsn(Opcodes.ANEWARRAY, stack);
+		})), cw -> {
+			MethodVisitor handler = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "cooking$categories", handlerDesc, null, null);
+			AnnotationVisitor inject = handler.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Inject;", false);
+			AnnotationVisitor methods = inject.visitArray("method");
+			methods.visit(null, "getCategories");
+			methods.visitEnd();
+			AnnotationVisitor at = inject.visitArray("at");
+			AnnotationVisitor head = at.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			head.visit("value", "HEAD");
+			head.visitEnd();
+			at.visitEnd();
+			inject.visit("cancellable", Boolean.TRUE);
+			inject.visitEnd();
+			handler.visitCode();
+			handler.visitVarInsn(Opcodes.ALOAD, 1);
+			handler.visitFieldInsn(Opcodes.GETSTATIC, mixinName, "COOKING_SEARCH", "L" + mixinName + ";");
+			handler.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/List", "of", "(Ljava/lang/Object;)Ljava/util/List;", true);
+			handler.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable", "setReturnValue",
+					"(Ljava/lang/Object;)V", false);
+			handler.visitInsn(Opcodes.RETURN);
+			handler.visitMaxs(0, 0);
+			handler.visitEnd();
+		});
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path cooking = TestJars.create().fabricModJson(TestJars.modJson("cooking", "1.0", "\"mixins\":[\"cooking.mixins.json\"]"))
+				.text("cooking.mixins.json", "{\"required\":true,\"package\":\"com.cooking.mixin\",\"client\":[\"CategoriesMixin\"],"
+						+ "\"injectors\":{\"defaultRequire\":1}}")
+				.bytes(mixinName + ".class", mixin)
+				.bytes("com/cooking/client/Categories.class", reader.toByteArray())
+				.write(mods.resolve("cooking.jar"));
+		ClassWriter itemStack = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		itemStack.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, stack, null, "java/lang/Object", null);
+		itemStack.visitEnd();
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), stack, itemStack.toByteArray(),
+				categories, withInterface(TestEnums.target(categories, false, List.of("([L" + stack + ";)V"), List.of(), Map.of(), cw -> {
+					valuesArray(cw, categories);
+					MethodVisitor get = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "getCategories", "(Ljava/lang/Object;)Ljava/util/List;", null, null);
+					get.visitCode();
+					get.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/List", "of", "()Ljava/util/List;", true);
+					get.visitInsn(Opcodes.ARETURN);
+					get.visitMaxs(0, 0);
+					get.visitEnd();
+					MethodVisitor create = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "create", "(Ljava/lang/String;[L" + stack + ";)" + self, null, null);
+					create.visitCode();
+					create.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalStateException");
+					create.visitInsn(Opcodes.DUP);
+					create.visitLdcInsn("Enum not extended!");
+					create.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/IllegalStateException", "<init>", "(Ljava/lang/String;)V", false);
+					create.visitInsn(Opcodes.ATHROW);
+					create.visitMaxs(0, 0);
+					create.visitEnd();
+				}), "net/minecraftforge/common/IExtensibleEnum"));
+		Pipeline.Input in = withDescriptor(input(game, List.of(cooking), Namespace.OFFICIAL, gameClasses, null, List.of(), InstalledClasses.NONE,
+				ClassBytesSource.EMPTY, "0.8.7+Jenkins-b321.git-4", "0.8.7"), PlatformDescriptor.FORGE);
+		Pipeline.Result forge = Pipeline.run(withClientSide(in));
+
+		assertEquals(List.of("cooking"), forge.mods().stream().map(m -> m.translated().candidate().id()).toList(), forge.report().render());
+		String report = forge.report().render();
+		assertTrue(report.contains("a mixin into its class initializer adds them with the enum's create factories"), report);
+		assertTrue(report.contains("; its other methods stay a mixin into it"), report);
+		try (SafeArchive overlay = SafeArchive.open(forge.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			ClassNode replaced = new ClassNode();
+			new ClassReader(overlay.read(mixinName + ".class")).accept(replaced, 0);
+			assertEquals(0, replaced.access & Opcodes.ACC_ENUM, "the enum mixin is replaced by an ordinary one");
+			MethodNode handler = replaced.methods.stream().filter(m -> m.name.equals("cooking$categories")).findFirst().orElseThrow();
+			assertEquals(handlerDesc, handler.desc);
+			assertTrue(handler.invisibleAnnotations.stream().anyMatch(a -> a.desc.equals("Lorg/spongepowered/asm/mixin/injection/Inject;")),
+					"the injector keeps its annotation");
+			FieldInsnNode read = null;
+			for (AbstractInsnNode insn : handler.instructions) {
+				if (insn instanceof FieldInsnNode f && f.name.equals("COOKING_SEARCH")) read = f;
+			}
+			assertNotNull(read);
+			assertTrue(read.owner.startsWith("com/cooking/FabricatedEnumConstants") && read.desc.equals(self), read.owner + " " + read.desc);
+			ClassNode categoriesReader = new ClassNode();
+			new ClassReader(overlay.read("com/cooking/client/Categories.class")).accept(categoriesReader, 0);
+			boolean held = false;
+			for (MethodNode m : categoriesReader.methods) {
+				for (AbstractInsnNode insn : m.instructions) {
+					if (insn instanceof FieldInsnNode f && f.getOpcode() == Opcodes.GETSTATIC && f.name.equals("COOKING_SEARCH")) held = f.owner.equals(read.owner);
+				}
+			}
+			assertTrue(held, "the mod's own class reads the constant from the same holder");
 		}
 	}
 
