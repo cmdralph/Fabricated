@@ -15,11 +15,11 @@ import net.minecraft.world.level.block.Block;
 import net.minecraftforge.registries.IForgeRegistry;
 
 /**
- * A block item whose block isn't registered yet ({@link EarlyRegistryObjects}, CORPUS-73): Forge 47's {@code getBlock}
- * gives its block's delegate's value, and threw for a block without one, as Forge registers the item and maps its
- * block to it, so a Fabric mod registering its block items before their blocks failed (Lootr), and the item it left
- * registered stopped Forge's snapshot. Such an item gives its block itself, as vanilla's does; the item of a registered
- * block keeps Forge's delegate. Forge 61 gives the block itself.
+ * A block item whose block isn't registered yet ({@link EarlyRegistryObjects}, CORPUS-73): on Forge 43 and 47,
+ * {@code getBlock} gives its block's delegate's value, and threw for a block without one, as Forge registers the item
+ * and maps its block to it, so a Fabric mod registering its block items before their blocks failed (Lootr), and the
+ * item it left registered stopped Forge's snapshot. Such an item gives its block itself, as vanilla's does; the item of
+ * a registered block keeps Forge's delegate. Forge 61 gives the block itself.
  */
 @Mixin(BlockItem.class)
 abstract class BlockItemEarlyBlockMixin {

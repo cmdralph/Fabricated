@@ -11,3 +11,7 @@ dependencies {
             'fabric-lifecycle-events-v1', 'fabric-model-loading-api-v1', 'fabric-recipe-api-v1', 'fabric-renderer-api-v1',
             'fabric-renderer-indigo', 'fabric-resource-conditions-api-v1', 'fabric-transfer-api-v1'])
 }
+
+// The test mod's checks of what Fabric API 0.92 has and 0.77 (1.19.2's) doesn't: registry aliases, model bake events.
+testmodDescriptor.testmod << [entrypoints: [main: ['io.github.cmdralph.fabricated.forgetest.ForgeRegistryAliasTest'],
+        client: ['io.github.cmdralph.fabricated.forgetest.ForgeModelClient']]]

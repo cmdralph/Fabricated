@@ -18,14 +18,14 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Fabric API's item hooks (fabric-item-api-v1, passed through) where Forge 47 asks its own. Forge's {@code ItemStack}
- * asks its {@code IForgeItem} hooks where upstream's hooks look for vanilla's calls, which Forge replaced: a stack's
- * crafting remainder, which Forge's crafting, furnaces and brewing stands ask ({@code getCraftingRemainingItem}), its
- * attribute modifiers and whether it is the tool for a block. Forge mods ask an item's equipment slot through Forge's
- * {@code getEquipmentSlot}, which vanilla's code doesn't reach. Fabricated's item mixins answer them from a Fabric item's
- * {@link FabricItem} overrides and settings; an item overriding Forge's hooks (a Forge mod's) keeps its own, and where a
- * Fabric item doesn't override Fabric's method, Forge's answer stands (Forge's tools sort tiers there). The mixins name
- * no type of Fabric API's, which a game may not have.
+ * Fabric API's item hooks (fabric-item-api-v1, passed through) where Forge 43 and 47 ask its own. Forge's
+ * {@code ItemStack} asks its {@code IForgeItem} hooks where upstream's hooks look for vanilla's calls, which Forge
+ * replaced: a stack's crafting remainder, which Forge's crafting, furnaces and brewing stands ask
+ * ({@code getCraftingRemainingItem}), its attribute modifiers and whether it is the tool for a block. Forge mods ask an
+ * item's equipment slot through Forge's {@code getEquipmentSlot}, which vanilla's code doesn't reach. Fabricated's item
+ * mixins answer them from a Fabric item's {@link FabricItem} overrides and settings; an item overriding Forge's hooks
+ * (a Forge mod's) keeps its own, and where a Fabric item doesn't override Fabric's method, Forge's answer stands
+ * (Forge's tools sort tiers there). The mixins name no type of Fabric API's, which a game may not have.
  */
 public final class ItemHooks {
 	/** Fabric API's item module is installed. Its classes are only touched then. */

@@ -9,12 +9,12 @@ import io.github.cmdralph.fabricated.forgetest.mixin.PotionBrewingAccessor;
 import io.github.cmdralph.fabricated.forgetest.mixin.PotionBrewingMixAccessor;
 
 /**
- * CORPUS-37: Fabric mods' accessors of a brewing mix's {@code from} and {@code to} read vanilla's potions, which Forge 47
- * keeps as holders. Porting Lib's are such accessors (Create and Farmer's Delight need them), and so are EMI's. The
- * accessors invoke the in-game mod's bridges; without them pre-flight would refuse the accessors, and the test mod with
- * them. The first of vanilla's potion mixes must give two registered potions. CORPUS-107: a mod's own read of the
- * field, which REI's default client plugin makes (its access widener opens the class and the field), calls the bridge
- * too, and must give the accessor's potion.
+ * CORPUS-37: Fabric mods' accessors of a brewing mix's {@code from} and {@code to} read vanilla's potions, which Forge
+ * 43 and 47 keeps as holders. Porting Lib's are such accessors (Create and Farmer's Delight need them), and so are
+ * EMI's. The accessors invoke the in-game mod's bridges; without them pre-flight would refuse the accessors, and the
+ * test mod with them. The first of vanilla's potion mixes must give two registered potions. CORPUS-107: a mod's own
+ * read of the field, which REI's default client plugin makes (its access widener opens the class and the field), calls
+ * the bridge too, and must give the accessor's potion.
  */
 public final class ForgeBrewingMixTest {
 	private ForgeBrewingMixTest() {
@@ -30,7 +30,7 @@ public final class ForgeBrewingMixTest {
 		PotionBrewingMixAccessor mix = (PotionBrewingMixAccessor) mixes.get(0);
 		Object from = mix.fabricatedtest$from();
 		Object to = mix.fabricatedtest$to();
-		// Read as REI reads it, named against vanilla's class (src/testmodstubs), whose field Forge 47 retyped.
+		// Read as REI reads it, named against vanilla's class (src/testmodstubs), whose field Forge 43 and 47 retyped.
 		Object read = ((class_1845.class_1846<?>) mixes.get(0)).field_8962;
 		if (read != from) {
 			ForgeTestMod.LOGGER.error("FABRICATED-TEST brewing mix accessors FAILED: the first potion mix's from, read as REI reads it, is {}",

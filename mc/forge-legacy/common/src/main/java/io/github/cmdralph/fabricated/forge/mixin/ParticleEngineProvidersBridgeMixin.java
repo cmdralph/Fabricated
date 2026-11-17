@@ -15,10 +15,11 @@ import net.minecraft.resources.ResourceLocation;
 
 /**
  * The particle engine's providers as vanilla keeps them, by their type's raw id, for Fabric mods' accessors of them
- * (CORPUS-37): Forge 47 keeps them by the type's id ({@code providers}), where Porting Lib's accessor reads vanilla's
- * {@code Int2ObjectMap}. Pre-flight points the accessor at this bridge ({@code MixinRepairs.retypedFieldBridge} in core),
- * named after the field's runtime name, which the field is named by here too. The map it gives is a view of Forge's,
- * which reads and writes go to (Fabric API's particle registry is the in-game mod's own here, PART-1).
+ * (CORPUS-37): Forge 43 and 47 keep them by the type's id ({@code providers}), where Porting Lib's accessor reads
+ * vanilla's {@code Int2ObjectMap}. Pre-flight points the accessor at this bridge
+ * ({@code MixinRepairs.retypedFieldBridge} in core), named after the field's runtime name, which the field is named by
+ * here too. The map it gives is a view of Forge's, which reads and writes go to (Fabric API's particle registry is the
+ * in-game mod's own here, PART-1).
  */
 @Mixin(ParticleEngine.class)
 abstract class ParticleEngineProvidersBridgeMixin {

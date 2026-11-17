@@ -12,22 +12,20 @@ import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraftforge.common.crafting.CraftingHelper;
 
 /**
- * Fabric API's custom ingredients where Forge 47 reads an ingredient (CORPUS-99, NET-11).
- * <ul>
- * <li>In JSON: Forge's patch of {@code Ingredient.fromJson} hands every ingredient to its own
- * {@code CraftingHelper.getIngredient} before vanilla's code, where Fabric API's hook reads a custom ingredient's
- * {@code fabric:type}. Forge read such an object as an item ingredient, and Fabric API's hook of that read refused it
- * ("Custom ingredient cannot be used inside an array ingredient"), so each recipe naming one failed, Create's mixing
- * recipes among them. {@code CraftingHelperFabricIngredientsMixin} asks here first: an object with a {@code fabric:type}
- * is that custom ingredient, read by its serializer as Fabric API's hook reads it, and a type Fabric API has no
- * serializer of fails as there. Inside an array it becomes part of Forge's compound ingredient, as Forge's own custom
- * ingredients do.</li>
+ * Fabric API's custom ingredients where Forge 43 and 47 read an ingredient (CORPUS-99, NET-11). <ul> <li>In JSON:
+ * Forge's patch of {@code Ingredient.fromJson} hands every ingredient to its own {@code CraftingHelper.getIngredient}
+ * before vanilla's code, where Fabric API's hook reads a custom ingredient's {@code fabric:type}. Forge read such an
+ * object as an item ingredient, and Fabric API's hook of that read refused it ("Custom ingredient cannot be used inside
+ * an array ingredient"), so each recipe naming one failed, Create's mixing recipes among them.
+ * {@code CraftingHelperFabricIngredientsMixin} asks here first: an object with a {@code fabric:type} is that custom
+ * ingredient, read by its serializer as Fabric API's hook reads it, and a type Fabric API has no serializer of fails as
+ * there. Inside an array it becomes part of Forge's compound ingredient, as Forge's own custom ingredients do.</li>
  * <li>On the network: Forge and Fabric API both write -1 and then their type's id before an ingredient of their own.
  * Fabric API's hook of {@code Ingredient.fromNetwork} takes every -1 for its own and refused Forge's types (its
- * compound ingredient, which an array holding a custom ingredient becomes, among them). {@code IngredientForgeNetworkMixin}
- * asks here before it: a type Fabric API has no serializer of is Forge's, read by Forge's {@code CraftingHelper}; any
- * other ingredient is left to Fabric API's hook and Forge's code, the buffer as it was.</li>
- * </ul>
+ * compound ingredient, which an array holding a custom ingredient becomes, among them).
+ * {@code IngredientForgeNetworkMixin} asks here before it: a type Fabric API has no serializer of is Forge's, read by
+ * Forge's {@code CraftingHelper}; any other ingredient is left to Fabric API's hook and Forge's code, the buffer as it
+ * was.</li> </ul>
  */
 public final class FabricIngredients {
 	/** Fabric API's recipe module is installed. Its classes are only touched then. */

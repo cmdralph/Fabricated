@@ -23,7 +23,6 @@ import io.github.cmdralph.fabricated.forgetest.ForgeLanguageTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeMobBucketTest;
 import io.github.cmdralph.fabricated.forgetest.ForgePoiHolderTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeRecipeConditionTest;
-import io.github.cmdralph.fabricated.forgetest.ForgeRegistryAliasTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeSleepTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMarker;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMod;
@@ -37,16 +36,16 @@ import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.Level;
 
 /**
- * Runs the checks of Forge 47's half of the test mod at the end of the server's first tick, by when Forge has frozen
- * the registries and checked them, the data packs' tags are bound, and Forge has applied its biome modifiers: the
- * interface the access widener injects, an entity teleported to the End, the fluid types of the fluids it registered, a
- * pig's drops in Forge's capture, Fabric's command in the server's dispatcher, the config made through Forge Config API
- * Port's registry, Fabric's block break, use and attack, and sleep events, storages reaching Forge's capabilities,
- * accessors of fields Forge 47 replaced, Forge's recipe conditions and custom ingredients, vanilla's language reader,
- * the fuel and brewing recipe Fabric's content registries made, a final field Fabric API's biome module widens set by
- * an accessor, a point-of-interest type's holder stored as vanilla's, and the injectors of an interface mixin, which
- * Fabricated applies where Forge 47's Mixin applies none; then Forge's client hooks on a client. The
- * interaction check finishes at a later tick.
+ * Runs the checks of Forge 43's and 47's half of the test mod at the end of the server's first tick, by when Forge has
+ * frozen the registries and checked them, the data packs' tags are bound, and Forge has applied its biome modifiers:
+ * the interface the access widener injects, an entity teleported to the End, the fluid types of the fluids it
+ * registered, a pig's drops in Forge's capture, Fabric's command in the server's dispatcher, the config made through
+ * Forge Config API Port's registry, Fabric's block break, use and attack, and sleep events, storages reaching Forge's
+ * capabilities, accessors of fields Forge 43 and 47 replaced, Forge's recipe conditions and custom ingredients,
+ * vanilla's language reader, the fuel and brewing recipe Fabric's content registries made, a final field Fabric API's
+ * biome module widens set by an accessor, a point-of-interest type's holder stored as vanilla's, and the injectors of
+ * an interface mixin, which Fabricated applies where Forge 43's and 47's Mixin applies none; then Forge's client hooks
+ * on a client. The interaction check finishes at a later tick.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -79,7 +78,6 @@ public abstract class MinecraftServerMixin {
 		ForgeTestMod.run("fluid types check", () -> ForgeFluidTest.check(level));
 		ForgeTestMod.run("drop capture check", () -> ForgeDropCaptureTest.check(level));
 		ForgeTestMod.run("command check", () -> ForgeCommandTest.check(getCommands()));
-		ForgeTestMod.run("registry alias check", ForgeRegistryAliasTest::check);
 		ForgeTestMod.run("config port check", ForgeConfigPortTest::check);
 		ForgeTestMod.run("block break check", () -> ForgeBlockBreakTest.check(level));
 		ForgeTestMod.run("interaction check", () -> ForgeInteractionTest.check(level));
@@ -95,6 +93,6 @@ public abstract class MinecraftServerMixin {
 		ForgeTestMod.run("widened access check", () -> ForgeWidenedAccessTest.check(level));
 		ForgeTestMod.run("poi holder check", ForgePoiHolderTest::check);
 		ForgeTestMod.run("interface injectors check", ForgeInterfaceInjectorTest::check);
-		ForgeTestMod.checkClient();
+		ForgeTestMod.checkClient((MinecraftServer) (Object) this);
 	}
 }

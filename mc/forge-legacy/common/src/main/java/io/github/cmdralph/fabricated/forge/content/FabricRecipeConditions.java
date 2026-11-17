@@ -11,14 +11,14 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.common.crafting.conditions.ICondition;
 
 /**
- * Fabric API's resource conditions where Forge 47 reads a recipe's or an advancement's {@code conditions} (CORPUS-97).
- * Supplementaries' Fabric build names its own condition there ({@code supplementaries:flag}) and registers it with
- * Fabric API's resource conditions; on Fabric, Moonlight's bridge tests such a Forge-style condition (its {@code type})
- * through the condition Fabric API has under that id, handing it the condition's JSON. Forge 47 reads {@code conditions}
- * itself first, knows only its own condition serializers, and refused 246 of the corpus server's recipes ("Unknown
- * condition type"). {@code CraftingHelperFabricConditionsMixin} asks here for a type Forge has no serializer of: Fabric
- * API's condition of that id, tested on the condition's JSON as Moonlight's bridge tests it, or null, and Forge refuses
- * the type as before.
+ * Fabric API's resource conditions where Forge 43 and 47 read a recipe's or an advancement's {@code conditions}
+ * (CORPUS-97). Supplementaries' Fabric build names its own condition there ({@code supplementaries:flag}) and registers
+ * it with Fabric API's resource conditions; on Fabric, Moonlight's bridge tests such a Forge-style condition (its
+ * {@code type}) through the condition Fabric API has under that id, handing it the condition's JSON. Forge 43 and 47
+ * read {@code conditions} itself first, knows only its own condition serializers, and refused 246 of the corpus
+ * server's recipes ("Unknown condition type"). {@code CraftingHelperFabricConditionsMixin} asks here for a type Forge
+ * has no serializer of: Fabric API's condition of that id, tested on the condition's JSON as Moonlight's bridge tests
+ * it, or null, and Forge refuses the type as before.
  */
 public final class FabricRecipeConditions {
 	/** Fabric API's resource conditions module is installed. Its classes are only touched then. */

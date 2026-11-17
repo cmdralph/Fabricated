@@ -7,7 +7,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.MobBucketItem;
 
 /**
- * A mob bucket's entity type as vanilla keeps it, for Fabric mods' accessors of it (CORPUS-94). Forge 47 replaces
+ * A mob bucket's entity type as vanilla keeps it, for Fabric mods' accessors of it (CORPUS-94). Forge 43 and 47 replace
  * vanilla's {@code type} field with a supplier of the type, which its {@code getFishType} reads, where Supplementaries'
  * and Inventory Profiles Next's accessors read the field. Pre-flight points an accessor of the field at the bridge here
  * ({@code MixinRepairs.retypedFieldBridge} in core), named after the field's runtime name, so it is named so here and

@@ -8,10 +8,11 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 /**
- * The forge-legacy test mod's part for the injectors of interface mixins that Fabricated applies where Forge 47's Mixin
- * applies none in an interface mixin (INTERFACE-1): {@code mixin/ContainerInterfaceMixin}'s {@code @Inject} at a call
- * capturing locals, {@code @WrapOperation}, {@code @Redirect} taking a {@code @Local} and {@code @ModifyConstant}, into
- * {@code Container}'s default methods, which act on {@link TestContainer} alone; another container keeps vanilla's.
+ * The forge-legacy test mod's part for the injectors of interface mixins that Fabricated applies where Forge 43's and
+ * 47's Mixin applies none in an interface mixin (INTERFACE-1): {@code mixin/ContainerInterfaceMixin}'s {@code @Inject}
+ * at a call capturing locals, {@code @WrapOperation}, {@code @Redirect} taking a {@code @Local} and
+ * {@code @ModifyConstant}, into {@code Container}'s default methods, which act on {@link TestContainer} alone; another
+ * container keeps vanilla's.
  */
 public final class ForgeInterfaceInjectorTest {
 	/** What the mixin's handlers saw. */

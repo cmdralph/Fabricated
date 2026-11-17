@@ -20,12 +20,12 @@ import java.util.function.Supplier;
 
 
 /**
- * The forge-legacy test mod's part for Fabric mods' fluids on Forge 47, which asks every fluid for a fluid type and
- * throws for a mod's fluid without one ("Mod fluids must override getFluidType"). Two fluids, one of them tagged
+ * The forge-legacy test mod's part for Fabric mods' fluids on Forge 43 and 47, which asks every fluid for a fluid type
+ * and throws for a mod's fluid without one ("Mod fluids must override getFluidType"). Two fluids, one of them tagged
  * {@code minecraft:water} by the test mod's data: each family has one registered type, the in-game mod's, lit like the
- * fluid's block (lava's light) and named by it, water to entities only for the tagged one. Placing the other in the world
- * asks Forge about it as its neighbours update, and a pig falls through a column of it as through air. A Fabric mod
- * doesn't compile against Forge: the types are read reflectively, by Forge's own (unobfuscated) names.
+ * fluid's block (lava's light) and named by it, water to entities only for the tagged one. Placing the other in the
+ * world asks Forge about it as its neighbours update, and a pig falls through a column of it as through air. A Fabric
+ * mod doesn't compile against Forge: the types are read reflectively, by Forge's own (unobfuscated) names.
  */
 public final class ForgeFluidTest {
 	private static Family dry;
@@ -95,7 +95,7 @@ public final class ForgeFluidTest {
 			for (int i = 0; i < 10; i++) pig.tick();
 			double fell = start - pig.getY();
 			pig.discard();
-			// About 4 blocks through air in 10 ticks; a pig floats in what Forge 47 moves it through as water.
+			// About 4 blocks through air in 10 ticks; a pig floats in what Forge 43 and 47 move it through as water.
 			if (fell < 2.0) failed.add("a pig fell " + fell + " blocks through the fluid in 10 ticks");
 		}
 		Block air = block("air");
@@ -133,9 +133,10 @@ public final class ForgeFluidTest {
 	}
 
 	/**
-	 * A source, its flowing fluid, its liquid block and its bucket, registered under {@code fabricated-forge-testmod:<name>}
-	 * ({@code <name>_bucket} for the bucket). All are made first and registered after, as Fabric lets a mod and as
-	 * TechReborn does: Forge 47 looked the fluid up as its block and bucket were made, and threw (CORPUS-73).
+	 * A source, its flowing fluid, its liquid block and its bucket, registered under
+	 * {@code fabricated-forge-testmod:<name>} ({@code <name>_bucket} for the bucket). All are made first and registered
+	 * after, as Fabric lets a mod and as TechReborn does: Forge 43 and 47 looked the fluid up as its block and bucket
+	 * were made, and threw (CORPUS-73).
 	 */
 	static final class Family {
 		final ResourceLocation id;

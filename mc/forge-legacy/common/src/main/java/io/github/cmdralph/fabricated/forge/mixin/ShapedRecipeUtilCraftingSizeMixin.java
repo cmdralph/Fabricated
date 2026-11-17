@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import net.minecraft.world.item.crafting.ShapedRecipe;
 
 /**
- * Porting Lib's crafting grid size reaches Forge 47's (CORPUS-99). Porting Lib ports Forge's
+ * Porting Lib's crafting grid size reaches Forge 43's and 47's (CORPUS-99). Porting Lib ports Forge's
  * {@code ShapedRecipe.setCraftingSize} to Fabric as {@code ShapedRecipeUtil.setCraftingSize}, whose size its mixin of
  * vanilla's pattern reader puts in place of the 3 there; Create sets 9 by 9 for its mechanical crafting recipes. Forge
  * 47's reader checks its own size instead, where that mixin finds no 3, so Create's recipes over three rows or columns

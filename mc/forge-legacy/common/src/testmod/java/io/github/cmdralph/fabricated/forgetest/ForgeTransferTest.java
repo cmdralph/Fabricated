@@ -47,18 +47,19 @@ import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.ItemStackHandler;
 
 /**
- * The forge-legacy test mod's part for the bridge between Fabric's storages and Forge 47's item and fluid handler
- * capabilities (with Fabric API's jar only, which provides fabric-transfer-api-v1). This mod's block entity offers a
- * Fabric item storage and a Fabric fluid storage, which Forge's code reaches through the block entity's capabilities; a
- * block entity registered under a namespace no Fabric mod has, standing in for a Forge mod's, offers Forge's own
- * {@code ItemStackHandler} and {@code FluidTank} through its capabilities, as a Forge mod does, which Fabric's code reaches
- * through {@code ItemStorage.SIDED} and {@code FluidStorage.SIDED}: an aborted transaction leaves the handler as it was,
- * two insertions in one transaction take no more than the slots hold together, and a committed one fills them. Items
- * the same way: Forge's code fills and drains this mod's cell, which becomes another item when full, and its gauge,
- * which keeps its fluid as damage, through {@code FLUID_HANDLER_ITEM}, the gauge's own stack showing the change, and
- * Fabric's code fills and drains a Forge mod's cell through {@code FluidStorage.ITEM}, an aborted transaction leaving
- * it as it was. A Forge mod's part names Forge's classes as Forge 47 has them. Where another mod provides the module
- * (Forgified Fabric API), its answers are that mod's ({@link ForgeTestMod#report}).
+ * The forge-legacy test mod's part for the bridge between Fabric's storages and Forge 43's and 47's item and fluid
+ * handler capabilities (with Fabric API's jar only, which provides fabric-transfer-api-v1). This mod's block entity
+ * offers a Fabric item storage and a Fabric fluid storage, which Forge's code reaches through the block entity's
+ * capabilities; a block entity registered under a namespace no Fabric mod has, standing in for a Forge mod's, offers
+ * Forge's own {@code ItemStackHandler} and {@code FluidTank} through its capabilities, as a Forge mod does, which
+ * Fabric's code reaches through {@code ItemStorage.SIDED} and {@code FluidStorage.SIDED}: an aborted transaction leaves
+ * the handler as it was, two insertions in one transaction take no more than the slots hold together, and a committed
+ * one fills them. Items the same way: Forge's code fills and drains this mod's cell, which becomes another item when
+ * full, and its gauge, which keeps its fluid as damage, through {@code FLUID_HANDLER_ITEM}, the gauge's own stack
+ * showing the change, and Fabric's code fills and drains a Forge mod's cell through {@code FluidStorage.ITEM}, an
+ * aborted transaction leaving it as it was. A Forge mod's part names Forge's classes as Forge 43 and 47 have them.
+ * Where another mod provides the module (Forgified Fabric API), its answers are that mod's
+ * ({@link ForgeTestMod#report}).
  */
 public final class ForgeTransferTest {
 	/** A namespace no Fabric mod has: the bridge tells Forge mods' blocks from Fabric mods' by namespace. */

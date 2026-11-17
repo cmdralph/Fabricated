@@ -10,11 +10,11 @@ import net.minecraft.core.Holder;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * {@code PoiTypes.TYPE_BY_STATE} as Forge 47's in-game mod has the field hold it (POI-4): Forge's own map, read as it
- * is, whose writes store a holder's point-of-interest type. Forge keeps the types where vanilla keeps their holders,
- * under the same erased type, and Fabric mods write it as vanilla's. Its values are typed {@code Object}, so that no
- * bridge method casts the holder a mod puts. Forge's registry callbacks write Forge's map itself, which this reads. A
- * write through an entry ({@code Map.Entry.setValue}) isn't seen.
+ * {@code PoiTypes.TYPE_BY_STATE} as the in-game mod on Forge 43 and 47 has the field hold it (POI-4): Forge's own map,
+ * read as it is, whose writes store a holder's point-of-interest type. Forge keeps the types where vanilla keeps their
+ * holders, under the same erased type, and Fabric mods write it as vanilla's. Its values are typed {@code Object}, so
+ * that no bridge method casts the holder a mod puts. Forge's registry callbacks write Forge's map itself, which this
+ * reads. A write through an entry ({@code Map.Entry.setValue}) isn't seen.
  */
 public final class PoiTypesByState extends ForwardingMap<BlockState, Object> {
 	private final Map<BlockState, Object> forge;

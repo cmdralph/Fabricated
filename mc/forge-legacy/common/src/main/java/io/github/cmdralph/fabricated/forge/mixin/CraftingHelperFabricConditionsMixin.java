@@ -18,7 +18,7 @@ import net.minecraftforge.common.crafting.conditions.ICondition;
 import net.minecraftforge.common.crafting.conditions.IConditionSerializer;
 
 /**
- * A condition type Forge 47 has no serializer of is Fabric API's condition of that id, where Fabric API has one
+ * A condition type Forge 43 and 47 have no serializer of is Fabric API's condition of that id, where Fabric API has one
  * ({@link FabricRecipeConditions}, CORPUS-97); Forge's own types, and a type neither knows, go on as before.
  */
 @Mixin(value = CraftingHelper.class, remap = false)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Writes stand-ins for the mods Fabricated shares a Forge game with (the provider policy, PROVIDER-1), for a server
-smoke run on Forge 47: built from Fabricated's own jar, so nothing is downloaded and the test mods keep working
+smoke run on Forge 43 or 47: built from Fabricated's own jar, so nothing is downloaded and the test mods keep working
 with them. The forge-legacy branch's counterpart of ci/neoforge/standins.py.
 
 - standin-fabric-api-base.jar: a Forge mod with Fabric API's fabric-api-base module (its id, its packages, the classes
@@ -9,7 +9,7 @@ with them. The forge-legacy branch's counterpart of ci/neoforge/standins.py.
   packages, with its mixin config and the refmap naming its targets in SRG's names, named in the jar's manifest as Forge
   reads them), as Forgified Fabric API for 1.20.1 nests its modules. Fabricated's copy stands down; the stand-in's is
   Fabricated's own, so the test mod's checks must still pass, through the stand-in's classes. Where the in-game mod
-  nests the empty jar that takes Forgified Fabric Loader's place (Forge 47), the stand-in nests a copy of Fabric
+  nests the empty jar that takes Forgified Fabric Loader's place (Forge 43 and 47), the stand-in nests a copy of Fabric
   Loader's API too (the classes of Fabricated's), under Forgified Fabric Loader's identifier and range, as Forgified
   Fabric API does: Forge's jar-in-jar must leave it out for the empty jar (PROVIDER-2), or the server can't start.
 - standin-lib-a.jar and standin-lib-b.jar: Fabric mods nesting two versions of the same library (standin_lib 1.0.0
@@ -33,7 +33,7 @@ import sys
 import zipfile
 
 STAMP = (1980, 2, 1, 0, 0, 0)
-# The module the Forgified Fabric API stand-in nests: the first of these Fabricated ships natively (Forge 47's).
+# The module the Forgified Fabric API stand-in nests: the first of these Fabricated ships natively (Forge 43's and 47's).
 NESTED = ("fabric-dimensions-v1",)
 # Forgified Fabric Loader in Forge's jar-in-jar metadata: (group, artifact, version), as Forgified Fabric API nests it.
 FORGIFIED_LOADER = ("dev.su5ed.sinytra", "fabric-loader", "2.6.0+0.15.0+1.20.1")
@@ -146,7 +146,7 @@ def main(fabricated, out, only=None):
         plan = json.loads(outer.read("META-INF/fabricated/fabric-api-plan.json"))
         game_mod = zipfile.ZipFile(io.BytesIO(outer.read("META-INF/fabricated/game-mod.jar")))
         # Forgified Fabric Loader's identifier and version, as Forgified Fabric API 0.92.6 for 1.20.1 nests it, where the
-        # in-game mod nests the empty jar that takes its place (Forge 47).
+        # in-game mod nests the empty jar that takes its place (Forge 43 and 47).
         placeholder = "META-INF/fabricated/loader-placeholder.json" in outer.namelist()
         forgified_loader = loader_copy(outer, FORGIFIED_LOADER[2]) if placeholder else None
     plan_versions = {module: entry.get("version", "1.0.0") for module, entry in plan["modules"].items()}

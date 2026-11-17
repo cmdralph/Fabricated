@@ -10,12 +10,12 @@ import net.minecraftforge.common.util.ITeleporter;
 
 /**
  * Native fabric-dimensions-v1 on Forge 47 (L4): the teleporter an entity changes dimension with while a Fabric mod
- * teleports it to a target of its own ({@code FabricDimensions.teleport}). Forge 47 moved vanilla's dimension change
- * into {@code changeDimension(ServerLevel, ITeleporter)} and a lambda the teleporter calls, where the End's special
- * cases (the obsidian platform, a player's credits on leaving the End for the overworld) depend on the teleporter: it
- * asks for no portal and is not vanilla's, which leaves them out as upstream's hook into vanilla's method did by hiding
- * the End's key. Where the entity lands still comes from the teleporter it replaces, which asks the entity's
- * {@code findDimensionEntryPoint}, which upstream's hook answers with the target.
+ * teleports it to a target of its own ({@code FabricDimensions.teleport}). Forge 43 and 47 moved vanilla's dimension
+ * change into {@code changeDimension(ServerLevel, ITeleporter)} and a lambda the teleporter calls, where the End's
+ * special cases (the obsidian platform, a player's credits on leaving the End for the overworld) depend on the
+ * teleporter: it asks for no portal and is not vanilla's, which leaves them out as upstream's hook into vanilla's
+ * method did by hiding the End's key. Where the entity lands still comes from the teleporter it replaces, which asks
+ * the entity's {@code findDimensionEntryPoint}, which upstream's hook answers with the target.
  */
 public final class FabricTargetTeleporter implements ITeleporter {
 	private final ITeleporter replaced;

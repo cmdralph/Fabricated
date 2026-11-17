@@ -8,8 +8,8 @@ import net.minecraft.core.Holder;
 import net.minecraft.world.item.alchemy.PotionBrewing;
 
 /**
- * A brewing mix's input and output as vanilla keeps them, for Fabric mods' accessors of them (CORPUS-37). Forge 47
- * keeps holders of the potions or items ({@code Holder.Reference}) in the mix's {@code from} and {@code to}, where
+ * A brewing mix's input and output as vanilla keeps them, for Fabric mods' accessors of them (CORPUS-37). Forge 43 and
+ * 47 keeps holders of the potions or items ({@code Holder.Reference}) in the mix's {@code from} and {@code to}, where
  * vanilla keeps the potions or items themselves, which Porting Lib's and EMI's accessors read. Pre-flight points an
  * accessor of either field at its bridge here ({@code MixinRepairs.retypedFieldBridge} in core), named after the
  * field's runtime name, so the fields are named so here too and not remapped. The fields are final on both, and no

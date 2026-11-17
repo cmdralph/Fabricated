@@ -22,8 +22,8 @@ import net.minecraft.world.level.material.Fluid;
 import net.minecraftforge.registries.IForgeRegistry;
 
 /**
- * A liquid block made for a fluid not registered yet ({@link EarlyRegistryObjects}, CORPUS-73): Forge 47's patch of
- * vanilla's constructor looks the fluid's delegate up and threw (TechReborn makes its fluids' blocks before it
+ * A liquid block made for a fluid not registered yet ({@link EarlyRegistryObjects}, CORPUS-73): Forge 43's and 47's
+ * patch of vanilla's constructor looks the fluid's delegate up and threw (TechReborn makes its fluids' blocks before it
  * registers the fluids). Such a block keeps the fluid itself, as Forge 61's constructor does for every fluid; one made
  * for a registered fluid keeps Forge's delegate. The supplier is Forge's field, set last in the constructor.
  */

@@ -21,10 +21,10 @@ import net.minecraft.world.item.RecordItem;
 import net.minecraftforge.registries.IForgeRegistry;
 
 /**
- * A music disc made for a sound not registered yet ({@link EarlyRegistryObjects}, CORPUS-73): Forge 47's patch of
- * vanilla's constructor looks the sound's delegate up and threw. Such a disc keeps the sound itself; one made for a
- * registered sound keeps Forge's delegate. The supplier is Forge's field, set last in the constructor. Forge 61 has
- * no music disc item (jukebox songs are data).
+ * A music disc made for a sound not registered yet ({@link EarlyRegistryObjects}, CORPUS-73): Forge 43's and 47's patch
+ * of vanilla's constructor looks the sound's delegate up and threw. Such a disc keeps the sound itself; one made for a
+ * registered sound keeps Forge's delegate. The supplier is Forge's field, set last in the constructor. Forge 61 has no
+ * music disc item (jukebox songs are data).
  */
 @Mixin(RecordItem.class)
 abstract class RecordItemEarlySoundMixin {

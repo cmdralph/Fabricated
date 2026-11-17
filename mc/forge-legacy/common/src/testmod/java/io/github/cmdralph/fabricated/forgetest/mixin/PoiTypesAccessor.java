@@ -10,8 +10,8 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
 /**
- * {@code PoiTypes.TYPE_BY_STATE} typed as vanilla's, a holder for each state, as BCLib writes it, where Forge 47 keeps
- * the types. For {@code ForgePoiHolderTest}.
+ * {@code PoiTypes.TYPE_BY_STATE} typed as vanilla's, a holder for each state, as BCLib writes it, where Forge 43 and 47
+ * keep the types. For {@code ForgePoiHolderTest}.
  */
 @Mixin(PoiTypes.class)
 public interface PoiTypesAccessor {

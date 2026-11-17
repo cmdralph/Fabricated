@@ -13,12 +13,12 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 /**
  * Fabric API's brewing recipes ({@code FabricBrewingRecipeRegistry}, fabric-content-registries-v0, passed through) on
- * Forge 47 (BREW-1). Upstream builds a brewing mix with vanilla's constructor, which Forge 47's patch replaced with one
- * that also takes the registry the mix's ends are in (Forge keeps them as registry holders), so every call threw
- * {@code NoSuchMethodError}: a Fabric mod registering a potion or a potion item recipe failed its initializer. Each
- * mix is built with Forge's constructor instead, as vanilla's own recipes are there, from the potion or the item
- * registry. Pseudo: Mixin skips it without a word when there is no such class (without Fabric API); not required, so
- * that a Fabric API build whose method differs never stops the game.
+ * Forge 43 and 47 (BREW-1). Upstream builds a brewing mix with vanilla's constructor, which Forge 43's and 47's patch
+ * replaced with one that also takes the registry the mix's ends are in (Forge keeps them as registry holders), so every
+ * call threw {@code NoSuchMethodError}: a Fabric mod registering a potion or a potion item recipe failed its
+ * initializer. Each mix is built with Forge's constructor instead, as vanilla's own recipes are there, from the potion
+ * or the item registry. Pseudo: Mixin skips it without a word when there is no such class (without Fabric API); not
+ * required, so that a Fabric API build whose method differs never stops the game.
  */
 @Pseudo
 @Mixin(targets = "net.fabricmc.fabric.api.registry.FabricBrewingRecipeRegistry", remap = false)

@@ -10,7 +10,7 @@ import net.fabricmc.loader.api.FabricLoader;
 /**
  * The forge-legacy test mod's part for fabric-command-api-v2 (with Fabric API's jar only): a command registered through
  * {@code CommandRegistrationCallback}, which Fabric API's hook into {@code Commands}' constructor fires, must be in the
- * server's dispatcher (CTOR-4: Forge 47's Mixin left that hook out).
+ * server's dispatcher (CTOR-4: Forge 43's and 47's Mixin left that hook out).
  */
 public final class ForgeCommandTest {
 	static final String COMMAND = "fabricatedtest";

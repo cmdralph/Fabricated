@@ -15,9 +15,9 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * The forge-legacy test mod's part for a Fabric mod writing {@code PoiTypes.TYPE_BY_STATE} as vanilla's, a holder for
- * each state, where Forge 47 keeps the types (POI-4): a barrel's state put with the fisherman's holder, as BCLib puts
- * the states of its workstation tags, must be the fisherman's to {@code PoiTypes.forState}, and Forge's map must hold
- * the type.
+ * each state, where Forge 43 and 47 keep the types (POI-4): a barrel's state put with the fisherman's holder, as BCLib
+ * puts the states of its workstation tags, must be the fisherman's to {@code PoiTypes.forState}, and Forge's map must
+ * hold the type.
  */
 public final class ForgePoiHolderTest {
 	private ForgePoiHolderTest() {

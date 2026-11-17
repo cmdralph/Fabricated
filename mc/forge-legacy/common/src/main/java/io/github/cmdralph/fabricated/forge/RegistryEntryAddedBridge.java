@@ -10,10 +10,10 @@ import net.minecraft.resources.ResourceLocation;
  * Forge manages (CORPUS-108). Upstream fires it at the return of vanilla's {@code MappedRegistry.registerMapping}.
  * Forge's {@code NamespacedWrapper}, the vanilla registry of blocks, items, entity types and the others Forge manages,
  * replaces that method with its own, which adds the entry to Forge's registry and never calls vanilla's, and a Forge
- * mod's entries go to Forge's registry alone: the event never fired for those registries (read in Forge 47's and Fabric
- * API 0.92's sources). Architectury waits on it for an entry registered later than the code that needs it: Artifacts'
- * spawn egg, made before its entity type, kept a null type, and EMI's, JEI's and REI's listings of its creative tab
- * failed on it. {@code NamespacedWrapperEntryAddedMixin} and {@code ForgeRegistryEntryAddedMixin} call
+ * mod's entries go to Forge's registry alone: the event never fired for those registries (read in the sources of Forge
+ * 43 and 47 and of Fabric API 0.77 and 0.92). Architectury waits on it for an entry registered later than the code that
+ * needs it: Artifacts' spawn egg, made before its entity type, kept a null type, and EMI's, JEI's and REI's listings of
+ * its creative tab failed on it. {@code NamespacedWrapperEntryAddedMixin} and {@code ForgeRegistryEntryAddedMixin} call
  * {@link #added} once an entry new to one of them has been added through vanilla's API or Forge's.
  */
 public final class RegistryEntryAddedBridge {

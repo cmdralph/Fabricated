@@ -13,8 +13,8 @@ import net.minecraft.world.entity.ai.village.poi.PoiTypes;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Forge 47 keeps {@code PoiTypes.TYPE_BY_STATE}, its registry's map of each block state's point-of-interest type, by
- * the type, where vanilla keeps the type's holder. A Fabric mod writing it as vanilla's left a holder where Forge's
+ * Forge 43 and 47 keep {@code PoiTypes.TYPE_BY_STATE}, its registry's map of each block state's point-of-interest type,
+ * by the type, where vanilla keeps the type's holder. A Fabric mod writing it as vanilla's left a holder where Forge's
  * {@code forState} casts to the type (BCLib's {@code PoiManager.updateStates} puts each state of its workstation tags
  * with the type's holder): the first such block placed stopped the game (POI-4). The field holds a view of Forge's map
  * that stores a holder's type ({@link PoiTypesByState}), so every reader finds Forge's values. Forge's registry

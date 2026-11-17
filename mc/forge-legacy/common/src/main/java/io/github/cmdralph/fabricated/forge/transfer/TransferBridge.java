@@ -28,25 +28,26 @@ import net.minecraftforge.items.IItemHandler;
 
 /**
  * Lets Forge and Fabric code reach each other's item and fluid storages on blocks, and fluid storages in items, as
- * {@code main}'s bridge does on NeoForge: a Forge hopper or pipe sees a Fabric mod's storage through Forge 47's
- * {@code ITEM_HANDLER} and {@code FLUID_HANDLER} capabilities, and a Fabric mod sees a Forge mod's handler through
+ * {@code main}'s bridge does on NeoForge: a Forge hopper or pipe sees a Fabric mod's storage through Forge 43's and
+ * 47's {@code ITEM_HANDLER} and {@code FLUID_HANDLER} capabilities, and a Fabric mod sees a Forge mod's handler through
  * {@code ItemStorage.SIDED} and {@code FluidStorage.SIDED}; a Forge machine fills a Fabric mod's tank item through
- * {@code FLUID_HANDLER_ITEM}, and a Fabric machine a Forge mod's through {@code FluidStorage.ITEM}. Fluid amounts convert
- * at 81 droplets per millibucket, whole millibuckets only. Item storages in items, a bag's, have nothing to cross to:
- * Fabric API for 1.20.1 has no lookup for them ({@code ItemStorage.ITEM}).
+ * {@code FLUID_HANDLER_ITEM}, and a Fabric machine a Forge mod's through {@code FluidStorage.ITEM}. Fluid amounts
+ * convert at 81 droplets per millibucket, whole millibuckets only. Item storages in items, a bag's, have nothing to
+ * cross to: Fabric API for 1.20.1 has no lookup for them ({@code ItemStorage.ITEM}).
  *
  * <p>Each side answers for what its own mods add, told apart by the block's or item's namespace: the capabilities of a
- * Fabric mod's block entity or item stack come from Fabric's whole lookup, fallbacks included, and Fabric's lookups fall
- * back to the capabilities of a Forge mod's block entity or item stack. So neither side asks the other about the same
- * block or item, and nothing is wrapped back into itself. Vanilla's are left to each side's own wrappers. Among blocks,
- * Forge 47 has capabilities only on block entities, so a Fabric mod's storage on a block without one stays Fabric's.
+ * Fabric mod's block entity or item stack come from Fabric's whole lookup, fallbacks included, and Fabric's lookups
+ * fall back to the capabilities of a Forge mod's block entity or item stack. So neither side asks the other about the
+ * same block or item, and nothing is wrapped back into itself. Vanilla's are left to each side's own wrappers. Among
+ * blocks, Forge 43 and 47 have capabilities only on block entities, so a Fabric mod's storage on a block without one
+ * stays Fabric's.
  *
- * <p>Forge's handlers move items at once, with a flag to only simulate; Fabric's storages move them in transactions that
- * may be undone. A Forge handler seen as a Fabric storage ({@link ForgeItemStorage}, {@link ForgeFluidStorage}) only
- * simulates while the transaction is open and moves the result once the outermost one commits; a Fabric storage seen as
- * a Forge handler ({@link FabricItemHandler}, {@link FabricFluidHandler}) opens a transaction for each call, committed
- * unless the call simulates. An item's handler and storage ({@link FabricItemFluidHandler}, {@link ForgeItemFluidStorage})
- * change the item by replacing it, as both sides' own item storages do.
+ * <p>Forge's handlers move items at once, with a flag to only simulate; Fabric's storages move them in transactions
+ * that may be undone. A Forge handler seen as a Fabric storage ({@link ForgeItemStorage}, {@link ForgeFluidStorage})
+ * only simulates while the transaction is open and moves the result once the outermost one commits; a Fabric storage
+ * seen as a Forge handler ({@link FabricItemHandler}, {@link FabricFluidHandler}) opens a transaction for each call,
+ * committed unless the call simulates. An item's handler and storage ({@link FabricItemFluidHandler},
+ * {@link ForgeItemFluidStorage}) change the item by replacing it, as both sides' own item storages do.
  */
 public final class TransferBridge {
 	/** The Fabric API module bridged, which Fabricated passes through from Fabric API's jar. */

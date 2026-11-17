@@ -17,17 +17,19 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 
 /**
- * Forge 47's half of the CI test mod: the checks of Forge's own hooks and of the Fabric API modules Fabricated ships for
- * Forge 47, beside the shared ones (mc/shared), whose entrypoints mc/platform-forge-legacy.gradle adds to the test mod's
- * descriptor. Its main entrypoint registers what they need; the first server tick runs the checks of the server
- * ({@code mixin/MinecraftServerMixin}), and on a client those of Forge's client hooks ({@link #checkClient}).
+ * Forge 43's and 47's half of the CI test mod: the checks of Forge's own hooks and of the Fabric API modules Fabricated
+ * ships for Forge 43 and 47, beside the shared ones (mc/shared), whose entrypoints mc/platform-forge-legacy.gradle adds
+ * to the test mod's descriptor. Its main entrypoint registers what they need; the first server tick runs the checks of
+ * the server ({@code mixin/MinecraftServerMixin}), and on a client those of Forge's client hooks
+ * ({@link #checkClient}).
  */
 public final class ForgeTestMod implements ModInitializer {
-	/** The namespace of the content and data of Forge 47's half. */
+	/** The namespace of the content and data of Forge 43's and 47's half. */
 	public static final String NAMESPACE = "fabricated-forge-testmod";
 	public static final Logger LOGGER = TestMod.LOGGER;
 	public static final String ITEM_PATH = "test_item";
@@ -45,7 +47,6 @@ public final class ForgeTestMod implements ModInitializer {
 		run("recipe condition registration", ForgeRecipeConditionTest::register);
 		run("fluid registration", ForgeFluidTest::register);
 		ForgeRegistrationOrderTest.register();
-		ForgeRegistryAliasTest.register();
 		ForgeRegistryEntryAddedTest.register();
 		ForgeConfigPortTest.register();
 		run("command registration", ForgeCommandTest::register);
@@ -56,6 +57,7 @@ public final class ForgeTestMod implements ModInitializer {
 		run("fuel registration", ForgeFuelTest::register);
 		run("brewing recipe registration", ForgeBrewingTest::register);
 		run("oxidizable blocks", ForgeOxidizableTest::check);
+		if (FabricLoader.getInstance().isModLoaded("fabric-resource-loader-v0")) run("optional data pack registration", ForgeOptionalPackTest::register);
 	}
 
 	/** Runs a part, logging what it throws as its failure. */
@@ -67,10 +69,12 @@ public final class ForgeTestMod implements ModInitializer {
 		}
 	}
 
-	/** On a client, the checks of Forge 47's client hooks, once the integrated server has ticked. */
-	public static void checkClient() {
+	/** On a client, the checks of Forge 43's and 47's client hooks, once the integrated server has ticked. */
+	public static void checkClient(MinecraftServer server) {
 		if (FabricLoader.getInstance().getEnvironmentType() != EnvType.CLIENT) return;
+		if (FabricLoader.getInstance().isModLoaded("fabric-resource-loader-v0")) run("optional data pack check", () -> ForgeOptionalPackTest.check(server));
 		if (FabricLoader.getInstance().isModLoaded("fabric-rendering-v1")) run("colour provider check", ForgeColorTest::check);
+		if (FabricLoader.getInstance().isModLoaded("fabric-rendering-v1")) run("tooltip component check", ForgeTooltipClient::check);
 		run("particle providers check", ForgeParticleClient::check);
 		run("key binding check", ForgeKeyBindingClient::check);
 	}

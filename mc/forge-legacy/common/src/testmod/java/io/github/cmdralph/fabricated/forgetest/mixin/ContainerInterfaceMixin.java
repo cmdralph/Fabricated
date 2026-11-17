@@ -21,8 +21,9 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * An interface mixin with the injectors Fabricated applies where Forge 47's Mixin applies none in an interface mixin
- * (INTERFACE-1), each acting on {@link ForgeInterfaceInjectorTest}'s container alone. For {@code ForgeInterfaceInjectorTest}.
+ * An interface mixin with the injectors Fabricated applies where Forge 43's and 47's Mixin applies none in an interface
+ * mixin (INTERFACE-1), each acting on {@link ForgeInterfaceInjectorTest}'s container alone. For
+ * {@code ForgeInterfaceInjectorTest}.
  */
 @Mixin(Container.class)
 public interface ContainerInterfaceMixin {

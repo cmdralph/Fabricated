@@ -17,12 +17,12 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.players.PlayerList;
 
 /**
- * Forge 47's {@code getPlayers()} returns an unmodifiable view of the player list made when the list is constructed
- * ({@code playersView}), where vanilla returns the list itself. A Fabric mixin that replaces the list (written for
- * vanilla, where both are one object, as a mod in the Polyfrost stack does) leaves that view on the old, empty list:
- * {@code getPlayerCount()} counts the players while {@code getPlayers()} returns none, so a mod looking for the
- * players finds none (POLY-1 on NeoForge, POLY-2 on Forge 61 to 66). The view returned follows the list in the field,
- * still unmodifiable.
+ * On Forge 43 and 47, {@code getPlayers()} returns an unmodifiable view of the player list made when the list is
+ * constructed ({@code playersView}), where vanilla returns the list itself. A Fabric mixin that replaces the list
+ * (written for vanilla, where both are one object, as a mod in the Polyfrost stack does) leaves that view on the old,
+ * empty list: {@code getPlayerCount()} counts the players while {@code getPlayers()} returns none, so a mod looking for
+ * the players finds none (POLY-1 on NeoForge, POLY-2 on Forge 61 to 66). The view returned follows the list in the
+ * field, still unmodifiable.
  */
 @Mixin(PlayerList.class)
 abstract class PlayerListViewMixin {

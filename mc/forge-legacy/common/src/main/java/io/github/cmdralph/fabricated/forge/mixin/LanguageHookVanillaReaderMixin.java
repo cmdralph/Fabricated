@@ -14,10 +14,10 @@ import net.minecraft.locale.Language;
 import net.minecraftforge.server.LanguageHook;
 
 /**
- * Forge 47's server reads each language file with vanilla's reader ({@code Language.loadFromJson}), as a Fabric server
- * does through Fabric API's resource loader, so Fabric mods' hooks into that reader apply (CORPUS-100). Forge's
- * {@code LanguageHook} has its own copy of the reader, which no Fabric mod hooks: owo-lib's language mixin lets its
- * language files hold rich text (an array or object where vanilla wants a string, skipped there), and Forge's copy
+ * On Forge 43 and 47, the server reads each language file with vanilla's reader ({@code Language.loadFromJson}), as a
+ * Fabric server does through Fabric API's resource loader, so Fabric mods' hooks into that reader apply (CORPUS-100).
+ * Forge's {@code LanguageHook} has its own copy of the reader, which no Fabric mod hooks: owo-lib's language mixin lets
+ * its language files hold rich text (an array or object where vanilla wants a string, skipped there), and Forge's copy
  * refused owo's whole file. Vanilla's reader does what Forge's copy does (the same format fix, the same error for a
  * value that isn't a string), and the stream is closed after it, as Forge closes it.
  */

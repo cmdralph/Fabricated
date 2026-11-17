@@ -14,12 +14,12 @@ import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 
 /**
- * Native fabric-key-binding-api-v1 on Forge 47 (KEYMAP-3), with Fabric API's jar and without it: a key binding the test
- * mod registers from its client entrypoint, as Fabric mods register theirs, must be in the game's options once the game
- * has started, its category sorted after the game's; registering it twice, or once Forge's key mapping event has added
- * the key bindings, must throw as upstream's does; and it must have the key CI's options file saved for it
- * (ci/smoke-client.sh), which Forge reads again once mods have loaded. Where another mod provides the module
- * (Forgified Fabric API), a late registration is that mod's to refuse ({@link ForgeTestMod#report}).
+ * Native fabric-key-binding-api-v1 on Forge 43 and 47 (KEYMAP-3), with Fabric API's jar and without it: a key binding
+ * the test mod registers from its client entrypoint, as Fabric mods register theirs, must be in the game's options once
+ * the game has started, its category sorted after the game's; registering it twice, or once Forge's key mapping event
+ * has added the key bindings, must throw as upstream's does; and it must have the key CI's options file saved for it
+ * (ci/smoke-client.sh), which Forge reads again once mods have loaded. Where another mod provides the module (Forgified
+ * Fabric API), a late registration is that mod's to refuse ({@link ForgeTestMod#report}).
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeKeyBindingClient {

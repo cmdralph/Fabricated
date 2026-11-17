@@ -6,13 +6,14 @@ import net.fabricmc.fabric.api.resource.conditions.v1.ResourceConditions;
 import net.fabricmc.loader.api.FabricLoader;
 
 /**
- * The forge-legacy test mod's part for Fabric API's resource conditions in Forge 47's own recipe {@code conditions}
- * (CORPUS-97, with Fabric API). Supplementaries names its own condition there and registers it with Fabric API, which
- * Forge 47 didn't ask: it refused the type and the recipe. The test mod registers {@code fabricated-forge-testmod:enabled}
- * (its {@code value}) as a Fabric resource condition, and ships two recipes whose {@code conditions} name it after
- * {@code forge:mod_loaded} of the module (so that without Fabric API Forge reads no further): {@code condition_kept},
- * true, must load, and {@code condition_dropped}, false, must not, with no parsing error. The condition logs each answer
- * it gives, and the first server tick looks both recipes up in the recipe manager ({@link #check}).
+ * The forge-legacy test mod's part for Fabric API's resource conditions in Forge 43's and 47's own recipe
+ * {@code conditions} (CORPUS-97, with Fabric API). Supplementaries names its own condition there and registers it with
+ * Fabric API, which Forge 43 and 47 didn't ask: it refused the type and the recipe. The test mod registers
+ * {@code fabricated-forge-testmod:enabled} (its {@code value}) as a Fabric resource condition, and ships two recipes
+ * whose {@code conditions} name it after {@code forge:mod_loaded} of the module (so that without Fabric API Forge reads
+ * no further): {@code condition_kept}, true, must load, and {@code condition_dropped}, false, must not, with no parsing
+ * error. The condition logs each answer it gives, and the first server tick looks both recipes up in the recipe manager
+ * ({@link #check}).
  */
 public final class ForgeRecipeConditionTest {
 	private ForgeRecipeConditionTest() {
