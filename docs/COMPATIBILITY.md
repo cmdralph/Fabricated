@@ -28,6 +28,7 @@ missing) · — doesn't exist there
 | `config/fabricated.json` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | The `/fabricated` command | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Refusals with an error naming the jars (Sinytra Connector, two Fabricated jars) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| A mixin that failed as Mixin applied it left out from the next launch; the [diagnostics block](#troubleshooting-the-diagnostics-block) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Fabric API** | | | | | | | | | | | |
 | Every module of the official jar loads, server and client | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 |
 | Networking: play and configuration payloads | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -2377,6 +2378,34 @@ instead.
   objects under two names fails at the second: Wover Story's main entrypoint on Forge 66 (two equal point-of-interest
   types), and the mod is marked as failed. On Fabric and NeoForge they are two entries. Use NeoForge, or the mod's
   Forge build (REG-13).
+
+## Troubleshooting: the diagnostics block
+
+When the game stops on an error a Fabric mod is involved in, Fabricated writes one block, on every loader and version:
+in `logs/latest.log`, and at the start of the crash report's details (after its stack trace), where the game writes one:
+
+```
+---- Fabricated: a Fabric mod was involved ----
+Fabric mod:  Ledger (ledger) 1.3.5, ledger-1.3.5+1.21.1.jar
+Mixin:       ledger.mixins.json:AnvilScreenHandlerMixin, into net.minecraft.world.inventory.AnvilMenu
+Loader:      NeoForge 21.1.200, Minecraft 1.21.1, Fabricated 0.6.0-beta.3
+Fabricated:  leaves this mixin out from the next launch (logs/fabric-bridge-report.txt says why)
+```
+
+- **Fabric mod**: the mod's name, id, version and jar file (in `mods/`, or the jar that nests it). With several mods
+  involved, each has its own lines, the most likely culprit first, at most three.
+- **Mixin**: the mod's mixin that failed as Mixin applied it, as `<config>:<mixin>`, as `skipMixins` takes it, and the
+  game class Mixin was applying it to, where Mixin said. **Class** instead: the first frame of the stack trace in the
+  mod's own classes (on NeoForge, a handler Mixin merged into a game class counts as the mod's).
+- **Loader**: NeoForge or Forge and its build, Minecraft's version and Fabricated's.
+- **Fabricated**: what it does about it. A mixin is left out from the next launch, and the next report says so, with the
+  same block, under *Mixins left out (they failed as Mixin applied them in the last launch)*; it is tried again once the
+  mod's jar, Fabricated, Minecraft or the loader changes, or once `.fabricated/mixin-failures.json` is deleted. For a
+  class, Fabricated changes nothing: report the error to the mod's author or to Fabricated, with the block, the crash
+  report and `logs/fabric-bridge-report.txt`.
+
+The block names a mod only where it is certain: a mixin from Mixin's own errors, a class from the packages one
+Fabric mod alone has. An error that involves no Fabric mod, or one Fabricated can't tell, gets no block.
 
 ## Fabric mods tested
 
