@@ -11,10 +11,10 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.material.FluidState;
 
 /**
- * A living entity moves through a Fabric fluid that isn't water to it as through air, as on Fabric. Forge 47's and
- * 52's {@code travel} move an entity in any mod fluid as in water, unless the fluid type moves it itself (read in their
- * {@code LivingEntity} patch): its two checks of the fluid type don't count such a fluid. The check is Forge's method,
- * which keeps its name in Forge 47's SRG names.
+ * A living entity moves through a Fabric fluid that isn't water to it as through air, as on Fabric. Forge 43's, 47's
+ * and 52's {@code travel} move an entity in any mod fluid as in water, unless the fluid type moves it itself (read in
+ * their {@code LivingEntity} patch): its two checks of the fluid type don't count such a fluid. The check is Forge's
+ * method, which keeps its name in Forge 43's and 47's SRG names.
  */
 @Mixin(LivingEntity.class)
 abstract class LivingEntityFluidTravelMixin {

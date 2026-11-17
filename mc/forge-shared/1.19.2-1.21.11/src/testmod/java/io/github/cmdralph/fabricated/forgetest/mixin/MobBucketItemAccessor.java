@@ -7,8 +7,8 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 
 /**
- * A mob bucket's entity type, as Supplementaries' and Inventory Profiles Next's accessors read it: a field Forge 47, 52
- * and 61 replaced with a supplier, so this invokes the in-game mod's bridge (CORPUS-94, LEAVE-5,
+ * A mob bucket's entity type, as Supplementaries' and Inventory Profiles Next's accessors read it: a field Forge 43,
+ * 47, 52 and 61 replaced with a supplier, so this invokes the in-game mod's bridge (CORPUS-94, LEAVE-5,
  * {@code ForgeMobBucketTest}). The field is vanilla's, which Forge's game this compiles against no longer has: the
  * accessor names it in Intermediary's names, as the mod's jar does once Loom has remapped it, and stays out of the
  * refmap.

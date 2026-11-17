@@ -27,13 +27,14 @@ import net.minecraftforge.fml.loading.FMLConfig;
 import net.minecraftforge.fml.loading.FMLPaths;
 
 /**
- * Forge Config API Port's Fabric API on Forge 47's and 52's own config system: its registry's configs, which the version's
- * copy of the port's API makes here (version 8's on Forge 47, version 21's Forge half on Forge 52), and whose events the
- * version's copy of the port's events gets from Forge's ({@code FabricConfigEvents}). The port's versions for 1.20.1 and
- * 1.21.1 copy Forge's config system, classes and packages included, so their copies of Forge's classes were left out for
- * Forge's own, whose {@code ModConfig} has none of the port's constructors by mod id, and the port's registry failed to
- * link (CORPUS-81, CFG-4). Configs are made with the Fabric mod's Forge container, under the file names the port uses
- * ({@code <fabric id>-<type>.toml}), and Forge loads, watches, syncs and unloads them as its mods' own.
+ * Forge Config API Port's Fabric API on Forge 43's, 47's and 52's own config system: its registry's configs, which the
+ * version's copy of the port's API makes here (version 4's on Forge 43, version 8's on Forge 47, version 21's Forge
+ * half on Forge 52), and whose events the version's copy of the port's events gets from Forge's
+ * ({@code FabricConfigEvents}). The port's versions for 1.19.2, 1.20.1 and 1.21.1 copy Forge's config system, classes
+ * and packages included, so their copies of Forge's classes were left out for Forge's own, whose {@code ModConfig} has
+ * none of the port's constructors by mod id, and the port's registry failed to link (CORPUS-81, CFG-4). Configs are
+ * made with the Fabric mod's Forge container, under the file names the port uses ({@code <fabric id>-<type>.toml}), and
+ * Forge loads, watches, syncs and unloads them as its mods' own.
  *
  * <p>With the port, a config but the server's (per world) is loaded as it is registered, and Fabric mods read its
  * values right after; Forge loads them later (its {@code CONFIG_LOAD}, after the registry events in which the Fabric
@@ -79,7 +80,7 @@ public final class ForgeConfigApiPortBridge {
 
 	/**
 	 * Loads the config as Forge loads each one ({@code ConfigTracker.openConfig}: file, events, watcher), an instance
-	 * method on Forge 47 and a static one on Forge 52.
+	 * method on Forge 43 and 47 and a static one on Forge 52.
 	 */
 	private static boolean open(ModConfig config) {
 		try {

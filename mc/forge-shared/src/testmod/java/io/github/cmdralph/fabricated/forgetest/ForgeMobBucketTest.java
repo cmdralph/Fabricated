@@ -7,11 +7,11 @@ import net.minecraft.world.item.Items;
 import io.github.cmdralph.fabricated.forgetest.mixin.MobBucketItemAccessor;
 
 /**
- * CORPUS-94 and LEAVE-5: a Fabric mod's accessor of a mob bucket's entity type reads the type, which Forge 47 to 66 keep
- * behind a supplier. Supplementaries' is such an accessor (its dispenser behaviours, which Moonlight registers after a
- * reload, call it), and so is Inventory Profiles Next's, which pre-flight left out on Forge 61. The accessor invokes the
- * in-game mod's bridge; without it pre-flight would refuse the accessor, and the test mod with it. The pufferfish bucket
- * must hold a pufferfish.
+ * CORPUS-94 and LEAVE-5: a Fabric mod's accessor of a mob bucket's entity type reads the type, which Forge 43 to 66
+ * keep behind a supplier. Supplementaries' is such an accessor (its dispenser behaviours, which Moonlight registers
+ * after a reload, call it), and so is Inventory Profiles Next's, which pre-flight left out on Forge 61. The accessor
+ * invokes the in-game mod's bridge; without it pre-flight would refuse the accessor, and the test mod with it. The
+ * pufferfish bucket must hold a pufferfish.
  */
 public final class ForgeMobBucketTest {
 	private ForgeMobBucketTest() {

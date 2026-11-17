@@ -61,8 +61,8 @@ public final class ParticleFactoryRegistryImpl implements ParticleFactoryRegistr
 
 	/**
 	 * Fabricated: upstream puts a factory in the particle engine's map by the type's raw id, and a pending factory's
-	 * sprite set in its map of sprite sets, through an accessor. Forge 47 and 52 keep the factories by the type's id
-	 * instead, so this registers both through the engine's own methods (public on Forge, which registers its mods'
+	 * sprite set in its map of sprite sets, through an accessor. Forge 43, 47 and 52 keep the factories by the type's
+	 * id instead, so this registers both through the engine's own methods (public on Forge, which registers its mods'
 	 * factories through them too): the sprite set the engine makes there is the one a {@link FabricSpriteProviderImpl}
 	 * wraps.
 	 */

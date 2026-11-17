@@ -26,10 +26,10 @@ import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 
 /**
- * Fabricated: upstream also reads the engine's map of factories, which Forge 47 and 52 keep by the type's id instead of
- * its raw id (that accessor failed pre-flight, so the module was off), and its map of sprite sets: both are now written
- * through the engine's own methods ({@code ParticleFactoryRegistryImpl}). The sprite set's class is package-private on
- * Forge 47 and 52, so its accessor names it as a string.
+ * Fabricated: upstream also reads the engine's map of factories, which Forge 43, 47 and 52 keep by the type's id
+ * instead of its raw id (that accessor failed pre-flight, so the module was off), and its map of sprite sets: both are
+ * now written through the engine's own methods ({@code ParticleFactoryRegistryImpl}). The sprite set's class is
+ * package-private on Forge 43, 47 and 52, so its accessor names it as a string.
  */
 @Mixin(ParticleEngine.class)
 public interface ParticleManagerAccessor {

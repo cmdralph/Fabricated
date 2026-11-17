@@ -11,12 +11,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMod;
 
 /**
- * Proves an {@code @Inject} into a constructor anywhere but a return applies on Forge 47, whose Mixin takes one only at
- * a return, through Fabricated's injection point (CTOR-4, CORPUS-103). As Fabric API's command hook does, one runs as
- * {@code Commands}' constructor sets its dispatcher's result consumer, once the game's commands are
- * registered, and gets the constructor's parameters. As Dripstone Fluid Lib's hook into {@code Minecraft}'s constructor
- * does, the other runs just after the constructor makes and stores its dispatcher, shifted by 2 past that construction,
- * and sees the stored dispatcher.
+ * Proves an {@code @Inject} into a constructor anywhere but a return applies on Forge 43 and 47, whose Mixin takes one
+ * only at a return, through Fabricated's injection point (CTOR-4, CORPUS-103). As Fabric API's command hook does, one
+ * runs as {@code Commands}' constructor sets its dispatcher's result consumer, once the game's commands are registered,
+ * and gets the constructor's parameters. As Dripstone Fluid Lib's hook into {@code Minecraft}'s constructor does, the
+ * other runs just after the constructor makes and stores its dispatcher, shifted by 2 past that construction, and sees
+ * the stored dispatcher.
  */
 @Mixin(Commands.class)
 public abstract class CommandsMixin {

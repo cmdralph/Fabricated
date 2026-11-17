@@ -14,10 +14,10 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * Forge 47's and 52's particle providers, kept by their type's id, as vanilla's map by the type's raw id (CORPUS-37),
- * which Porting Lib's accessor of the particle engine's providers reads. Reads and writes go to Forge's map: a raw id
- * is the particle type registry's, and an id no type has gets nothing, and can't be written. An entry's key is its
- * type's raw id, or -1 for an id the registry has no type of.
+ * Forge 43's, 47's and 52's particle providers, kept by their type's id, as vanilla's map by the type's raw id
+ * (CORPUS-37), which Porting Lib's accessor of the particle engine's providers reads. Reads and writes go to Forge's
+ * map: a raw id is the particle type registry's, and an id no type has gets nothing, and can't be written. An entry's
+ * key is its type's raw id, or -1 for an id the registry has no type of.
  */
 public final class ParticleProvidersById extends AbstractInt2ObjectMap<ParticleProvider<?>> {
 	private static final long serialVersionUID = 1L;

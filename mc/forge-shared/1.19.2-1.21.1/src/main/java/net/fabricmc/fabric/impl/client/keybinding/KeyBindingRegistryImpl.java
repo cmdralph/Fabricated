@@ -26,20 +26,20 @@ import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.fabricmc.fabric.mixin.client.keybinding.KeyBindingAccessor;
 
 /**
- * Fabricated's key binding registry on Forge 47 and 52 ({@code fabric-key-binding-api-v1}, KEYMAP-3, as on Forge 61).
- * Upstream keeps Fabric mods' key bindings until the game's options load and refuses one once the options exist, which
- * on Fabric is after the client entrypoints. Forge 47 and 52 create the options in {@code Minecraft}'s constructor
- * before they load mods, and the client entrypoints run in their mod loading, so upstream refused every Fabric mod's key
- * binding and failed its client entrypoint (the Forge 47 corpus client: Xaero's World Map, which then stopped the game
- * as it tried again).
+ * Fabricated's key binding registry on Forge 43, 47 and 52 ({@code fabric-key-binding-api-v1}, KEYMAP-3, as on Forge
+ * 61). Upstream keeps Fabric mods' key bindings until the game's options load and refuses one once the options exist,
+ * which on Fabric is after the client entrypoints. Forge 43, 47 and 52 create the options in {@code Minecraft}'s
+ * constructor before they load mods, and the client entrypoints run in their mod loading, so upstream refused every
+ * Fabric mod's key binding and failed its client entrypoint (the Forge 47 corpus client: Xaero's World Map, which then
+ * stopped the game as it tried again).
  *
  * <p>Here the key bindings are kept until Forge's {@link RegisterKeyMappingsEvent}, where Forge mods register theirs,
  * which Forge posts after the mods' registration events ({@code ForgeHooksClient.initClientHooks}), and registered
- * there; Forge loads the keys from the options file again once mods have loaded ({@code ClientModLoader.finishModLoading}),
- * which gives each the key the player saved. As upstream, a key binding is refused twice and once they have been
- * registered, and its category, new to the game, is sorted after the game's ({@code addCategory}, upstream's). Upstream's
- * {@code process}, which its options mixin calls as the options load, isn't needed: Forge's event adds the key bindings
- * after the game's.
+ * there; Forge loads the keys from the options file again once mods have loaded
+ * ({@code ClientModLoader.finishModLoading}), which gives each the key the player saved. As upstream, a key binding is
+ * refused twice and once they have been registered, and its category, new to the game, is sorted after the game's
+ * ({@code addCategory}, upstream's). Upstream's {@code process}, which its options mixin calls as the options load,
+ * isn't needed: Forge's event adds the key bindings after the game's.
  */
 public final class KeyBindingRegistryImpl {
 	/** In the order they were registered; told apart by identity, as upstream's list. */
