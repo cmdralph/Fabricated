@@ -3,6 +3,36 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-17: Fabric ingredients as JSON on Forge, Farmer's Delight on Forge 52 clients, REI's and Puzzles Lib's packs on NeoForge, Forge 66 clients exit as they close
+
+- **CORPUS-115** (P2), fixed: on Forge 52, Fabric API's custom ingredients couldn't be written as JSON ("Modders must
+  implement Ingredient.codec"), so Supplementaries' dynamic sign post recipes weren't generated; on Forge 52 and 61 to
+  66 the same held for a Fabric mod's own ingredient. Such an ingredient is now written as on Fabric, by the vanilla
+  codec Forge's wraps, Fabric API's custom form included, and read back by Forge's codec.
+- **ENUM-9** (P1), fixed: Farmer's Delight Refabricated loads on Forge 52 clients. Its mixin into
+  `RecipeBookCategories` adds the cooking pot's recipe book categories and injects into `getCategories`; Forge 52
+  makes the categories with the enum's own factory, and the injector now stays in the mixin that adds them, where it
+  was refused before and the mod disabled.
+- **PROVIDER-23** (P2), fixed: on NeoForge 1.21.11 to 26.3 the native resource loader has what REI's and Puzzles Lib's
+  Fabric builds call of Fabric API's internals. A mod resource pack creator a mod makes with the pack type alone
+  offers the mods' packs and the built-in ones, so REI's fallback of recipes read from the data packs, where the
+  server sends none, has the mods' recipes; and a pack a mod hides through Fabric API's pack interface is hidden as
+  NeoForge hides its own, so Puzzles Lib's mods' internal packs are no longer in the pack screens. Traveler's
+  Backpack's hook that keeps its menus closed in a ReplayMod replay, and Polymer's hooks of Fabric's registry sync,
+  have nothing to apply to on NeoForge, whose menus and registry sync replace upstream's: `COMPATIBILITY.md` says so.
+- **CORPUS-116** (P2), fixed: a Forge 66 client with Forge Config API Port's Fabric build, or any Fabric mod watching
+  a file with night-config's default file watcher, wrote a crash report after the player quit and exited 15 s later.
+  The watcher Forge's night-config runs kept the game up; Fabricated now stops it as the client closes, where Forge
+  stops its own config watchers.
+- **Verified:** core's tests and CI's script tests; NeoForge 1.21.11 and 26.1.2 and Forge 52 and 66 built, their
+  server and client parts pass, with new checks of a Fabric mod's own ingredient and Fabric API's custom one written
+  as JSON (Forge), of the resource loader's creator and pack interface (NeoForge from 1.21.11), and of a Fabric mod's
+  config file watch, after which the client must still exit (Forge 61 to 66). Forge 66's client run fails the exit
+  check without the fix, as its corpus client did. Forge 52's corpus server generates Supplementaries' sign post
+  recipes, its corpus client loads Farmer's Delight, and NeoForge 26.1.2's corpus server no longer reports REI's and
+  Puzzles Lib's calls of the internals. NeoForge 26.2 and 26.3 don't build locally, and Forge 61, 64 and 65 weren't
+  built.
+
 ## 2026-11-17: A diagnostics block names the Fabric mod a crash involves; Forge leaves out a mixin that failed (APPLY-3)
 
 - **The diagnostics block:** when the game stops on an error a Fabric mod is involved in, Fabricated writes one block,
