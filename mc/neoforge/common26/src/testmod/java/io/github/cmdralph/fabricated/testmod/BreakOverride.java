@@ -16,7 +16,6 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
-import net.neoforged.neoforge.common.ItemAbilities;
 import net.neoforged.neoforge.common.ItemAbility;
 
 /**
@@ -49,9 +48,10 @@ final class BreakOverride extends Block {
 	}
 
 	// The platform's tool modifications, answered by the block itself (SEAM-13): vanilla's path lookup isn't put back for it.
+	// The shovel's flatten action by its name: 26.3, which has no ShovelItem, has no ItemAbilities.SHOVEL_FLATTEN.
 	@Override
 	public BlockState getToolModifiedState(BlockState state, UseOnContext context, ItemAbility action, boolean simulate) {
-		return action == ItemAbilities.SHOVEL_FLATTEN ? Blocks.AMETHYST_BLOCK.defaultBlockState() : null;
+		return "shovel_flatten".equals(action.name()) ? Blocks.AMETHYST_BLOCK.defaultBlockState() : null;
 	}
 
 	// Compile-time only: javac sees Fabric's and NeoForge's getAppearance defaults on Block and needs a subclass written
