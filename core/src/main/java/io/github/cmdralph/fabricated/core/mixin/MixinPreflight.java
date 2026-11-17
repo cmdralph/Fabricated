@@ -605,11 +605,36 @@ public final class MixinPreflight extends PreflightPart {
 		return stateless;
 	}
 
+	/**
+	 * The handlers (name and descriptor) of a mixin that keep no state with its other injectors: none of the fields they
+	 * use, themselves or through the mixin's own methods, is used by another injector's handler. A private field only the
+	 * mixin's constructors and static initialiser write, of a primitive type, a string or a game class, is no state between
+	 * them: what each handler reads of it is set as the target is made, wherever the others inject, and a game object it
+	 * refers to is the game's, which each reaches anyway (FancyMenu's mouse hooks read the client they keep in a final
+	 * field; LAMBDA-14). One of another type may hold the mixin's state in the object (owo-lib's {@code ThreadLocal} of the
+	 * key modifiers, which one hook sets for another).
+	 */
 	static Set<String> independentHandlers(ClassNode mixin) {
 		if (mixin == null) return Set.of();
+		Set<String> written = new HashSet<>();
+		for (MethodNode method : mixin.methods) {
+			if (method.instructions == null || method.name.equals("<init>") || method.name.equals("<clinit>")) continue;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof FieldInsnNode field && field.owner.equals(mixin.name)
+						&& (field.getOpcode() == Opcodes.PUTFIELD || field.getOpcode() == Opcodes.PUTSTATIC)) {
+					written.add(field.name + ":" + field.desc);
+				} else if (insn instanceof InvokeDynamicInsnNode indy) {
+					for (Object arg : indy.bsmArgs) {
+						if (arg instanceof Handle handle && handle.getOwner().equals(mixin.name)) written.add(handle.getName() + ":" + handle.getDesc());
+					}
+				}
+			}
+		}
 		Set<String> ownFields = new HashSet<>();
 		for (FieldNode field : mixin.fields) {
-			if (Annotations.find(field, MixinNames.SHADOW) == null) ownFields.add(field.name + ":" + field.desc);
+			if (Annotations.find(field, MixinNames.SHADOW) == null && (written.contains(field.name + ":" + field.desc) || !constant(field))) {
+				ownFields.add(field.name + ":" + field.desc);
+			}
 		}
 		Map<String, MethodNode> ownMethods = new HashMap<>();
 		for (MethodNode method : mixin.methods) {
@@ -629,6 +654,14 @@ public final class MixinPreflight extends PreflightPart {
 			}
 		});
 		return independent;
+	}
+
+	/** Whether a field of a mixin holds a value no other code reaches to change: private, of a primitive type, a string or a game class. */
+	private static boolean constant(FieldNode field) {
+		if ((field.access & Opcodes.ACC_PRIVATE) == 0) return false;
+		Type type = Type.getType(field.desc);
+		return type.getSort() < Type.ARRAY || type.getSort() == Type.OBJECT
+				&& (type.getInternalName().equals("java/lang/String") || PreflightAsm.isGameClass(type.getInternalName()));
 	}
 
 	/**

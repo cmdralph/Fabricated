@@ -249,6 +249,98 @@ class KnownLimitsTest {
 				"invokeCanBurn(Lnet/minecraft/world/level/block/state/BlockState;)Z")));
 	}
 
+	/**
+	 * LAMBDA-14 and CORPUS-57: the screen input hooks the platforms' own handlers leave nothing for, on the release's own
+	 * lines: wrappers of Forge 52's mouse calls, which its event factory makes, with owo-lib's hook keeping their key
+	 * modifiers; JEI's wrapper of setKey in the Controls screen's reset of every key, which the platforms make with their
+	 * setToDefault; and Architectury's modifier of the listener the platforms' char typed lambdas take as the screen.
+	 */
+	@Test
+	void theScreenInputHooksThePlatformsHandlersLeaveNothingForAreNamedOnTheReleasesLines() {
+		String forgeChanged = "Forge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.";
+		for (String line : List.of(
+				"owo: LEFT_OUT [owo.mixins.json io.wispforest.owo.mixin.ui.layers.MouseMixin] @WrapOperation in lambda$onPress$0 expects @At(\"INVOKE\","
+						+ " target=\"Lnet/minecraft/client/gui/screens/Screen;mouseClicked(DDI)Z\"), which does not occur in that method - " + forgeChanged,
+				"owo: LEFT_OUT [owo.mixins.json io.wispforest.owo.mixin.ui.layers.MouseMixin] @WrapOperation in lambda$onPress$1 expects @At(\"INVOKE\","
+						+ " target=\"Lnet/minecraft/client/gui/screens/Screen;mouseReleased(DDI)Z\"), which does not occur in that method - " + forgeChanged,
+				"architectury: LEFT_OUT [architectury.mixins.json dev.architectury.mixin.fabric.client.MixinMouseHandler] @Redirect in"
+						+ " lambda$handleAccumulatedMovement$11 expects @At(\"INVOKE\", target=\"Lnet/minecraft/client/gui/screens/Screen;mouseDragged(DDIDD)Z\"),"
+						+ " which does not occur in that method - " + forgeChanged,
+				"owo: LEFT_OUT [owo.mixins.json io.wispforest.owo.mixin.ui.layers.MouseMixin] The injector of"
+						+ " captureMods(JIIILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V goes with that of"
+						+ " passModifiersToBraid$mouseClicked(Lnet/minecraft/client/gui/screens/Screen;DDILcom/llamalad7/mixinextras/injector/wrapoperation/Operation;)Z,"
+						+ " which can't apply: they keep state together in this mixin's field MODS")) {
+			String limit = KnownLimits.ofFinding("Forge", reported(line));
+			assertTrue(limit != null && limit.endsWith("(LAMBDA-14)") && limit.contains("Forge 52"), line + " -> " + limit);
+			assertNull(KnownLimits.ofFinding("NeoForge", reported(line)), "NeoForge hands the screen its mouse input in the lambdas");
+		}
+		// owo-lib's hook keeping the modifiers, left out with another of its injectors, or another mod's, is none.
+		assertNull(KnownLimits.ofFinding("Forge", reported("owo: LEFT_OUT [owo.mixins.json io.wispforest.owo.mixin.ui.layers.MouseMixin] The injector of"
+				+ " captureMods(JIIILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V goes with that of captureScreenMouseDrag(DD)V,"
+				+ " which can't apply: they keep state together in this mixin's field MODS")));
+		for (String loader : List.of("NeoForge", "Forge")) {
+			String changed = loader + " or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.";
+			for (String line : List.of(
+					"jei: LEFT_OUT [jei.mixins.json mezz.jei.fabric.mixin.KeyBindsScreenMixin] @WrapOperation in lambda$addFooter$0 expects @At(\"INVOKE\","
+							+ " target=\"Lnet/minecraft/client/KeyMapping;setKey(Lcom/mojang/blaze3d/platform/InputConstants$Key;)V\"), which does not occur in that"
+							+ " method - " + changed,
+					"jei: LEFT_OUT [jei.mixins.json mezz.jei.fabric.mixin.KeyBindsScreenMixin] @WrapOperation in m_268771_ expects @At(\"INVOKE\","
+							+ " target=\"Lnet/minecraft/client/KeyMapping;m_90848_(Lcom/mojang/blaze3d/platform/InputConstants$Key;)V\"), which does not occur in that"
+							+ " method - " + changed)) {
+				String limit = KnownLimits.ofFinding(loader, reported(line));
+				assertTrue(limit != null && limit.endsWith("(LAMBDA-14)") && limit.contains("setToDefault"), line + " -> " + limit);
+			}
+			String declared = loader + "'s build of Minecraft declares this method with different parameters; the mod needs an update or this mixin must be skipped.";
+			for (String line : List.of(
+					"architectury: LEFT_OUT [architectury.mixins.json dev.architectury.mixin.fabric.client.MixinKeyboardHandler] @ModifyVariable wrapCharTypedFirst"
+							+ " modifies argument 0 among those of type net.minecraft.client.gui.components.events.GuiEventListener of"
+							+ " lambda$charTyped$6(Lnet/minecraft/client/gui/screens/Screen;II)V in net.minecraft.client.KeyboardHandler, which that method doesn't have - "
+							+ declared,
+					"architectury: LEFT_OUT [architectury.mixins.json dev.architectury.mixin.fabric.client.MixinKeyboardHandler] @ModifyVariable wrapCharTypedSecond"
+							+ " modifies argument 0 among those of type net.minecraft.client.gui.components.events.GuiEventListener of"
+							+ " lambda$charTyped$7(Lnet/minecraft/client/gui/screens/Screen;CI)V in net.minecraft.client.KeyboardHandler, which none of those methods has - "
+							+ declared)) {
+				String limit = KnownLimits.ofFinding(loader, reported(line));
+				assertTrue(limit != null && limit.endsWith("(CORPUS-57)"), line + " -> " + limit);
+			}
+		}
+		// A hook of setKey elsewhere, or a modifier of another listener, is none.
+		assertNull(KnownLimits.ofFinding("NeoForge", finding(Severity.LEFT_OUT, "@WrapOperation in lambda$new$2 expects @At(\"INVOKE\","
+				+ " target=\"Lnet/minecraft/client/KeyMapping;setKey(Lcom/mojang/blaze3d/platform/InputConstants$Key;)V\"), which does not occur in that method")));
+		assertNull(KnownLimits.ofFinding("NeoForge", finding(Severity.LEFT_OUT, "@ModifyVariable wrap modifies argument 0 among those of type"
+				+ " net.minecraft.client.gui.components.events.GuiEventListener of lambda$charTyped$6(Lnet/minecraft/client/gui/components/events/GuiEventListener;II)V"
+				+ " in net.minecraft.client.KeyboardHandler, which that method doesn't have")));
+	}
+
+	/**
+	 * HUD-8 and SCREEN-3: the release's lines of hooks NeoForge's own HUD layers leave nothing for (vanilla's hotbar and
+	 * player health methods, which it splits into layers, and its drawing of vanilla's layer stacks), with the hooks keeping
+	 * state with them, and of Forge 61 to 66's item tooltip overload, each named; on the other platform none.
+	 */
+	@Test
+	void theHudAndTooltipHooksThePlatformsOwnCodeLeavesNothingForAreNamedOnTheReleasesLines() throws IOException {
+		List<String[]> lines = new ArrayList<>();
+		try (BufferedReader in = new BufferedReader(new InputStreamReader(KnownLimitsTest.class.getResourceAsStream("release-screens-hud.txt"), StandardCharsets.UTF_8))) {
+			for (String line = in.readLine(); line != null; line = in.readLine()) {
+				if (!line.startsWith("#")) lines.add(line.split("\t", 3));
+			}
+		}
+		assertEquals(9, lines.size());
+		for (String[] line : lines) {
+			PreflightFinding finding = reported(line[2]);
+			String limit = KnownLimits.ofFinding(line[0], finding);
+			assertTrue(limit != null && limit.endsWith("(" + line[1] + ")"), line[2] + " -> " + limit);
+			assertNull(KnownLimits.ofFinding(line[0].equals("Forge") ? "NeoForge" : "Forge", finding), line[2]);
+		}
+		// Another mod's hook keeping state with one of those, or another hook in vanilla's Gui, is none.
+		assertNull(KnownLimits.ofFinding("NeoForge", reported("other: LEFT_OUT [other.mixins.json com.example.mixin.GuiMixin] The injector of onRender(Lnet/minecraft/"
+				+ "client/gui/GuiGraphics;Lnet/minecraft/client/DeltaTracker;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V goes with that of"
+				+ " onRenderPlayerHealth(Lnet/minecraft/client/gui/GuiGraphics;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V, which can't apply:"
+				+ " they keep state together in this mixin's field state")));
+		assertNull(KnownLimits.ofFinding("NeoForge", finding(Severity.LEFT_OUT, "@Inject in renderCrosshair expects @At(\"INVOKE\", target=\"Lnet/minecraft/"
+				+ "client/gui/GuiGraphics;blitSprite(Lnet/minecraft/resources/ResourceLocation;IIII)V\"), which does not occur in that method")));
+	}
+
 	@Test
 	void anythingElseIsNoKnownLimit() {
 		for (String message : List.of(

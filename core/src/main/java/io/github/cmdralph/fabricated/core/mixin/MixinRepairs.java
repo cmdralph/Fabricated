@@ -350,15 +350,17 @@ final class MixinRepairs extends PreflightPart {
 		/**
 		 * Not one of a group's alternatives: each is the mod's alternative for code that differs, and pointing one
 		 * elsewhere could make more of the group apply than it allows, or another may already name this build's code. A
-		 * group's only member has none, and is required as an injector alone is (GROUP-2).
+		 * group's only member has none, and is required as an injector alone is (GROUP-2). Nor has the alternative that
+		 * alone applies, on vanilla's classes and on this build's ({@link PreflightPart#soleAlternative}): the group is it alone.
 		 */
 		UNGROUPED,
 		/** A mixin with one target. */
 		ONE_TARGET,
 		ONE_TARGET_UNGROUPED;
 
-		boolean covers(RepairSite site) {
-			boolean ungrouped = this == ANY || this == ONE_TARGET || !PreflightAsm.hasAlternatives(site.mixin(), site.handler());
+		/** @param sole whether the injector is its group's one alternative that can apply ({@link PreflightPart#soleAlternative}) */
+		boolean covers(RepairSite site, boolean sole) {
+			boolean ungrouped = this == ANY || this == ONE_TARGET || sole || !PreflightAsm.hasAlternatives(site.mixin(), site.handler());
 			return ungrouped && (this == ANY || this == UNGROUPED || site.targets().size() == 1);
 		}
 	}
@@ -463,7 +465,7 @@ final class MixinRepairs extends PreflightPart {
 			RepairStep.stopIfMoved(),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.constantSplitRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, moved) -> "@ModifyConstant " + s.handler().name + " targets " + moved),
-			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.subtypeCallRepairs(s.injector(), s.target(), s.ctx()),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.subtypeCallRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, moved) -> s.named() + " expects a call to " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> lambdas.lambdaCallRepairs(s.injector(), s.handler(), s.target(), s.ctx()),
 					(s, lambda) -> s.named() + " expects a call " + lambda),
@@ -662,12 +664,13 @@ final class MixinRepairs extends PreflightPart {
 	/** Runs {@link #injectorRepairs} on one injector, reporting each move; returns whether any changed the mixin. */
 	private boolean repairInjector(RepairSite site, List<PreflightFinding> out) {
 		boolean changed = false;
+		boolean sole = PreflightAsm.hasAlternatives(site.mixin(), site.handler()) && soleAlternative(site.mixin(), site.handler(), site.injector(), site.targets(), site.ctx());
 		for (RepairStep step : injectorRepairs) {
 			if (step.repair() == null) {
 				if (site.moved()) break;
 				continue;
 			}
-			if (!step.scope().covers(site)) continue;
+			if (!step.scope().covers(site, sole)) continue;
 			for (String item : step.repair().repair(site)) {
 				changed = true;
 				out.add(new PreflightFinding(step.severity(), site.ctx().configName(), site.ctx().mixinDotted(), step.message().apply(site, item), ""));
