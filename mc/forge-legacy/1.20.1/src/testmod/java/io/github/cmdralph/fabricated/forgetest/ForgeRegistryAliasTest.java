@@ -12,6 +12,8 @@ import net.minecraft.world.item.Items;
 import java.util.ArrayList;
 import java.util.List;
 
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.registry.FabricRegistry;
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -20,20 +22,20 @@ import net.fabricmc.loader.api.FabricLoader;
  * item registered under its new name keeps its old one as an alias, as Waystones keeps its renamed waystones', and
  * another alias names vanilla's stone, as Fabric API's own test does. The registry must answer to each alias by name
  * and by key, the lookup a data pack's references go through, and the test mod's tag {@code aliased} lists the item by
- * its old name only (optional, so a run without Fabric API reads the tag without it).
+ * its old name only (optional, so a run without Fabric API reads the tag without it). An entrypoint of 1.20.1's own:
+ * Fabric API 0.77 has no aliases.
  */
-public final class ForgeRegistryAliasTest {
+public final class ForgeRegistryAliasTest implements ModInitializer {
 	private static final ResourceLocation NEW_NAME = new ResourceLocation(ForgeTestMod.NAMESPACE, "renamed_item");
 	private static final ResourceLocation OLD_NAME = new ResourceLocation(ForgeTestMod.NAMESPACE, "item_before_renaming");
 	private static final ResourceLocation OLD_STONE = new ResourceLocation(ForgeTestMod.NAMESPACE, "old_stone");
 	private static Item renamed;
 
-	private ForgeRegistryAliasTest() {
-	}
-
-	/** From the main entrypoint, with the registries open, as Fabric mods register their entries and aliases. */
-	static void register() {
+	/** With the registries open, as Fabric mods register their entries and aliases; checked once the server has started. */
+	@Override
+	public void onInitialize() {
 		if (!FabricLoader.getInstance().isModLoaded("fabric-registry-sync-v0")) return;
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> ForgeTestMod.run("registry alias check", ForgeRegistryAliasTest::check));
 		try {
 			renamed = Registry.register(BuiltInRegistries.ITEM, NEW_NAME, new Item(new Item.Properties()));
 			FabricRegistry items = (FabricRegistry) BuiltInRegistries.ITEM;
@@ -44,9 +46,8 @@ public final class ForgeRegistryAliasTest {
 		}
 	}
 
-	/** At the first server tick, the server's data loaded. */
-	public static void check() {
-		if (!FabricLoader.getInstance().isModLoaded("fabric-registry-sync-v0")) return;
+	/** The server's data loaded. */
+	private static void check() {
 		List<String> failed = new ArrayList<>();
 		try {
 			Registry<Item> items = BuiltInRegistries.ITEM;

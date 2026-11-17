@@ -1,0 +1,89 @@
+{
+  "fabricApiVersion": "0.77.0+1.19.2",
+  "modules": {
+    "fabric-api-base": {
+      "plan": "native",
+      "version": "0.4.15",
+      "reason": "Shipped by Fabricated (vendored from upstream); every Fabric API module builds on it, the native ones too. Its package net.fabricmc.fabric.api.util is split with fabric-content-registries-v0, whose two interfaces there (Block2ObjectMap, Item2ObjectMap) Fabricated ships with it, as the in-game mod's packages are taken out of Fabric jars."
+    },
+    "fabric-biome-api-v1": {
+      "plan": "native",
+      "version": "9.1.1",
+      "reason": "Shipped by Fabricated: upstream's API and biome source mixins, with biome modifications applied as a Forge biome modifier. Upstream's access widener opens the biome's climate field, which Forge 43's coremod needs private to point reads of a biome's climate and effects at its modified info, so with the module passed through the coremod failed and no biome modifier's climate or effects reached the game; upstream's modifications also replace biome fields Forge no longer reads. Forge 43 keeps a biome source's possible biomes behind a lazy supplier of its own, where upstream adds the modded Nether's and End's biomes to vanilla's set: they are added to the set the supplier gives (BiomeSourceMixin, as on Forge 47), and the Nether's source gets a supplier of its new set. The rest of what upstream's widener opens, which Fabric mods rely on as on Fabric, the in-game mod's access transformer opens (BIOME-6)."
+    },
+    "fabric-dimensions-v1": {
+      "plan": "native",
+      "version": "2.1.35",
+      "reason": "Shipped by Fabricated: upstream's API and its teleport target hook. Forge 43 moved vanilla's dimension change, whose reads of the End's key upstream's hook redirected, into its changeDimension with a teleporter and a lambda that teleporter calls: a Fabric teleport hands Forge's dimension change a teleporter that asks for no portal and isn't vanilla's, which leaves out the End's obsidian platform and a player's credits on leaving the End, as upstream does. Upstream's level storage hook (LevelStorageMixin), which drops every dimension but vanilla's from level.dat as it is read, is not shipped: Forge 43 replaces the dimensions' map codec with its own lenient one (its fix for MC-197860) and keeps the entries that decode. Nor is its dedicated server hook (MainMixin), which saves and reads a new world's level.dat again so the data packs' dimensions are in it: Forge 43 encodes and decodes a new world's generation settings itself for the same reason (read in Forge 43.5.2)."
+    },
+    "fabric-entity-events-v1": {
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-entity-events-v1.mixins.json:LivingEntityMixin#onGetSleepingDirection",
+        "fabric-entity-events-v1.mixins.json:LivingEntityMixin#setOccupiedState",
+        "fabric-entity-events-v1.mixins.json:PlayerEntityMixin#redirectDaySleepCheck",
+        "fabric-entity-events-v1.mixins.json:ServerPlayerEntityMixin#redirectDaySleepCheck"
+      ],
+      "reason": "Forge 43's LivingEntity asks the bed's state (BlockState.setBedOccupied, isBed) where vanilla sets the occupied property and asks BedBlock, which upstream's occupation and sleeping direction hooks look for, so they are left out: Fabricated's in-game mod runs SET_BED_OCCUPATION_STATE and MODIFY_SLEEPING_DIRECTION at Forge's calls and sets the occupied state of the block that is there (SLEEP-1, as on Forge 47). Upstream's sleep time hooks redirect Level.isDay() as a player tries to sleep and as a sleeping one ticks, where Forge checks its SleepingTimeCheckEvent instead (falling back to that check): the in-game mod answers Forge's event from Fabric's ALLOW_SLEEP_TIME, with vanilla's answer, when no Forge mod has (SLEEP-2)."
+    },
+    "fabric-events-interaction-v0": {
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-events-interaction-v0.mixins.json:ServerPlayerInteractionManagerMixin#breakBlock",
+        "fabric-events-interaction-v0.mixins.json:ServerPlayerInteractionManagerMixin#onBlockBroken"
+      ],
+      "reason": "Forge 43's destroyBlock no longer calls Block.playerWillDestroy and Block.destroy itself, where upstream's hooks fire PlayerBlockBreakEvents.BEFORE and AFTER: both moved into a private removeBlock Forge added, so the two hooks would find nothing to apply to. Fabricated's in-game mod fires them at the same points of Forge's method instead, BEFORE (with CANCELED when refused) once the game's checks pass and AFTER once removeBlock removed the block, before the drops (BREAK-1, as on Forge 47)."
+    },
+    "fabric-key-binding-api-v1": {
+      "plan": "native",
+      "version": "1.0.25",
+      "reason": "Shipped by Fabricated: upstream's API, its key bindings registered on Forge's key mapping event, where Forge mods register theirs. Upstream refuses a key binding once the game's options exist, and Forge 43 creates them before it loads mods, the Fabric client entrypoints among them, so passed through, the module would fail every client entrypoint that registers one (KEYMAP-3, as on Forge 47). Forge loads the keys from the options file again once mods have loaded, which gives each key binding the key the player saved. As upstream, a key binding registered twice is refused, and so is one registered once Forge's event has added them; a category new to the game is sorted after the game's, by upstream's accessor of the categories' order; KeyBindingHelper.getBoundKeyOf reads the key binding's key through upstream's accessor."
+    },
+    "fabric-loot-api-v2": {
+      "plan": "native",
+      "version": "1.1.13",
+      "reason": "Shipped by Fabricated: upstream's API and builder mixins. Forge 43 keeps a loot table's pools in a list, which upstream's accessor and table copy read as an array, so passed through the module would fail pre-flight. The loot table events run from Fabricated's hook on the loot tables' apply, as it builds the map of parsed tables (after Forge's loot table event), and a table's source is decided from Forge's packs (each mod's data is a pack named after its file) instead of fabric-resource-loader-v0's."
+    },
+    "fabric-loot-tables-v1": {
+      "plan": "native",
+      "version": "1.1.16",
+      "reason": "Shipped by Fabricated: upstream's deprecated API over fabric-loot-api-v2's events, its initializer run by the in-game mod. Its loot table mixin read the pools as an array, which Forge 43 keeps in a list, and Forge's own public LootPool.getRolls() implements its pool getter of the same name."
+    },
+    "fabric-object-builder-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-object-builder-v1.mixins.json:TradeOffersTypeAwareBuyForOneEmeraldFactoryMixin#disableVanillaCheck"
+      ],
+      "reason": "Upstream's hook into the constructor of vanilla's trade factory by villager type empties the check that every villager type has a trade, which fails for a villager type a Fabric mod adds. Forge 43 removed that check from the constructor, so the hook finds nothing to change; upstream's other hook, which makes no trade of an empty item, applies."
+    },
+    "fabric-particles-v1": {
+      "plan": "native",
+      "version": "1.1.0",
+      "reason": "Shipped by Fabricated: upstream's API, its hook that registers Fabric's particle factories once vanilla's are in, and its block dust tint event, asked from upstream's hook at the terrain particle's grass check, which Forge 43 keeps (Forge 47 replaced it with its block extensions' areBreakingParticlesTinted). Forge 43 keeps the particle engine's factories in a map by the type's id, which upstream's accessor read as a map by raw id, so passed through the module would fail pre-flight on the client: Fabric's factories and their sprite sets are registered through the engine's own methods, where Forge registers its mods' (PART-1, as on Forge 47). What upstream's widener opens, the sprite set's constructor, the in-game mod's access transformer opens (BIOME-6)."
+    },
+    "fabric-rendering-v1": {
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-rendering-v1.mixins.json:BlockColorsMixin#get",
+        "fabric-rendering-v1.mixins.json:BlockColorsMixin#f_92571_",
+        "fabric-rendering-v1.mixins.json:ItemColorsMixin#get",
+        "fabric-rendering-v1.mixins.json:ItemColorsMixin#f_92674_",
+        "fabric-rendering-v1.mixins.json:shader.ShaderMixin",
+        "fabric-rendering-v1.mixins.json:shader.ShaderImportProcessorMixin",
+        "fabric-rendering-v1.mixins.json:InGameHudMixin",
+        "fabric-rendering-v1.mixins.json:ScreenMixin"
+      ],
+      "reason": "Forge 43 keeps block and item colour providers in maps by registry holder under the names of vanilla's IdMappers by id, which upstream's colour provider lookups shadow (in SRG's names here): Fabricated's in-game mod looks providers up in Forge's maps instead of upstream's methods (COLOR-1, as on Forge 47). Forge 43 also resolves a core shader program's namespace, and its stages' and imports' (ShaderInstance's constructor by ResourceLocation, ForgeHooksClient.getShaderImportLocation), where upstream's shader mixins rewrite the same names for Fabric's shader programs: applied on top of Forge's, the stage rewrite doubles the namespace (as on Forge 47, SHADER-1). Fabric's namespaced shader programs load through Forge's resolution instead. Upstream fires HudRenderCallback before the last call of vanilla's HUD method, which Forge 43's GUI overrides and never runs, at no point Fabricated's seams take: Fabricated's in-game mod fires it where Forge's GUI ends its HUD drawing instead (HUD-2, HUD-4). Upstream asks TooltipComponentCallback from a hook into the lambda of vanilla's Screen.renderTooltip, which Forge 43's own tooltip gathering replaced: a Fabric mod's tooltip data would reach ClientTooltipComponent.create unconverted, which throws for it. Fabricated's in-game mod asks the callback where Forge looks its mods' tooltip factories up instead."
+    },
+    "fabric-resource-loader-v0": {
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-resource-loader-v0.client.mixins.json:GameOptionsMixin#onLoad",
+        "fabric-resource-loader-v0.mixins.json:DefaultResourcePackMixin",
+        "fabric-resource-loader-v0.client.mixins.json:CreateWorldScreenMixin#replaceDefaultSettings",
+        "fabric-resource-loader-v0.client.mixins.json:CreateWorldScreenMixin#useReplacedDefaultSettings"
+      ],
+      "reason": "Forge 43 loads the game's options before it loads mods, so upstream's hook at the return of the options' load, which enables Fabric mods' built-in packs that are enabled by default the first time the game sees them, would run before the Fabric mods' entrypoints registered those packs: it would enable none and drop the packs it had kept. Fabricated's in-game mod does the hook's work once the entrypoints have run, before the game selects its packs (CORPUS-104, as on Forge 47). Upstream's mixin that reads vanilla's pack from the game's jar alone looks the jar up on the default file system, which Forge 43's game isn't on: the server could not start. Forge 43 reads vanilla's pack from the game's own jar already. Upstream's hooks that start a new world with Fabric's default data packs read vanilla's defaults where the world creation screen opens, which Forge 43's screen no longer reads: it starts from its own list, so a Fabric mod's optional built-in data pack would be enabled in every new world. Fabricated's in-game mod adds upstream's default packs to Forge's list instead."
+    }
+  }
+}

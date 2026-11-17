@@ -1,0 +1,52 @@
+{
+  "required": true,
+  "minVersion": "0.8.5",
+  "package": "io.github.cmdralph.fabricated.forge.mixin",
+  "plugin": "io.github.cmdralph.fabricated.forge.FabricatedMixinPlugin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "fabricated-forge.refmap.json",
+  "mixins": [
+    "FluidTypeMixin",
+    "LivingEntityDropCaptureMixin",
+    "LivingEntityFluidTravelMixin",
+    "MappedRegistryPendingHoldersMixin",
+    "MappedRegistryEarlyWriteMixin",
+    "NamespacedHolderHelperPendingHoldersMixin",
+    "NamespacedWrapperEntryAddedMixin",
+    "ForgeRegistryEntryAddedMixin",
+    "ForgeRegistryWrapperLockMixin",
+    "NamespacedWrapperLockAccessor",
+    "ForgeRegistryRekeyMixin",
+    "BuiltInRegistriesFreezeMixin",
+    "GameDataFreezeMixin",
+    "CraftingHelperFabricConditionsMixin",
+    "CraftingHelperFabricIngredientsMixin",
+    "IngredientForgeNetworkMixin",
+    "LanguageHookVanillaReaderMixin",
+    "ShapedRecipeUtilCraftingSizeMixin",
+    "BucketItemEarlyFluidMixin",
+    "BlockItemEarlyBlockMixin",
+    "LiquidBlockEarlyFluidMixin",
+    "RecordItemEarlySoundMixin",
+    "PotionBrewingMixBridgeMixin",
+    "MobBucketItemBridgeMixin",
+    "PackRepositorySourcesMixin",
+    "PlayerListViewMixin",
+    "PoiTypesByStateMixin",
+    "PoiTypesAllStatesMixin",
+    "PackFabricConstructorMixin",
+    "BlockFabricFlammableMixin"
+  ],
+  "client": [
+    "ParticleEngineProvidersBridgeMixin",
+    "ExtendedBlockModelDeserializerMixin",
+    "GuiHudSeamsMixin",
+    "ForgeGuiHudSeamsMixin",
+    "ItemPropertiesClampedOverloadsMixin",
+    "ClientTooltipComponentManagerFabricMixin",
+    "CreateWorldScreenFabricDataPacksMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -20,9 +20,9 @@ import io.github.cmdralph.fabricated.core.mixin.ConstructorPoint;
 
 /**
  * The injection point pre-flight names in place of a Fabric mod's {@code @Inject} point into a constructor
- * ({@link ConstructorPoint}, CORPUS-103). Forge 47's Mixin, SpongePowered's 0.8.5, takes an {@code @Inject} into a
- * constructor only at a return, and has no {@code unsafe} points; Fabric's Mixin takes one anywhere there, its points
- * being {@code unsafe} by default (Dripstone Fluid Lib registers its particles' providers in {@code Minecraft}'s
+ * ({@link ConstructorPoint}, CORPUS-103). Forge 43's and 47's Mixin, SpongePowered's 0.8.5, takes an {@code @Inject}
+ * into a constructor only at a return, and has no {@code unsafe} points; Fabric's Mixin takes one anywhere there, its
+ * points being {@code unsafe} by default (Dripstone Fluid Lib registers its particles' providers in {@code Minecraft}'s
  * constructor, just after it makes the particle engine). This point finds what the point it stands for finds, with the
  * same target, ordinal, opcode, slice and arguments, moved as that point was, and lets Mixin take that anywhere in a
  * constructor, as {@code unsafe} does from 0.8.6: Mixin still takes an instance handler only after the delegate

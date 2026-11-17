@@ -1,7 +1,7 @@
-# Legacy Forge's part of CI, Forge 47's (the forge-legacy branch's ci/forge-legacy/platform.sh): its build (ci.yml), and
-# what sets it apart from Forge 52 and 61 to 66 for the harness; the rest is ci/forge-shared/platform.sh's. Sourced with
-# root, platform, mc (the Minecraft version) and loader (the Forge build, with Minecraft's version, as ModDevGradle's
-# legacyforge plugin takes it) set.
+# Legacy Forge's part of CI, Forge 43's and 47's (the forge-legacy branch's ci/forge-legacy/platform.sh): its build
+# (ci.yml), and what sets it apart from Forge 52 and 61 to 66 for the harness; the rest is ci/forge-shared/platform.sh's.
+# Sourced with root, platform, mc (the Minecraft version) and loader (the Forge build, with Minecraft's version, as
+# ModDevGradle's legacyforge plugin takes it) set.
 # shellcheck shell=bash disable=SC2034,SC2154 # the harness reads these, and sets what it is sourced with
 forge_id="$loader"
 testmod_key=key.fabricated-forge-testmod.check
