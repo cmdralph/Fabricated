@@ -260,7 +260,14 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    An entry `"config.json:Name#member"` instead writes a copy of that mixin class without the methods or fields of
    that name (a handler, or a `@Shadow` of a field NeoForge replaced) into the overlay jar; pre-flight checks the copy.
 6. **Runtime attribution:** a mixin failure that slips past pre-flight is Mixin's own crash, which names the mixin
-   config; the report (§13) maps each config to its Fabric mod. Fabricated adds nothing to the crash report itself.
+   config; the report (§13) maps each config to its Fabric mod. Fabricated records it for the next launch to leave out
+   (APPLY-1, APPLY-3), and writes its diagnostics block (core's `DiagnosticsBlock`) in the log and at the start of the
+   crash report's details: the Fabric mod, the mixin and the class Mixin applied it to, or the mod's class in the stack
+   trace, the loader and the versions. The platforms' hooks are thin (the crash report, Mixin's error handlers, the
+   uncaught exception handler, `Util.onThreadException`; on Forge, mod loading's crash report and the dedicated server's
+   `main`, which logs what stops its start), calling one shared in-game class (`CrashDiagnostics`); a mod
+   is named only from Mixin's own throwables, a package one loaded Fabric mod alone has, or (on NeoForge, whose Mixin
+   puts the mod's id there) a merged handler's name.
 7. **No guessing.** Mixins are rewritten only where the right member is certain: javac's names for synthetic
    members differ in NeoForge's recompiled build while the member is the same, so pre-flight points an
    `@Accessor("val$name")` at the target's only captured field of that type, an injector into `lambda$method$N` at
