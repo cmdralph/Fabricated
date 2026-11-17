@@ -486,7 +486,8 @@ sorted reload-listener events. Fabricated ships the module's unchanged public AP
 | `fabric:before_vanilla`, `fabric:after_vanilla` phases | empty listeners before the first and after the last vanilla listener |
 | Shared reload state: registries, feature flags, data store (and on 1.21.11, 26.1.2 and 26.2 the recipe and advancement managers) | a setup listener that runs before all others |
 | `MinecraftServer` as `DataResourceStore`, `Resource#getFabricPackSource` | interfaces added by mixins that only add methods |
-| `registerBuiltinPack`, upstream's pack finder (`ModResourcePackCreator`) | `AddPackFindersEvent`: each pack repository gets a `ModResourcePackCreator` of upstream's shape, which offers the built-in packs |
+| `registerBuiltinPack`, upstream's pack finder (`ModResourcePackCreator`) | `AddPackFindersEvent`: each pack repository gets a `ModResourcePackCreator` of upstream's shape, which offers the built-in packs; one a mod makes with the pack type alone offers the mods' packs too |
+| A pack's `FabricPack` side (from 1.21.11), which hides it | upstream's parents predicate on `Pack`; a pack a mod hides is hidden as NeoForge hides its own packs |
 
 A listener registered the vanilla way (`ReloadableResourceManager.registerReloadListener`, as OneConfig does from a
 mixin into `Minecraft`'s constructor) after NeoForge has sorted the client's listeners is added last, as vanilla adds
@@ -507,10 +508,20 @@ hook: the pack type, the constructor taking it and whether the repository is the
 (NeoForge's trusted one), and `loadPacks`, which offers the built-in packs. A mixin of those applies to it as on Fabric
 (PROVIDER-22): YUNG's API offers its locate replacer's data pack at the end of `loadPacks` where the pack type is server
 data, which adds the vanilla structures YUNG's mods replace or remove to the `c:hidden_from_locator_selection` tag that
-other mods' structure locators read. Upstream's constructor taking the pack type alone, its `activationInfo` and flag
-fields (`forClientDataPackManager`, from 1.21.11 `forKnownPacksManager`), `CLIENT_RESOURCE_PACK_PROVIDER` and
-`registerModPack` aren't there, so a mixin of those is still left out. Upstream's creator also offers Fabric's mod
-packs, which NeoForge builds itself, so Fabricated's doesn't.
+other mods' structure locators read. Upstream's creator also offers Fabric's mod packs, which NeoForge builds itself, so
+the pack repositories' creators don't. From 1.21.11 a creator a mod makes itself with the pack type alone, upstream's
+public constructor, offers the mods' packs before the built-in ones, as upstream's does: NeoForge's, as its own pack
+finder builds them, each on its own (PROVIDER-23). REI's Fabric build reads the data packs such a creator offers for
+the recipes it shows where the server sends none. Upstream's `activationInfo` and flag fields
+(`forClientDataPackManager`, from 1.21.11 `forKnownPacksManager`), `CLIENT_RESOURCE_PACK_PROVIDER` and
+`registerModPack` aren't there, so a mixin of those is still left out.
+
+From 1.21.11 a pack is upstream's `FabricPack` too, through which a mod hides it (Puzzles Lib hides its mods' internal
+packs so): a pack whose parents predicate a mod set is hidden as NeoForge hides its own packs, so NeoForge's pack
+screens, the datapack command's list and the pack ids a world or the options save leave it out, where upstream's mixins
+of those hide it on Fabric. Upstream also enables and disables such a pack with its parents, as its predicate says;
+NeoForge has no such link: a required hidden pack is always on, and one that isn't required is left out of the packs
+saved as selected, so it is off once the world or the game loads again.
 
 With Fabric API, a pack's conditional overlays (`fabric:overlays`) apply where vanilla reads a pack's metadata, as
 upstream applies them, but not to a pack that declares NeoForge's own (`neoforge:overlays`): such a pack is built for
@@ -543,7 +554,9 @@ shared reload state, a listener factory, the data store read back through `Minec
 built-in data pack being enabled and loaded, a `DEFAULT_ENABLED` built-in resource pack being switched on in a new
 game directory and its resources loaded, and the listener running again after `/reload`; a test mixin of upstream's
 `ModResourcePackCreator` of YUNG's shape, whose data pack must be among the server's packs on 1.21.1, and whose hook at
-the end of `loadPacks` must run for the server's creator from 1.21.11. Core's
+the end of `loadPacks` must run for the server's creator from 1.21.11; from 1.21.11, a creator made with the pack type
+alone, which must offer the packs holding the test mod's data and its built-in pack, and a pack hidden through
+`FabricPack`, which NeoForge must read as hidden. Core's
 `DefaultPackTrackerTest` checks upstream's rule and file format. Client listeners
 are checked by the client CI run (a client resource listener runs while the client starts).
 
@@ -569,6 +582,10 @@ Differences from upstream:
   are called once for every entry already present. Entries can't be added to the registries from the callback.
 - A registry must be created while registration is open, which is when Fabric initializers run. Creating one
   later fails, as it does on NeoForge.
+- Fabric's sync protocol's internals (`RegistrySyncManager`, the block state id tracker `StateIdTracker`) aren't there,
+  as NeoForge syncs the registries: a mod's mixin of them (Polymer's, which leaves its server-side entries out of
+  Fabric's sync) has nothing to apply to, as on Fabric without the module. Such mixins are `@Pseudo`, so Mixin skips
+  them without an error, and the report doesn't name them.
 - `SKIP_WHEN_EMPTY` has no effect; NeoForge decides how to sync an empty registry. The `MODDED`, `OPTIONAL` and
   `SAVE_DATA_VALIDATED` attributes are recorded for mods that read them but change nothing.
 - NeoForge has no public API for the sync flag and the data-pack registry lists, so Fabricated reaches them by
@@ -873,7 +890,9 @@ extra data to the client. Fabricated ships upstream's API and maps it onto that:
 | a `SimpleMenuProvider` around an `ExtendedMenuProvider` | opens the extended menu, as upstream |
 
 Fabric mods' menus therefore open the same way NeoForge mods' menus do. The client CI run opens an extended
-menu with opening data from the integrated server.
+menu with opening data from the integrated server. Upstream's own packet and its client handler
+(`Networking.OpenScreenPayload`, `ClientNetworking.openScreen`) aren't there, so a mod's mixin of them is left out:
+Traveler's Backpack's, which keeps its menus from opening while ReplayMod replays a recording.
 
 ### `fabric-rendering-v1`, `fabric-screen-api-v1` and `fabric-sound-api-v1`
 
@@ -1317,6 +1336,9 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   so the mixin skips it where it can't return (Forge 61 to 66's `RecipeBookType`, whose `init` throws "This is not
   implemented yet") or reaches another class (Forge 47's `RecipeBookType`, whose `init` runs `RecipeBookSettings`'
   class initializer early, before Farmer's Delight's mixin there can read its type; the mod adds its tags itself).
+  The enum mixin's other methods (an injector into the enum) stay in the ordinary mixin where they use nothing of it
+  but its constants, which they read from the holder class (ENUM-9: Farmer's Delight's recipe book categories on Forge
+  52, whose injector into `getCategories` returns them for its cooking pot's recipe book).
 - Fabric ASM (Manningham Mills, mod id `mm`) adds enum constants that mods declare in their `mm:early_risers`, with
   `ClassTinkerers.enumBuilder(...).addEnum(...).build()`. Its Mixin plugin runs those early risers and serves the
   mixins it makes from Fabric's class loader. NeoForge's and Forge's class loaders take no added classes, so Mixin
@@ -1887,6 +1909,12 @@ by the server runs (the colours, screens, key mappings and config screens by the
   registration of it, and one after Forge's event, are refused, as upstream refuses them.
 - **Config screens:** a Fabric mod's Mod Menu config screen is behind Forge's mod list button, as on NeoForge (all five,
   client run).
+- **Config file watchers (Forge 61 to 66):** a Fabric mod watching its config file with night-config's default file
+  watcher, as Forge Config API Port's Fabric build does, gets Forge's night-config, whose watcher runs a change on a
+  thread that isn't a daemon, where the night-config the mod bundles runs it on a daemon thread (client run). On Forge
+  66, whose client no longer exits once its main thread ends, Fabricated stops that watcher as the client closes, where
+  Forge stops its own config watchers, so the game exits; that thread kept it up until the client's shutdown watchdog
+  wrote a crash report and stopped it (CORPUS-116).
 - **Failed initializers:** a Fabric mod whose entrypoint throws is named in the report and in Forge's loading warnings,
   and what it built but never registered is dropped at the registries' freeze with an error, where it stopped the
   freeze (all five, server run; HOLD-2). Fabricated's API runs what waits for the initializers once they ran
@@ -1930,7 +1958,12 @@ by the server runs (the colours, screens, key mappings and config screens by the
   read by Forge's codec, as Fabric API's wrapper took the -1 they start with for its own. Forge 52 threw writing a Fabric
   mod's own ingredient and Fabric API's too, and keeps no codec of vanilla's form, so the in-game mod writes 1.21.1's,
   the ingredient's items, and wraps it with Fabric API's custom form as upstream's hook, left out there, would (NET-13);
-  its empty slot is vanilla's empty ingredient, which Forge 52 writes as vanilla does. Only the network form changes: a Fabric mod's subclass other than Fabric API's still can't be written as JSON (no mod seen doing it).
+  its empty slot is vanilla's empty ingredient, which Forge 52 writes as vanilla does.
+- **Ingredients as JSON (Forge 52, 61 to 66):** a Fabric mod's own ingredient, alone or inside Forge's compound
+  ingredient, and on Forge 52 one of Fabric API's custom ingredients, is written as JSON by the vanilla codec Forge's
+  wraps, as on Fabric, and read back by Forge's (server run, with Fabric API for its custom ingredients; CORPUS-115).
+  Forge's codec threw writing them, so a mod writing such a recipe as JSON lost it: Supplementaries' dynamic sign post
+  recipes on Forge 52. On Forge 61 to 66 Fabric API's own wrapper writes its custom ingredients.
 - **Custom ingredients and crafting size (Forge 47):** a recipe ingredient with Fabric API's `fabric:type` is that
   custom ingredient, as Forge reads every ingredient itself before Fabric API's hook can; inside an array it joins
   Forge's compound ingredient, as Forge's own custom ingredients do (CORPUS-99). On the network, Forge's custom
