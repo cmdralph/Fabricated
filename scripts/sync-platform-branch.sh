@@ -52,11 +52,14 @@ fi
 
 # Shared paths are main's: a platform branch never changes them, so the merge takes them as main has them rather than
 # merging them, which git's rename detection gets wrong across the platforms' folders (it pairs a platform's file with
-# one main moved). A shared file the branch changed since its last sync is named, as that change belongs on main.
+# one main moved). A shared file the branch changed since its last sync is named, as that change belongs on main. The
+# last sync is found by the title this script gives its commit, which the squash merge of its pull request keeps: the
+# merge base doesn't move when the sync is squashed. Before a branch's first sync, it is the merge base.
 base_commit=$(git rev-parse "$base")
 platform_paths=()
 for path in "${own[@]}" "${mains[@]}" "${gone[@]}"; do platform_paths+=(":(exclude)$path"); done
-edited=$(git diff --name-only "$(git merge-base HEAD "$base_commit")" HEAD -- . "${platform_paths[@]}")
+last_sync=$(git log -1 --format=%H --grep="^chore: sync $platform with main" HEAD)
+edited=$(git diff --name-only "${last_sync:-$(git merge-base HEAD "$base_commit")}" HEAD -- . "${platform_paths[@]}")
 if [ -n "$edited" ]; then
 	echo "warning: the branch changed these shared files since its last sync; they are taken as main has them:" >&2
 	echo "$edited" >&2

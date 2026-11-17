@@ -99,6 +99,18 @@ import org.objectweb.asm.tree.VarInsnNode;
  * where vanilla asks the state, so there the state's class must keep vanilla's {@code getSoundType} too; 1.21.1's piglin
  * defaults compare the material with gold's by identity where vanilla asks {@code Holder.is}, so there the check is put
  * back where the two agree (every material but gold's under another holder).
+ *
+ * <p>The shovel's tool modifications (SEAM-13): where vanilla's {@code ShovelItem.useOn} looks the clicked block up in
+ * {@code FLATTENABLES} (1.20.1 to 26.2), both platforms ask the state's {@code getToolModifiedState(context, action,
+ * false)} of their shovel flatten action, and where vanilla checks for a lit campfire and douses it, NeoForge asks it of its
+ * douse action, storing the answer. The defaults post the platform's tool modification event, answering its state where a
+ * listener changed it (none where one cancelled it), then answer none where the held item can't do the action, and
+ * otherwise vanilla's lookup, or vanilla's dousing. So for the blocks keeping both defaults the event and the action are
+ * asked by a helper as they ask them, and where they leave the answer to vanilla's code, vanilla's code is made of the
+ * state ({@link OnReceiver#FLATTEN}, {@link OnReceiver#DOUSE}): the dousing stores the doused state only where it douses,
+ * as vanilla's does, so a hook having set the answer before keeps it. Forge asks the level's {@code isEmptyBlock} where
+ * vanilla asks whether the block above the path is air: {@code LevelReader}'s default, which every level of the game keeps,
+ * goes back for the levels whose class keeps it ({@link Code#LEVEL}).
  */
 final class VanillaCalls {
 	private static final String STATE = "net/minecraft/world/level/block/state/BlockState";
@@ -253,15 +265,23 @@ final class VanillaCalls {
 		 * object ({@link OnReceiver}), for the objects keeping the default. The call is the same on both, and the class needn't
 		 * name either platform: it finds the platform's extensions as it runs ({@link Extension#altState}).
 		 */
-		RECEIVER;
+		RECEIVER,
+		/**
+		 * Forge's shovel (SEAM-13): the level's {@code isEmptyBlock(pos)}'s place gets vanilla's {@code
+		 * level.getBlockState(pos).isAir()}, its default's code, for the levels whose class keeps that method.
+		 */
+		LEVEL;
 
 		boolean forge() {
-			return this == FORGE_SERVER || this == FORGE_CLIENT || this == FORGE_HARVEST || this == FORGE_PROGRESS || this == FORGE_ACTION;
+			return this == FORGE_SERVER || this == FORGE_CLIENT || this == FORGE_HARVEST || this == FORGE_PROGRESS || this == FORGE_ACTION || this == LEVEL;
 		}
 
-		/** The finding a put-back of this kind answers: block breaking, SEAM-3; harvest checks, SEAM-4; item checks, SEAM-6; an extension's call of its object, SEAM-8. */
+		/**
+		 * The finding a put-back of this kind answers: block breaking, SEAM-3; harvest checks, SEAM-4; item checks, SEAM-6; an
+		 * extension's call of its object, SEAM-8, or the shovel's (its row's, {@link PutBack#finding}); Forge's empty block check, SEAM-13.
+		 */
 		String finding() {
-			return receiver() ? "SEAM-8" : item() ? "SEAM-6" : ordinal() < HARVEST.ordinal() ? "SEAM-3" : "SEAM-4";
+			return this == LEVEL ? "SEAM-13" : receiver() ? "SEAM-8" : item() ? "SEAM-6" : ordinal() < HARVEST.ordinal() ? "SEAM-3" : "SEAM-4";
 		}
 
 		boolean harvest() {
@@ -312,19 +332,50 @@ final class VanillaCalls {
 		/** The sweep attack's box, {@code target.getBoundingBox().inflate(1.0, 0.25, 1.0)}, the stack popped. */
 		SWEEP("items", "item", "the stack's getSweepHitBox(player, target)"),
 		/** {@code stack.getOrDefault(ENCHANTMENTS, EMPTY).getLevel(enchantment)}, NeoForge's level event posted after it as its default posts it. */
-		ENCHANTMENT("items", "item", "the stack's getEnchantmentLevel(enchantment)");
+		ENCHANTMENT("items", "item", "the stack's getEnchantmentLevel(enchantment)"),
+		/**
+		 * The shovel's path: {@code FLATTENABLES.get(state.getBlock())}, after the platform's tool modification event and the
+		 * held item's action, as the default asks them (SEAM-13).
+		 */
+		FLATTEN("blocks", "block", "the block state's getToolModifiedState(context, action, simulate)", "SHOVEL_FLATTEN"),
+		/**
+		 * The shovel's dousing of a campfire (NeoForge): {@code state.getBlock() instanceof CampfireBlock && state.getValue(LIT)}, then
+		 * {@code CampfireBlock.dowse} and {@code state.setValue(LIT, false)}, after the event and the action as for {@link #FLATTEN}.
+		 */
+		DOUSE("blocks", "block", "the block state's getToolModifiedState(context, action, simulate)", "SHOVEL_DOUSE");
 
 		final String nouns, noun, call;
+		/** The tool action the platform's call takes, by its field's name (the shovel's, SEAM-13); null for the others. */
+		final String action;
 
 		OnReceiver(String nouns, String noun, String call) {
+			this(nouns, noun, call, null);
+		}
+
+		OnReceiver(String nouns, String noun, String call, String action) {
 			this.nouns = nouns;
 			this.noun = noun;
 			this.call = call;
+			this.action = action;
 		}
 
-		/** The operands of the platform's call vanilla's code loads again: the sweep's target, the enchantment. */
+		/**
+		 * The operands of the platform's call vanilla's code loads again: the sweep's target, the enchantment; the tool
+		 * modification's context, action and simulate flag, which the event takes, and the dousing's state too.
+		 */
 		int[] reloads() {
-			return this == SWEEP ? new int[] {2} : this == ENCHANTMENT ? new int[] {1} : new int[0];
+			return switch (this) {
+				case SWEEP -> new int[] {2};
+				case ENCHANTMENT -> new int[] {1};
+				case FLATTEN -> new int[] {1, 2, 3};
+				case DOUSE -> new int[] {0, 1, 2, 3};
+				default -> new int[0];
+			};
+		}
+
+		/** The finding its put-back answers: the shovel's, SEAM-13; the others', SEAM-8. */
+		String finding() {
+			return action != null ? "SEAM-13" : "SEAM-8";
 		}
 	}
 
@@ -360,6 +411,11 @@ final class VanillaCalls {
 
 		String loader() {
 			return code.forge() ? "Forge" : "NeoForge";
+		}
+
+		/** The finding its put-back answers: its form's, for an extension's call of its object, else its kind's. */
+		String finding() {
+			return form != null ? form.finding() : code.finding();
 		}
 	}
 
@@ -561,9 +617,37 @@ final class VanillaCalls {
 			onReceiver(ENCHANTMENT_HELPER, "getItemEnchantmentLevel", null, null, ENCHANTMENT_LEVEL, NEOFORGE_ENCHANTMENT, OnReceiver.ENCHANTMENT),
 			onReceiver(ENCHANTMENT_HELPER, "getItemEnchantmentLevel", null, null, INSTANCE_ENCHANTMENT_LEVEL, NEOFORGE_ENCHANTMENT_26, OnReceiver.ENCHANTMENT));
 
+	// SEAM-13: the shovel's tool modifications, the state's getToolModifiedState(context, action, simulate) of the platform's
+	// action, and Forge's empty block check above the path; the helpers posting the platform's event as its default does.
+	private static final String SHOVEL = "net/minecraft/world/item/ShovelItem";
+	private static final String USE_ON_CONTEXT = "net/minecraft/world/item/context/UseOnContext";
+	private static final String CAMPFIRE = "net/minecraft/world/level/block/CampfireBlock";
+	private static final String KEEPS_TOOL = "fabricated$keepsToolDefault";
+	private static final String KNOWN_TOOL = "fabricated$overridingTool";
+	private static final Extension NEOFORGE_TOOL = new Extension(NEOFORGE_EXT + "IBlockStateExtension", NEOFORGE_EXT + "IBlockExtension", "getToolModifiedState",
+			"(L" + USE_ON_CONTEXT + ";L" + ABILITY + ";Z)L" + STATE + ";", KEEPS_TOOL, KNOWN_TOOL);
+	private static final Extension FORGE_TOOL = new Extension(FORGE_EXT + "IForgeBlockState", FORGE_EXT + "IForgeBlock", "getToolModifiedState",
+			"(L" + USE_ON_CONTEXT + ";L" + TOOL_ACTION + ";Z)L" + STATE + ";", KEEPS_TOOL, KNOWN_TOOL);
+	/** The level's empty block check, {@code LevelReader}'s default, which a level keeping it keeps; Forge 47's by SRG's name. */
+	private static final Member IS_EMPTY_BLOCK = new Member(LEVEL, "isEmptyBlock", "m_46859_", "(" + POS + ")Z");
+	private static final String LEVEL_READER_CLASS = "net/minecraft/world/level/LevelReader";
+
+	/**
+	 * The shovel's rows, read in the platforms' classes against vanilla's (1.20.1 to 26.2; 26.3's shovels flatten through
+	 * their item's data): where vanilla's {@code ShovelItem.useOn} looks the block up in {@code FLATTENABLES}, both platforms
+	 * ask the state's {@code getToolModifiedState} of the shovel's flatten action; where vanilla checks for a lit campfire and
+	 * douses it, NeoForge asks it of the douse action; and where vanilla asks whether the block above is air, Forge asks the
+	 * level's {@code isEmptyBlock}.
+	 */
+	private static final List<PutBack> TOOLS = List.of(
+			onReceiver(SHOVEL, "useOn", "m_6225_", null, new Member(STATE, NEOFORGE_TOOL.name(), null, NEOFORGE_TOOL.desc()), NEOFORGE_TOOL, OnReceiver.FLATTEN),
+			onReceiver(SHOVEL, "useOn", "m_6225_", null, new Member(STATE, NEOFORGE_TOOL.name(), null, NEOFORGE_TOOL.desc()), NEOFORGE_TOOL, OnReceiver.DOUSE),
+			onReceiver(SHOVEL, "useOn", "m_6225_", null, new Member(STATE, FORGE_TOOL.name(), null, FORGE_TOOL.desc()), FORGE_TOOL, OnReceiver.FLATTEN),
+			new PutBack(SHOVEL, "useOn", "m_6225_", null, IS_EMPTY_BLOCK, null, Code.LEVEL));
+
 	/**
 	 * The table: the platforms' forms of the server's and the client's {@code destroyBlock} and of {@code getDestroyProgress},
-	 * read in their classes, the item checks and the extensions' calls of their objects.
+	 * read in their classes, the item checks, the extensions' calls of their objects and the shovel's tool modifications.
 	 */
 	static final List<PutBack> PUT_BACKS = Stream.concat(Stream.of(
 			new PutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, new Member(GAME_MODE, "removeBlock", null, "(" + POS + "L" + STATE + ";Z)Z"),
@@ -582,7 +666,7 @@ final class VanillaCalls {
 			new PutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, CAN_HARVEST, FORGE_HARVEST, Code.FORGE_HARVEST),
 			new PutBack(BEHAVIOUR, "getDestroyProgress", "m_5880_", DESTROY_PROGRESS, HARVEST_HOOK, null, Code.PROGRESS),
 			new PutBack(BEHAVIOUR, "getDestroyProgress", "m_5880_", DESTROY_PROGRESS, FORGE_HARVEST_HOOK, null, Code.FORGE_PROGRESS)),
-			Stream.concat(ITEM_CHECKS.stream(), ON_RECEIVERS.stream())).toList();
+			Stream.of(ITEM_CHECKS, ON_RECEIVERS, TOOLS).flatMap(List::stream)).toList();
 
 	static final Set<String> CLASSES = PUT_BACKS.stream().map(PutBack::owner).collect(Collectors.toUnmodifiableSet());
 
@@ -635,6 +719,29 @@ final class VanillaCalls {
 	private static final Member HOLDER_IS = new Member(HOLDER, "is", null, "(L" + HOLDER + ";)Z");
 	/** The helper asking whether NeoForge's and Forge's 1.21.1 check of the stack's material, by identity, and vanilla's, by {@code Holder.is}, agree. */
 	private static final String GOLD_AGREES = "fabricated$goldAgrees";
+	// SEAM-13's vanilla calls and fields (1.20.1's by SRG's names, where Forge 47 makes the flatten and empty block checks),
+	// and the helpers' calls of the platforms' event hooks.
+	private static final Member FLATTENABLES = new Member(SHOVEL, "FLATTENABLES", "f_43110_", "Ljava/util/Map;");
+	private static final Member MAP_GET = new Member("java/util/Map", "get", null, "(Ljava/lang/Object;)Ljava/lang/Object;");
+	private static final Member CAMPFIRE_LIT = new Member(CAMPFIRE, "LIT", null, "Lnet/minecraft/world/level/block/state/properties/BooleanProperty;");
+	private static final Member GET_VALUE = new Member(STATE, "getValue", null, "(Lnet/minecraft/world/level/block/state/properties/Property;)Ljava/lang/Comparable;");
+	private static final Member SET_VALUE = new Member(STATE, "setValue", null,
+			"(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/lang/Comparable;)Ljava/lang/Object;");
+	private static final Member BOOLEAN_VALUE = new Member("java/lang/Boolean", "booleanValue", null, "()Z");
+	private static final Member BOOLEAN_OF = new Member("java/lang/Boolean", "valueOf", null, "(Z)Ljava/lang/Boolean;");
+	private static final Member DOWSE = new Member(CAMPFIRE, "dowse", null, "(" + ENTITY + "Lnet/minecraft/world/level/LevelAccessor;" + POS + "L" + STATE + ";)V");
+	private static final Member CONTEXT_PLAYER = new Member(USE_ON_CONTEXT, "getPlayer", "m_43723_", "()" + PLAYER);
+	private static final Member CONTEXT_LEVEL = new Member(USE_ON_CONTEXT, "getLevel", "m_43725_", "()L" + LEVEL + ";");
+	private static final Member CONTEXT_POS = new Member(USE_ON_CONTEXT, "getClickedPos", "m_8083_", "()" + POS);
+	private static final Member CONTEXT_ITEM = new Member(USE_ON_CONTEXT, "getItemInHand", "m_43722_", "()" + ITEM);
+	private static final Member LEVEL_BLOCK_STATE = new Member(LEVEL, "getBlockState", "m_8055_", "(" + POS + ")L" + STATE + ";");
+	private static final Member IS_AIR = new Member(STATE, "isAir", "m_60795_", "()Z");
+	private static final String FORGE_EVENT_FACTORY = "net/minecraftforge/event/ForgeEventFactory";
+	/** The helper making the platform's tool modification event and the held item's check of the action, as its default makes them. */
+	private static final String TOOL_USE = "fabricated$toolUse";
+	/** The helper asking whether the level's class keeps {@code LevelReader.isEmptyBlock}, and its answers' field. */
+	private static final String KEEPS_LEVEL = "fabricated$keepsLevelDefault";
+	private static final String KNOWN_LEVEL = "fabricated$overridingLevel";
 
 	private VanillaCalls() {
 	}
@@ -743,7 +850,7 @@ final class VanillaCalls {
 
 	/** The findings the class's rows answer, as reports name them ({@code SEAM-3, SEAM-4}); empty for a class the table doesn't name. */
 	static String findings(String owner) {
-		return PUT_BACKS.stream().filter(r -> r.owner().equals(owner)).map(r -> r.code().finding()).distinct().sorted().collect(Collectors.joining(", "));
+		return PUT_BACKS.stream().filter(r -> r.owner().equals(owner)).map(PutBack::finding).distinct().sorted().collect(Collectors.joining(", "));
 	}
 
 	/**
@@ -787,7 +894,7 @@ final class VanillaCalls {
 			addHelpers(expanded, row, srg, row.code() == Code.LAYER ? layerBase(node, row) : null, helpers);
 			AnnotationNode marker = new AnnotationNode(VanillaSeams.MARKER);
 			marker.values = new ArrayList<>(List.of("calls", done.calls(), "keeps", keeps(row, node), "places", done.places(), "platform", row.platform().key(false),
-					"finding", row.code().finding(), "through", through(row, node), "note", note(row)));
+					"finding", row.finding(), "through", through(row, node), "note", note(row)));
 			if (method.invisibleAnnotations == null) method.invisibleAnnotations = new ArrayList<>();
 			method.invisibleAnnotations.add(marker);
 			if (!rewritten.contains(method.name + method.desc)) rewritten.add(method.name + method.desc);
@@ -811,7 +918,7 @@ final class VanillaCalls {
 
 	/** Whether the row's put-back asks of an object's class (the block's, the item's, the player's, the layer's) first. */
 	private static boolean checks(PutBack row) {
-		return row.extension() != null || row.code().keepingPlayer() >= 0 || row.code() == Code.LAYER;
+		return row.extension() != null || row.code().keepingPlayer() >= 0 || row.code() == Code.LAYER || row.code() == Code.LEVEL;
 	}
 
 	/**
@@ -820,6 +927,7 @@ final class VanillaCalls {
 	 */
 	private static String keeps(PutBack row, ClassNode node) {
 		if (row.extension() != null) return row.extension().blockInterface() + "." + row.extension().name();
+		if (row.code() == Code.LEVEL) return LEVEL_READER_CLASS + "." + IS_EMPTY_BLOCK.name();
 		return (row.code() == Code.LAYER ? layerBase(node, row) : row.platform().owner()) + "." + row.platform().name();
 	}
 
@@ -828,7 +936,8 @@ final class VanillaCalls {
 		// SEAM-8's call is the same on both platforms, whose extensions a class may not name: the call as it is made.
 		if (row.code().receiver()) return row.form().call;
 		String keeps = keeps(row, node);
-		String whose = row.extension() != null ? "the " + row.extension().holder().noun() + "'s " : row.code() == Code.LAYER ? "the layer's " : "";
+		String whose = row.extension() != null ? "the " + row.extension().holder().noun() + "'s " : row.code() == Code.LAYER ? "the layer's "
+				: row.code() == Code.LEVEL ? "the level's " : "";
 		return whose + keeps.substring(keeps.lastIndexOf('/') + 1);
 	}
 
@@ -851,13 +960,17 @@ final class VanillaCalls {
 			case LAYER -> "Fabricated puts it back there for the layers keeping that method, so the hook applies to them, and a layer overriding it draws as"
 					+ " the platform has it, without the hook";
 			case RECEIVER -> onReceiverNote(row);
+			case LEVEL -> "Fabricated puts it back there for the levels keeping that method, so the hook applies to them, and a level overriding it is asked"
+					+ " as Forge has it, without the hook";
 		};
 	}
 
 	/** {@link #note} of an extension's call of its object (SEAM-8). */
 	private static String onReceiverNote(PutBack row) {
 		String nouns = row.form().nouns, noun = row.form().noun;
-		String event = row.form() == OnReceiver.ENCHANTMENT ? ", NeoForge's enchantment level event following it as that default posts it" : "";
+		String event = row.form() == OnReceiver.ENCHANTMENT ? ", NeoForge's enchantment level event following it as that default posts it"
+				: row.form().action != null ? ", after " + row.loader() + "'s tool modification event and the held item's check of the action, as that"
+						+ " default makes them" : "";
 		String also = row.extension().stateKeeps() != null ? ", as is one whose state's class declares vanilla's getSoundType again"
 				: row.form() == OnReceiver.GOLD_HOLDER ? ", as is armour whose material the platform's check, by identity, and vanilla's Holder.is answer"
 						+ " differently for (gold's under another holder)" : "";
@@ -879,6 +992,7 @@ final class VanillaCalls {
 		if (frames == null) return null;
 		if (row.code().action()) return actions(owner, method, row, srg, places, frames);
 		if (row.code().receiver()) return receivers(owner, method, row, srg, places, frames);
+		if (row.code() == Code.LEVEL) return levels(owner, method, srg, places, frames);
 		List<Site> sites = new ArrayList<>();
 		for (MethodInsnNode place : places) {
 			Site site = site(method, place, frames);
@@ -971,7 +1085,16 @@ final class VanillaCalls {
 	 * a store of the call's result after it, with the state after that and, where a frame follows the store, its label
 	 * ({@code join}: a jump's target, both branches meeting there).
 	 */
-	private record ObjectPlace(Site site, AbstractInsnNode split, State mid, VarInsnNode store, State after, LabelNode join) {
+	private record ObjectPlace(Site site, AbstractInsnNode split, State mid, VarInsnNode store, State after, LabelNode join, Dousing dousing) {
+	}
+
+	/**
+	 * NeoForge's dousing's place (SEAM-13): the platform's call's result stored and asked whether it is null ({@code dup},
+	 * {@code astore}, {@code ifnull}), the label that check skips to, past the level event it guards, and the method's level
+	 * and position, each its one store of the context's {@code getLevel()} and {@code getClickedPos()}, which vanilla's
+	 * {@code CampfireBlock.dowse} call takes.
+	 */
+	private record Dousing(LabelNode skip, int level, int pos) {
 	}
 
 	/**
@@ -1024,7 +1147,9 @@ final class VanillaCalls {
 				if (after == null || after.stack().size() != site.under().size()
 						|| after.locals().stream().anyMatch(t -> !(t instanceof String) && !(t instanceof Integer))) return null;
 			}
-			found.add(new ObjectPlace(site, split, mid, store, after, join));
+			Dousing dousing = null;
+			if (row.form() == OnReceiver.DOUSE && (store != null || (dousing = dousing(method, call, site)) == null)) return null;
+			found.add(new ObjectPlace(site, split, mid, store, after, join, dousing));
 		}
 		Set<String> putBack = new LinkedHashSet<>();
 		Extension extension = row.extension();
@@ -1047,7 +1172,7 @@ final class VanillaCalls {
 				code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner.name, GOLD_AGREES, "(" + ITEM + ")Z", false));
 				code.add(new JumpInsnNode(Opcodes.IFEQ, platform));
 			}
-			vanillaOn(code, owner.name, row, srg, site, place.mid().locals(), site.under(), putBack);
+			vanillaOn(code, owner.name, row, srg, site, place.mid().locals(), site.under(), place.dousing(), putBack);
 			if (place.store() != null) {
 				code.add(new VarInsnNode(place.store().getOpcode(), place.store().var));
 				// The local the store starts, named from vanilla's store on too.
@@ -1099,8 +1224,33 @@ final class VanillaCalls {
 	 * made as vanilla makes them, where hooks find them, what vanilla doesn't call there (the stack's item, NeoForge's level
 	 * event) through the helpers.
 	 */
-	private static void vanillaOn(InsnList code, String owner, PutBack row, boolean srg, Site site, List<Object> locals, List<Object> under, Set<String> putBack) {
+	private static void vanillaOn(InsnList code, String owner, PutBack row, boolean srg, Site site, List<Object> locals, List<Object> under, Dousing dousing,
+			Set<String> putBack) {
 		switch (row.form()) {
+			case FLATTEN, DOUSE -> {
+				// The platform's event and the held item's action, as the default asks them (the helper): their answer where it
+				// isn't vanilla's code's to give (the event's state, or none for an item without the action), else the state
+				// itself, which vanilla's code is made of.
+				LabelNode done = new LabelNode();
+				code.add(new InsnNode(Opcodes.DUP));
+				for (int operand = 1; operand <= 3; operand++) load(code, site, operand);
+				code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, TOOL_USE, toolUseDesc(row), false));
+				code.add(new InsnNode(Opcodes.DUP_X1));
+				code.add(new JumpInsnNode(Opcodes.IF_ACMPNE, done));
+				if (row.form() == OnReceiver.FLATTEN) {
+					code.add(new FieldInsnNode(Opcodes.GETSTATIC, FLATTENABLES.owner(), FLATTENABLES.name(srg), FLATTENABLES.desc()));
+					code.add(new InsnNode(Opcodes.SWAP));
+					invoke(code, GET_BLOCK, srg, false, putBack);
+					invoke(code, MAP_GET, srg, true, putBack);
+					code.add(new TypeInsnNode(Opcodes.CHECKCAST, STATE));
+				} else {
+					douse(code, site, dousing, locals, under, done, putBack);
+				}
+				List<Object> answered = new ArrayList<>(under);
+				answered.add(STATE);
+				code.add(done);
+				code.add(frameOf(locals, answered));
+			}
 			case FRICTION -> {
 				invoke(code, GET_BLOCK, srg, false, putBack);
 				invoke(code, BLOCK_FRICTION, srg, false, putBack);
@@ -1164,6 +1314,123 @@ final class VanillaCalls {
 				code.add(frameOf(locals, answered));
 			}
 		}
+	}
+
+	/**
+	 * Vanilla's dousing of a lit campfire, of the state on the stack (NeoForge's form, SEAM-13): where its block is a
+	 * {@code CampfireBlock} and it is lit, {@code CampfireBlock.dowse(context.getPlayer(), level, pos, state)}, then
+	 * {@code state.setValue(LIT, false)} goes to {@code done}, where the platform's code takes it, stores it and makes the
+	 * level event; otherwise nothing is stored, as in vanilla's code, and the code goes past the platform's check to
+	 * {@code dousing.skip()}. The campfire is doused before the level event, as NeoForge's default does.
+	 */
+	private static void douse(InsnList code, Site site, Dousing dousing, List<Object> locals, List<Object> under, LabelNode done, Set<String> putBack) {
+		LabelNode no = new LabelNode();
+		code.add(new InsnNode(Opcodes.DUP));
+		invoke(code, GET_BLOCK, false, false, putBack);
+		code.add(new TypeInsnNode(Opcodes.INSTANCEOF, CAMPFIRE));
+		code.add(new JumpInsnNode(Opcodes.IFEQ, no));
+		code.add(new InsnNode(Opcodes.DUP));
+		code.add(new FieldInsnNode(Opcodes.GETSTATIC, CAMPFIRE_LIT.owner(), CAMPFIRE_LIT.name(), CAMPFIRE_LIT.desc()));
+		invoke(code, GET_VALUE, false, false, putBack);
+		code.add(new TypeInsnNode(Opcodes.CHECKCAST, "java/lang/Boolean"));
+		invoke(code, BOOLEAN_VALUE, false, false, putBack);
+		code.add(new JumpInsnNode(Opcodes.IFEQ, no));
+		load(code, site, 1);
+		invoke(code, CONTEXT_PLAYER, false, false, putBack);
+		code.add(new VarInsnNode(Opcodes.ALOAD, dousing.level()));
+		code.add(new VarInsnNode(Opcodes.ALOAD, dousing.pos()));
+		load(code, site, 0);
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, DOWSE.owner(), DOWSE.name(), DOWSE.desc(), false));
+		putBack.add(DOWSE.key(false));
+		code.add(new FieldInsnNode(Opcodes.GETSTATIC, CAMPFIRE_LIT.owner(), CAMPFIRE_LIT.name(), CAMPFIRE_LIT.desc()));
+		code.add(new InsnNode(Opcodes.ICONST_0));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, BOOLEAN_OF.owner(), BOOLEAN_OF.name(), BOOLEAN_OF.desc(), false));
+		putBack.add(BOOLEAN_OF.key(false));
+		invoke(code, SET_VALUE, false, false, putBack);
+		code.add(new TypeInsnNode(Opcodes.CHECKCAST, STATE));
+		code.add(new JumpInsnNode(Opcodes.GOTO, done));
+		List<Object> withState = new ArrayList<>(under);
+		withState.add(STATE);
+		code.add(no);
+		code.add(frameOf(locals, withState));
+		code.add(new InsnNode(Opcodes.POP));
+		code.add(new JumpInsnNode(Opcodes.GOTO, dousing.skip()));
+	}
+
+	/**
+	 * NeoForge's dousing's place at its call ({@link Dousing}): the call's result checked as the platform's code checks it,
+	 * its context the method's, whose level and position it keeps in locals stored once; null where it isn't so.
+	 */
+	private static Dousing dousing(MethodNode method, MethodInsnNode call, Site site) {
+		AbstractInsnNode dup = nextReal(call), store = dup == null ? null : nextReal(dup), check = store == null ? null : nextReal(store);
+		if (dup == null || dup.getOpcode() != Opcodes.DUP || !(store instanceof VarInsnNode stored) || stored.getOpcode() != Opcodes.ASTORE
+				|| !(check instanceof JumpInsnNode jump) || jump.getOpcode() != Opcodes.IFNULL) return null;
+		List<AbstractInsnNode> context = site.operands().get(1);
+		if (context.stream().filter(i -> i.getOpcode() >= 0).count() != 1 || !(context.get(context.size() - 1) instanceof VarInsnNode ctx)
+				|| ctx.getOpcode() != Opcodes.ALOAD) return null;
+		int level = storedOnce(method, ctx.var, CONTEXT_LEVEL), pos = storedOnce(method, ctx.var, CONTEXT_POS);
+		return level < 0 || pos < 0 ? null : new Dousing(jump.label, level, pos);
+	}
+
+	/** The local the method keeps the result of its one call of the context's method in, stored nowhere else; -1 where it has none. */
+	private static int storedOnce(MethodNode method, int context, Member getter) {
+		int slot = -1;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(getter.owner()) || !call.name.equals(getter.name()) || !call.desc.equals(getter.desc())) continue;
+			AbstractInsnNode receiver = previousReal(call), next = nextReal(call);
+			if (slot >= 0 || !(receiver instanceof VarInsnNode from) || from.var != context || !(next instanceof VarInsnNode to) || to.getOpcode() != Opcodes.ASTORE) return -1;
+			slot = to.var;
+		}
+		int stores = 0;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof VarInsnNode var && var.var == slot && var.getOpcode() >= Opcodes.ISTORE && var.getOpcode() <= Opcodes.ASTORE) stores++;
+		}
+		return slot >= 0 && stores == 1 ? slot : -1;
+	}
+
+	/**
+	 * Forge's empty block checks above the shovel's path (SEAM-13), each with the level and the position on the stack: the
+	 * level is asked whether its class keeps {@code LevelReader}'s {@code isEmptyBlock}, then gets that default's code,
+	 * vanilla's {@code level.getBlockState(pos).isAir()}, or the platform's call as before. Each operand is evaluated once,
+	 * as it was, and the method gets no local. Null where a place isn't so (a frame after the call, a type a frame can't name).
+	 */
+	private static Rewritten levels(ClassNode owner, MethodNode method, boolean srg, List<MethodInsnNode> places, Map<AbstractInsnNode, State> frames) {
+		List<State> befores = new ArrayList<>();
+		for (MethodInsnNode call : places) {
+			State before = frames.get(call);
+			if (before == null || before.stack().size() < 2
+					|| Stream.concat(before.stack().stream(), before.locals().stream()).anyMatch(t -> !(t instanceof String) && !(t instanceof Integer))) return null;
+			for (AbstractInsnNode next = call.getNext(); next != null && next.getOpcode() < 0; next = next.getNext()) {
+				if (next instanceof FrameNode) return null;
+			}
+			befores.add(before);
+		}
+		Set<String> putBack = new LinkedHashSet<>();
+		for (int i = 0; i < places.size(); i++) {
+			MethodInsnNode call = places.get(i);
+			State before = befores.get(i);
+			LabelNode platform = new LabelNode(), end = new LabelNode();
+			InsnList code = new InsnList();
+			code.add(new InsnNode(Opcodes.DUP2));
+			code.add(new InsnNode(Opcodes.POP));
+			code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner.name, KEEPS_LEVEL, "(Ljava/lang/Object;)Z", false));
+			code.add(new JumpInsnNode(Opcodes.IFEQ, platform));
+			invoke(code, LEVEL_BLOCK_STATE, srg, false, putBack);
+			invoke(code, IS_AIR, srg, false, putBack);
+			code.add(new JumpInsnNode(Opcodes.GOTO, end));
+			code.add(platform);
+			code.add(frame(before.locals(), -1, before.stack(), false));
+			method.instructions.insertBefore(call, code);
+			method.instructions.insert(call, frame(before.locals(), -1, before.stack().subList(0, before.stack().size() - 2), true));
+			method.instructions.insert(call, end);
+		}
+		method.maxStack = Math.max(method.maxStack, befores.stream().mapToInt(b -> slots(b.stack())).max().orElse(0) + 2);
+		return new Rewritten(List.copyOf(putBack), places.size());
+	}
+
+	private static AbstractInsnNode nextReal(AbstractInsnNode insn) {
+		do insn = insn.getNext(); while (insn != null && insn.getOpcode() < 0);
+		return insn;
 	}
 
 	/** The real instructions of the place's operand, loaded again (a local, a constant, a field). */
@@ -1250,6 +1517,8 @@ final class VanillaCalls {
 			case LAYER -> new int[] {0, 1};
 			case ACTION, FORGE_ACTION -> new int[0];
 			case RECEIVER -> row.form().reloads();
+			// The level and the position are kept, not loaded again (levels).
+			case LEVEL -> new int[0];
 		};
 	}
 
@@ -1472,6 +1741,11 @@ final class VanillaCalls {
 			node.methods.add(keepsDefault(extension, node.name, srg));
 		}
 		if (row.form() == OnReceiver.GOLD_HOLDER && indexOf(node, GOLD_AGREES, "(" + ITEM + ")Z") < 0) node.methods.add(goldAgrees());
+		if (row.form() != null && row.form().action != null && indexOf(node, TOOL_USE, toolUseDesc(row)) < 0) node.methods.add(toolUse(row, srg));
+		if (row.code() == Code.LEVEL && indexOf(node, KEEPS_LEVEL, "(Ljava/lang/Object;)Z") < 0) {
+			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KNOWN_LEVEL, "Ljava/lang/ClassValue;", null, null));
+			node.methods.add(keepsLevel(node.name, srg));
+		}
 		if (row.form() == OnReceiver.ENCHANTMENT) {
 			boolean instance = row.platform().owner().equals(ITEM_INSTANCE);
 			if (indexOf(node, ENCHANTMENT_EVENT, enchantmentEventDesc(instance)) < 0) node.methods.add(enchantmentEvent(instance));
@@ -1660,6 +1934,79 @@ final class VanillaCalls {
 		code.add(new LdcInsnNode(Type.getObjectType(base)));
 		code.add(new LdcInsnNode(shouldRender.name()));
 		classes(code, Type.getArgumentTypes(shouldRender.desc()));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$keepsMethod", KEEPS_METHOD, false));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		method.maxStack = 9;
+		method.maxLocals = 2;
+		return method;
+	}
+
+	/** The tool modification's action type the row's platform call takes: NeoForge's {@code ItemAbility} or Forge's {@code ToolAction}. */
+	private static String toolAction(PutBack row) {
+		return row.extension() == FORGE_TOOL ? TOOL_ACTION : ABILITY;
+	}
+
+	private static String toolUseDesc(PutBack row) {
+		return "(L" + STATE + ";L" + USE_ON_CONTEXT + ";L" + toolAction(row) + ";Z)L" + STATE + ";";
+	}
+
+	/**
+	 * {@code private static BlockState fabricated$toolUse(BlockState state, UseOnContext context, <action> action, boolean
+	 * simulate)}: what the platform's defaults of the state's and the block's {@code getToolModifiedState} answer before
+	 * their lookup of the action, read in NeoForge 21.1.265, 21.11.45, 26.1.2.116 and 26.2.0.90 and Forge 47.4.28, 52.1.21,
+	 * 61.2.4, 64.1.5 and 65.1.5: the platform's tool modification event's state where it differs from the state
+	 * ({@code EventHooks.onToolUse}, {@code ForgeEventFactory.onToolUse}: none where a listener cancels it), else none where
+	 * the held item can't do the action ({@code context.getItemInHand().canPerformAction(action)}), else the state itself,
+	 * for vanilla's code to answer.
+	 */
+	private static MethodNode toolUse(PutBack row, boolean srg) {
+		String action = toolAction(row), desc = toolUseDesc(row);
+		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, TOOL_USE, desc, null, null);
+		InsnList code = method.instructions;
+		LabelNode unchanged = new LabelNode(), unable = new LabelNode();
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 1));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		code.add(new VarInsnNode(Opcodes.ILOAD, 3));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, action.equals(TOOL_ACTION) ? FORGE_EVENT_FACTORY : EVENT_HOOKS, "onToolUse", desc, false));
+		code.add(new VarInsnNode(Opcodes.ASTORE, 4));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 4));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new JumpInsnNode(Opcodes.IF_ACMPEQ, unchanged));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 4));
+		code.add(new InsnNode(Opcodes.ARETURN));
+		Object[] locals = {STATE, USE_ON_CONTEXT, action, Opcodes.INTEGER, STATE};
+		code.add(unchanged);
+		code.add(new FrameNode(Opcodes.F_NEW, locals.length, locals, 0, new Object[0]));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 1));
+		code.add(invoke(CONTEXT_ITEM, srg));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, STACK_CLASS, "canPerformAction", "(L" + action + ";)Z", false));
+		code.add(new JumpInsnNode(Opcodes.IFEQ, unable));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new InsnNode(Opcodes.ARETURN));
+		code.add(unable);
+		code.add(new FrameNode(Opcodes.F_NEW, locals.length, locals, 0, new Object[0]));
+		code.add(new InsnNode(Opcodes.ACONST_NULL));
+		code.add(new InsnNode(Opcodes.ARETURN));
+		method.maxStack = 4;
+		method.maxLocals = 5;
+		return method;
+	}
+
+	/**
+	 * {@code private static boolean fabricated$keepsLevelDefault(Object level)}: {@link KeepsDefault#keepsMethod} of the
+	 * level for {@code LevelReader.isEmptyBlock}, its answers kept as {@link #keepsDefault}'s are.
+	 */
+	private static MethodNode keepsLevel(String owner, boolean srg) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KEEPS_LEVEL, "(Ljava/lang/Object;)Z", null, null);
+		InsnList code = method.instructions;
+		known(code, owner, KNOWN_LEVEL, "java/lang/Object");
+		askedFirst(code, owner, "java/lang/Object", parameter(), ASKED_ONE);
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new LdcInsnNode(Type.getObjectType(LEVEL_READER_CLASS)));
+		code.add(new LdcInsnNode(IS_EMPTY_BLOCK.name(srg)));
+		classes(code, Type.getArgumentTypes(IS_EMPTY_BLOCK.desc(srg)));
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$keepsMethod", KEEPS_METHOD, false));
 		code.add(new InsnNode(Opcodes.IRETURN));
 		method.maxStack = 9;
@@ -1929,8 +2276,9 @@ final class VanillaCalls {
 	}
 
 	/**
-	 * The method's calls of the row's platform call: a static hook's, or an instance method's; an item check's, of the
-	 * row's action, pushed just before.
+	 * The method's calls of the row's platform call (by Mojang's name, or SRG's where the game runs with them): a static
+	 * hook's, or an instance method's; an item check's, of the row's action, pushed just before; a tool modification's, of
+	 * the row's action, pushed before a {@code false} simulate flag.
 	 */
 	private static List<MethodInsnNode> calls(MethodNode method, PutBack row) {
 		List<MethodInsnNode> found = new ArrayList<>();
@@ -1938,7 +2286,9 @@ final class VanillaCalls {
 		Member member = row.platform();
 		for (AbstractInsnNode insn : method.instructions) {
 			if (insn instanceof MethodInsnNode call && (call.getOpcode() == Opcodes.INVOKESTATIC) == row.code().hookCall() && call.owner.equals(member.owner())
-					&& call.name.equals(member.name()) && call.desc.equals(member.desc()) && (!row.code().action() || pushesAction(previousReal(call), row.check()))) {
+					&& (call.name.equals(member.name()) || call.name.equals(member.srgName())) && call.desc.equals(member.desc())
+					&& (!row.code().action() || pushesAction(previousReal(call), row.check()))
+					&& (row.form() == null || row.form().action == null || modifiesBy(call, row.form().action))) {
 				found.add(call);
 			}
 		}
@@ -1948,6 +2298,16 @@ final class VanillaCalls {
 	/** Whether the instruction pushes the item check's action, a field of the platform's actions. */
 	private static boolean pushesAction(AbstractInsnNode insn, ItemCheck check) {
 		return insn instanceof FieldInsnNode field && field.getOpcode() == Opcodes.GETSTATIC && field.owner.equals(check.actions()) && field.name.equals(check.action());
+	}
+
+	/**
+	 * Whether a tool modification's call takes the action, a field of either platform's actions, and {@code false} for its
+	 * simulate flag, both pushed just before: the put-back makes the action's side effects (the dousing) as vanilla does.
+	 */
+	private static boolean modifiesBy(MethodInsnNode call, String action) {
+		AbstractInsnNode simulate = previousReal(call), pushed = simulate == null ? null : previousReal(simulate);
+		return simulate != null && simulate.getOpcode() == Opcodes.ICONST_0 && pushed instanceof FieldInsnNode field && field.getOpcode() == Opcodes.GETSTATIC
+				&& (field.owner.equals(ABILITIES) || field.owner.equals(TOOL_ACTIONS)) && field.name.equals(action);
 	}
 
 	private static List<MethodInsnNode> calls(MethodNode method, String owner, String name) {
@@ -2205,6 +2565,8 @@ final class VanillaCalls {
 				}
 				// Vanilla's Holder.is, which 1.21.1's platforms' identity check doesn't make.
 				case GOLD, GOLD_HOLDER -> others.computeIfAbsent(HOLDER, k -> new TreeSet<>()).add(HOLDER_IS.name());
+				// The platforms' lookup of the shovel's path, which their block extension's default makes.
+				case FLATTEN -> others.computeIfAbsent(SHOVEL, k -> new TreeSet<>()).add("getShovelPathingState");
 				// The stack's getTagEnchantments, no longer called, either era's stack extension.
 				case ENCHANTMENT -> {
 					others.computeIfAbsent(STACK_CLASS, k -> new TreeSet<>()).addAll(List.of("getTagEnchantments", "getEnchantments"));
@@ -2225,6 +2587,7 @@ final class VanillaCalls {
 				for (String level : List.of(LEVEL, SERVER_LEVEL)) others.computeIfAbsent(level, k -> new TreeSet<>()).addAll(List.of(REMOVE_BLOCK.name(), REMOVE_BLOCK.srgName()));
 			}
 			case HARVEST, PROGRESS -> others.computeIfAbsent(EVENT_HOOKS, k -> new TreeSet<>()).add(HARVEST_HOOK.name());
+			case LEVEL -> others.computeIfAbsent(LEVEL_READER_CLASS, k -> new TreeSet<>()).addAll(List.of(IS_EMPTY_BLOCK.name(), IS_EMPTY_BLOCK.srgName()));
 			case FORGE_HARVEST, FORGE_PROGRESS -> {
 				others.computeIfAbsent(FORGE_HOOKS, k -> new TreeSet<>()).add(FORGE_HARVEST_HOOK.name());
 				others.computeIfAbsent(PLAYER_CLASS, k -> new TreeSet<>()).addAll(List.of(HAS_CORRECT_TOOL.name(), HAS_CORRECT_TOOL.srgName()));
