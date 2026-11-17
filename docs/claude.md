@@ -111,8 +111,9 @@ from an empty Gradle home.
 **What CI proves, per version** (`ci/runs.tsv`, `ci/checks.tsv`):
 1. Unit tests (core, fabric-loader-api, api), CI's own scripts and the mixin inventory.
 2. A real dedicated server with the test mods (every check gates), with the official Fabric API jar, with stand-ins
-   for the mods Fabricated shares a game with, refusing Sinytra Connector and a second Fabricated jar, and (NeoForge)
-   leaving out a mixin that failed as Mixin applied it.
+   for the mods Fabricated shares a game with, refusing Sinytra Connector and a second Fabricated jar, and leaving out a
+   mixin that failed as Mixin applied it, with the diagnostics block naming it in the log, the crash report and the
+   next report.
 3. A real client, started headlessly with HeadlessMC, that joins a singleplayer world with the test mods, then with
    Fabric API and the renderer API test mod: Fabric block models drawn in chunk sections (also inside a vanilla
    multipart model), as moving blocks and with the breaking overlay, Fabric's and the platform's model formats, and

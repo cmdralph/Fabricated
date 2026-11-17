@@ -28,6 +28,7 @@ missing) · — doesn't exist there
 | `config/fabricated.json` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | The `/fabricated` command | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Refusals with an error naming the jars (Sinytra Connector, two Fabricated jars) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| A mixin that failed as Mixin applied it left out from the next launch; the [diagnostics block](#troubleshooting-the-diagnostics-block) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Fabric API** | | | | | | | | | | | |
 | Every module of the official jar loads, server and client | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 | ✅ 2 |
 | Networking: play and configuration payloads | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -1472,9 +1473,14 @@ alike; one at a call or field access inside the method runs where the platform's
 together with the mod's other hooks into the method: Moonlight's hooks around the burnt block's removal (its fire
 consume event, used by Supplementaries and Amendments) work on Forge 47. A hook at vanilla's calls stays out. Forge 52
 to 66 and NeoForge (21.1 to 26.1.2, the versions whose classes were read) keep the name, `checkBurnOut` taking the side,
-where hooks are bridged as for any method given more parameters (SIG-1). An invoker of vanilla's method (Supplementaries' lumisene setting blocks alight) has nothing to
-call, the side being a parameter vanilla's never had: it stays out, a known limit the report names, and a call of it
-fails (*Supplementaries' lumisene* below).
+where hooks are bridged as for any method given more parameters (SIG-1). An invoker of vanilla's method (Supplementaries'
+lumisene setting blocks alight) has nothing to call, the side being a parameter vanilla's never had: it stays out, a
+known limit the report names (LEAVE-5; STRUCT-2 on Forge 47), and a call of it fails (*Supplementaries' lumisene* in
+the tables below). Where the platform's method takes a parameter vanilla's never had and its code is vanilla's
+otherwise, given one value of it, the in-game mod adds a method with vanilla's parameters that calls the platform's
+with that value, and pre-flight points an invoker of vanilla's method there (LEAVE-5): Forge 61 and 64 give
+`LevelRenderer.extractVisibleBlockEntities` a frustum, by which they cull block entities, and the bridge passes one
+every box is visible in, so Iris's shadow pass extracts what it does on Fabric.
 
 A mod's own call of a game constructor NeoForge replaced with one taking a name too, `LootPool`'s on every version
 (BCLib's loot pool mixin makes its pools so), calls NeoForge's with no name, and its widener's line for vanilla's
@@ -1584,8 +1590,9 @@ What this can't match of Fabric, seen in a reference pack (2026-10-28):
   registry accessor (`oneconfig$map`) is one: OneConfig catches it, warns that its keybinds may shadow Minecraft's, and
   leaves the mirror of each of its keybinds that it adds to the Controls screen registered with Minecraft's keybinds,
   where on Fabric it takes them out again. They don't shadow Minecraft's own there: NeoForge's lookup keeps every
-  binding of a key, so Minecraft's binding of a key a mirror shares still works (KEYMAP-1). Mixin's "Renaming @Accessor method ..." lines for OneConfig's other static accessors are Mixin's own
-  naming of static interface accessors, as on Fabric.
+  binding of a key, so Minecraft's binding of a key a mirror shares still works (KEYMAP-1, which the report names).
+  Mixin's "Renaming @Accessor method ..." lines for OneConfig's other static accessors are Mixin's own naming of
+  static interface accessors, as on Fabric.
 - **Interfaces a mod adds to a library class.** adventure-platform-fabric gives authlib's `GameProfile` Adventure's
   `Identity` and Brigadier's `CommandSyntaxException` its `ComponentMessageThrowable`, which NeoForge loads without
   mixin support. Since LIB-2 a generated adapter stands in for each: the mod's casts of a profile to
@@ -1614,12 +1621,13 @@ What this can't match of Fabric, seen in a reference pack (2026-10-28):
 - **Sinking in water.** NeoForge moves vanilla's `goDownInWater` speed into the fluid type's `sinkInFluid`, which every
   fluid type uses. A Fabric mod's hook of vanilla's water constant there would also act in other mods' fluids, unlike
   on Fabric, so it is left out: Additional Entity Attributes' water-speed attribute (with Apoli and Origins) doesn't
-  change how fast an entity sinks in water. Forge 52 to 66 do the same.
+  change how fast an entity sinks in water (FLUID-5, which the report names). Forge does the same.
 - **A value NeoForge's code doesn't keep in a local.** NeoForge compiles the game from its decompiled sources, which
   can hold a value vanilla keeps in a local only until its slot is used again. Ledger's logging of an item put on a
   campfire takes the block entity vanilla's `CampfireBlock.useItemOn` keeps in a local where the player's stat is
-  awarded; NeoForge 21.1 tests it as a campfire and reuses its slot before then, so no local holds it there and the
-  hook is left out (LOCAL-6). Forge 52 does the same. Ledger's logging of the fire an explosion starts works on both:
+  awarded; NeoForge (21.1 to 26.3) tests it as a campfire and reuses its slot before then, so no local holds it there
+  and the hook is left out (LOCAL-6, which the report names). Forge 52 to 66 do the same. Ledger's logging of the fire
+  an explosion starts works on both:
   its hook takes the fire loop's iterator by its type, a local the method's local variable table doesn't name, which
   Fabricated finds where the hook applies as Mixin does, from the method's code (PRE-36).
 
@@ -1648,6 +1656,7 @@ tracked:
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
 | A NeoForge model naming its loader in NeoForge's object form (`"loader": {"id": ...}`), with Moonlight's Fabric build installed | 1.21.1 | Moonlight's hook into vanilla's model deserializer, which NeoForge's runs first, reads `loader` as a string only and fails the model; not seen in the corpus | CORPUS-62 |
 | What Forgified Fabric API's modules do differently from upstream, where it provides them | read on 1.21.1, 26.1.2 and 26.2 | a provider's module is used as it is; on 1.21.1 its trapdoor tag, attack block result, sculk frequencies and default-enabled packs don't take effect (on 26.1.2 and 26.2 the first three too, and a biome modification doesn't reach clients, PROVIDER-10; there its packet context holds nothing for codecs, and its HUD elements attached to vanilla ones ignore vanilla's layer checks, PROVIDER-17), and it makes fewer bridges to NeoForge (enchanting, creator mod, transfer), as listed in *Mods that bring Fabric API or Fabric Loader* above; the test mods skip those checks with it | PROVIDER-8, PROVIDER-10, PROVIDER-17 |
+| Supplementaries' lumisene setting the blocks around it alight (its Fabric build) | 1.21.1 | NeoForge's `FireBlock.checkBurnOut` also takes the side the fire comes from, so the mod's invoker of vanilla's method is left out and its call fails (`NoSuchMethodError`): made in lit lumisene's block tick, it stops the server once lumisene burns the blocks around it. The report names it. Use Supplementaries' NeoForge build | LEAVE-5 |
 | Fabric mods' hooks of vanilla's spawn checks (Architectury's spawn check event for spawners and world generation, Friends and Foes' world generation spawn hook) | all | NeoForge makes `Mob.checkSpawnRules` and `checkSpawnObstruction` inside its own spawn position event's hook, so the hooks are left out, and spawners and world generation skip them; the report says so. Use the mod's NeoForge build | SPAWN-1 |
 | Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 
@@ -2101,7 +2110,8 @@ What else differs on Forge, for Fabric mods in general:
 - **The difficult mods' Fabric builds:** each loads by default and the client reaches a world with every smoke check
   passing, a gate in extended runs: malilib with MiniHUD, Tweakeroo and Litematica; Sodium's, the renderer test mod's
   checks passing under it (with Indium on Forge 47), and Iris's with it (IRIS-1's repairs on Forge 47, IRIS-2's on Forge
-  52); both of Essential's launches; and Flashback's on Forge 52 and 61 to 66 (PLUGIN-1's repair on 64 to 66; Modrinth
+  52, and on Forge 61 and 64 the bridge its shadow pass's invoker of `LevelRenderer.extractVisibleBlockEntities` calls,
+  LEAVE-5); both of Essential's launches; and Flashback's on Forge 52 and 61 to 66 (PLUGIN-1's repair on 64 to 66; Modrinth
   has no build for 1.20.1). The compatibility plan refuses none of them on Forge.
 - **Forge's coremods:** pre-flight reads the game's classes as Forge's own transformers leave them before Mixin
   applies any mod's mixins: Forge 47's coremods and Forge 61 to 66's `forge-transformers`. Each mob's `finalizeSpawn`
@@ -2292,8 +2302,9 @@ What else differs on Forge, for Fabric mods in general:
   (CORPUS-107: REI's default client plugin reads a mix's `from` itself, and failed before its later displays). The test
   mod reads a mix's potions and the pufferfish bucket's type so on the server, the mix's `from` by the field itself
   too, and the providers on the client. Forge 52 keeps the bucket's type and the providers so too, and has the same
-  getters (ACC-5; 1.21.1's brewing mix holds holders in vanilla). An accessor or read of another such field still
-  fails.
+  getters (ACC-5; 1.21.1's brewing mix holds holders in vanilla), and Forge 61 to 66 the bucket's (LEAVE-5: Inventory
+  Profiles Next's bucket accessor was left out on Forge 61, its mod loading without it). An accessor or read of another
+  such field still fails.
 - **Forge Config API Port** on Forge 61 to 66: its Fabric build loads, with its own copies of NeoForge's config classes,
   which Forge lacks (REPL-1, PLAT-5). On Forge 47 its version for 1.20.1 copies Forge's own config system, packages
   included, so its copies were left out for Forge's and its registry failed to link (Ponder's main entrypoint,
@@ -2372,31 +2383,62 @@ instead.
 - **Fields and parameters Forge retyped** (every Forge version). Forge types `RangedBowAttackGoal`'s mob as any
   `Mob`, so Debugify's fix for MC-121706, written for vanilla's `Monster`, is left out. The report names what the
   field or the method's parameters are now (PRE-32).
-- **Sinking in water** (Forge 52 to 66). As on NeoForge, vanilla's water sinking speed is the fluid type's
+- **Sinking in water** (every Forge version). As on NeoForge, vanilla's water sinking speed is the fluid type's
   `sinkInFluid`, which every fluid uses, so a hook of vanilla's water constant is left out: Additional Entity
-  Attributes' water-speed attribute doesn't apply.
+  Attributes' water-speed attribute doesn't apply (FLUID-5).
 - **Reach Entity Attributes** (Forge 47). Forge 47 works out reach from its own attributes (`ForgeMod.BLOCK_REACH` and
   `ENTITY_REACH`). The constants Reach Entity Attributes' hooks change are gone from the methods it hooks, and so are
   the call and the constant its container checks hook (interface mixins, which Fabricated applies there itself where
   their points are, INTERFACE-2), so its reach attributes don't change reach. A Fabric mod that gives reach through it
-  gives none there.
-- **Supplementaries' lumisene** (Forge 47). Its fire spread calls an invoker of vanilla's `FireBlock.checkBurnOut`,
-  which Forge replaced with `tryCatchFire`, taking the side the fire comes from too (STRUCT-2): the invoker is left out,
-  so the call fails (`NoSuchMethodError`), and as it is made in lit lumisene's block tick, the server would stop with
-  a crash report once lumisene burns the blocks around it. The report names it a known limit.
-- **Ledger's campfire logging** (Forge 52). As on NeoForge 1.21.1, Forge 52's `CampfireBlock.useItemOn` doesn't keep
-  the block entity in a local where the player's stat is awarded, so Ledger's hook taking it there is left out, and an
+  gives none there (ATTR-2).
+- **Supplementaries' lumisene** (Forge 47 and 52). Its fire spread calls an invoker of vanilla's
+  `FireBlock.checkBurnOut`, which Forge 47 replaced with `tryCatchFire`, taking the side the fire comes from too
+  (STRUCT-2), and which Forge 52 gives that side (LEAVE-5): the invoker is left out, so the call fails
+  (`NoSuchMethodError`), and as it is made in lit lumisene's block tick, the server would stop with a crash report once
+  lumisene burns the blocks around it. The report names it a known limit. On Forge 47 use Supplementaries' Forge
+  build; for 1.21.1 it has none, and its NeoForge build is the way.
+- **Ledger's campfire logging** (Forge 52 to 66). As on NeoForge, Forge's `CampfireBlock.useItemOn` doesn't keep the
+  block entity in a local where the player's stat is awarded, so Ledger's hook taking it there is left out, and an
   item put on a campfire isn't logged (LOCAL-6). Its logging of the fire an explosion starts works (PRE-36).
 - **Porting Lib's ports of Forge's hooks** (Forge 47). About 45 of Porting Lib's hooks (in Create and Farmer's Delight
   Refabricated) are left out on Forge 47. They port hooks Forge's own code makes there, where vanilla's code they
   hook is now Forge's, and call Porting Lib's own block and entity interfaces (`CustomFrictionBlock.getFriction`,
   `LightEmissiveBlock`, `EntityDestroyBlock`, `BeaconColorMultiplierBlock` and others). Those interfaces' methods carry
   Forge's extension names and descriptors, so a block implementing one also overrides Forge's extension method, and
-  Forge's own calls reach it (read in the hooks, not checked in game). The report lists each hook as left out.
+  Forge's own calls reach it (read in the hooks, not checked in game). The report lists each hook as left out, a
+  known limit (HOOK-5), but for those another names (SEAM-4, SEAM-6).
 - **Two equal registry entries.** Forge's registries tell entries apart by equality, so a mod registering two equal
   objects under two names fails at the second: Wover Story's main entrypoint on Forge 66 (two equal point-of-interest
   types), and the mod is marked as failed. On Fabric and NeoForge they are two entries. Use NeoForge, or the mod's
   Forge build (REG-13).
+
+## Troubleshooting: the diagnostics block
+
+When the game stops on an error a Fabric mod is involved in, Fabricated writes one block, on every loader and version:
+in `logs/latest.log`, and at the start of the crash report's details (after its stack trace), where the game writes one:
+
+```
+---- Fabricated: a Fabric mod was involved ----
+Fabric mod:  Ledger (ledger) 1.3.5, ledger-1.3.5+1.21.1.jar
+Mixin:       ledger.mixins.json:AnvilScreenHandlerMixin, into net.minecraft.world.inventory.AnvilMenu
+Loader:      NeoForge 21.1.200, Minecraft 1.21.1, Fabricated 0.6.0-beta.3
+Fabricated:  leaves this mixin out from the next launch (logs/fabric-bridge-report.txt says why)
+```
+
+- **Fabric mod**: the mod's name, id, version and jar file (in `mods/`, or the jar that nests it). With several mods
+  involved, each has its own lines, the most likely culprit first, at most three.
+- **Mixin**: the mod's mixin that failed as Mixin applied it, as `<config>:<mixin>`, as `skipMixins` takes it, and the
+  game class Mixin was applying it to, where Mixin said. **Class** instead: the first frame of the stack trace in the
+  mod's own classes (on NeoForge, a handler Mixin merged into a game class counts as the mod's).
+- **Loader**: NeoForge or Forge and its build, Minecraft's version and Fabricated's.
+- **Fabricated**: what it does about it. A mixin is left out from the next launch, and the next report says so, with the
+  same block, under *Mixins left out (they failed as Mixin applied them in the last launch)*; it is tried again once the
+  mod's jar, Fabricated, Minecraft or the loader changes, or once `.fabricated/mixin-failures.json` is deleted. For a
+  class, Fabricated changes nothing: report the error to the mod's author or to Fabricated, with the block, the crash
+  report and `logs/fabric-bridge-report.txt`.
+
+The block names a mod only where it is certain: a mixin from Mixin's own errors, a class from the packages one
+Fabric mod alone has. An error that involves no Fabric mod, or one Fabricated can't tell, gets no block.
 
 ## Fabric mods tested
 
@@ -2413,8 +2455,8 @@ Modrinth in CI (never redistributed):
   can't hide the main corpus's results. Informational, as the main corpus is.
 - **On v0.6.0-beta's release head** every corpus server starts, and every corpus client but 1.21.1's advanced one
   reaches its world: that one stays on Origins' screen (CORPUS-66). A client with Xaero's World Map can also hang as
-  mc-runtime-test stops it (CORPUS-48, on 26.2 and 26.3 in extended runs 42533784185 and 42535987817). Both are the
-  mods' own.
+  mc-runtime-test stops it (CORPUS-48: in the v0.6.0-beta.3 release's run, 43969894764, the corpus clients of
+  NeoForge 21.1, 26.1.2 and 26.3 and Forge 52, 64 and 65). Both are the mods' own.
 - **Sodium and Iris for NeoForge** with Fabric API and the renderer test mod: gated on 26.x, with and without CI's
   shader pack, and Sodium alone on 1.21.11 (see *Renderer mods*). Their Fabric builds load by default and are gated on
   every version, with and without the shader pack. Sodium Extra and Reese's Sodium Options (Fabric addons) next to

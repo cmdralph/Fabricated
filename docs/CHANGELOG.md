@@ -33,6 +33,83 @@ What changed, and how it was verified, newest first. What is open and what comes
   Puzzles Lib's calls of the internals. NeoForge 26.2 and 26.3 don't build locally, and Forge 61, 64 and 65 weren't
   built.
 
+## 2026-11-17: A diagnostics block names the Fabric mod a crash involves; Forge leaves out a mixin that failed (APPLY-3)
+
+- **The diagnostics block:** when the game stops on an error a Fabric mod is involved in, Fabricated writes one block,
+  in the log and at the start of the crash report's details, on every loader and Minecraft version:
+  ```
+  ---- Fabricated: a Fabric mod was involved ----
+  Fabric mod:  Ledger (ledger) 1.3.5, ledger-1.3.5+1.21.1.jar
+  Mixin:       ledger.mixins.json:AnvilScreenHandlerMixin, into net.minecraft.world.inventory.AnvilMenu
+  Loader:      NeoForge 21.1.200, Minecraft 1.21.1, Fabricated 0.6.0-beta.3
+  Fabricated:  leaves this mixin out from the next launch (logs/fabric-bridge-report.txt says why)
+  ```
+  It names the Fabric mod (its name, id, version and jar file), its mixin and the class Mixin applied it to, or the
+  mod's class in the stack trace, the loader and the versions, and what Fabricated does about it; with several mods,
+  up to three, the most likely first. It names a mod only where that is certain, and an error it can't tie to a Fabric
+  mod gets no block. `COMPATIBILITY.md` says how to read it, under *Troubleshooting: the diagnostics block*.
+- **The report** has the block too, under each mixin left out for failing in the last launch, in *Mixins left out
+  (they failed as Mixin applied them in the last launch)*.
+- **APPLY-3** (P0), fixed: on Forge (47, 52 and 61 to 66), a Fabric mod's mixin that passed pre-flight but failed as
+  Mixin applied it stopped every launch the same way. It is now recorded in `.fabricated/mixin-failures.json` and left
+  out from the next launch, as on NeoForge, until the mod's jar, Fabricated, Minecraft or Forge changes.
+- **APPLY-4** (P0), fixed: on NeoForge 1.21.11 to 26.3, a Fabric mod's mixin that failed as a class the dedicated
+  server's start loads after mod loading first loaded stopped every launch and was never recorded: the server's start
+  catches the error and only logs it. It is recorded and left out from the next launch now, as on Forge.
+- **Verified:** the core unit tests (what the block names, and only where it is certain, its bounds, Forge's names of a
+  mixin, the record's class, Fabricated's release on the Loader line), CI's script tests and the mixin inventory; the
+  server part of CI's runs on local dedicated servers of NeoForge 1.21.1 and 26.1.2 and Forge 1.20.1, 1.21.11 and 26.3,
+  the four launches of the impossible-mixin test mod and the block's checks passing on each (on Forge 1.21.1, the first
+  three launches); a Forge 1.21.11 client the impossible mixin stops as it starts has the block in its log and its crash
+  report.
+
+## 2026-11-17: Iris's shadows and Inventory Profiles Next's mob buckets on Forge 61 to 66 (LEAVE-5); the report names more known limits (LIMIT-3) and no longer lists enum constants Mixin adds as missing (ENUM-10)
+
+- **LEAVE-5** (P0 on Forge 61 and 64 with Iris and a shader pack casting shadows), fixed where Fabricated can make the
+  call: a Fabric mod's accessor or invoker that doesn't fit the platform's game is left out while its mod loads, so a
+  call of it fails when the mod makes it.
+  - Iris's shadow pass calls vanilla's `LevelRenderer.extractVisibleBlockEntities`, which Forge 61 and 64 give a
+    frustum: with a shader pack casting shadows, a Forge 61 client crashed in its first frame in the world. Fabricated
+    now adds vanilla's method there, calling Forge's with a frustum every block entity is visible in, which does what
+    vanilla's does, and points Iris's invoker, or any Fabric mod's invoker of that method, at it.
+  - Inventory Profiles Next's accessor of a mob bucket's entity type, which Forge 61 to 66 keep behind a supplier, reads
+    it again, as on Forge 47 and 52.
+  - Supplementaries' lumisene on NeoForge 21.1 and Forge 52 (and Forge 47) can't be served: the platforms' fire spread
+    takes the side the fire comes from, which no value stands in for. The report names it a known limit, saying the
+    server stops once lit lumisene burns the blocks around it, and that Supplementaries' NeoForge build is the way.
+- **LIMIT-3** (P3), fixed: the report names these documented known limits next to the hooks they leave out, with what
+  doesn't work and, where there is one, what to do: Additional Entity Attributes' water speed (FLUID-5, every platform,
+  Forge 47 included), Reach Entity Attributes on Forge 47 (ATTR-2), Porting Lib's ports of Forge's hooks on Forge 47
+  (HOOK-5), Ledger's campfire logging (LOCAL-6), OneConfig's key mapping accessor on NeoForge (KEYMAP-1) and
+  Supplementaries' lumisene (LEAVE-5). Each names the exact mod's mixins and the reason, and no other mod's hook.
+- **ENUM-10** (P3), fixed: on NeoForge 26.1.2 to 26.3 the report listed the enum constants Farmer's Delight
+  Refabricated and Flashback add (`SearchRecipeBookCategory.FARMERSDELIGHT_COOKING`,
+  `TextureFormat.FLASHBACK_R32_FLOAT`) as missing fields. Mixin adds them there, so they aren't listed any more.
+- **REMAP-6** closed, not Fabricated's: bendy-lib 5.1, nested in Emotecraft 2.4.12 for 1.21.1, calls
+  `ModelPart$Polygon.comp_3185()`, which Minecraft 1.21.1 doesn't have on Fabric either; the report's linkage line for
+  it is right.
+- `COMPATIBILITY.md` and `roadmap.md`: Ledger's campfire logging stays out on every version Ledger runs on (NeoForge
+  21.1 to 26.3, Forge 52 to 66); Xaero's World Map's hang at exit was seen on NeoForge 21.1, 26.1.2 and 26.3 and Forge
+  52, 64 and 65 in the v0.6.0-beta.3 release's run (CORPUS-48).
+
+Verified with core's unit tests, CI's script tests and the mixin inventory; Forge 52, 61, 64, 65 and 66 and NeoForge
+1.21.1 and 26.1.2 built. On Forge 61, a client with Sodium's and Iris's Fabric builds and a shader pack with a shadow
+program crashed in Iris's shadow pass before the change, and reached its world with every check passing after it, as
+Forge 64's did. The
+Forge 52, 61 and 64 servers read the pufferfish bucket's type through the test mod's accessor. The NeoForge 26.1.2
+client with Flashback lists no linkage warning, where the release's listed two. NeoForge 1.21.1's corpus and advanced
+corpus servers name Supplementaries', Additional Entity Attributes' and Ledger's hooks known limits, leaving out as
+many hooks as the release's runs did.
+
+## 2026-11-17: CI runs every branch once a week
+
+- **A weekly run** (CI only): every Monday, `.github/workflows/weekly.yml` starts CI's full matrix with the extended
+  runs on the heads of `main`, `forge` and `forge-legacy`. Every loader and Minecraft version builds, boots a dedicated
+  server and starts a client headlessly with the test mods, and runs the newest loader build and the mod corpora. What
+  changes while nothing is pushed then shows up within a week: a new loader build, a Fabric mod's new release, a
+  download host that moved. The workflow is `main`'s alone: `scripts/sync-platform-branch.sh` leaves it out of the
+  platform branches, as it does the release workflow (`ci/test_sync_platform_branch.py`).
+
 ## 2026-11-16: Forge for Minecraft 1.21.1 builds from the `forge` branch
 
 - **The branch layout changed:** Forge 52 (Minecraft 1.21.1) moved from the `forge-legacy` branch to `forge`. `forge`

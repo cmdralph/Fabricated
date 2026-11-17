@@ -33,8 +33,10 @@ esac
 # (ci/forge-shared/standin-linkage.py, ci/corpus-causes.sh among them). Gone once, these delete nothing again.
 gone+=(".github/workflows/build-$platform.yml" "ci/$platform/smoke-server.sh" "ci/$platform/smoke-client.sh"
 	"ci/$platform/corpus-causes.sh" "ci/$platform/difficult-summary.sh" "ci/$platform/standin-linkage.py")
-# What only main has: NeoForge's platform and the release workflow, which builds every platform from main.
-mains=(loader/neoforge mc/neoforge mc/platform-neoforge.gradle ci/neoforge .github/workflows/release.yml)
+# What only main has: NeoForge's platform, the release workflow, which builds every platform from main, and the weekly
+# workflow, which starts every branch's CI from main (a schedule runs from the default branch only).
+mains=(loader/neoforge mc/neoforge mc/platform-neoforge.gradle ci/neoforge .github/workflows/release.yml
+	.github/workflows/weekly.yml)
 
 # The paths below are the repository's: what is removed and checked out is named from its root, wherever this is run.
 cd "$(git rev-parse --show-toplevel)"

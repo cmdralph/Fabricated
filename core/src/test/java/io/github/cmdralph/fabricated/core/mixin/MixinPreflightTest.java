@@ -13609,6 +13609,70 @@ class MixinPreflightTest {
 	}
 
 	/**
+	 * LEAVE-5: an {@code @Invoker} of a method the platform gave other parameters invokes the method Fabricated's in-game mod
+	 * adds to the class for it, which takes vanilla's parameters: Forge 61 and 64 give {@code LevelRenderer}'s
+	 * {@code extractVisibleBlockEntities} a frustum, and Iris's shadow pass invokes vanilla's. Without the bridge the invoker
+	 * is left out as before; where the target keeps vanilla's method, nothing changes.
+	 */
+	@Test
+	void anInvokerOfAMethodThePlatformGaveOtherParametersInvokesFabricatedsBridge() throws Exception {
+		String renderer = "net/minecraft/client/Renderer";
+		String vanilla = "(Lnet/minecraft/client/Camera;F)V";
+		String platform = "(Lnet/minecraft/client/Camera;FLnet/minecraft/client/Frustum;)V";
+		java.util.function.BiFunction<String, Boolean, byte[]> target = (desc, bridged) -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, renderer, null, "java/lang/Object", null);
+			cw.visitMethod(Opcodes.ACC_PRIVATE, "extractBlockEntities", desc, null, null).visitEnd();
+			if (bridged) cw.visitMethod(Opcodes.ACC_PUBLIC, "fabricated$invoke$extractBlockEntities", vanilla, null, null).visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		ClassWriter mw = new ClassWriter(0);
+		mw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, "com/example/mixin/RendererAccessor", null,
+				"java/lang/Object", null);
+		AnnotationVisitor m = mw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor targets = m.visitArray("value");
+		targets.visit(null, Type.getObjectType(renderer));
+		targets.visitEnd();
+		m.visitEnd();
+		MethodVisitor call = mw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "invokeExtract", vanilla, null, null);
+		AnnotationVisitor invoker = call.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Invoker;", true);
+		invoker.visit("value", "extractBlockEntities");
+		invoker.visitEnd();
+		call.visitEnd();
+		mw.visitEnd();
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/RendererAccessor", mw.toByteArray()));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "RendererAccessor"));
+
+		MixinPreflight bridged = preflight(new ClassIndex(Map.of(renderer, target.apply(platform, true))::get), mod::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> repairs = new java.util.ArrayList<>();
+		Map<String, byte[]> repaired = bridged.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs);
+		assertEquals(Set.of("com/example/mixin/RendererAccessor.class"), repaired.keySet());
+		assertEquals(1, repairs.size(), repairs.toString());
+		assertTrue(repairs.getFirst().severity() == Severity.INFO && repairs.getFirst().message().contains("gave other parameters")
+				&& repairs.getFirst().message().contains("fabricated$invoke$extractBlockEntities"), repairs.toString());
+		org.objectweb.asm.tree.ClassNode node = new org.objectweb.asm.tree.ClassNode();
+		new org.objectweb.asm.ClassReader(repaired.get("com/example/mixin/RendererAccessor.class")).accept(node, 0);
+		org.objectweb.asm.tree.MethodNode method = node.methods.getFirst();
+		assertEquals("invokeExtract" + vanilla, method.name + method.desc, "the mod's calls keep their method");
+		assertEquals(List.of("value", "fabricated$invoke$extractBlockEntities", "remap", false), method.visibleAnnotations.getFirst().values);
+		mod.put("com/example/mixin/RendererAccessor", repaired.get("com/example/mixin/RendererAccessor.class"));
+		List<PreflightFinding> findings = bridged.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(findings.isEmpty(), findings.toString());
+
+		mod.put("com/example/mixin/RendererAccessor", mw.toByteArray());
+		MixinPreflight plain = preflight(new ClassIndex(Map.of(renderer, target.apply(platform, false))::get), mod::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> none = new java.util.ArrayList<>();
+		assertTrue(plain.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), none).isEmpty(), none.toString());
+		List<PreflightFinding> refused = plain.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(refused.stream().anyMatch(f -> f.message().contains("does not exist")), refused.toString());
+
+		MixinPreflight kept = preflight(new ClassIndex(Map.of(renderer, target.apply(vanilla, true))::get), mod::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> unchanged = new java.util.ArrayList<>();
+		assertTrue(kept.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), unchanged).isEmpty(), "vanilla's method is there: " + unchanged);
+	}
+
+	/**
 	 * CORPUS-69: an {@code @Intrinsic} of a class mixin that only calls the superclass's method (Lithium's
 	 * {@code setCachedState} of the chest, there so its {@code @Inject} has a method to inject into) is dropped where the
 	 * target already declares the method, as Forge 47's patched chest does: Mixin rejects such an {@code @Intrinsic}
