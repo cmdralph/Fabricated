@@ -313,8 +313,9 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.neoforge.mixin` · re
 | mixins | ServerCommonPacketListenerDisconnectMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$onDisconnect | "onDisconnect" | HEAD | — | default |
 | mixins | PlayerListViewMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (NeoForge's unmodifiable view follows the list in the field, POLY-1) | "getPlayers" | RETURN | — | default |
 | mixins | ChunkGeneratorFeaturesMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.level.chunk.ChunkGenerator | @Inject → fabricated$keepNeoForgesLazy | "refreshFeaturesPerStep" | HEAD | — | require=0 |
-| mixins | CrashReportMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.CrashReport | @Inject → fabricated$recordMixinFailure (records a Fabric mod's mixin the crash's throwable says failed as Mixin applied it, for the next launch to leave out, APPLY-1) | "<init>(L…/String;L…/Throwable;)V" | TAIL | — | default |
-| mixins | UtilMixin | 1.21.1 (1.21.1) | n.m.Util | @Inject → fabricated$recordMixinFailure (records a Fabric mod's mixin the throwable a game worker thread stops on says failed as Mixin applied it, for the next launch to leave out, APPLY-2) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
+| mixins | CrashReportMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.CrashReport | @Inject → fabricated$diagnose (records a Fabric mod's mixin the crash's throwable says failed as Mixin applied it, for the next launch to leave out, APPLY-1, and logs the diagnostics block for the Fabric mods it involves); @Unique fields fabricated$diagnostics | "<init>(L…/String;L…/Throwable;)V" | TAIL | — | default |
+| mixins | CrashReportMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.CrashReport | @Inject → fabricated$addDiagnostics (the report's details start with that block) | "getDetails(L…/StringBuilder;)V" | HEAD | — | default |
+| mixins | UtilMixin | 1.21.1 (1.21.1) | n.m.Util | @Inject → fabricated$diagnose (records a Fabric mod's mixin the throwable a game worker thread stops on says failed as Mixin applied it, for the next launch to leave out, APPLY-2, and logs the diagnostics block for the Fabric mods it involves) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
 | mixins | ResourceMixin | 1.21.1 (1.21.1) | n.m.server.packs.resources.Resource | no injectors; implements FabricResource; adds methods getFabricPackSource | | | | |
 | mixins | MappedRegistryMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | no injectors; implements FabricRegistry | | | | |
 | mixins | MappedRegistryEarlyWriteMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$openForEarlyWrite | "validateWrite(Lnet/minecraft/resources/ResourceKey;)V" | HEAD | — | default |
@@ -507,8 +508,9 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · r
 | mixins | ReloadableServerResourcesTagsLoadedMixin | 1.21.11 (1.21.11) | n.m.server.ReloadableServerResources | @Inject → fabricated$keepRegistries | "<init>" | TAIL | — | default |
 | mixins | ReloadableServerResourcesTagsLoadedMixin | 1.21.11 (1.21.11) | n.m.server.ReloadableServerResources | @Inject → fabricated$tagsLoaded (fires Fabric's `TAGS_LOADED` where upstream does) | "updateStaticRegistryTags" | TAIL | — | default |
 | mixins | ChunkGeneratorFeaturesMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.level.chunk.ChunkGenerator | @Inject → fabricated$keepNeoForgesLazy | "refreshFeaturesPerStep" | HEAD | — | require=0 |
-| mixins | CrashReportMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.CrashReport | @Inject → fabricated$recordMixinFailure (records a Fabric mod's mixin the crash's throwable says failed as Mixin applied it, for the next launch to leave out, APPLY-1) | "<init>(L…/String;L…/Throwable;)V" | TAIL | — | default |
-| mixins | UtilMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.util.Util | @Inject → fabricated$recordMixinFailure (records a Fabric mod's mixin the throwable a game worker thread stops on says failed as Mixin applied it, for the next launch to leave out, APPLY-2) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
+| mixins | CrashReportMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.CrashReport | @Inject → fabricated$diagnose (records a Fabric mod's mixin the crash's throwable says failed as Mixin applied it, for the next launch to leave out, APPLY-1, and logs the diagnostics block for the Fabric mods it involves); @Unique fields fabricated$diagnostics | "<init>(L…/String;L…/Throwable;)V" | TAIL | — | default |
+| mixins | CrashReportMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.CrashReport | @Inject → fabricated$addDiagnostics (the report's details start with that block) | "getDetails(L…/StringBuilder;)V" | HEAD | — | default |
+| mixins | UtilMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.util.Util | @Inject → fabricated$diagnose (records a Fabric mod's mixin the throwable a game worker thread stops on says failed as Mixin applied it, for the next launch to leave out, APPLY-2, and logs the diagnostics block for the Fabric mods it involves) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
 | mixins | ReloadableServerResourcesMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.server.ReloadableServerResources | no injectors; implements FabricDataResourceStoreHolder; adds methods fabric$getDataResourceStore; @Unique fields fabricated$dataResourceStore | | | | |
 | mixins | ResourceMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.resources.Resource | no injectors; implements FabricResource; adds methods getFabricPackSource | | | | |
 | mixins | MappedRegistryMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | no injectors; implements FabricRegistry | | | | |
@@ -871,8 +873,9 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | MinecraftServerMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | no injectors; implements DataResourceStore; adds methods getOrThrow | | | | |
 | mixins | PlayerListViewMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (NeoForge's unmodifiable view follows the list in the field, POLY-1) | "getPlayers" | RETURN | — | default |
 | mixins | ChunkGeneratorFeaturesMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.level.chunk.ChunkGenerator | @Inject → fabricated$keepNeoForgesLazy | "refreshFeaturesPerStep" | HEAD | — | require=0 |
-| mixins | CrashReportMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.CrashReport | @Inject → fabricated$recordMixinFailure (records a Fabric mod's mixin the crash's throwable says failed as Mixin applied it, for the next launch to leave out, APPLY-1) | "<init>(L…/String;L…/Throwable;)V" | TAIL | — | default |
-| mixins | UtilMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.util.Util | @Inject → fabricated$recordMixinFailure (records a Fabric mod's mixin the throwable a game worker thread stops on says failed as Mixin applied it, for the next launch to leave out, APPLY-2) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
+| mixins | CrashReportMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.CrashReport | @Inject → fabricated$diagnose (records a Fabric mod's mixin the crash's throwable says failed as Mixin applied it, for the next launch to leave out, APPLY-1, and logs the diagnostics block for the Fabric mods it involves); @Unique fields fabricated$diagnostics | "<init>(L…/String;L…/Throwable;)V" | TAIL | — | default |
+| mixins | CrashReportMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.CrashReport | @Inject → fabricated$addDiagnostics (the report's details start with that block) | "getDetails(L…/StringBuilder;)V" | HEAD | — | default |
+| mixins | UtilMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.util.Util | @Inject → fabricated$diagnose (records a Fabric mod's mixin the throwable a game worker thread stops on says failed as Mixin applied it, for the next launch to leave out, APPLY-2, and logs the diagnostics block for the Fabric mods it involves) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
 | mixins | ReloadableServerResourcesMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.server.ReloadableServerResources | no injectors; implements FabricDataResourceStoreHolder; adds methods fabric$getDataResourceStore; @Unique fields fabricated$dataResourceStore | | | | |
 | mixins | ResourceMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.resources.Resource | no injectors; implements FabricResource; adds methods getFabricPackSource | | | | |
 | mixins | MappedRegistryMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | no injectors; implements FabricRegistry | | | | |
@@ -1152,7 +1155,20 @@ them, with that folder's version groups that serve the version (`mc/forge-shared
 `overwrites.requireAnnotations`, which every NeoForge config sets: in the others, a method a mixin adds that its
 target already declares replaces the target's without an `@Overwrite` (MIX-3).
 
-## Forge 61 to 66 (`forge`): 89 mixins in 24 configs
+### `mc/forge-shared/src/main/resources/fabricated-forge-diagnostics.mixins.json`
+
+Every Forge version's (47, 52, 61 to 66), with its `UtilMixin` from the version group that serves it · package `io.github.cmdralph.fabricated.forge.diagnostics.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| mixins | CrashReportMixin | mc/forge-shared (1.20.1, 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3) | n.m.CrashReport | @Inject → fabricated$diagnose (records a Fabric mod's mixin the crash's throwable, or mod loading's errors, say failed as Mixin applied it, for the next launch to leave out, APPLY-3, and logs the diagnostics block for the Fabric mods it involves); @Unique fields fabricated$diagnostics | "<init>(L…/String;L…/Throwable;)V" | TAIL | — | default |
+| mixins | CrashReportMixin | mc/forge-shared (1.20.1, 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3) | n.m.CrashReport | @Inject → fabricated$addDiagnostics (the report's details start with that block) | "getDetails(L…/StringBuilder;)V" | HEAD | — | default |
+| mixins | CrashReportExtenderMixin | mc/forge-shared (1.20.1, 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3) | forge.logging.CrashReportExtender (remap=false) | @Inject → fabricated$holdLoadingErrors (holds mod loading's errors for the crash report Forge makes of them, whose exception is a placeholder) | "dumpModLoadingCrashReport(L…/Logger;Lforge/fml/LoadingFailedException;L…/File;)L…/File;" | HEAD | — | default |
+| mixins | ServerMainMixin | mc/forge-shared (1.20.1, 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3) | n.m.server.Main | @ModifyArg → fabricated$diagnose (index 2, returned as it is: records a Fabric mod's mixin the throwable the dedicated server's start stops on says failed as Mixin applied it, which Forge 61 to 66's `main` catches and only logs, for the next launch to leave out, APPLY-3, and logs the diagnostics block) | "main" | INVOKE Lorg/slf4j/Logger;error(Lorg/slf4j/Marker;Ljava/lang/String;Ljava/lang/Throwable;)V (remap=false; `main`'s one such call, "Failed to start the minecraft server") | — | default |
+| mixins | UtilMixin | mc/forge-shared/1.20.1-1.21.1 (1.20.1, 1.21.1) | n.m.Util | @Inject → fabricated$diagnose (records a Fabric mod's mixin the throwable a game worker thread stops on says failed as Mixin applied it, for the next launch to leave out, APPLY-3, and logs the diagnostics block) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
+| mixins | UtilMixin | mc/forge-shared/1.21.11+ (1.21.11, 26.1.2, 26.2, 26.3) | n.m.util.Util | @Inject → fabricated$diagnose (the same) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
+
+## Forge 61 to 66 (`forge`): 93 mixins in 25 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1180,6 +1196,7 @@ target already declares replaces the target's without an `@Overwrite` (MIX-3).
 | `mc/forge/common26/src/main/resources/fabricated-keymapping.mixins.json` | `net.fabricmc.fabric.mixin.client.keymapping` | 26.1.2, 26.2, 26.3 | client 1 | 1 | — | none |
 | `mc/forge/common26/src/testmodfrapi/resources/fabricated-testmod-frapi-forge.mixins.json` | `io.github.cmdralph.fabricated.testmod.frapi.forgemixin` | 26.1.2, 26.2, 26.3 | client 3 | 1 | true | none |
 | `mc/forge/common26early/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 26.1.2, 26.2 | mixins 2 | 1 | — | none |
+| `mc/forge-shared/src/main/resources/fabricated-forge-diagnostics.mixins.json` | `io.github.cmdralph.fabricated.forge.diagnostics.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 4 | 1 | — | none |
 
 ### `mc/forge/1.21.11/src/main/resources/fabricated-forge-color.mixins.json`
 
@@ -1539,7 +1556,7 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyVariable → fabricated$startReload | "reload" | HEAD | — | default |
 | mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (26.1.2,26.2) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 
-## Forge 47 (`forge-legacy`): 84 mixins in 14 configs
+## Forge 47 (`forge-legacy`): 88 mixins in 15 configs
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
@@ -1555,6 +1572,7 @@ Versions: 26.1.2, 26.2 · package `io.github.cmdralph.fabricated.forge.loot.mixi
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-keybinding.mixins.json` | `net.fabricmc.fabric.mixin.client.keybinding` | 1.20.1 | client 1 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | 1.20.1 | mixins 7 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.20.1 | client 4 | 1 | — | none |
+| `mc/forge-shared/src/main/resources/fabricated-forge-diagnostics.mixins.json` | `io.github.cmdralph.fabricated.forge.diagnostics.mixin` | 1.20.1 | mixins 4 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.20.1 | mixins 12, client 4 | 1 | — | none |
 | `mc/forge-legacy/1.20.1/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json` | `io.github.cmdralph.fabricated.testmod.frapi.mixin` | 1.20.1 | client 1 | 1 | — | none |
 
@@ -1793,7 +1811,7 @@ Versions: 1.20.1 · package `io.github.cmdralph.fabricated.testmod.frapi.mixin` 
 |---|---|---|---|---|---|---|---|---|
 | client | McRuntimeTestHoldMixin | 1.20.1 (1.20.1) | me.earth.mc_runtime_test.McRuntimeTest (`targets`) (@Pseudo) | @Inject → fabricatedFrapiTest$holdForMovingBlocks | "tickHook" | HEAD cancellable=true | — | default |
 
-## Forge 52 (`forge`): 71 mixins in 14 configs
+## Forge 52 (`forge`): 75 mixins in 15 configs
 
 Minecraft 1.21.1, in Mojang's names without a refmap, as on Forge 61 to 66. The mixins come from `mc/forge-shared` and its
 groups, as the source column says, but `NamespacedWrapperAliasMixin`, over 1.21.1's lookups, `LoadingRegistriesMixin`, on
@@ -1818,6 +1836,7 @@ vanilla form (NET-13), and the bridges of the fields it replaced, named after Mo
 | `mc/forge/1.21.1/src/main/resources/fabricated-forge-frapi.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.mixin` | 1.21.1 | client 6 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge/1.21.1/src/main/resources/fabricated-forge-screen.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.mixin` | 1.21.1 | client 1 | 1 | — | none |
 | `mc/forge/1.21.1/src/testmod/resources/fabricated-forge-testmod.mixins.json` | `io.github.cmdralph.fabricated.forgetest.mixin` | 1.21.1 | mixins 6, client 5 | 1 | — | none |
+| `mc/forge-shared/src/main/resources/fabricated-forge-diagnostics.mixins.json` | `io.github.cmdralph.fabricated.forge.diagnostics.mixin` | 1.21.1 | mixins 4 | 1 | — | none |
 
 ### `mc/forge/1.21.1/src/main/resources/fabricated-forge.mixins.json`
 

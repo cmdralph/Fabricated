@@ -3,6 +3,32 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-17: A diagnostics block names the Fabric mod a crash involves; Forge leaves out a mixin that failed (APPLY-3)
+
+- **The diagnostics block:** when the game stops on an error a Fabric mod is involved in, Fabricated writes one block,
+  in the log and at the start of the crash report's details, on every loader and Minecraft version:
+  ```
+  ---- Fabricated: a Fabric mod was involved ----
+  Fabric mod:  Ledger (ledger) 1.3.5, ledger-1.3.5+1.21.1.jar
+  Mixin:       ledger.mixins.json:AnvilScreenHandlerMixin, into net.minecraft.world.inventory.AnvilMenu
+  Loader:      NeoForge 21.1.200, Minecraft 1.21.1, Fabricated 0.6.0-beta.3
+  Fabricated:  leaves this mixin out from the next launch (logs/fabric-bridge-report.txt says why)
+  ```
+  It names the Fabric mod (its name, id, version and jar file), its mixin and the class Mixin applied it to, or the
+  mod's class in the stack trace, the loader and the versions, and what Fabricated does about it; with several mods,
+  up to three, the most likely first. It names a mod only where that is certain, and an error it can't tie to a Fabric
+  mod gets no block. `COMPATIBILITY.md` says how to read it, under *Troubleshooting: the diagnostics block*.
+- **The report** has the block too, under each mixin left out for failing in the last launch, in *Mixins left out
+  (they failed as Mixin applied them in the last launch)*.
+- **APPLY-3** (P0), fixed: on Forge (47, 52 and 61 to 66), a Fabric mod's mixin that passed pre-flight but failed as
+  Mixin applied it stopped every launch the same way. It is now recorded in `.fabricated/mixin-failures.json` and left
+  out from the next launch, as on NeoForge, until the mod's jar, Fabricated, Minecraft or Forge changes.
+- **Verified:** the core unit tests (what the block names, and only where it is certain, its bounds, Forge's names of a
+  mixin, the record's class), CI's script tests and the mixin inventory; the server part of CI's runs on local dedicated
+  servers of Forge 1.20.1, 1.21.1, 1.21.11 and 26.3 and NeoForge 1.21.1 and 26.1.2, the three launches of the
+  impossible-mixin test mod and the block's checks passing on each; a Forge 1.21.11 client the impossible mixin stops as
+  it starts has the block in its log and its crash report.
+
 ## 2026-11-16: Forge for Minecraft 1.21.1 builds from the `forge` branch
 
 - **The branch layout changed:** Forge 52 (Minecraft 1.21.1) moved from the `forge-legacy` branch to `forge`. `forge`

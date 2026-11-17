@@ -198,7 +198,8 @@ warning in the report, so a bad config never crashes the game.
   under [*Unsupported on Forge*](docs/COMPATIBILITY.md#unsupported-on-forge).
 - **Mixin pre-flight is conservative.** It only reports what it can prove from bytecode. A mixin it can't
   evaluate (wildcard selectors, unusual injection points, a target in another Fabric mod) loads normally. If
-  that mixin later fails, Mixin's own crash report names the Fabric mod. Mixins into Minecraft, Fabric API and
+  that mixin later fails as Mixin applies it, Fabricated's diagnostics block, in the log and the crash report, names
+  the Fabric mod and the mixin, and the next launch leaves the mixin out. Mixins into Minecraft, Fabric API and
   installed NeoForge mods (a Fabric addon of a mod's NeoForge build) are all checked.
 - **No isolation after mod code runs.** Once a mod's code has run, Java can't unload it. Fabricated then
   explains failures instead of hiding them.
