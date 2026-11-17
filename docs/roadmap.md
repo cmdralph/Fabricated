@@ -58,7 +58,6 @@ In this order:
    message.
 4. **Finishing touches**, alongside the pass:
    - a smoke-boot CI job for every loader and Minecraft version;
-   - one readable diagnostics block for a failure: which Fabric mod, which mixin or class, which loader and version;
    - GitHub issue forms;
    - a final check of the documents.
 
