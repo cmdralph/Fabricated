@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -33,20 +34,25 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * mixins then shadow or access as the game's. Fabricated restores vanilla's map of picture-in-picture renderers on
  * {@code GuiRenderer}, which NeoForge replaced with renderer pools and Fabric mods read and replace (malilib, PIP-1). A
  * field of one of Fabricated's mixins counts when it is neither shadowed nor unique (named for Fabricated alone). So do
- * the methods they add for a field the platform gave another type or replaced ({@link MixinNames#BRIDGE_GETTER}),
- * which a Fabric mod's accessor of the field invokes (CORPUS-37, CORPUS-94), and its own reads of the field call
- * (CORPUS-107), the methods they add for a method the platform gave other parameters ({@link MixinNames#BRIDGE_INVOKER}),
- * which a Fabric mod's invoker of vanilla's method invokes (LEAVE-5), and the seams they add for a method the platform
- * never calls ({@link MixinNames#SEAM_START},
- * {@link MixinNames#SEAM_END}), which Fabric mods' hooks into that method are pointed at (HUD-4); pre-flight reads their
- * declarations, not their code. A seam for a read the platform's constructor never makes ({@link MixinNames#SEAM_READ},
- * HUD-7) keeps its code, its mixin's name made the game class's, as Mixin merges it: pre-flight finds the read and the
- * locals there that Fabric mods' hooks at it capture. Each carries Mixin's mark of a merged method, with its mixin's
- * priority. Each read of a class makes them anew: mods are translated in parallel.
+ * the methods they add for a field the platform gave another type or replaced ({@link MixinNames#BRIDGE_GETTER}), which
+ * a Fabric mod's accessor of the field invokes (CORPUS-37, CORPUS-94), and its own reads of the field call
+ * (CORPUS-107), the methods they add for a method the platform gave other parameters
+ * ({@link MixinNames#BRIDGE_INVOKER}), which a Fabric mod's invoker of vanilla's method invokes (LEAVE-5), the seams
+ * they add for a method the platform never calls ({@link MixinNames#SEAM_START}, {@link MixinNames#SEAM_END}), which
+ * Fabric mods' hooks into that method are pointed at (HUD-4), and the vanilla methods they restore where the platform
+ * removed them, under their runtime names in SRG's ({@code m_<n>_}, as no method of Fabricated's own is named), which a
+ * Fabric mod's invokers call: Forge 43 removed {@code ItemProperties}' private overloads taking a clamped property
+ * function, which Fabric API 0.77's object builder invokes. Pre-flight reads their declarations, not their code. A seam
+ * for a read the platform's constructor never makes ({@link MixinNames#SEAM_READ}, HUD-7) keeps its code, its mixin's
+ * name made the game class's, as Mixin merges it: pre-flight finds the read and the locals there that Fabric mods'
+ * hooks at it capture. Each carries Mixin's mark of a merged method, with its mixin's priority. Each read of a class
+ * makes them anew: mods are translated in parallel.
  */
 public final class RestoredFields {
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
 	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
+	/** A vanilla method's runtime name in SRG's names, under which Fabricated's in-game mod restores a method. */
+	private static final Pattern RESTORED_METHOD = Pattern.compile("m_\\d+_");
 
 	/** By the game class's internal name. */
 	private final Map<String, Added> added;
@@ -222,8 +228,10 @@ public final class RestoredFields {
 				boolean bridge = method.name.startsWith(MixinNames.BRIDGE_GETTER) || method.name.startsWith(MixinNames.BRIDGE_SETTER)
 						|| method.name.startsWith(MixinNames.BRIDGE_INVOKER) || method.name.startsWith(MixinNames.SEAM_START)
 						|| method.name.startsWith(MixinNames.SEAM_END) || method.name.startsWith(MixinNames.SEAM_READ);
-				if (bridge && (method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC)) == 0 && (method.access & Opcodes.ACC_PUBLIC) != 0
-						&& Annotations.find(method, SHADOW) == null) {
+				boolean bridged = bridge && (method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC)) == 0 && (method.access & Opcodes.ACC_PUBLIC) != 0;
+				boolean restored = RESTORED_METHOD.matcher(method.name).matches() && (method.access & Opcodes.ACC_SYNTHETIC) == 0
+						&& Annotations.find(method, UNIQUE) == null;
+				if ((bridged || restored) && Annotations.find(method, SHADOW) == null) {
 					methods.add(new AddedMethod(method.access, method.name, method.desc, method.signature, node.name, priority,
 							method.name.startsWith(MixinNames.SEAM_READ) ? data : null));
 				}

@@ -17,7 +17,7 @@ import net.minecraftforge.fml.ModContainer;
 
 /**
  * Fabric mods' config screens (their {@code modmenu} entrypoint) behind the config button of Forge's mod list, which
- * Forge 47 to 66 alike read from a mod's {@link ConfigScreenHandler.ConfigScreenFactory} extension, as NeoForge's
+ * Forge 43 to 66 alike read from a mod's {@link ConfigScreenHandler.ConfigScreenFactory} extension, as NeoForge's
  * bridge puts them behind NeoForge's. A screen a mod registers with Forge itself wins. Client only.
  */
 final class ModMenuBridge {

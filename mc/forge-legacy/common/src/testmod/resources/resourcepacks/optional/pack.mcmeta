@@ -1,0 +1,6 @@
+{
+  "pack": {
+    "description": "Fabricated forge test mod's optional built-in data pack",
+    ${pack_formats}
+  }
+}

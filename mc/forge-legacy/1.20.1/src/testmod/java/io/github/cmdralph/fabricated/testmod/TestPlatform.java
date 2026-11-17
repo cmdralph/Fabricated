@@ -16,6 +16,8 @@ import net.minecraft.core.Registry;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.level.block.Block;
@@ -80,6 +82,11 @@ final class TestPlatform {
 	/** Whether the platform takes the player for a fake one: Forge's own fake players, and Fabric's. */
 	static boolean isFakePlayer(Player player) {
 		return player instanceof FakePlayer || player instanceof net.minecraftforge.common.util.FakePlayer;
+	}
+
+	/** A fake player in the level, as a Fabric mod for 1.20.1 gets one: Fabric API's. */
+	static ServerPlayer fakePlayer(ServerLevel level) {
+		return FakePlayer.get(level);
 	}
 
 	/**

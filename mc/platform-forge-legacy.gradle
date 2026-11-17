@@ -1,5 +1,5 @@
-// Forge 1.20.1's part of the build for a Minecraft version project in mc/forge-legacy (mc/mc.gradle applies this):
-// ModDevGradle's legacyforge settings, the in-game mod's mods.toml, and how a source set gets the game to compile
+// Forge's part of the build for a Minecraft version project in mc/forge-legacy, 1.19.2 or 1.20.1 (mc/mc.gradle applies
+// this): ModDevGradle's legacyforge settings, the in-game mod's mods.toml, and how a source set gets the game to compile
 // against.
 
 legacyForge {
@@ -15,8 +15,8 @@ tasks.named('processResources', ProcessResources) {
 }
 
 // --- The test mods: Mojang's names in their sources, Intermediary's in their jars --------------------------------------
-// A Fabric mod for 1.20.1 is published in Intermediary's names, which Fabricated remaps to Forge 47's (Mojang's class names,
-// SRG's member names). The test mods are compiled in Mojang's, against the game and Fabric API's remapped jars, as every
+// A Fabric mod for 1.19.2 or 1.20.1 is published in Intermediary's names, which Fabricated remaps to Forge's (Mojang's class
+// names, SRG's member names). The test mods are compiled in Mojang's, against the game and Fabric API's remapped jars, as every
 // version's are (mc/shared), and CI installs them remapped to Intermediary's as Loom remaps a mod: the classes by
 // AutoRenamingTool (ModDevGradle's reobfuscation, below) with Mojang-to-Intermediary mappings, the targets of the mixins by
 // the refmap Mixin's annotation processor writes from the same mappings, and the access widener by them too.
@@ -67,7 +67,7 @@ def mixinMappings = [testmod: 'fabricated-testmod.refmap.json', testmodbroken: '
              "-AoutRefMapFile=${dir.get().file(refmap).asFile}", '-AmappingTypes=tsrg', '-AdefaultObfuscationEnv=searge',
              // Accessors of vanilla fields Forge's game no longer has name them as the mod's jar does (forgetest.mixin).
              '-AMSG_ACCESSOR_TARGET_NOT_FOUND=warning',
-             // Injectors in an interface mixin, which Fabric's processor takes and Forge 47's warns of, mapped all the same
+             // Injectors in an interface mixin, which Fabric's processor takes and Forge 43's and 47's warn of, mapped all the same
              // (forgetest.mixin.ContainerInterfaceMixin).
              '-AMSG_INJECTOR_IN_INTERFACE=warning']
         } as CommandLineArgumentProvider)
@@ -92,7 +92,7 @@ def remapAccessWidener = { File file, mappings ->
         }
     }.collect { it + '\n' }.join())
 }
-// Forge 47's half of the test mod (src/testmod), beside the shared one (mc/mc.gradle): the checks of Forge's own hooks
+// Forge 43's and 47's half of the test mod (src/testmod), beside the shared one (mc/mc.gradle): the checks of Forge's own hooks
 // and of the Fabric API modules Fabricated ships here, their mixins, the Fabric mod it nests (mc.gradle's testmodnested,
 // JIJ-1), and the access widener's interface injected into the server and its fields, one of which Forge's coremod reads
 // through a getter and must stay private.
@@ -108,16 +108,16 @@ testmodAccessWidener << 'inject-interface net/minecraft/server/MinecraftServer i
 def configPortApiJar = tasks.register('configPortApiJar', Jar) {
     archiveFileName = 'forgeconfigapiport-api.jar'
     destinationDirectory = layout.buildDirectory.dir('configportapi')
-    from(sourceSets.main.output) { include 'fuzs/**' }
+    from(sourceSets.main.output) { include 'fuzs/**', 'net/minecraftforge/api/**' }
 }
 dependencies {
     testmodCompileOnly files(configPortApiJar)
-    // The nullness annotations of the shared sources, which the platforms of later versions have and Forge 47 doesn't.
+    // The nullness annotations of the shared sources, which the platforms of later versions have and Forge 43 and 47 don't.
     testmodCompileOnly 'org.jspecify:jspecify:1.0.0'
 }
 
-// --- The in-game mod in Forge 47's names -----------------------------------------------------------------------------
-// Forge 1.20.1 runs the game with SRG's member names. The in-game mod compiles against Mojang's: the copy nested in the
+// --- The in-game mod in Forge 43's and 47's names --------------------------------------------------------------------
+// Forge 1.19.2 and 1.20.1 run the game with SRG's member names. The in-game mod compiles against Mojang's: the copy nested in the
 // Fabricated jar is reobfuscated (below), and the refmap of its mixins, which Mixin's annotation processor writes, names
 // their targets in SRG's. Forge reads a mod's mixin configs from its manifest. All of them share the one refmap.
 def gameModMixins = [
@@ -147,13 +147,14 @@ def gameModMixins = [
         'fabricated-forge-item.mixins.json',
         // Fabric API's fuels in vanilla's fuel table, which Forge's burn times read (FUEL-1), and its brewing recipes
         // built with Forge's constructor of a brewing mix (BREW-1).
-        'fabricated-forge-content.mixins.json',
+        'fabricated-forge-content.mixins.json'] +
         // Fabric's renderer API in Forge's chunk section compiler and block renderers (task 4, R5), with FRAPI rule 8's
-        // guard: only with Fabric API's renderer installed (its plugin).
-        'fabricated-forge-frapi.mixins.json',
+        // guard: only with Fabric API's renderer installed (its plugin). Forge 47's only: Fabricated doesn't bridge the
+        // renderer API on Forge 43.
+        (file('src/main/resources/fabricated-forge-frapi.mixins.json').exists() ? ['fabricated-forge-frapi.mixins.json'] : []) +
         // Every Forge version's (mc/forge-shared): the hooks that see the failures the game stops on, the crash report,
         // mod loading's crash report and the worker threads' (APPLY-3).
-        'fabricated-forge-diagnostics.mixins.json']
+        ['fabricated-forge-diagnostics.mixins.json']
 dependencies {
     annotationProcessor "org.spongepowered:mixin:${project.mixin_processor_version}:processor"
     // The in-game mod's own mixins use MixinExtras' injectors, which the nested mixinextras-forge (below) provides. Its
@@ -165,7 +166,7 @@ dependencies {
 def gameModRefmap = mixin.add(sourceSets.main, 'fabricated-forge.refmap.json')
 gameModMixins.each { mixin.config(it) }
 // The configs every Forge version shares (mc/forge-shared) name no refmap, which Forge 52 and later need none of: here
-// they name the in-game mod's, whose SRG names Forge 47 runs the game in.
+// they name the in-game mod's, whose SRG names Forge 43 and 47 run the game in.
 tasks.named('processResources', ProcessResources) {
     filesMatching('fabricated-forge-diagnostics.mixins.json') { filter(namingRefmap('fabricated-forge.refmap.json')) }
 }
@@ -249,7 +250,7 @@ tasks.register('forgeClasspathReport') {
 afterEvaluate {
     tasks.named('gameModJar', Jar) {
         from(gameModRefmap)
-        // What upstream's wideners of the natively shipped modules open (BIOME-6), in Forge 47's names. Not in
+        // What upstream's wideners of the natively shipped modules open (BIOME-6), in Forge 43's and 47's names. Not in
         // src/main/resources, whose access transformer ModDevGradle applies to the game the in-game mod compiles against.
         from(file('src/fabricapi/accesstransformer.cfg')) { into 'META-INF' }
         manifest.attributes('MixinConfigs': gameModMixins.join(','))
@@ -292,7 +293,7 @@ afterEvaluate {
         def built = tasks.named(jar, Jar) { destinationDirectory = layout.buildDirectory.dir('devlibs') }
         def remapped = tasks.register("${jar}Intermediary", remapJarType) {
             group = 'verification'
-            description = "Remaps ${jar}'s jar to Intermediary's names, as a Fabric mod for 1.20.1 is published"
+            description = "Remaps ${jar}'s jar to Intermediary's names, as a Fabric mod for ${project.minecraft_version} is published"
             input.set(built.flatMap { it.archiveFile })
             archiveFileName = built.flatMap { it.archiveFileName }
             destinationDirectory = layout.buildDirectory.dir('testmods')

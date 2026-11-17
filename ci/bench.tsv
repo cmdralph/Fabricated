@@ -26,6 +26,9 @@ neoforge	26.2	heap	166	re-recorded: CI's run of #421, after discovery's allocati
 neoforge	26.3	discovery-alloc	282	re-recorded: CI's run of #421, after discovery's allocation cut (#418) and the item checks (SEAM-6)
 neoforge	26.3	discovery-alloc-cached	70	re-recorded: CI's run of #421, after discovery's allocation cut (#418) and the item checks (SEAM-6)
 neoforge	26.3	heap	177	re-recorded: CI's run of #421, after discovery's allocation cut (#418) and the item checks (SEAM-6)
+forge-legacy	1.19.2	discovery-alloc	879	recorded: the highest of three local server-fapi runs of the 1.19.2 port (871 to 879 MB), which CI hasn't run yet
+forge-legacy	1.19.2	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
+forge-legacy	1.19.2	heap	266	recorded: the highest of three local server-fapi runs of the 1.19.2 port (265 to 266 MB), which CI hasn't run yet
 forge-legacy	1.20.1	discovery-alloc	1041	re-recorded: CI's run of the sync pull request (#423), after discovery's allocation cut (#418) and the item checks (SEAM-6)
 forge-legacy	1.20.1	discovery-alloc-cached	-	not recorded yet: Forge's runs don't launch twice yet
 forge-legacy	1.20.1	heap	266	re-recorded: CI's run of the sync pull request (#423), after discovery's allocation cut (#418) and the item checks (SEAM-6)
