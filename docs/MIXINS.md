@@ -1591,6 +1591,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.testmod.f
 | client | OverlayProbeMixin | common26 (26.1.2,26.2,26.3) | n.m.client.renderer.extract.LevelExtractor (`targets`) (@Pseudo) | @Inject → fabricatedTest$extracting | "extractPlayerState" | HEAD | — | require=0 |
 | client | OverlayProbeMixin | common26 (26.1.2,26.2,26.3) | n.m.client.renderer.extract.LevelExtractor (`targets`) (@Pseudo) | @Inject → fabricatedTest$lookingUp | "getOverlayBlock" | HEAD | — | require=0 |
 | client | OverlayProbeMixin | common26 (26.1.2,26.2,26.3) | n.m.client.renderer.extract.LevelExtractor (`targets`) (@Pseudo) | @Inject → fabricatedTest$overlayFound | "getOverlayBlock" | RETURN | — | require=0 |
+| client | ScreenClickWrapperMixin | common26 (26.1.2,26.2,26.3) | n.m.client.MouseHandler | @WrapOperation → fabricatedTest$clicked, fabricatedTest$released (wrappers of the screen's mouseClicked and mouseReleased, as Architectury's; pre-flight points them at Forge's ForgeEventFactoryClient hooks, which take the mouse's position too, through bridges putting it back, LAMBDA-14) | "onButton" | INVOKE `L…/Screen;mouseClicked(L…/MouseButtonEvent;Z)Z`, `L…/Screen;mouseReleased(L…/MouseButtonEvent;)Z` | — | default |
 
 ### `mc/forge/common26early/src/main/resources/fabricated-forge-loot.mixins.json`
 
@@ -2104,5 +2105,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forgetest.mixin` · r
 | client | LayeredDrawLayersAccessor | 1.21.1 (1.21.1) | n.m.client.gui.LayeredDraw | @Accessor → fabricatedForgeTest$layers | "layers" |  | — | default |
 | client | MouseHandlerInvoker | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.MouseHandler | @Invoker → fabricatedtest$onPress | "onPress" |  | — | default |
 | client | ParticleEngineProvidersAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Accessor → fabricatedtest$providers | "field_3835" remap=false |  | — | default |
+| client | ScreenCharTypedMixin | 1.21.1 (1.21.1) | n.m.client.KeyboardHandler | @WrapOperation → fabricatedForgeTest$typed (static, takes the listener as vanilla's call does and passes it on, as owo-lib's braid layers; pre-flight points it at Forge's onScreenCharTyped hook, LAMBDA-14) | "lambda$charTyped$6", "lambda$charTyped$7" | INVOKE `L…/GuiEventListener;charTyped(CI)Z` | — | default |
+| client | ScreenCharTypedMixin | 1.21.1 (1.21.1) | n.m.client.KeyboardHandler | @Inject → fabricatedForgeTest$send (sends a character of each lambda once, through the shadowed charTyped, to a probe screen it shows the handler meanwhile, and checks the wrapper and the screen saw each); @Unique fields fabricatedForgeTest$wrapped, fabricatedForgeTest$sent, fabricatedForgeTest$probe | "tick" | HEAD | — | default |
 
 ---
