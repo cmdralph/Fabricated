@@ -264,8 +264,8 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    (APPLY-1, APPLY-3), and writes its diagnostics block (core's `DiagnosticsBlock`) in the log and at the start of the
    crash report's details: the Fabric mod, the mixin and the class Mixin applied it to, or the mod's class in the stack
    trace, the loader and the versions. The platforms' hooks are thin (the crash report, Mixin's error handlers, the
-   uncaught exception handler, `Util.onThreadException`; on Forge, mod loading's crash report and the dedicated server's
-   `main`, which logs what stops its start), calling one shared in-game class (`CrashDiagnostics`); a mod
+   uncaught exception handler, `Util.onThreadException`, the dedicated server's `main`, which logs what stops its start;
+   on Forge, mod loading's crash report), calling one shared in-game class (`CrashDiagnostics`); a mod
    is named only from Mixin's own throwables, a package one loaded Fabric mod alone has, or (on NeoForge, whose Mixin
    puts the mod's id there) a merged handler's name.
 7. **No guessing.** Mixins are rewritten only where the right member is certain: javac's names for synthetic
