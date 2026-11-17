@@ -410,6 +410,49 @@ class EnumValuesMixinsTest {
 	}
 
 	/**
+	 * ENUM-9: an enum mixin's other methods (Farmer's Delight's injector into Forge 52's {@code RecipeBookCategories})
+	 * stay in the ordinary mixin, their reads of the constants as the mixin's fields reading them as the enum's, which the
+	 * holder then serves. One using the mixin otherwise (making an instance of it) leaves the enum mixin one.
+	 */
+	@Test
+	void theMixinsOtherMethodsStayInTheMixinReadingTheConstantsAsTheEnums() throws Exception {
+		Map<String, ClassNode> game = Map.of(BOOK_SETTINGS, node(bookSettings(true)));
+		String handlerDesc = "()L" + BOOK_MIXIN + ";";
+		byte[] withHandler = io.github.cmdralph.fabricated.core.testutil.TestEnums.mixin(BOOK_MIXIN, BOOK_TYPE,
+				List.of(io.github.cmdralph.fabricated.core.testutil.TestEnums.Constant.plain("COOKING")), cw -> {
+					MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "cooking$type", handlerDesc, null, null);
+					mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Inject;", false).visitEnd();
+					mv.visitCode();
+					mv.visitFieldInsn(Opcodes.GETSTATIC, BOOK_MIXIN, "COOKING", "L" + BOOK_MIXIN + ";");
+					mv.visitInsn(Opcodes.ARETURN);
+					mv.visitMaxs(0, 0);
+					mv.visitEnd();
+				});
+		EnumValuesMixins.Result result = EnumValuesMixins.of(node(withHandler), node(bookType(false)), null, game::get, "com/example/FabricatedEnumBodies");
+		assertNotNull(result);
+		assertTrue(result.otherMethods());
+		MethodNode handler = method(node(result.mixin()), "cooking$type");
+		assertEquals(handlerDesc, handler.desc, "Mixin makes the mixin's type the enum's");
+		assertNotNull(handler.invisibleAnnotations, "the injector keeps its annotation");
+		FieldInsnNode read = (FieldInsnNode) java.util.Arrays.stream(handler.instructions.toArray()).filter(i -> i instanceof FieldInsnNode).findFirst().orElseThrow();
+		assertEquals(BOOK_TYPE + ".COOKING:L" + BOOK_TYPE + ";", read.owner + "." + read.name + ":" + read.desc);
+		byte[] held = EnumValuesMixins.withHeldConstants(result.mixin(), BOOK_TYPE, result.constants(), CONSTANTS);
+		assertNotNull(held, "the holder serves the injector's read");
+
+		byte[] making = io.github.cmdralph.fabricated.core.testutil.TestEnums.mixin(BOOK_MIXIN, BOOK_TYPE,
+				List.of(io.github.cmdralph.fabricated.core.testutil.TestEnums.Constant.plain("COOKING")), cw -> {
+					MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "cooking$make", "()V", null, null);
+					mv.visitCode();
+					mv.visitTypeInsn(Opcodes.NEW, BOOK_MIXIN);
+					mv.visitInsn(Opcodes.POP);
+					mv.visitInsn(Opcodes.RETURN);
+					mv.visitMaxs(0, 0);
+					mv.visitEnd();
+				});
+		assertNull(EnumValuesMixins.of(node(making), node(bookType(false)), null, game::get, "com/example/FabricatedEnumBodies"));
+	}
+
+	/**
 	 * CORPUS-80: the generated mixin adds no fields, so the mod's reads of its constants as fields of the enum (Farmer's
 	 * Delight's {@code FDRecipeBookTypes.COOKING = RecipeBookType.FARMERSDELIGHT_COOKING}) read them from a holder, which
 	 * finds them among the enum's values by name. The enum's own constants are read as they were, and a constant the enum

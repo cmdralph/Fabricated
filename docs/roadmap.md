@@ -58,7 +58,6 @@ In this order:
    message.
 4. **Finishing touches**, alongside the pass:
    - a smoke-boot CI job for every loader and Minecraft version;
-   - one readable diagnostics block for a failure: which Fabric mod, which mixin or class, which loader and version;
    - GitHub issue forms;
    - a final check of the documents.
 
@@ -109,6 +108,15 @@ Open with no ID of their own, each left by a fixed finding:
   handler sharing under a `@Share` namespace; and one whose callback info parameter carries an annotation. The report's
   hint says what moves. On Forge 47's corpus servers the hooks still out at STRUCT-1's methods are Lithium's, Fabric
   API's transfer hook and Porting Lib's, each with its reason in the report.
+
+- **What PROVIDER-23 leaves of Fabric API's internals on NeoForge 1.21.11 to 26.3.** A hidden pack's enabled state
+  doesn't follow its parents, as upstream's predicate says: NeoForge has no such link, so a required hidden pack is
+  always on and another is off once its world or the game loads again. Traveler's Backpack's mixin of upstream's
+  `ClientNetworking.openScreen`, which keeps its menus closed while ReplayMod replays a recording, is left out: the
+  native menu module opens menus through NeoForge's packet. Polymer's `@Pseudo` mixins of Fabric's registry sync
+  (`RegistrySyncManager`, `StateIdTracker`) have nothing to apply to, as NeoForge syncs the registries; Mixin skips them
+  without an error, and the report doesn't name them (pre-flight passes a `@Pseudo` mixin whose target isn't there in
+  silence).
 
 ## Compatibility baseline
 
