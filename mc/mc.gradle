@@ -72,20 +72,22 @@ ext.sharedSources = (project.shared_sources as String).split(',')*.trim().findAl
 // Classes the shared sources name that this version's game names otherwise, as `renamed_classes` lists them (old=new,
 // comma-separated): Minecraft 1.21.1's ResourceLocation, which 1.21.11 renamed Identifier. Such a version compiles a copy
 // of the shared Java sources with each name replaced, as a whole word (imports, descriptors in strings and comments
-// alike), so the sources stay the later versions' own; the compiler checks the rest of what they call. The test sources
-// every platform shares (mc/shared) are copied alike.
+// alike), so the sources stay the later versions' own; the compiler checks the rest of what they call. A class that also
+// moved to another package is named in full (net.minecraft.core.registries.BuiltInRegistries=net.minecraft.core.Registry,
+// 1.19.2's holder of the game's registries), which replaces its imports and descriptors, dotted or slashed, before the
+// simple names are. The test sources every platform shares (mc/shared) are copied alike.
 def renamedClasses = (project.findProperty('renamed_classes') ?: '').split(',')*.trim().findAll { it }.collectEntries {
     def pair = it.split('=')*.trim()
-    if (pair.size() != 2 || pair.any { !(it ==~ /[A-Za-z_][A-Za-z0-9_]*/) }) throw new GradleException("renamed_classes: '${it}' isn't old=new")
-    [(pair[0]): pair[1]]
-}
+    if (pair.size() != 2 || pair.any { !(it ==~ /[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*/) }) throw new GradleException("renamed_classes: '${it}' isn't old=new")
+    pair[0].contains('.') ? [(pair[0]): pair[1], (pair[0].replace('.', '/')): pair[1].replace('.', '/')] : [(pair[0]): pair[1]]
+}.sort { a, b -> (b.key.contains('.') || b.key.contains('/')) <=> (a.key.contains('.') || a.key.contains('/')) }
 def renamedJava = { String sourceSet, List<File> dirs ->
     if (renamedClasses.isEmpty()) return dirs
     tasks.register("renamedShared${sourceSet.capitalize()}Java", Sync) {
         from(dirs)
         into(layout.buildDirectory.dir("generated/renamed/${sourceSet}"))
         inputs.property('renamedClasses', renamedClasses)
-        filter { String line -> renamedClasses.inject(line) { l, e -> l.replaceAll("\\b${e.key}\\b", e.value) } }
+        filter { String line -> renamedClasses.inject(line) { l, e -> l.replaceAll("\\b${java.util.regex.Pattern.quote(e.key)}\\b", java.util.regex.Matcher.quoteReplacement(e.value)) } }
     }
 }
 def sharedJava = { String sourceSet -> renamedJava(sourceSet, sharedSources.collect { rootProject.file("$it/src/$sourceSet/java") }) }
