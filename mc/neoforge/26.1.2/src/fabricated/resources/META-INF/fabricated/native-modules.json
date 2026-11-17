@@ -96,7 +96,8 @@
       "net/fabricmc/fabric/api/resource/v1/pack",
       "net/fabricmc/fabric/api/resource/v1/reloader",
       "net/fabricmc/fabric/impl/resource",
-      "net/fabricmc/fabric/impl/resource/pack"
+      "net/fabricmc/fabric/impl/resource/pack",
+      "net/fabricmc/fabric/mixin/resource"
     ],
     "fabric-transfer-api-v1": [
       "net/fabricmc/fabric/api/transfer/v1",
