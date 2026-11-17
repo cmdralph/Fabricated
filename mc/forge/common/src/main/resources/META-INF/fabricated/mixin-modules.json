@@ -32,6 +32,7 @@
     "ForgeRegistryRekeyMixin": [],
     "ForgePayloadEncodeMixin": ["fabric-networking-api-v1"],
     "GameDataFreezeMixin": [],
+    "IngredientJsonCodecMixin": [],
     "IngredientNetworkCodecMixin": [],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],

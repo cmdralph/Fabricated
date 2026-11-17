@@ -25,6 +25,7 @@
     "ForgeRegistryEntryAddedMixin": ["fabric-registry-sync-v0"],
     "ForgeRegistryRekeyMixin": [],
     "GameDataFreezeMixin": [],
+    "IngredientJsonCodecMixin": [],
     "IngredientNetworkCodecMixin": [],
     "LayeredDrawLayersAccessor": [],
     "LiquidBlockRendererSpritesMixin": ["fabric-rendering-fluids-v1"],
