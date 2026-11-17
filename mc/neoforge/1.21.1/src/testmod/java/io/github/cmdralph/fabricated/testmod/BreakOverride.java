@@ -6,6 +6,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -14,12 +15,15 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
+import net.neoforged.neoforge.common.ItemAbilities;
+import net.neoforged.neoforge.common.ItemAbility;
 
 /**
  * A block of the platform's kind for the vanilla block breaking and harvest checks ({@link VanillaBreakTest}, SEAM-3;
  * {@link VanillaHarvestTest}, SEAM-4): it overrides NeoForge's {@code onDestroyedByPlayer} (NeoForge 21.1's, without
  * the tool), leaving amethyst where a player breaks it, {@code canHarvestBlock}, answering its harvest check itself,
- * and {@code getFriction}, answering its friction itself ({@link VanillaFrictionTest}, SEAM-8).
+ * {@code getFriction}, answering its friction itself ({@link VanillaFrictionTest}, SEAM-8), and {@code getToolModifiedState},
+ * making the shovel's path amethyst ({@link VanillaShovelTest}, SEAM-13).
  */
 final class BreakOverride extends Block {
 	BreakOverride(Properties properties) {
@@ -41,6 +45,12 @@ final class BreakOverride extends Block {
 	@Override
 	public float getFriction(BlockState state, LevelReader level, BlockPos pos, @Nullable Entity entity) {
 		return VanillaFrictionTest.overridingFriction();
+	}
+
+	// The platform's tool modifications, answered by the block itself (SEAM-13): vanilla's path lookup isn't put back for it.
+	@Override
+	public BlockState getToolModifiedState(BlockState state, UseOnContext context, ItemAbility action, boolean simulate) {
+		return action == ItemAbilities.SHOVEL_FLATTEN ? Blocks.AMETHYST_BLOCK.defaultBlockState() : null;
 	}
 
 	// Compile-time only: javac sees Fabric's and NeoForge's getAppearance defaults on Block and needs a subclass written
