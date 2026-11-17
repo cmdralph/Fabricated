@@ -16,7 +16,7 @@ import io.github.cmdralph.fabricated.forge.diagnostics.LoadingErrors;
 /**
  * Forge's crash report for a mod loading that failed holds a placeholder exception, its errors only as text: they are
  * held for the report it makes next ({@link LoadingErrors}), which reads the Fabric mods' mixin failures and the Fabric
- * mods involved off their causes ({@code CrashReportMixin}). Forge 47 to 66, on the server and the client; the dump is
+ * mods involved off their causes ({@code CrashReportMixin}). Forge 43 to 66, on the server and the client; the dump is
  * left as it is.
  */
 @Mixin(value = CrashReportExtender.class, remap = false)

@@ -8,7 +8,7 @@ import net.minecraftforge.fml.ModLoadingException;
 
 /**
  * Mod loading's errors, for the crash report Forge makes of them: it holds a placeholder exception, the errors being
- * only its categories' text ({@code CrashReportExtender.dumpModLoadingCrashReport}, on Forge 47 to 66's servers and
+ * only its categories' text ({@code CrashReportExtender.dumpModLoadingCrashReport}, on Forge 43 to 66's servers and
  * clients). The dump hands them here ({@code CrashReportExtenderMixin}), and the report it makes next on its thread
  * takes their causes ({@code CrashReportMixin}): an injector's critical failure as a mod's constructor loads the class
  * reaches the report only that way (APPLY-1).

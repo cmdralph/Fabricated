@@ -11,9 +11,9 @@ import net.minecraftforge.fml.config.IConfigEvent;
 /**
  * Forge's config events for the configs made with a Fabric mod's container ({@link FabricModContainer}). Forge hands a
  * config's events to its mod's container, whose own containers post them on the mod's event bus; Fabric mods have none,
- * so the events go to the listener the version's in-game mod sets: on Forge 47, Forge Config API Port's per-mod events,
- * whose API the in-game mod provides on Forge's config system (CORPUS-81). With no listener they're dropped, as Forge's
- * own containers drop those of a mod with no config handler.
+ * so the events go to the listener the version's in-game mod sets: on Forge 43 and 47, Forge Config API Port's per-mod
+ * events, whose API the in-game mod provides on Forge's config system (CORPUS-81). With no listener they're dropped, as
+ * Forge's own containers drop those of a mod with no config handler.
  */
 public final class FabricConfigEvents {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
