@@ -49,8 +49,8 @@ public final class FabricModContainer extends ModContainer {
 	}
 
 	/**
-	 * The events of the configs made with this container (Forge Config API Port's API on Forge 47), which Forge's own
-	 * containers post on the mod's event bus, go to {@link FabricConfigEvents}.
+	 * The events of the configs made with this container (Forge Config API Port's API on Forge 43 and 47), which
+	 * Forge's own containers post on the mod's event bus, go to {@link FabricConfigEvents}.
 	 */
 	@Override
 	public void dispatchConfigEvent(IConfigEvent event) {

@@ -29,23 +29,23 @@ import io.github.cmdralph.fabricated.loader.FabricatedState;
 
 /**
  * Records the frames of a method again, expanded, where Forge's Mixin would count its locals wrong (CORPUS-79,
- * {@link RecordedFrames}): before mixins apply to a class a Fabric mod's mixin targets, each method whose locals Mixin's
- * local computation would count wrong at some frame, from the frames it recorded and walks as Forge's ModLauncher hands
- * them, compressed, gets its recorded frames from the method with its frames expanded, through Mixin's own
- * {@code ClassInfo.Method}. Mixin records an expanded frame's size as the locals it states and counts them right, as with
- * its {@code CLASSREADER_EXPAND_FRAMES} option. Resourceful Lib's {@code @Local PoseStack} in Forge 61's and 64's
- * {@code ScreenEffectRenderer.renderScreenEffect} found none without it, and the client crashed.
+ * {@link RecordedFrames}): before mixins apply to a class a Fabric mod's mixin targets, each method whose locals
+ * Mixin's local computation would count wrong at some frame, from the frames it recorded and walks as Forge's
+ * ModLauncher hands them, compressed, gets its recorded frames from the method with its frames expanded, through
+ * Mixin's own {@code ClassInfo.Method}. Mixin records an expanded frame's size as the locals it states and counts them
+ * right, as with its {@code CLASSREADER_EXPAND_FRAMES} option. Resourceful Lib's {@code @Local PoseStack} in Forge 61's
+ * and 64's {@code ScreenEffectRenderer.renderScreenEffect} found none without it, and the client crashed.
  *
- * <p>A class no Fabric mod's mixin targets is left alone, and so is a method Mixin counts right, so Forge mods' mixins see
- * Mixin's frames as on Forge without Fabricated; a Forge mod's injector in a method this records again sees the locals
- * there are. Which mixins target the class is the class metadata's own record
- * ({@code ClassInfo.getMixins()}, package-private in Mixin, where each mixin adds itself as Mixin prepares it): Mixin takes
- * each config it selects out of {@code Mixins.getConfigs()}, so that set no longer has them as mixins apply. Where the
- * record can't be read, nothing is recorded again.
+ * <p>A class no Fabric mod's mixin targets is left alone, and so is a method Mixin counts right, so Forge mods' mixins
+ * see Mixin's frames as on Forge without Fabricated; a Forge mod's injector in a method this records again sees the
+ * locals there are. Which mixins target the class is the class metadata's own record ({@code ClassInfo.getMixins()},
+ * package-private in Mixin, where each mixin adds itself as Mixin prepares it): Mixin takes each config it selects out
+ * of {@code Mixins.getConfigs()}, so that set no longer has them as mixins apply. Where the record can't be read,
+ * nothing is recorded again.
  *
  * <p>Registered only where Mixin records frames unexpanded ({@link #needed}): Forge 52's and 61 to 66's Mixin 0.8.7,
- * which stopped expanding them by default. Forge 47's Mixin 0.8.5 reads a class's metadata with its frames expanded, so
- * it records each frame's whole locals and counts them right.
+ * which stopped expanding them by default. Forge 43's and 47's Mixin 0.8.5 reads a class's metadata with its frames
+ * expanded, so it records each frame's whole locals and counts them right.
  */
 final class RecordedFrameRepair implements IExtension {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -63,8 +63,9 @@ final class RecordedFrameRepair implements IExtension {
 
 	/**
 	 * Whether Mixin records a class's frames as its bytes have them, unexpanded, which its local computation miscounts:
-	 * Mixin 0.8.7 does unless its {@code CLASSREADER_EXPAND_FRAMES} option is set ("restores the behaviour from versions
-	 * 0.8.6 and below"); 0.8.5, which has no such option, always expands them. By name, as Forge 47's Mixin lacks it.
+	 * Mixin 0.8.7 does unless its {@code CLASSREADER_EXPAND_FRAMES} option is set ("restores the behaviour from
+	 * versions 0.8.6 and below"); 0.8.5, which has no such option, always expands them. By name, as Forge 43's and 47's
+	 * Mixin lacks it.
 	 */
 	static boolean needed() {
 		MixinEnvironment.Option expand;

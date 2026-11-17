@@ -14,10 +14,10 @@ import io.github.cmdralph.fabricated.diagnostics.CrashDiagnostics;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 
 /**
- * What Forge's in-game mod does once the Fabric initializers have run, on Forge 47 to 66 alike, as NeoForge's does
+ * What Forge's in-game mod does once the Fabric initializers have run, on Forge 43 to 66 alike, as NeoForge's does
  * ({@code EntrypointBridge.finish}): each failure goes to the report and to Forge's loading warnings (the client shows
- * them on its warnings screen, the server logs them), a mixin it says failed as Mixin applied it is recorded for the next
- * launch to leave out ({@link CrashDiagnostics}), then Fabricated's API runs what waited for the initializers
+ * them on its warnings screen, the server logs them), a mixin it says failed as Mixin applied it is recorded for the
+ * next launch to leave out ({@link CrashDiagnostics}), then Fabricated's API runs what waited for the initializers
  * ({@code Fabricated.get().afterEntrypoints}), the failed mods known. Forge's loading goes on after a failure whichever
  * {@code onEntrypointFailure} is set: stopping it there, as NeoForge's error screen does with {@code error}, isn't
  * supported on Forge.

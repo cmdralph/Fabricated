@@ -14,7 +14,7 @@ Facts about other projects cite their repository, ref and file; what could not b
 |---|---|---|---|
 | `main` | NeoForge 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | active, the primary platform | `ci.yml`, the same workflow on every branch, with `ci/neoforge`; the root `README.md` |
 | `forge` | Minecraft Forge 52 for 1.21.1, 61 for 1.21.11 and 64 to 66 for 26.1.2 to 26.3 | F4: native modules on Forge's events (§7) | `ci.yml`, with `ci/forge`; `COMPATIBILITY.md`'s *Forge* section |
-| `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1), then 1.19.2 | L4: native modules on Forge 47's events (§7) | `ci.yml`, with `ci/forge-legacy`; `COMPATIBILITY.md`'s *Forge* section |
+| `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1) and 1.19.2 (Forge 43.5, §3.3) | L4: native modules on Forge 47's events (§7); 1.19.2 builds and runs CI's parts, unreleased | `ci.yml`, with `ci/forge-legacy`; `COMPATIBILITY.md`'s *Forge* section |
 
 NeoForge needs no legacy branch: its 1.20.1 build is a 2024 fork of Forge 47.1 (§3.1), so the legacy line is Forge's
 (the owner's decision, 2026-10-25).
@@ -67,7 +67,7 @@ behaviour floor and fallback, build digest), the per-version `fabric-api-plan.js
 classes, the platform's packages, the installed mods, the mapping supplier and vanilla's jar. That is the seam the
 other platforms build on.
 
-## 3. Minecraft 1.20.1
+## 3. Minecraft 1.20.1 and 1.19.2
 
 ### 3.1 Platform facts
 
@@ -122,6 +122,47 @@ game jar. Three modules have no `main` counterpart: `fabric-blockrenderlayer-v1`
 `fabric-mining-level-api-v1` (pass-through until L4 says otherwise); `fabric-gametest-api-v1` stays unsupported. The
 plan file itself (`mc/forge-legacy/1.20.1`'s `fabric-api-plan.json`) is written in L4, with the vendored modules: a native entry
 before Fabricated ships the module would hide the player's copy.
+
+### 3.3 Minecraft 1.19.2 (Forge 43)
+
+`mc/forge-legacy/1.19.2` builds Fabricated for Forge 43.5.2 (`:mc:forge-legacy-1.19.2`), on ModDevGradle's
+`legacyforge` plugin as 1.20.1 does, with Java 17. What Forge 43 shares with Forge 47 is the same code:
+
+| Part | Forge 43 against Forge 47 | Where it is |
+|---|---|---|
+| Loader (discovery, language provider) | The same SPI signatures (forgespi 6.0.0, ModLauncher 10.0.8, securejarhandler 2.1.4), Mixin 0.8.5 and SRG names. | `loader/forge-shared/src/fml47`, which serves both; `ForgeDescriptor` has one entry per version: the Minecraft version, the pack formats (1.19.2's data packs 10, resource packs 9) and the coremods (Forge 43 has `field_to_method.js`, with the fields Forge 47's lists, and no spawn event transformer). |
+| Remapping | Intermediary 1.19.2 to Mojang's class names and SRG's member names, from the MCPConfig Forge 43's installer leaves. | `intermediary_commit` and `intermediary_sha256` in the version's `gradle.properties` |
+| In-game mod | About a quarter of Forge 47's sources differ: 1.19.2 predates the registry rewrite (`Registry.*` in place of `BuiltInRegistries`), `GuiGraphics`, the new creative tabs and the loot data manager. | Shared code in `mc/forge-legacy/common` (both versions' `shared_sources`) and the `mc/forge-shared` groups that start at 1.19.2; `renamed_classes` (`net.minecraft.core.registries.BuiltInRegistries=net.minecraft.core.Registry`) compiles shared sources against 1.19.2's names; the rest in each version's folder. |
+| Native Fabric API modules | The seven of Forge 47 (base, biome, dimensions, key bindings, loot v2, loot tables, particles), vendored from Fabric API 0.77.0+1.19.2 (`src/fabricapi/UPSTREAM.properties`), whose biome API is version 9, not 13. | `mc/forge-legacy/1.19.2/src/fabricapi`, the implementation parts that differ in its `src/main` |
+| Test mods | The shared suite; what vanilla 1.19.2 or Fabric API 0.77 lacks is left out, each check's exclusion in `ci/checks.tsv`. | `mc/shared/1.19.2` (shared with no other version) beside the groups that start at 1.19.2; Forge's half in `mc/forge-legacy/common/src/testmod`, with `ForgeTestCompat` per version |
+
+Forge 43 differs from Forge 47 where the in-game mod has a version of its own:
+
+- **Registries:** the root registry is never frozen; `Bootstrap.bootStrap` calls `Registry.freezeBuiltins`, which the
+  freeze after the Fabric mods' entrypoints wraps; vanilla's registries keep a registered entry's holder in their map of
+  intrusive holders, and Forge's in `NamespacedHolderHelper`; Forge's wrapper of a registry it manages stays locked
+  against vanilla's API from its vanilla snapshot on, which Fabricated opens with Forge's registry, as Forge 47 does;
+  Forge 43 has two wrappers, one for defaulted registries.
+- **Packs:** Forge's pack constructor takes whether a pack is hidden, which a Fabric mod's lambda of vanilla's
+  constructor doesn't implement; Forge reads vanilla's resources from the game's jar through its module, where Fabric API
+  0.77's mixin looked for it on the default file system.
+- **Client:** `Gui.render` takes a `PoseStack`; Fabric API 0.77 fires its HUD callback inside the method, which
+  Fabricated fires where Forge's GUI ends its HUD; Forge 43 replaced `ItemProperties`' overloads taking a clamped
+  function, which the in-game mod restores for Fabric API 0.77's object builder; a block reads only the models its block
+  state names (1.20.1 reads every model file); Forge gathers a tooltip's components itself, where Fabric API 0.77 asked
+  its tooltip component callback inside `Screen.renderTooltip`, so Fabricated asks it where Forge looks its mods'
+  factories up; Forge's world creation screen starts a new world from a list of packs of its own, where Fabric API 0.77
+  replaced vanilla's starting packs with its own, so Fabricated adds those to Forge's; the terrain particle keeps
+  vanilla's grass check, where Fabric API 0.77's particle tint hook finds it.
+- **Config:** Forge Config API Port's Fabric API for 1.19.2 is its version 4, in `net.minecraftforge.api`, which the
+  in-game mod provides.
+- **Content:** Forge 43 takes a block for flammable only where its material is, which Fabric's flammable block registry
+  doesn't ask; the set of block states with a point of interest is a view of Forge's map, which Fabric's
+  point-of-interest helper adds to; vanilla's own pack is named `Default`, which Fabric's loot table sources read;
+  Forge removed the trade factory's check that every villager type has a trade.
+
+Fabric's renderer API isn't bridged on Forge 43: `fabric-renderer-indigo` passes through, its chunk build hook left
+out, and the renderer API test mod (`src/testmodfrapi`) is 1.20.1's alone.
 
 ## 4. Minecraft Forge (modern)
 
@@ -297,7 +338,7 @@ and the shared source folders from the version's `shared_sources` property, unde
 compiles a renamed copy of them (`renamed_classes`, 1.21.1's `Identifier=ResourceLocation`). It applies `mc/platform-<platform>.gradle` (the plugin's
 settings, the mod descriptor, `gameDependencies`), builds the in-game mod as `game-mod.jar` and merges `loader`
 (`loader/common` and `loader/neoforge`, or `loader/forge-shared` for both Forge platforms: their discovery classes and
-language provider, with Forge 47's differences below the game in its variant, `loader_variant`), `core`, `api` and
+language provider, with Forge 43's and 47's differences below the game in its variant, `loader_variant`), `core`, `api` and
 `fabric-loader-api` into `fabricatedJar` (§6, items 2 and 3). The test sources every platform shares are in `mc/shared`. NeoForge's CI step conditions still name versions,
 and its matrix, installers (`neoforge-<v>-installer.jar`), HeadlessMC launch names and mc-runtime-test assets are
 NeoForge's.

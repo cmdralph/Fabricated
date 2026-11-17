@@ -145,7 +145,7 @@ class EvaluatorTest(unittest.TestCase):
         # CI-15: the manifest's row passes on the lines the test mod's ClientHold logs as its hold ends (caught up, or
         # given up after its minute: the checks waiting on the server then decide), not on its start: each message of
         # its source, its arguments filled in.
-        source = HERE.parent / "mc/shared/1.20.1+/src/testmod/java/io/github/cmdralph/fabricated/testmod/ClientHold.java"
+        source = HERE.parent / "mc/shared/1.19.2+/src/testmod/java/io/github/cmdralph/fabricated/testmod/ClientHold.java"
         calls = re.findall(r'LOGGER\.info\(((?:\s*\+?\s*"(?:[^"\\]|\\.)*")+)', source.read_text(encoding="utf-8"))
         messages = ["".join(re.findall(r'"((?:[^"\\]|\\.)*)"', call)).replace("{}", "7") for call in calls]
         real = next(r for r in plan.read_table(HERE / "checks.tsv") if r["id"] == "client-hold")
