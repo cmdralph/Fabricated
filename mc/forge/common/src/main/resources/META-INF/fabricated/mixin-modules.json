@@ -8,6 +8,7 @@
     "fabricated-forge-color.mixins.json": ["fabric-rendering-v1"],
     "fabricated-forge-conditions.mixins.json": ["fabric-resource-conditions-api-v1"],
     "fabricated-forge-damage.mixins.json": ["fabric-entity-events-v1"],
+    "fabricated-forge-diagnostics.mixins.json": [],
     "fabricated-forge-entity.mixins.json": ["fabric-entity-events-v1"],
     "fabricated-forge-frapi.mixins.json": ["fabric-renderer-api-v1"],
     "fabricated-forge-frapi-breaking.mixins.json": ["fabric-renderer-api-v1"],
