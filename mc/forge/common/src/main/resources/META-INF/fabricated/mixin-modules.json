@@ -37,6 +37,7 @@
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
     "MobBucketItemBridgeMixin": [],
+    "MinecraftCloseMixin": [],
     "ModifiableBiomeInfoAccessor": [],
     "NamespacedWrapperAliasMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperEarlyWriteMixin": [],
