@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 
 import org.jspecify.annotations.Nullable;
 
+import com.mojang.serialization.Codec;
 import com.mojang.serialization.Lifecycle;
 
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
@@ -137,6 +138,14 @@ public final class TestCompat {
 	/** An ingredient of the tag's items. */
 	public static Ingredient ingredient(TagKey<Item> tag) {
 		return Ingredient.of(tag);
+	}
+
+	/**
+	 * The codecs recipes write ingredients as JSON with: 1.21.1 has one taking the empty ingredient and one refusing it,
+	 * which recipes' slots use.
+	 */
+	public static List<Codec<Ingredient>> ingredientCodecs() {
+		return List.of(Ingredient.CODEC, Ingredient.CODEC_NONEMPTY);
 	}
 
 	/**

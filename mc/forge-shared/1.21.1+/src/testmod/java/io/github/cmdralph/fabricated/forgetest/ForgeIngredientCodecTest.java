@@ -6,6 +6,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Predicate;
+
+import com.google.gson.JsonElement;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.DynamicOps;
+import com.mojang.serialization.JsonOps;
 
 import io.github.cmdralph.fabricated.testmod.TestCompat;
 import io.netty.buffer.Unpooled;
@@ -35,6 +42,9 @@ import net.minecraftforge.common.crafting.ingredients.CompoundIngredient;
  * <li>With Fabric API's recipe module, one of its custom ingredients, which Forge's patch threw writing as well. It
  * must come back as that custom ingredient, as Fabric API sends it.</li>
  * </ul>
+ * The same ingredients written as JSON by the codecs recipes use ({@code TestCompat.ingredientCodecs}) and read back
+ * (CORPUS-115): Forge's patch threw writing a Fabric mod's own ingredient there too, so a mod writing a recipe holding
+ * one of Fabric API's custom ingredients (Supplementaries' dynamic recipes) lost it.
  */
 public final class ForgeIngredientCodecTest {
 	private ForgeIngredientCodecTest() {
@@ -44,7 +54,11 @@ public final class ForgeIngredientCodecTest {
 	public static void check(MinecraftServer server) {
 		checkEmptySlots(server);
 		checkFabricIngredients(server);
-		if (FabricLoader.getInstance().isModLoaded("fabric-recipe-api-v1")) checkFabricApiIngredients(server);
+		checkFabricIngredientsJson(server);
+		if (FabricLoader.getInstance().isModLoaded("fabric-recipe-api-v1")) {
+			checkFabricApiIngredients(server);
+			checkFabricApiIngredientsJson(server);
+		}
 	}
 
 	private static void checkEmptySlots(MinecraftServer server) {
@@ -132,6 +146,66 @@ public final class ForgeIngredientCodecTest {
 			ForgeTestMod.LOGGER.info("FABRICATED-TEST Fabric API's custom ingredients on the network OK");
 		} else {
 			ForgeTestMod.LOGGER.warn("FABRICATED-TEST Fabric API's custom ingredients on the network not as upstream's: {}", String.join("; ", failed));
+		}
+	}
+
+	/** The mod's own ingredient, alone and inside Forge's compound ingredient, written as JSON and read back. */
+	private static void checkFabricIngredientsJson(MinecraftServer server) {
+		List<String> failed = new ArrayList<>();
+		DynamicOps<JsonElement> ops = server.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+		Ingredient own = new ForgeTestIngredient();
+		Ingredient compound = CompoundIngredient.of(Ingredient.of(Items.DIRT), own);
+		for (Codec<Ingredient> codec : TestCompat.ingredientCodecs()) {
+			jsonRoundTrip(codec, ops, own, "the mod's ingredient", read -> matchesOnly(read, Items.STONE), failed);
+			jsonRoundTrip(codec, ops, compound, "Forge's compound ingredient holding it", read -> matchesOnly(read, Items.STONE, Items.DIRT), failed);
+		}
+		if (failed.isEmpty()) {
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST Fabric mods' ingredients as JSON OK");
+		} else {
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST Fabric mods' ingredients as JSON not as upstream's: {}", String.join("; ", failed));
+		}
+	}
+
+	/** One of Fabric API's custom ingredients written as JSON, in its own form, and read back as that custom ingredient. */
+	private static void checkFabricApiIngredientsJson(MinecraftServer server) {
+		Method custom;
+		Ingredient stoneOrDirt;
+		try {
+			Method any = Class.forName("net.fabricmc.fabric.api.recipe.v1.ingredient.DefaultCustomIngredients").getMethod("any", Ingredient[].class);
+			custom = Ingredient.class.getMethod("getCustomIngredient");
+			stoneOrDirt = (Ingredient) any.invoke(null, (Object) new Ingredient[] {Ingredient.of(Items.STONE), Ingredient.of(Items.DIRT)});
+		} catch (ReflectiveOperationException e) {
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST Fabric API's custom ingredients as JSON not as upstream's: they can't be made: {}", e.toString());
+			return;
+		}
+		List<String> failed = new ArrayList<>();
+		DynamicOps<JsonElement> ops = server.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+		for (Codec<Ingredient> codec : TestCompat.ingredientCodecs()) {
+			jsonRoundTrip(codec, ops, stoneOrDirt, "a custom ingredient", read -> isCustom(custom, read) && matchesOnly(read, Items.STONE, Items.DIRT), failed);
+		}
+		if (failed.isEmpty()) {
+			ForgeTestMod.LOGGER.info("FABRICATED-TEST Fabric API's custom ingredients as JSON OK");
+		} else {
+			ForgeTestMod.LOGGER.warn("FABRICATED-TEST Fabric API's custom ingredients as JSON not as upstream's: {}", String.join("; ", failed));
+		}
+	}
+
+	/** Writes the ingredient as JSON with the codec and reads it back, adding to {@code failed} what went wrong. */
+	private static void jsonRoundTrip(Codec<Ingredient> codec, DynamicOps<JsonElement> ops, Ingredient ingredient, String what,
+			Predicate<Ingredient> readBack, List<String> failed) {
+		try {
+			DataResult<JsonElement> written = codec.encodeStart(ops, ingredient);
+			if (written.error().isPresent()) {
+				failed.add(what + " isn't written by " + codec + ": " + written.error().get().message());
+				return;
+			}
+			JsonElement json = written.result().orElseThrow();
+			DataResult<Ingredient> read = codec.parse(ops, json);
+			if (read.result().map(readBack::test).orElse(false)) return;
+			failed.add(what + " written as " + json + " is read back as " + read.result().map(Object::toString)
+					.orElseGet(() -> read.error().map(DataResult.Error::message).orElse("nothing")));
+		} catch (RuntimeException e) {
+			failed.add(what + ": " + e);
 		}
 	}
 
