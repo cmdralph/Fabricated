@@ -25,8 +25,9 @@ import net.minecraft.world.level.block.state.BlockState;
  * Fabricated puts back for the blocks and levels keeping their defaults (SEAM-13, {@link VanillaShovelTest}): as the use
  * starts, a behaviour of the test mod's own is chosen for the block; the hook of the first null check (the path's) sets its
  * state; the hook of the air check above the path stops the path, and that of vanilla's second {@code getBlock} (the
- * campfire check) stops the dousing. A further hook counts vanilla's lookup of the path. Targeted by name: 26.3 has no
- * {@code ShovelItem}.
+ * campfire check) stops the dousing. A further hook counts vanilla's lookup of the path. Targeted by name from 1.21.1, as
+ * 26.3 has no {@code ShovelItem}; on 1.19.2 and 1.20.1 by its class, whose methods the annotation processor maps to the
+ * game's names on Forge 43 and 47, which it doesn't for a {@code @Pseudo} mixin.
  */
 @Pseudo
 @Mixin(targets = "net.minecraft.world.item.ShovelItem")
