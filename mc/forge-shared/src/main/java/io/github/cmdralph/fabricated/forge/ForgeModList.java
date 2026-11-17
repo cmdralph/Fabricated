@@ -11,8 +11,8 @@ import net.minecraftforge.fml.ModList;
 
 /**
  * Forge's mod list, as the in-game mod reads it on every Forge version: Forge 64 and later (Minecraft 26.x) made
- * {@code ModList}'s methods static, where Forge 47, 52 and 61 reach them through {@code ModList.get()}, so neither call
- * compiles on both.
+ * {@code ModList}'s methods static, where Forge 43, 47, 52 and 61 reach them through {@code ModList.get()}, so neither
+ * call compiles on both.
  */
 public final class ForgeModList {
 	private ForgeModList() {
