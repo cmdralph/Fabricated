@@ -40,7 +40,7 @@ public final class FabricatedCommands {
 		Predicate<CommandSourceStack> local = source -> clientSide || source.getPlayer() == null;
 		dispatcher.register(Commands.literal("fabricated")
 				.executes(context -> {
-					context.getSource().sendSuccess(() -> Component.literal(summary(state)), false);
+					CommandFeedback.success(context.getSource(), () -> summary(state));
 					return 1;
 				})
 				.then(Commands.literal("disabled")
@@ -48,13 +48,13 @@ public final class FabricatedCommands {
 						.executes(context -> {
 							List<Report.ModRow> rows = state.report().mods().stream()
 									.filter(r -> r.status() == Report.Status.DISABLED || r.status() == Report.Status.REJECTED).toList();
-							if (rows.isEmpty()) context.getSource().sendSuccess(() -> Component.literal("No Fabric mod was left out."), false);
+							if (rows.isEmpty()) CommandFeedback.success(context.getSource(), () -> "No Fabric mod was left out.");
 							for (Report.ModRow row : rows.subList(0, Math.min(rows.size(), MAX_LISTED))) {
 								String line = row.id() + (row.version().isEmpty() ? "" : " " + row.version()) + ": " + row.detail();
-								context.getSource().sendSuccess(() -> Component.literal(line), false);
+								CommandFeedback.success(context.getSource(), () -> line);
 							}
 							if (rows.size() > MAX_LISTED) {
-								context.getSource().sendSuccess(() -> Component.literal("... and " + (rows.size() - MAX_LISTED) + " more: see logs/" + Report.FILE_NAME), false);
+								CommandFeedback.success(context.getSource(), () -> "... and " + (rows.size() - MAX_LISTED) + " more: see logs/" + Report.FILE_NAME);
 							}
 							return rows.size();
 						}))
@@ -64,7 +64,7 @@ public final class FabricatedCommands {
 							String id = StringArgumentType.getString(context, "mod");
 							List<Report.ModRow> rows = state.report().mods().stream().filter(r -> r.id().equals(id)).toList();
 							if (rows.isEmpty()) context.getSource().sendFailure(Component.literal("No Fabric mod " + id + " was found."));
-							for (Report.ModRow row : rows) context.getSource().sendSuccess(() -> Component.literal(why(row)), false);
+							for (Report.ModRow row : rows) CommandFeedback.success(context.getSource(), () -> why(row));
 							return rows.size();
 						})))
 				.then(toggle("disable", true, state, local))
@@ -73,7 +73,7 @@ public final class FabricatedCommands {
 						.requires(local)
 						.executes(context -> {
 							state.writeReport();
-							context.getSource().sendSuccess(() -> Component.literal("Wrote logs/" + Report.FILE_NAME), false);
+							CommandFeedback.success(context.getSource(), () -> "Wrote logs/" + Report.FILE_NAME);
 							return 1;
 						})));
 	}
@@ -95,8 +95,8 @@ public final class FabricatedCommands {
 				context.getSource().sendFailure(Component.literal("Could not change config/" + FabricatedConfig.FILE_NAME + ": " + e.getMessage()));
 				return 0;
 			}
-			context.getSource().sendSuccess(() -> Component.literal("Fabric mod " + id + " will be " + (disabled ? "disabled" : "enabled")
-					+ " from the next launch (config/" + FabricatedConfig.FILE_NAME + ")."), false);
+			CommandFeedback.success(context.getSource(), () -> "Fabric mod " + id + " will be " + (disabled ? "disabled" : "enabled")
+					+ " from the next launch (config/" + FabricatedConfig.FILE_NAME + ").");
 			return 1;
 		}));
 	}
