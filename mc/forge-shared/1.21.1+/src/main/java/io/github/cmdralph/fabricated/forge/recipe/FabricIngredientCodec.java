@@ -1,16 +1,21 @@
 package io.github.cmdralph.fabricated.forge.recipe;
 
+import com.mojang.datafixers.util.Pair;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.DynamicOps;
+
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.world.item.crafting.Ingredient;
 
 /**
- * A Fabric mod's own ingredient on the network on Forge 52 and 61 to 66 (CORPUS-85, NET-13). Forge's patch makes
- * {@code Ingredient.CONTENTS_STREAM_CODEC} write each ingredient through its {@code serializer()}, which throws for a
- * subclass that doesn't override it. A Fabric mod's subclass never does, because Fabric has no such method: Fabric
- * API's custom ingredients ({@code CustomIngredientImpl}) are one. So its recipe sync threw on any recipe with one, and
- * the player's connection to the world they joined dropped.
+ * A Fabric mod's own ingredient on the network and as JSON on Forge 52 and 61 to 66 (CORPUS-85, NET-13). Forge's
+ * patch makes {@code Ingredient.CONTENTS_STREAM_CODEC} write each ingredient through its {@code serializer()}, which
+ * throws for a subclass that doesn't override it. A Fabric mod's subclass never does, because Fabric has no such method:
+ * Fabric API's custom ingredients ({@code CustomIngredientImpl}) are one. So its recipe sync threw on any recipe with
+ * one, and the player's connection to the world they joined dropped.
  *
  * <p>Such an ingredient is written as vanilla writes it: a marker, then vanilla's form, wrapped with Fabric API's
  * custom ingredient form as Fabric API wraps vanilla's {@code CONTENTS_STREAM_CODEC} on Fabric, so a Fabric API custom
@@ -19,8 +24,11 @@ import net.minecraft.world.item.crafting.Ingredient;
  * makes vanilla's and wraps it. Without the marker, Forge's reader would take the -1 that starts Fabric API's form for
  * its own. Every other ingredient is left to Forge's codec, and so are the bytes it writes.
  *
- * <p>Only a class of a Fabric mod's module that doesn't override {@code serializer()} is sent this way. A Forge mod's
- * subclass without one still gets Forge's error.
+ * <p>Forge's JSON codec writes ingredients through {@code serializer()} too: {@link #json} writes a Fabric mod's own one
+ * as vanilla's codec writes it (CORPUS-115).
+ *
+ * <p>Only a class of a Fabric mod's module that doesn't override {@code serializer()} is sent or written this way. A
+ * Forge mod's subclass without one still gets Forge's error.
  */
 public final class FabricIngredientCodec {
 	/**
@@ -58,6 +66,39 @@ public final class FabricIngredientCodec {
 		} catch (NoSuchMethodException e) {
 			return false;
 		}
+	}
+
+	/**
+	 * Forge's JSON codec of ingredients, writing a Fabric mod's own ingredient as upstream writes it (CORPUS-115). Forge's
+	 * patch makes {@code Ingredient.CODEC} (and Forge 52's {@code CODEC_NONEMPTY}) write any ingredient but vanilla's own
+	 * class through its {@code serializer()}, which throws for a Fabric mod's subclass: a mod writing a recipe holding
+	 * Fabric API's custom ingredient as JSON (Supplementaries' dynamic sign post recipes, a data generator) failed. Such an
+	 * ingredient is written by vanilla's codec, the one Forge's patch wraps, as on Fabric: on Forge 52 it carries Fabric
+	 * API's custom form, as upstream's hook of the method making it adds that; on Forge 61 to 66 upstream's hook wraps
+	 * Forge's whole codec, and a custom ingredient is written by that outer form before it reaches this one. Every other
+	 * ingredient is written by Forge's codec, and everything is read by it, as before.
+	 *
+	 * @param forge   the codec Forge's patch made around {@code vanilla}
+	 * @param vanilla the codec it wraps, vanilla's
+	 * @return the codec writing a Fabric mod's ingredient with {@code vanilla}
+	 */
+	public static Codec<Ingredient> json(Codec<Ingredient> forge, Codec<Ingredient> vanilla) {
+		return new Codec<>() {
+			@Override
+			public <T> DataResult<T> encode(Ingredient ingredient, DynamicOps<T> ops, T prefix) {
+				return (sentAsVanilla(ingredient) ? vanilla : forge).encode(ingredient, ops, prefix);
+			}
+
+			@Override
+			public <T> DataResult<Pair<Ingredient, T>> decode(DynamicOps<T> ops, T input) {
+				return forge.decode(ops, input);
+			}
+
+			@Override
+			public String toString() {
+				return "FabricIngredientJson[" + forge + "]";
+			}
+		};
 	}
 
 	/**
