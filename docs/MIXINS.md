@@ -1237,7 +1237,7 @@ Every Forge version's (43, 47, 52, 61 to 66), with its `UtilMixin` from the vers
 | `mc/forge/26.3/src/main/resources/fabricated-forge-advancement.mixins.json` | `io.github.cmdralph.fabricated.forge.advancement.mixin` | 26.3 | mixins 1 | 1 | — | none |
 | `mc/forge/26.3/src/main/resources/fabricated-forge-frapi-breaking.mixins.json` | `io.github.cmdralph.fabricated.forge.rendering.breaking` | 26.3 | client 1 | 1 | — | `FrapiMixinPlugin` |
 | `mc/forge/26.3/src/main/resources/fabricated-forge-loot.mixins.json` | `io.github.cmdralph.fabricated.forge.loot.mixin` | 26.3 | mixins 4 | 1 | — | none |
-| `mc/forge/26.3/src/main/resources/fabricated-forge-shutdown.mixins.json` | `io.github.cmdralph.fabricated.forge.shutdown.mixin` | 26.3 | client 1 | 1 | — | none |
+| `mc/forge/common26late/src/main/resources/fabricated-forge-shutdown.mixins.json` | `io.github.cmdralph.fabricated.forge.shutdown.mixin` | 26.2, 26.3 | client 1 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge-entity.mixins.json` | `io.github.cmdralph.fabricated.forge.entity.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 2 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge-interaction.mixins.json` | `io.github.cmdralph.fabricated.forge.interaction.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 1 | 1 | — | none |
 | `mc/forge/common/src/main/resources/fabricated-forge-screen.mixins.json` | `io.github.cmdralph.fabricated.forge.screen.mixin` | 1.21.11, 26.1.2, 26.2, 26.3 | client 2 | 1 | — | none |
@@ -1440,13 +1440,13 @@ Versions: 26.3 · package `io.github.cmdralph.fabricated.forge.loot.mixin` · re
 | mixins | ReloadableServerRegistriesMixin | mc/forge-shared/1.21.1+ (26.3) | n.m.server.ReloadableServerRegistries | @ModifyReturnValue → fabricated$afterReload | "reload" | RETURN | — | default |
 | mixins | ResourceManagerRegistryLoadTaskMixin | 26.3 (26.3) | n.m.resources.ResourceManagerRegistryLoadTask | @WrapOperation → fabricated$modifyLootTable | "/^lambda\$load\$\d+$/" | INVOKE `L…/RegistryLoadTask$PendingRegistration;loadFromResource(L…/Decoder;L…/RegistryOps;L…/ResourceKey;L…/Resource;)L…/Either;` | — | default |
 
-### `mc/forge/26.3/src/main/resources/fabricated-forge-shutdown.mixins.json`
+### `mc/forge/common26late/src/main/resources/fabricated-forge-shutdown.mixins.json`
 
 Versions: 26.3 · package `io.github.cmdralph.fabricated.forge.shutdown.mixin` · required=true · defaultRequire=1 · plugin=— · overwrites.requireAnnotations=—
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
-| client | MinecraftCloseMixin | 26.3 (26.3) | n.m.client.Minecraft | @Inject → fabricated$stopDefaultFileWatcher (night-config's default file watcher, Forge's copy a Fabric mod watches its config files with, stopped where Forge stops its own config watchers, CORPUS-116) | "close" | INVOKE `L…/ConfigTracker;forceUnload()V` shift=AFTER remap=false | — | default |
+| client | MinecraftCloseMixin | common26late (26.2, 26.3) | n.m.client.Minecraft | @Inject → fabricated$stopDefaultFileWatcher (night-config's default file watcher, Forge's copy a Fabric mod watches its config files with, stopped where Forge stops its own config watchers, CORPUS-116) | "close" | INVOKE `L…/ConfigTracker;forceUnload()V` shift=AFTER remap=false | — | default |
 
 ### `mc/forge/common/src/main/resources/fabricated-forge-entity.mixins.json`
 
