@@ -12,7 +12,7 @@ import net.minecraft.server.packs.repository.PackRepository;
  * and leaves the pack unselected for the reason {@link TestCompat#PROVIDERS_DEFAULT_PACK} gives, the check is skipped.
  */
 public final class DefaultResourcePackTest implements ClientModInitializer {
-	private static final String PACK = "fabricated_testmod:extra_assets";
+	private static final String PACK = TestCompat.builtinPackId("fabricated_testmod", "extra_assets");
 
 	@Override
 	public void onInitializeClient() {

@@ -8,7 +8,7 @@ import net.minecraft.world.level.storage.loot.functions.LootItemFunction;
 import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import net.minecraft.world.level.storage.loot.providers.number.NumberProvider;
 
-/** Stand-in, never packaged: vanilla's loot pool as the test mod's vanilla calls name it (1.20.1). */
+/** Stand-in, never packaged: vanilla's loot pool as the test mod's vanilla calls name it (1.19.2 and 1.20.1). */
 public class LootPool {
 	public LootPool(LootPoolEntryContainer[] entries, LootItemCondition[] conditions, LootItemFunction[] functions, NumberProvider rolls,
 			NumberProvider bonusRolls) {

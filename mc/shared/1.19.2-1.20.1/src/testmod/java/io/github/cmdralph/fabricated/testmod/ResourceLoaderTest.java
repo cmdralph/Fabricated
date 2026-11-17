@@ -96,7 +96,7 @@ public final class ResourceLoaderTest implements ModInitializer {
 		});
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-			boolean packEnabled = server.getPackRepository().getSelectedIds().contains(id("extra").toString());
+			boolean packEnabled = server.getPackRepository().getSelectedIds().contains(TestCompat.builtinPackId("fabricated_testmod", "extra"));
 			TestMod.LOGGER.info("FABRICATED-TEST resource loader state: order={}, store={}, builtinPackEnabled={}", orderOk, files, packEnabled);
 		});
 	}
