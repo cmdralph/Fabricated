@@ -4,7 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.junit.jupiter.api.Test;
 
@@ -164,6 +171,82 @@ class KnownLimitsTest {
 	@Test
 	void oneObjectRegisteredTwiceIsNotReg13() {
 		assertNull(KnownLimits.ofFailure(new IllegalArgumentException(registeredTwice("36b858fa", "36b858fa"))));
+	}
+
+	/** One line of the release's reports: the finding it prints, as pre-flight made it. */
+	private static final Pattern REPORTED = Pattern.compile("^[\\w-]+: (LEFT_OUT|FAIL) \\[(\\S+) (\\S+)] (.*?)(?: - (.*))?$");
+
+	private static PreflightFinding reported(String line) {
+		Matcher m = REPORTED.matcher(line);
+		assertTrue(m.matches(), line);
+		return new PreflightFinding(Severity.valueOf(m.group(1)), m.group(2), m.group(3), m.group(4), m.group(5) == null ? "" : m.group(5), "handler()V");
+	}
+
+	private record Reported(String loader, String limit, PreflightFinding finding) {
+	}
+
+	/** The lines of {@code release-left-out.txt}: each with its platform and the finding of the known limit it is, or none. */
+	private static List<Reported> releaseLines() throws IOException {
+		List<Reported> lines = new ArrayList<>();
+		try (BufferedReader in = new BufferedReader(new InputStreamReader(KnownLimitsTest.class.getResourceAsStream("release-left-out.txt"), StandardCharsets.UTF_8))) {
+			for (String line = in.readLine(); line != null; line = in.readLine()) {
+				if (line.startsWith("#")) continue;
+				String[] parts = line.split("\t", 3);
+				lines.add(new Reported(parts[0], parts[1], reported(parts[2])));
+			}
+		}
+		return lines;
+	}
+
+	/**
+	 * LIMIT-3: the documented limits of one mod's hooks, each matched on the release's own lines (Supplementaries' invoker
+	 * on NeoForge 21.1 and Forge 52, LEAVE-5; Additional Entity Attributes' water speed, FLUID-5; Reach Entity Attributes
+	 * and Porting Lib on Forge 47, ATTR-2 and HOOK-5; Ledger's campfire hook, LOCAL-6; OneConfig's key mapping accessor,
+	 * KEYMAP-1), where the report named none. The lines next to them stay as they were: Supplementaries' invoker on Forge
+	 * 47 (STRUCT-2), Porting Lib's hooks another limit names (SEAM-4, SEAM-6), its GUI utilities' failure (CORPUS-93) and
+	 * Additional Entity Attributes' dig speed hook.
+	 */
+	@Test
+	void theDocumentedLimitsOfOneModsHooksAreNamedOnTheReleasesLines() throws IOException {
+		List<Reported> lines = releaseLines();
+		assertEquals(71, lines.size());
+		for (Reported r : lines) {
+			String limit = KnownLimits.ofFinding(r.loader(), r.finding());
+			if (r.limit().equals("-")) {
+				assertNull(limit, r.finding().toString());
+			} else {
+				assertTrue(limit != null && limit.endsWith("(" + r.limit() + ")"), r.finding() + " -> " + limit);
+			}
+		}
+	}
+
+	/** Each limit of one mod's hooks names only that mod's mixins, on the platforms it is on, for the reason it gives. */
+	@Test
+	void aLimitOfOneModsHooksMatchesNoOtherMixinPlatformOrReason() throws IOException {
+		for (Reported r : releaseLines()) {
+			PreflightFinding f = r.finding();
+			if (r.limit().equals("-") || r.limit().startsWith("SEAM") || r.limit().equals("STRUCT-2")) continue;
+			PreflightFinding otherMod = new PreflightFinding(f.severity(), "other.mixins.json", "com.example.mixin." + f.mixin().substring(f.mixin().lastIndexOf('.') + 1),
+					f.message(), f.suggestion(), f.handler());
+			assertNull(KnownLimits.ofFinding(r.loader(), otherMod), otherMod.toString());
+			PreflightFinding otherReason = new PreflightFinding(f.severity(), f.config(), f.mixin(), "@Inject in tick expects @At(\"INVOKE\", target="
+					+ "\"Lnet/minecraft/world/entity/Entity;tick()V\"), which does not occur in that method", "", f.handler());
+			assertNull(KnownLimits.ofFinding(r.loader(), otherReason), otherReason.toString());
+		}
+		Reported keymap = releaseLines().stream().filter(r -> r.limit().equals("KEYMAP-1")).findFirst().orElseThrow();
+		assertNull(KnownLimits.ofFinding("Forge", keymap.finding()), "Forge keeps vanilla's map");
+		for (Reported forge47 : releaseLines().stream().filter(r -> r.limit().equals("ATTR-2") || r.limit().equals("HOOK-5")).toList()) {
+			assertNull(KnownLimits.ofFinding("NeoForge", forge47.finding()), forge47.finding().toString());
+		}
+		// Porting Lib's hook of a game method in Mojang's names is another version's, where Forge's code isn't Forge 47's.
+		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.LEFT_OUT, "porting_lib_base.mixins.json",
+				"io.github.fabricators_of_create.porting_lib.mixin.common.ShapedRecipeMixin", "@ModifyConstant in patternFromJson expects the constant 3, which"
+						+ " does not occur in that method", "Forge or this Minecraft version changed the method body", "handler()V")));
+		// Supplementaries' other invoker in the mixin, and another mixin's invoker of the method, are none.
+		assertNull(KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.LEFT_OUT, "supplementaries.mixins.json",
+				"net.mehvahdjukaar.supplementaries.mixins.fabric.FireBlockAccessor", "@Invoker target method canBurn(Lnet/minecraft/world/level/block/state/BlockState;)Z"
+						+ " does not exist in net.minecraft.world.level.block.FireBlock", "The method was renamed or removed by NeoForge or this Minecraft version.",
+				"invokeCanBurn(Lnet/minecraft/world/level/block/state/BlockState;)Z")));
 	}
 
 	@Test

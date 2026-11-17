@@ -117,6 +117,14 @@ final class MixinNames {
 	static final String BRIDGE_SETTER = "fabricated$set$";
 
 	/**
+	 * The prefix of a method Fabricated's in-game mod adds to a game class for a method of it the platform gave other
+	 * parameters, followed by the method's name: it takes vanilla's parameters and calls the platform's method so that it
+	 * does what vanilla's does, and an {@code @Invoker} of vanilla's method invokes it instead
+	 * ({@code MixinRepairs.changedMethodBridge}, LEAVE-5).
+	 */
+	static final String BRIDGE_INVOKER = "fabricated$invoke$";
+
+	/**
 	 * The prefixes of a seam Fabricated's in-game mod adds to a game class for a method of it the platform never calls
 	 * (Forge 47's GUI overrides vanilla's HUD method), followed by that method's name, with its descriptor: Fabricated's
 	 * code calls the start seam where the platform's override starts and the end seam where it returns, and Fabric mods'
