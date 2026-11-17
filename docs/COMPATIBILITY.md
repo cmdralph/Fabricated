@@ -2369,6 +2369,16 @@ instead.
 - **Data generation only.** Removing entries through a Fabric tag appender, Fabric's key sort orders in generated files,
   and, by version, the advancement builder's Fabric interface and vanilla's block loot provider limited to vanilla's
   blocks; a Fabric model provider also writes item definitions for other mods' block items.
+- **Forge 43 (Minecraft 1.19.2).** The hooks this list names for Forge 47 are left out on Forge 43 too, where Forge's
+  code is the same: the recipe remainder hook, `BLOCK_ENTITY_UNLOAD` on the client, the remapping of block and item
+  colours and particles by id, upgrading a world from before 1.18 with other mods' structures, a sound instance's own
+  audio stream, a fluid render handler's overlay sprite beside glass or leaves, the injectors in an interface mixin
+  Fabricated doesn't apply itself (Forge 43's Mixin is 0.8.5 too) and hooks inside the HUD method but at its start and
+  end. Beyond those, Fabricated doesn't bridge Fabric's renderer API there: Indigo's hooks miss Forge's chunk section
+  compiler and block renderer, which call Forge's overloads taking model data and a render type, and nothing draws a
+  Fabric block model with its own emitter (one that isn't a vanilla adapter) in their place, so such a model is drawn
+  from the quads it gives Forge's renderer: one wrapping another model, as connected-texture models do, shows the
+  wrapped model's quads, and one with no quads of its own shows nothing. The renderer API test mod doesn't run there.
 
 **Known limits** (the report says so where each shows, with its finding):
 
