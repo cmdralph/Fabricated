@@ -56,6 +56,9 @@ python3 -B -m unittest discover -s ci -p 'test_*.py'
 CI is one workflow, `.github/workflows/ci.yml`, the same on every branch; it runs the platform the branch holds. Each
 push to a working branch gets the unit tests and its fast job (one touched version booted on a server); a pull request
 into `main`, `forge` or `forge-legacy` runs the full matrix for the versions it touches, and a run by hand every version.
+Once a week, `.github/workflows/weekly.yml` (on `main`) starts that run by hand, with the extended runs, on each of the
+three branches' heads, so that a new loader build, a Fabric mod's new release or a moved download host shows up while
+nothing is pushed.
 The full matrix builds each version, boots real dedicated servers and starts real clients headlessly into a
 singleplayer world (HeadlessMC under Xvfb), with the test mods, Fabric API and other people's mods (`ci/runs.tsv`), and
 checks each run against `ci/checks.tsv`. A check a platform or version doesn't pass is listed there as not applying,
