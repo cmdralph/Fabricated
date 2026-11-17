@@ -15,7 +15,6 @@ import io.github.cmdralph.fabricated.testmod.TestMod;
 import net.minecraft.client.KeyboardHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.events.GuiEventListener;
-import net.minecraft.client.gui.screens.Screen;
 
 /**
  * A wrapper of the {@code GuiEventListener.charTyped} call vanilla's {@code KeyboardHandler.charTyped} lambdas make,
@@ -24,6 +23,7 @@ import net.minecraft.client.gui.screens.Screen;
  * its lambdas (one char, and one taking two, a surrogate pair), as GLFW's callback sends them, to a screen of the check's
  * own ({@link CharProbeScreen}) it shows the handler meanwhile, so that no screen of the game's gets them (a world's
  * name box would): the wrapper must get each with that screen as the listener, and its original call must reach it.
+ * The handlers keep no state of the mixin's own, as owo-lib's don't: the probe keeps it.
  */
 @Mixin(KeyboardHandler.class)
 public abstract class ScreenCharTypedMixin {
@@ -32,14 +32,6 @@ public abstract class ScreenCharTypedMixin {
 	private static final int ONE_CHAR = 'x';
 	@Unique
 	private static final int TWO_CHARS = 0x1F600;
-	/** The wrapper's calls with the probe screen as the listener: the one char, then each of the pair's two. */
-	@Unique
-	private static int fabricatedTest$wrapped;
-	@Unique
-	private static boolean fabricatedTest$sent;
-	/** The screen shown to the handler while the characters are sent. */
-	@Unique
-	private static Screen fabricatedTest$probe;
 
 	@Shadow
 	private void charTyped(long window, int codepoint, int modifiers) {
@@ -48,32 +40,22 @@ public abstract class ScreenCharTypedMixin {
 	@WrapOperation(method = {"lambda$charTyped$6", "lambda$charTyped$7"},
 			at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/components/events/GuiEventListener;charTyped(CI)Z"))
 	private static boolean fabricatedTest$typed(GuiEventListener listener, char typed, int modifiers, Operation<Boolean> original) {
-		if (listener != null && listener == fabricatedTest$probe) fabricatedTest$wrapped++;
+		CharProbeScreen.wrapped(listener);
 		return original.call(listener, typed, modifiers);
 	}
 
 	@Inject(method = "tick", at = @At("HEAD"))
 	private void fabricatedTest$send(CallbackInfo ci) {
 		Minecraft client = Minecraft.getInstance();
-		if (fabricatedTest$sent || client.getOverlay() != null) return;
-		fabricatedTest$sent = true;
+		if (CharProbeScreen.sent() || client.getOverlay() != null) return;
 		long window = client.getWindow().getWindow();
-		CharProbeScreen probe = new CharProbeScreen();
-		Screen shown = client.screen;
-		fabricatedTest$probe = probe;
-		client.screen = probe;
+		CharProbeScreen probe = CharProbeScreen.show(client);
 		try {
 			charTyped(window, ONE_CHAR, 0);
 			charTyped(window, TWO_CHARS, 0);
 		} finally {
-			client.screen = shown;
-			fabricatedTest$probe = null;
+			probe.hide(client);
 		}
-		if (fabricatedTest$wrapped == 3 && probe.received() == 3) {
-			TestMod.LOGGER.info("FABRICATED-TEST screen char typed wrapper OK");
-		} else {
-			TestMod.LOGGER.error("FABRICATED-TEST screen char typed wrapper FAILED: of the 3 characters sent, the wrapper saw {} with the screen, which got {}",
-					fabricatedTest$wrapped, probe.received());
-		}
+		probe.report(TestMod.LOGGER);
 	}
 }

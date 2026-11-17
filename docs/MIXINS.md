@@ -1129,7 +1129,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.testmod.neoforge` · 
 | client | HudLayersMixin | 1.21.1/testmod (1.21.1) | n.m.client.gui.Gui | @Inject → fabricatedTest$demo (whether vanilla's demo overlay layer, which the test replaced, still drew) | "renderDemoOverlay" | HEAD | — | default |
 | client | LayeredDrawLayersAccessor | 1.21.1/testmod (1.21.1) | n.m.client.gui.LayeredDraw | @Accessor → fabricatedTest$layers | "layers" |  | — | default |
 | client | ScreenCharTypedMixin | 1.21.1/testmod (1.21.1) | n.m.client.KeyboardHandler | @WrapOperation → fabricatedTest$typed (static, takes the listener as vanilla's call does and passes it on, as owo-lib's braid layers; pre-flight points it at the screen's call, LAMBDA-14) | "lambda$charTyped$6", "lambda$charTyped$7" | INVOKE `L…/GuiEventListener;charTyped(CI)Z` | — | default |
-| client | ScreenCharTypedMixin | 1.21.1/testmod (1.21.1) | n.m.client.KeyboardHandler | @Inject → fabricatedTest$send (sends a character of each lambda once, through the shadowed charTyped, to a probe screen it shows the handler meanwhile, and checks the wrapper and the screen saw each); @Unique fields fabricatedTest$wrapped, fabricatedTest$sent | "tick" | HEAD | — | default |
+| client | ScreenCharTypedMixin | 1.21.1/testmod (1.21.1) | n.m.client.KeyboardHandler | @Inject → fabricatedTest$send (sends a character of each lambda once, through the shadowed charTyped, to a probe screen it shows the handler meanwhile, and checks the wrapper and the screen saw each) | "tick" | HEAD | — | default |
 
 ### `mc/neoforge/common12111/src/testmod/resources/fabricated-testmod-neoforge.mixins.json`
 
@@ -2106,6 +2106,6 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.forgetest.mixin` · r
 | client | MouseHandlerInvoker | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.MouseHandler | @Invoker → fabricatedtest$onPress | "onPress" |  | — | default |
 | client | ParticleEngineProvidersAccessor | mc/forge-shared/1.20.1-1.21.1 (1.21.1) | n.m.client.particle.ParticleEngine | @Accessor → fabricatedtest$providers | "field_3835" remap=false |  | — | default |
 | client | ScreenCharTypedMixin | 1.21.1 (1.21.1) | n.m.client.KeyboardHandler | @WrapOperation → fabricatedForgeTest$typed (static, takes the listener as vanilla's call does and passes it on, as owo-lib's braid layers; pre-flight points it at Forge's onScreenCharTyped hook, LAMBDA-14) | "lambda$charTyped$6", "lambda$charTyped$7" | INVOKE `L…/GuiEventListener;charTyped(CI)Z` | — | default |
-| client | ScreenCharTypedMixin | 1.21.1 (1.21.1) | n.m.client.KeyboardHandler | @Inject → fabricatedForgeTest$send (sends a character of each lambda once, through the shadowed charTyped, to a probe screen it shows the handler meanwhile, and checks the wrapper and the screen saw each); @Unique fields fabricatedForgeTest$wrapped, fabricatedForgeTest$sent, fabricatedForgeTest$probe | "tick" | HEAD | — | default |
+| client | ScreenCharTypedMixin | 1.21.1 (1.21.1) | n.m.client.KeyboardHandler | @Inject → fabricatedForgeTest$send (sends a character of each lambda once, through the shadowed charTyped, to a probe screen it shows the handler meanwhile, and checks the wrapper and the screen saw each) | "tick" | HEAD | — | default |
 
 ---
