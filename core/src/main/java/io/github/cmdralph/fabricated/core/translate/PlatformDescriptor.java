@@ -71,6 +71,12 @@ public interface PlatformDescriptor {
 			return false;
 		}
 
+		/** No: Forge runs Mixin itself, which names a mixin by its config alone and no mod in its handlers. */
+		@Override
+		public boolean mixinNamesMods() {
+			return false;
+		}
+
 		/**
 		 * No: Forge 47 to 66 read the lists in {@code forge}'s namespace, decode only the modifiers a list names, and read
 		 * no {@code neoforge:conditions} (their {@code LootModifierManager}). The stubs only broke the {@code forge} lists,
@@ -180,6 +186,15 @@ public interface PlatformDescriptor {
 
 	/** Whether the platform's loader adds enum constants from the file a descriptor names (ENUM-1). */
 	default boolean enumExtensions() {
+		return true;
+	}
+
+	/**
+	 * Whether the platform's Mixin names a mixin's mod, in its messages ({@code <config>:<mixin> from mod <id>}) and in
+	 * the handlers it merges ({@code handler$<id>$<mod id>$<name>}): Fabric's does, which NeoForge runs, so NeoForge's by
+	 * default.
+	 */
+	default boolean mixinNamesMods() {
 		return true;
 	}
 

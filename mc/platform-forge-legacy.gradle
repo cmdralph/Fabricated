@@ -150,7 +150,10 @@ def gameModMixins = [
         'fabricated-forge-content.mixins.json',
         // Fabric's renderer API in Forge's chunk section compiler and block renderers (task 4, R5), with FRAPI rule 8's
         // guard: only with Fabric API's renderer installed (its plugin).
-        'fabricated-forge-frapi.mixins.json']
+        'fabricated-forge-frapi.mixins.json',
+        // Every Forge version's (mc/forge-shared): the hooks that see the failures the game stops on, the crash report,
+        // mod loading's crash report and the worker threads' (APPLY-3).
+        'fabricated-forge-diagnostics.mixins.json']
 dependencies {
     annotationProcessor "org.spongepowered:mixin:${project.mixin_processor_version}:processor"
     // The in-game mod's own mixins use MixinExtras' injectors, which the nested mixinextras-forge (below) provides. Its
@@ -161,6 +164,11 @@ dependencies {
 }
 def gameModRefmap = mixin.add(sourceSets.main, 'fabricated-forge.refmap.json')
 gameModMixins.each { mixin.config(it) }
+// The configs every Forge version shares (mc/forge-shared) name no refmap, which Forge 52 and later need none of: here
+// they name the in-game mod's, whose SRG names Forge 47 runs the game in.
+tasks.named('processResources', ProcessResources) {
+    filesMatching('fabricated-forge-diagnostics.mixins.json') { filter(namingRefmap('fabricated-forge.refmap.json')) }
+}
 
 // --- Forgified Fabric Loader's place (PROVIDER-2) -------------------------------------------------------------------
 // Forgified Fabric API for 1.20.1 nests Forgified Fabric Loader through Forge's jar-in-jar, and its packages are Fabric
