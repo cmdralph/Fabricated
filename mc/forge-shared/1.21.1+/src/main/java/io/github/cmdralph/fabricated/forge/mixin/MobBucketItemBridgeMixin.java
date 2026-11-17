@@ -8,11 +8,11 @@ import net.minecraft.world.item.MobBucketItem;
 
 /**
  * A mob bucket's entity type as vanilla keeps it, for Fabric mods' accessors of it (CORPUS-94, as on Forge 47). Forge
- * 52 replaces vanilla's {@code type} field with a supplier of the type, which its {@code getFishType} reads, where
- * Supplementaries' and Inventory Profiles Next's accessors read the field. Pre-flight points an accessor of the field
- * at the bridge here ({@code MixinRepairs.retypedFieldBridge} in core), named after the field's runtime name: Forge 52
- * runs in Mojang's names, where Forge 47's bridge is named after the field's SRG name. The field is final in vanilla,
- * and no setter is bridged.
+ * 52 and 61 to 66 replace vanilla's {@code type} field with a supplier of the type, which their {@code getFishType}
+ * reads, where Supplementaries' and Inventory Profiles Next's accessors read the field (ACC-5, LEAVE-5). Pre-flight
+ * points an accessor of the field at the bridge here ({@code MixinRepairs.retypedFieldBridge} in core), named after the
+ * field's runtime name: these Forge versions run in Mojang's names, where Forge 47's bridge is named after the field's
+ * SRG name. The field is final in vanilla, and no setter is bridged.
  */
 @Mixin(MobBucketItem.class)
 abstract class MobBucketItemBridgeMixin {
