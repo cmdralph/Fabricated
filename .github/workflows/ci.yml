@@ -157,7 +157,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          # Forge 47 runs on 17, ForgeGradle and 26.x on 25, the rest on 21 (the default here).
+          # Forge 43 and 47 run on 17, ForgeGradle and 26.x on 25, the rest on 21 (the default here).
           java-version: |
             17
             25

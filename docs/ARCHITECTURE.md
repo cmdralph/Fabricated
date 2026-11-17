@@ -100,13 +100,13 @@ Fabricated/
 │                            (1.21.11, 26.x), src/modlauncher for NeoForge 21.1's FML 4 on ModLauncher (1.21.1),
 │                            each behind its own Fml facade; forge-shared/ (both Forge platforms' discovery
 │                            services, which the Forge branches build: src/modern for Forge 52 and 61 to 66,
-│                            src/fml47 for Forge 47)
+│                            src/fml47 for Forge 43 and 47)
 ├── api/                     Fabricated's own small public API for NeoForge mods (see API.md)
 ├── mc/
 │   ├── mc.gradle            Shared build logic: source sets, shared source folders, jars, test mods
 │   ├── platform-*.gradle    Each platform's part of it (plugin settings, mod descriptor, game dependencies)
 │   ├── shared/              Sources every platform compiles: src (broken test mods, stand-ins), and the Fabric
-│   │                        test mods by Minecraft version (1.20.1+, 1.21.1+, 1.21.x, 26.x, 26.1-26.2, 26.2+, ...)
+│   │                        test mods by Minecraft version (1.19.2+, 1.20.1+, 1.21.1+, 1.21.x, 26.x, 26.2+, ...)
 │   ├── forge-shared/        Code both Forge platforms compile, by the Minecraft versions it serves; built on the
 │   │                        Forge branches, whose own folders are mc/forge and mc/forge-legacy
 │   ├── neoforge/
@@ -126,7 +126,7 @@ Fabricated/
 
 * **Output:** one jar per MC version, `fabricated-neoforge-<version>+mc<mc>.jar` (`fabricated-forge-` on the Forge branches). `core`, `loader`, `fabric-loader-api` and `api` are shaded in, all under the Fabricated-owned package `io.github.cmdralph.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
 * **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/neoforge/<version>` directory; code shared by every version lives once in `mc/neoforge/common`, by 1.21.1 and 1.21.11 in `mc/neoforge/common121`, by 1.21.11 and all 26.x in `mc/neoforge/common12111`, by all 26.x versions in `mc/neoforge/common26`, by 26.1.2 and 26.2 in `mc/neoforge/common26early`, and by 26.2 and 26.3 in `mc/neoforge/common26late` (see `sharedSources` in `mc/mc.gradle`).
-* `core`, `api` and `fabric-loader-api` target Java 17 bytecode so the *same* compiled classes run on every line, and on Minecraft 1.20.1 (`RESEARCH.md` §8, D2).
+* `core`, `api` and `fabric-loader-api` target Java 17 bytecode so the *same* compiled classes run on every line, and on Minecraft 1.19.2 and 1.20.1 (`RESEARCH.md` §8, D2).
 
 ---
 
@@ -229,7 +229,9 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    The game is seen as Fabricated's own mixins make it: the fields they add (vanilla's picture-in-picture renderer
    map, which NeoForge replaced) are part of the game classes pre-flight reads (`RestoredFields`), and so are the
    getters they add for a field the platform retyped (Forge 47's brewing mix), returning it as vanilla's type, which a
-   Fabric mod's accessors of the field invoke (CORPUS-37) and its own reads of the field call (CORPUS-107). A field or method a
+   Fabric mod's accessors of the field invoke (CORPUS-37) and its own reads of the field call (CORPUS-107), and the
+   vanilla methods they restore under their SRG names where the platform removed them (Forge 43's `ItemProperties`
+   overloads taking a clamped function, which Fabric API 0.77's invokers call). A field or method a
    target lacks but an installed Fabric jar's mixin adds to it (Fabric API's `updateSelection` on the creative screen)
    is not judged: Mixin merges every mixin's members into a class before any injector looks for its target. The
    adding mixin's class is recorded with its SHA-256 like the installed classes above.
@@ -582,4 +584,4 @@ Unknown keys produce a warning. Invalid values fall back to defaults with a warn
 
 ## 17. Licensing
 
-GPL-3.0 for Fabricated. `NOTICE` covers the Fabric Loader API types and vendored Fabric API modules (Apache-2.0, which GPL-3.0 can include) and the Intermediary mappings bundled for 1.20.1, 1.21.1 and 1.21.11 (CC0). No code from Connector, Launchpad (GPL-3.0), Adapter, FFAPI or Forgified Fabric Loader.
+GPL-3.0 for Fabricated. `NOTICE` covers the Fabric Loader API types and vendored Fabric API modules (Apache-2.0, which GPL-3.0 can include) and the Intermediary mappings bundled for 1.19.2, 1.20.1, 1.21.1 and 1.21.11 (CC0). No code from Connector, Launchpad (GPL-3.0), Adapter, FFAPI or Forgified Fabric Loader.

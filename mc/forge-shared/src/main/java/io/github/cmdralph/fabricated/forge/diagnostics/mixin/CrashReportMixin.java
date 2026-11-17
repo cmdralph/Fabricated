@@ -12,12 +12,12 @@ import io.github.cmdralph.fabricated.diagnostics.CrashDiagnostics;
 import io.github.cmdralph.fabricated.forge.diagnostics.LoadingErrors;
 
 /**
- * A crash report's throwable may say a Fabric mod's mixin failed as Mixin applied it, as an injector's critical
- * failure ({@code InjectionError}) says only there, past Mixin's error handlers: that mixin is recorded for the next
- * launch to leave out (APPLY-1). A report Forge makes as mod loading fails has the failures as its errors' causes
- * instead, which it holds aside ({@link LoadingErrors}). Where the throwable involves a Fabric mod, the report's details
- * start with Fabricated's diagnostics block, which is logged too ({@link CrashDiagnostics}); the rest of the report is
- * left as it is. Forge 47 to 66.
+ * A crash report's throwable may say a Fabric mod's mixin failed as Mixin applied it, as an injector's critical failure
+ * ({@code InjectionError}) says only there, past Mixin's error handlers: that mixin is recorded for the next launch to
+ * leave out (APPLY-1). A report Forge makes as mod loading fails has the failures as its errors' causes instead, which
+ * it holds aside ({@link LoadingErrors}). Where the throwable involves a Fabric mod, the report's details start with
+ * Fabricated's diagnostics block, which is logged too ({@link CrashDiagnostics}); the rest of the report is left as it
+ * is. Forge 43 to 66.
  */
 @Mixin(CrashReport.class)
 abstract class CrashReportMixin {
