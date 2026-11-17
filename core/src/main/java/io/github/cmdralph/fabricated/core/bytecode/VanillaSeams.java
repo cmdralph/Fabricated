@@ -37,7 +37,7 @@ import org.objectweb.asm.tree.VarInsnNode;
  * back so that Fabric mods' hooks of them apply (SEAM-1); and vanilla's calls a platform makes through its block state's
  * or its item stack's extension or a hook of its own, put back where the platform's code then does what vanilla's does
  * (SEAM-3's block breaking, SEAM-4's harvest checks, SEAM-6's item checks, SEAM-8's friction, sound type, piglin, sweep and
- * enchantment level calls, {@link VanillaCalls}, the table's second
+ * enchantment level calls, SEAM-13's shovel paths, {@link VanillaCalls}, the table's second
  * shape). Each {@link Seam} is a row: the
  * vanilla method, and the
  * platform's code at the places vanilla calls it, calls of the method's parameters joined by {@code &&}. Where a class
@@ -117,7 +117,7 @@ public final class VanillaSeams {
 	private VanillaSeams() {
 	}
 
-	/** Whether what the table puts back in the class (internal name) is vanilla's calls (SEAM-3, SEAM-4, SEAM-6, SEAM-8), not its methods. */
+	/** Whether what the table puts back in the class (internal name) is vanilla's calls (SEAM-3, SEAM-4, SEAM-6, SEAM-8, SEAM-13), not its methods. */
 	public static boolean putsBackCalls(String internalName) {
 		return VanillaCalls.CLASSES.contains(internalName);
 	}
@@ -151,7 +151,7 @@ public final class VanillaSeams {
 	}
 
 	/**
-	 * In how many places of the method, as read, vanilla's call {@code owner;name(desc)} is put back (SEAM-3, SEAM-4, SEAM-6, SEAM-8): each
+	 * In how many places of the method, as read, vanilla's call {@code owner;name(desc)} is put back (SEAM-3, SEAM-4, SEAM-6, SEAM-8, SEAM-13): each
 	 * of the platform's calls it stands in for, where vanilla's code makes it once; 0 where it isn't.
 	 */
 	public static int putBackPlaces(MethodNode method, String owner, String name, String desc) {
