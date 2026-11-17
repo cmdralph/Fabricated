@@ -197,6 +197,13 @@ final class MixinRepairs extends PreflightPart {
 							+ " targets a field " + loader + " gave another type or replaced in " + targets.get(0).name.replace('/', '.') + "; it invokes "
 							+ bridge + ", which Fabricated adds there to " + (bridge.startsWith(MixinNames.BRIDGE_SETTER) ? "set" : "get")
 							+ " what vanilla's field holds, as vanilla's type (CORPUS-37, CORPUS-94)", ""));
+				} else {
+					String bridge = changedMethodBridge(method, Annotations.find(method, MixinNames.INVOKER), targets, ctx);
+					if (bridge == null) continue;
+					changed = true;
+					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Invoker " + method.name + method.desc
+							+ " targets a method " + loader + " gave other parameters in " + targets.get(0).name.replace('/', '.') + "; it invokes "
+							+ bridge + ", which Fabricated adds there to call " + loader + "'s method as vanilla's does (LEAVE-5)", ""));
 				}
 			}
 			// The unique fields renamed, keyed name:desc as the mixin had them, for its nested classes' uses (CORPUS-95).
@@ -797,6 +804,32 @@ final class MixinRepairs extends PreflightPart {
 			method.invisibleAnnotations.remove(accessor);
 			method.invisibleAnnotations.add(invoker);
 		}
+		return bridge;
+	}
+
+	/**
+	 * Points an {@code @Invoker} of a vanilla method the platform gave other parameters at the method Fabricated's in-game
+	 * mod adds to the class for it ({@link MixinNames#BRIDGE_INVOKER}), which takes vanilla's parameters and calls the
+	 * platform's method so that it does what vanilla's does: Forge 61 and 64 give {@code LevelRenderer}'s
+	 * {@code extractVisibleBlockEntities} a frustum it culls the block entities by, which vanilla's doesn't, and Iris's
+	 * shadow pass invokes vanilla's (LEAVE-5). The invoker keeps its own name and descriptor, so the mod's calls are served
+	 * as before. Returns the bridge's name; or {@code null} and changes nothing when a target has the method the invoker
+	 * names, or hasn't the bridge with the invoker's descriptor.
+	 */
+	private static String changedMethodBridge(MethodNode method, AnnotationNode invoker, List<ClassNode> targets, Context ctx) {
+		String explicit = Annotations.value(invoker, "value") instanceof String s && !s.isEmpty() ? s : null;
+		String name = explicit != null ? explicit : MixinPreflight.inferInvokerName(method.name);
+		if (name == null || name.equals("<init>")) return null;
+		MemberRef ref = MemberRef.parse(ctx.resolve(name));
+		String methodName = ref.nameOr(name);
+		String desc = ref.methodDescOr(method.desc);
+		String bridge = MixinNames.BRIDGE_INVOKER + methodName;
+		for (ClassNode target : targets) {
+			if (PreflightAsm.declares(target, methodName, desc)) return null; // the invoker's own method: nothing to repair
+			if (!declaresPublicInstance(target, bridge, method.desc)) return null;
+		}
+		// Not in the mod's refmap: the bridge's name is the same in every namespace.
+		invoker.values = new ArrayList<>(List.of("value", bridge, "remap", Boolean.FALSE));
 		return bridge;
 	}
 
