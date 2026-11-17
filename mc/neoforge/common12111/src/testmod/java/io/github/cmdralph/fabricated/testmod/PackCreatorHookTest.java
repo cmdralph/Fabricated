@@ -9,7 +9,6 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.impl.resource.pack.FabricPack;
 import net.fabricmc.fabric.impl.resource.pack.ModResourcePackCreator;
 import net.minecraft.resources.Identifier;
-import net.minecraft.server.packs.PackResources;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.repository.Pack;
 
@@ -61,9 +60,7 @@ public final class PackCreatorHookTest {
 		Pack builtin = null;
 		for (Pack pack : offered) {
 			if (pack.getId().equals(BUILTIN_PACK)) builtin = pack;
-			try (PackResources resources = pack.open()) {
-				ownData |= resources.getResource(PackType.SERVER_DATA, OWN_DATA) != null;
-			}
+			ownData |= PackContents.holds(pack, PackType.SERVER_DATA, OWN_DATA);
 		}
 		if (!offered.isEmpty() && !ownData) failed.add("none of its " + offered.size() + " packs holds the test mod's " + OWN_DATA);
 		if (!offered.isEmpty() && builtin == null) failed.add("it offers no " + BUILTIN_PACK);
