@@ -11,7 +11,7 @@ pluginManagement {
         id 'net.neoforged.moddev' version providers.gradleProperty('moddevgradle_version').get()
         // Forge up to 1.20.1 (mc/forge-legacy): ModDevGradle's legacyforge plugin, from the same jar.
         id 'net.neoforged.moddev.legacyforge' version providers.gradleProperty('moddevgradle_version').get()
-        // Minecraft Forge 61 and later (mc/forge).
+        // Minecraft Forge 52 and later (mc/forge).
         id 'net.minecraftforge.gradle' version providers.gradleProperty('forgegradle_version').get()
     }
 }

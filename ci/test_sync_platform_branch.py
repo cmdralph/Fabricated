@@ -31,7 +31,7 @@ class SyncTest(unittest.TestCase):
         git(self.repo, "commit", "-q", "-m", "main")
         git(self.repo, "checkout", "-q", "-b", "forge")
         git(self.repo, "rm", "-q", "-r", "mc/neoforge", "ci/neoforge")
-        write(self.repo, {"mc/forge/26.3/b.txt": "f\n", "ci/forge/platform.sh": "f\n"})
+        write(self.repo, {"mc/forge/26.3/b.txt": "f\n", "mc/platform-forge.gradle": "f\n", "ci/forge/platform.sh": "f\n"})
         git(self.repo, "add", "-A")
         git(self.repo, "commit", "-q", "-m", "forge")
         git(self.repo, "checkout", "-q", "main")
@@ -43,7 +43,7 @@ class SyncTest(unittest.TestCase):
         result = subprocess.run(["bash", str(SCRIPT), "forge", "main"], cwd=self.repo / "mc", env=ENV, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(git(self.repo, "ls-tree", "-r", "--name-only", "HEAD").split(),
-                         ["ci/forge/platform.sh", "mc/forge/26.3/b.txt", "shared.txt"])
+                         ["ci/forge/platform.sh", "mc/forge/26.3/b.txt", "mc/platform-forge.gradle", "shared.txt"])
         self.assertEqual(git(self.repo, "show", "HEAD:shared.txt"), "2\n")
         self.assertEqual(len(git(self.repo, "rev-list", "--parents", "-n", "1", "HEAD").split()), 3)
 
