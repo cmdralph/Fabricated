@@ -3,6 +3,35 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-17: Forge 43 for Minecraft 1.19.2 builds on the `forge-legacy` branch
+
+- **A second legacy Forge version:** `forge-legacy` builds Fabricated for Minecraft 1.19.2 on Forge 43.5.2
+  (`mc/forge-legacy/1.19.2`, the Gradle project `:mc:forge-legacy-1.19.2`, the jar
+  `fabricated-forge-<version>+mc1.19.2.jar`), beside Forge 47 (1.20.1). It isn't released and isn't in the support
+  matrix. What Forge 47 and 43 share is one copy: `mc/forge-legacy/common`, the `mc/forge-shared` and `mc/shared`
+  groups that start at 1.19.2, and the loader's `fml47` variant, whose descriptor has an entry per version.
+- **What it ships:** the seven Fabric API modules Fabricated ships natively on Forge 47 (base, biome, dimensions, key
+  bindings, loot v2, loot tables, particles), vendored from Fabric API 0.77.0+1.19.2, the last release for 1.19.2, and
+  its plan for the rest of 0.77's modules (`fabric-api-plan.json`). Forge Config API Port's Fabric API is version 4's
+  there, in Forge's own packages, as the port has it for 1.19.2. Fabric's renderer API isn't bridged on Forge 43
+  (`docs/COMPATIBILITY.md`, *Unsupported on Forge*).
+- **What Forge 43 changes, which Fabricated puts back:** vanilla's registries refused a Fabric mod's direct
+  registration while Forge's own were open (Forge 47 opens both); Fabric API 0.77's resource loader made the server stop
+  on Forge's game jar, and its mods' packs failed to build on Forge's pack constructor; Fabric's object builder needed
+  two `ItemProperties` methods Forge 43 replaced, without which it, and every Fabric mod needing it, didn't load on a
+  client: core's pre-flight now takes a vanilla method the in-game mod restores under its SRG name for the game class's
+  (`RestoredFields`); Fabric's flammable blocks of a non-flammable material didn't burn; Fabric's point-of-interest
+  helper couldn't add a block's states; Fabric's tooltip components threw where Forge gathers a tooltip's components;
+  a new world enabled a Fabric mod's optional built-in data packs; and Fabric's HUD callback, which Forge's GUI never
+  reached, fires where Forge's GUI ends its HUD drawing.
+- **How it was verified:** the 1.19.2 jar and test mods build (`ci/build.sh forge-legacy 1.19.2`), and CI's server,
+  client and mods parts pass locally with Fabric API 0.77.0, the checks 1.19.2 can't take (what vanilla 1.19.2 or
+  Fabric API 0.77 lacks, and the renderer API's) excluded with their reasons in `ci/checks.tsv`. Two new client checks
+  of the forge-legacy test mod, Fabric's tooltip component callback and a new world's optional data pack, pass on both
+  versions; 1.20.1 still builds and passes its server and client parts. Every Forge version's diagnostics config
+  (`mc/forge-shared`) serves Forge 43 too, its worker thread hook from `1.19.2-1.21.1`, and the four apply-failure
+  launches pass on 1.19.2. 1.19.2's benchmark baselines are recorded (`ci/bench.tsv`).
+
 ## 2026-11-17: Fabric ingredients as JSON on Forge, Farmer's Delight on Forge 52 clients, REI's and Puzzles Lib's packs on NeoForge, Forge 66 clients exit as they close
 
 - **CORPUS-115** (P2), fixed: on Forge 52, Fabric API's custom ingredients couldn't be written as JSON ("Modders must
