@@ -191,6 +191,8 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		Path handedGameMod = gameModJar;
 		FabricApiPlan plan;
 		Pipeline.Result result;
+		// Where a Fabric mod's mixin that fails as Mixin applies it is recorded, for the next launch to leave out (APPLY-1).
+		Pipeline.Diagnostics diagnostics;
 		// Vanilla's game jar, which pre-flight reads to tell where Forge's patches moved an injection point (VANILLA-1).
 		List<SafeArchive> vanillaJars = new ArrayList<>();
 		// Closed once the pipeline is done with it, however it ends.
@@ -279,6 +281,7 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 					new String[0], ForgeStack.descriptor(mcVersion));
 
 			result = Pipeline.run(input).alsoProvidedElsewhere(providedModules);
+			diagnostics = Pipeline.diagnostics(input);
 			loaderCopiesLeftOut.forEach(n -> result.report().line("Fabric API providers", n));
 			providerNotes.forEach(n -> result.report().line("Fabric API providers", n));
 			if (standDown != null && !standDown.isEmpty()) {
@@ -295,7 +298,7 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		boolean addGameMod = gameModJar != null;
 		boolean entrypointsRun = devGameMod.isPresent() || addGameMod;
 		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), entrypointsRun);
-		FabricatedState state = new FabricatedState(result, logsDir, api);
+		FabricatedState state = new FabricatedState(result, logsDir, api, diagnostics);
 		FabricatedState.set(state);
 		ApiHolder.install(api);
 		// The injection points pre-flight may name in Fabric mods' mixins, before Mixin reads them as the game's classes load.
@@ -326,7 +329,7 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		}
 		if (!refused.isEmpty()) {
 			// Nor may its interfaces be injected into game classes: they would fail to load, with the class missing.
-			state = new FabricatedState(result.without(refused), logsDir, api);
+			state = new FabricatedState(result.without(refused), logsDir, api, diagnostics);
 			FabricatedState.set(state);
 		}
 		if (addGameMod) {
