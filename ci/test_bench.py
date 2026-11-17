@@ -16,8 +16,8 @@ spec.loader.exec_module(bench)
 
 HEADER = "platform\tminecraft\tmetric\tbaseline\twhy\n"
 # Every platform's versions, which ci/bench.tsv must hold a row of each gated metric for.
-MATRIX = {"neoforge": ("1.21.1", "1.21.11", "26.1.2", "26.2", "26.3"), "forge": ("1.21.11", "26.1.2", "26.2", "26.3"),
-          "forge-legacy": ("1.20.1", "1.21.1")}
+MATRIX = {"neoforge": ("1.21.1", "1.21.11", "26.1.2", "26.2", "26.3"), "forge": ("1.21.1", "1.21.11", "26.1.2", "26.2", "26.3"),
+          "forge-legacy": ("1.20.1",)}
 GATED = ("discovery-alloc", "discovery-alloc-cached", "heap")
 
 

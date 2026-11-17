@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 import plan
+from test_bench import MATRIX
 
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("check_log", HERE / "check-log.py")
@@ -203,7 +204,8 @@ class ManifestTest(unittest.TestCase):
             for platform in PLATFORMS:
                 words = r[platform].split()
                 self.assertTrue(all(w == "*" or re.fullmatch(r"!?\d+(\.\d+)+", w) for w in words), (r, platform))
-                if words and words != ["*"]:
+                # A row that leaves out a version the platform has (test_bench's MATRIX) says why.
+                if words and not all(plan.applies(r, platform, version) for version in MATRIX[platform]):
                     self.assertTrue(re.search(rf"(^|; ){platform}( [\d.]+)?: ", r["why_not"]),
                                     f"{r.get('id') or r['run']}: no reason for where it doesn't apply on {platform}")
 
@@ -219,7 +221,7 @@ class ManifestTest(unittest.TestCase):
                 self.assertRegex(token, r"^(-testmods|fabric-api|testmod:\w+|modrinth:(fabric|neoforge|forge):[\w@.,{}-]+|corpus(:advanced)?"
                                         r"|drop:\S+|standins(:own-loader)?|connector|fabricated-copy|energy|unreadable-pack|seed:\S+|reuse:\S+)$", r["run"])
         for platform in PLATFORMS:
-            for version in ("1.20.1", "1.21.1", "1.21.11", "26.1.2", "26.2", "26.3"):
+            for version in MATRIX[platform]:
                 names = [r["run"] for r in self.runs if plan.applies(r, platform, version)]
                 self.assertEqual(len(names), len(set(names)), f"a run twice on {platform} {version}")
 
