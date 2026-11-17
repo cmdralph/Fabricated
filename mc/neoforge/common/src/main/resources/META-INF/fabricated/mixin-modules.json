@@ -76,6 +76,7 @@
     "ServerCommonPacketListenerImplMixin": ["fabric-networking-api-v1"],
     "ServerConfigurationPacketListenerImplMixin": ["fabric-networking-api-v1"],
     "ServerLoginPacketListenerImplMixin": ["fabric-networking-api-v1"],
+    "ServerMainMixin": [],
     "ServerPayloadSendMixin": ["fabric-networking-api-v1"],
     "ServerPlayerGameModeMixin": ["fabric-events-interaction-v0"],
     "ServerPlayerMenuMixin": ["fabric-menu-api-v1", "fabric-screen-handler-api-v1"],

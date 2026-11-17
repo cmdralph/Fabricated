@@ -64,6 +64,41 @@ class MixinFailuresTest {
 		assertTrue(named.reason().startsWith("InjectionError: Critical injection failure"), named.reason());
 	}
 
+	/** The impossible-mixin test mod on Forge, whose Mixin names a mixin by its config alone: its config tells the mod. */
+	@Test
+	void forgesMixinNamesNoModAndTheConfigIsKept() {
+		Named named = MixinFailures.find(List.of(
+				new Thrown(TRANSFORMER_ERROR, "An unexpected critical error was encountered"),
+				new Thrown(APPLY_ERROR, "Mixin [fabricated-testmod-badmixin.mixins.json:ImpossibleMixin] from phase [DEFAULT] in config"
+						+ " [fabricated-testmod-badmixin.mixins.json] FAILED during APPLY"),
+				new Thrown(INVALID_INJECTION, "Critical injection failure: @Inject annotation on fabricatedTest$never could not find any targets matching"
+						+ " 'fabricatedMethodThatDoesNotExist' in net/minecraft/server/MinecraftServer. Using refmap fabricated-testmod-badmixin.refmap.json"
+						+ " [INJECT_PREPARE Applicator Phase -> fabricated-testmod-badmixin.mixins.json:ImpossibleMixin -> Prepare Injections ->"
+						+ " handler$zdp000$fabricatedTest$never(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V]")));
+		assertNotNull(named);
+		assertEquals("fabricated-testmod-badmixin.mixins.json:ImpossibleMixin", named.mixin());
+		assertEquals("fabricated-testmod-badmixin.mixins.json", named.config());
+		assertNull(named.platformModId());
+		assertTrue(named.reason().startsWith("InvalidInjectionException: Critical injection failure: @Inject annotation"), named.reason());
+
+		named = MixinFailures.find(List.of(new Thrown(INJECTION_ERROR, "Critical injection failure: Callback method fabricatedTest$never("
+				+ "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V in fabricated-testmod-badmixin.mixins.json:UnmatchedCallMixin failed"
+				+ " injection check, (0/1) succeeded. Scanned 0 target(s). Using refmap fabricated-testmod-badmixin.refmap.json")));
+		assertNotNull(named);
+		assertEquals("fabricated-testmod-badmixin.mixins.json:UnmatchedCallMixin", named.mixin());
+		assertNull(named.platformModId());
+	}
+
+	/** A cause naming a mixin whose name the first one's starts with is no message of the first's. */
+	@Test
+	void theReasonIsAMessageNamingThatMixin() {
+		Named named = MixinFailures.find(List.of(
+				new Thrown(APPLY_ERROR, "Mixin [a.mixins.json:Foo] from phase [DEFAULT] in config [a.mixins.json] FAILED during APPLY"),
+				new Thrown(INVALID_INJECTION, "broken in a.mixins.json:FooBar")));
+		assertNotNull(named);
+		assertEquals("MixinApplyError: Mixin [a.mixins.json:Foo] from phase [DEFAULT] in config [a.mixins.json] FAILED during APPLY", named.reason());
+	}
+
 	@Test
 	void onlyMixinsOwnThrowablesAreBelieved() {
 		assertNull(MixinFailures.find(List.of(new Thrown("java.lang.IllegalStateException", "broken in examplemod.mixins.json:Foo from mod examplemod"))));
@@ -98,6 +133,19 @@ class MixinFailuresTest {
 		List<Failure> loaded = new Log(MixinFailures.file(game), LAUNCH).load(Map.of("polydium", SHA_A), notes);
 		assertEquals(List.of(failure), loaded);
 		assertTrue(notes.isEmpty(), notes.toString());
+	}
+
+	/** The class Mixin applied the mixin to, which its error handlers say, is kept for the next launch's report. */
+	@Test
+	void aRecordKeepsTheClassMixinAppliedItTo(@TempDir Path game) {
+		Log log = new Log(MixinFailures.file(game), LAUNCH);
+		List<String> notes = new ArrayList<>();
+		Failure failure = new Failure("ledger", SHA_A, "ledger.mixins.json:AnvilScreenHandlerMixin", "", "net/minecraft/world/inventory/AnvilMenu");
+		assertEquals("net.minecraft.world.inventory.AnvilMenu", failure.target());
+		assertTrue(log.record(failure, notes), notes.toString());
+		assertEquals(List.of(failure), log.load(Map.of("ledger", SHA_A), notes));
+		assertEquals("", new Failure("ledger", SHA_A, "ledger.mixins.json:A", "", "../not a class").target(), "what isn't a class name is dropped");
+		assertEquals("", new Named("ledger.mixins.json:A", null, null, null).target());
 	}
 
 	@Test

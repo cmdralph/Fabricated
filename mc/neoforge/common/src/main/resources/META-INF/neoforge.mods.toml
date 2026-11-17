@@ -52,7 +52,8 @@ requiredMods=["fabric_renderer_api_v1"]
 
 # This Minecraft version's own mixin configs (version_mixin_configs in mc/neoforge/<version>/gradle.properties):
 # fabric-biome-api-v1's biome source mixins, unchanged from upstream (with, before 26.3, the accessors Fabricated's
-# modifications on NeoForge's builders use).
+# modifications on NeoForge's builders use); from 1.21.11, fabric-resource-loader-v1's pack interface, upstream's
+# without its pack source tracking, which hides a pack Fabric hides as NeoForge hides its own.
 ${version_mixins}
 # Access for the vendored Fabric API sources (see the file).
 [[accessTransformers]]

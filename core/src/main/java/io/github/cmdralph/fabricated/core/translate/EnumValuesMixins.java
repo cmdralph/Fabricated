@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
@@ -63,6 +64,9 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassFiles;
  * <p>A mixin adds no public static fields, so the mod's reads of a constant as a field of the enum (Farmer's Delight's
  * {@code RecipeBookType.FARMERSDELIGHT_COOKING}) read it from a holder class generated next to the mixins instead
  * ({@link #holderClass}, {@link #withHeldConstants}).
+ * <p>The mixin's other methods (an injector into the enum, as Farmer's Delight's into Forge 52's
+ * {@code RecipeBookCategories}) stay in the mixin, where they use nothing of it that goes with its constants, as beside
+ * NeoForge's enum extension file (ENUM-9, CORPUS-65).
  */
 final class EnumValuesMixins {
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
@@ -86,8 +90,11 @@ final class EnumValuesMixins {
 	private static final String FIND_DESC = "([Ljava/lang/Enum;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Enum;";
 	private static final Set<String> ENUM_METHODS = Set.of("values", "valueOf", "$values", "<init>");
 
-	/** The mixin's replacement, and the delegate classes its constants' bodies became, by internal name. */
-	record Result(byte[] mixin, Map<String, byte[]> classes, List<String> constants) {
+	/**
+	 * The mixin's replacement, the delegate classes its constants' bodies became, by internal name, its constants, and
+	 * whether it keeps other methods of the enum mixin.
+	 */
+	record Result(byte[] mixin, Map<String, byte[]> classes, List<String> constants, boolean otherMethods) {
 	}
 
 	/**
@@ -122,13 +129,17 @@ final class EnumValuesMixins {
 			else if ((field.access & Opcodes.ACC_SYNTHETIC) == 0 || !field.name.equals(VALUES)) return null;
 		}
 		MethodNode clinit = null;
+		List<MethodNode> others = new ArrayList<>();
 		for (MethodNode method : mixin.methods) {
 			if (method.name.equals("<clinit>")) clinit = method;
 			else if (!ENUM_METHODS.contains(method.name) && Annotations.find(method.invisibleAnnotations, method.visibleAnnotations, SHADOW) == null) {
-				return null;
+				others.add(method);
 			}
 		}
 		if (clinit == null || constants.isEmpty() || !clinit.tryCatchBlocks.isEmpty()) return null;
+		// Its other methods (an injector into the enum) stay a mixin, as with NeoForge's enum extension file (CORPUS-65),
+		// where they use nothing of the mixin that goes with its constants (ENUM-9).
+		if (!EnumExtensions.staysMixin(others, mixin.name, target, constants)) return null;
 		String valuesArray = valuesField(target);
 		if (valuesArray == null) return null;
 
@@ -182,7 +193,7 @@ final class EnumValuesMixins {
 		}
 		if (insn == null || EnumExtensions.real(insn.getNext()) != null || made.size() != constants.size() || !movable(rest, mixin.name, constants)) return null;
 		boolean skipInit = target.interfaces.contains(FORGE_EXTENSIBLE_ENUM) && (!initReturns(target, game) || !initKeepsToEnum(target));
-		return new Result(mixinClass(mixin, target, valuesArray, made, rest, skipInit), delegates, List.copyOf(constants));
+		return new Result(mixinClass(mixin, target, valuesArray, made, rest, skipInit, others), delegates, List.copyOf(constants), !others.isEmpty());
 	}
 
 	/**
@@ -534,10 +545,11 @@ final class EnumValuesMixins {
 	 * The mixin replacing the enum mixin, under its name and {@code @Mixin}: a shadow of the enum's values array, a
 	 * constructor invoker per constructor used, and the injector adding the constants after the array is set. Where the
 	 * enum's own factories make the constants (Forge's), the injector calls them at the class initializer's end, and the
-	 * mixin has neither; with {@code skipInit}, a second injector skips Forge's {@code init} for the constants.
+	 * mixin has neither; with {@code skipInit}, a second injector skips Forge's {@code init} for the constants. The enum
+	 * mixin's other methods follow as they are ({@link #otherMethods}).
 	 */
 	private static byte[] mixinClass(ClassNode mixin, ClassNode target, String values, List<Constant> constants, List<AbstractInsnNode> rest,
-			boolean skipInit) {
+			boolean skipInit, List<MethodNode> others) {
 		String enumDesc = "L" + target.name + ";";
 		String arrayDesc = "[" + enumDesc;
 		boolean factories = constants.stream().allMatch(c -> c.factory() != null);
@@ -545,6 +557,7 @@ final class EnumValuesMixins {
 		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_SUPER, mixin.name, null, "java/lang/Object", null);
 		copyMixinAnnotation(mixin.invisibleAnnotations, cw, false);
 		copyMixinAnnotation(mixin.visibleAnnotations, cw, true);
+		otherMethods(cw, mixin.name, target.name, others, constants.stream().map(Constant::name).collect(Collectors.toSet()));
 		if (!factories) {
 			FieldVisitor shadow = cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, values, arrayDesc, null, null);
 			// Mixin's member annotations are kept at runtime, and it reads them from there (@Mutable makes the field non-final).
@@ -654,6 +667,27 @@ final class EnumValuesMixins {
 		restOf(mv, mixin, rest, slots);
 		cw.visitEnd();
 		return cw.toByteArray();
+	}
+
+	/**
+	 * The enum mixin's other methods, as compiled (an injector into the enum, as Farmer's Delight's into Forge 52's
+	 * {@code RecipeBookCategories}, ENUM-9): Mixin applies them as it would the enum mixin's, its references to the
+	 * mixin becoming the enum's, as for the methods that stay a mixin beside NeoForge's enum extension file (CORPUS-65).
+	 * The mixin adds no fields for the constants, so their reads as the mixin's fields read them as the enum's, which
+	 * the holder class then serves ({@link #withHeldConstants}).
+	 */
+	private static void otherMethods(ClassWriter cw, String mixin, String target, List<MethodNode> others, Set<String> constants) {
+		String enumDesc = "L" + target + ";";
+		for (MethodNode m : others) {
+			MethodVisitor out = cw.visitMethod(m.access, m.name, m.desc, m.signature, m.exceptions.toArray(new String[0]));
+			m.accept(new MethodVisitor(Opcodes.ASM9, out) {
+				@Override
+				public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
+					boolean constant = opcode == Opcodes.GETSTATIC && owner.equals(mixin) && constants.contains(name);
+					super.visitFieldInsn(opcode, constant ? target : owner, name, constant ? enumDesc : descriptor);
+				}
+			});
+		}
 	}
 
 	/**
