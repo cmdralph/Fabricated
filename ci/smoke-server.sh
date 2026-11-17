@@ -62,9 +62,9 @@ exec 3<>console
 pid=$!
 start=$SECONDS
 status=timeout
-# The server's main logs what stops its start and returns, and on Forge 61 to 66 the server's process may then live on
-# (its other threads): that line is a stop too.
-crashed() { grep -qE 'Preparing crash report|Game crashed!|Crash report saved to|FatalStartupException|Failed to start the minecraft server' server.out 2>/dev/null; }
+# A server whose main logged what stops its start and returned, or whose main thread died of it, has stopped too: on
+# Forge 52 and 61 to 66 its process may live on in its other threads, past the run's time limit.
+crashed() { grep -qE 'Preparing crash report|Game crashed!|Crash report saved to|FatalStartupException|Failed to start the minecraft server|Exception in thread "main"' server.out 2>/dev/null; }
 while kill -0 "$pid" 2>/dev/null; do
 	if crashed; then status=crashed; break; fi
 	if grep -q 'Done (' server.out 2>/dev/null; then status=started; break; fi
