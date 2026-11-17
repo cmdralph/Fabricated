@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: What works and what doesn't
+    url: https://github.com/cmdralph/Fabricated/blob/main/docs/COMPATIBILITY.md
+    about: The support matrix and the known limits, by loader and Minecraft version. Check here before reporting a mod.
