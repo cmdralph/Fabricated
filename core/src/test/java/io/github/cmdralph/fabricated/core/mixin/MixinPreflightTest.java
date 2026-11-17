@@ -6900,7 +6900,9 @@ class MixinPreflightTest {
 			mv.visitMaxs(0, 4);
 			mv.visitEnd();
 		});
-		MixinConfigFile config = MixinConfigFile.parse(config(true, "AtHelper"));
+		// Required, as SpruceUI's config: a point left missing would leave the wrapper out.
+		MixinConfigFile config = MixinConfigFile.parse("{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"AtHelper\"],"
+				+ "\"injectors\":{\"defaultRequire\":1}}");
 		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingHook(plain), HOOKS, hooks(plain, true))::get);
 		Map<String, byte[]> vanilla = Map.of(TARGET, targetClass());
 		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/AtHelper", original));
@@ -6914,6 +6916,12 @@ class MixinPreflightTest {
 		List<PreflightFinding> after = new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
 				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertTrue(after.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), after.toString());
+		// As Mixin: the point vanilla lacks too adds nothing, which the other makes up for; one vanilla has is a failure.
+		mod.put("com/example/mixin/AtHelper", original);
+		List<PreflightFinding> unmoved = new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(unmoved.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.message().contains("target=\"L" + TARGET + ";helper(I)V\"")), unmoved.toString());
+		assertTrue(unmoved.stream().noneMatch(f -> f.message().contains("ClientHooks")), unmoved.toString());
 		// Without vanilla's classes the other point may be the one Fabric applies: nothing moves.
 		assertTrue(preflight(neoForge, Map.of("com/example/mixin/AtHelper", original)::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());

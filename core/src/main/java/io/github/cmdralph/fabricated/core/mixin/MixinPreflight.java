@@ -1979,6 +1979,17 @@ public final class MixinPreflight extends PreflightPart {
 				hint != null ? hint : "The method was renamed or removed by " + ctx.changer(false) + ".");
 	}
 
+	/** Whether another of an injector's points than {@code at} is in one of {@code matched}, within its slice. */
+	private static boolean otherPointFound(AnnotationNode at, List<AnnotationNode> ats, List<AnnotationNode> slices, List<MethodNode> matched, Context ctx) {
+		for (AnnotationNode other : ats) {
+			if (other == at) continue;
+			for (MethodNode m : matched) {
+				if (InjectionPoints.pointsIn(List.of(other), slices, m, ctx) == Verdict.FOUND) return true;
+			}
+		}
+		return false;
+	}
+
 	/**
 	 * Why an injector's point is missing where vanilla's own method lacks it too (VANILLA-1's classes): no change of the
 	 * platform's, but code another Minecraft version, another platform or another mod has there (Supplementaries' hook of
@@ -2420,6 +2431,11 @@ public final class MixinPreflight extends PreflightPart {
 				if (v == Verdict.FOUND) verdict = Verdict.FOUND;
 				else if (v == Verdict.MISSING && verdict == Verdict.UNKNOWN) verdict = Verdict.MISSING;
 			}
+			// As Mixin: a point that finds nothing adds no injection, which the injector's other points make up for. One that
+			// vanilla's method lacks too, for another platform's code, is no failure where another is found (SpruceUI's wrapper
+			// names NeoForge's drawScreen beside vanilla's call; SCREEN-3).
+			if (verdict == Verdict.MISSING && slice == null && otherPointFound(at, Annotations.list(Annotations.value(ann, "at")), slices, matched, ctx)
+					&& vanillaLacksHint(target, matched, point, rawTarget == null ? null : ctx.resolve(rawTarget), ordinal, opcode, null, ctx) != null) continue;
 			if (verdict == Verdict.MISSING) {
 				ctx.injector(handler, require, injectorName + " in " + matched.get(0).name + " expects @At(\"" + point + "\""
 								+ (rawTarget != null ? ", target=\"" + ctx.resolve(rawTarget) + "\"" : "")
