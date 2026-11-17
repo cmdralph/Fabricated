@@ -1921,7 +1921,7 @@ by the server runs (the colours, screens, key mappings and config screens by the
 - **Config file watchers (Forge 61 to 66):** a Fabric mod watching its config file with night-config's default file
   watcher, as Forge Config API Port's Fabric build does, gets Forge's night-config, whose watcher runs a change on a
   thread that isn't a daemon, where the night-config the mod bundles runs it on a daemon thread (client run). On Forge
-  66, whose client no longer exits once its main thread ends, Fabricated stops that watcher as the client closes, where
+  65 and 66, whose clients no longer exit once their main thread ends, Fabricated stops that watcher as the client closes, where
   Forge stops its own config watchers, so the game exits; that thread kept it up until the client's shutdown watchdog
   wrote a crash report and stopped it (CORPUS-116).
 - **Failed initializers:** a Fabric mod whose entrypoint throws is named in the report and in Forge's loading warnings,
