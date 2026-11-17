@@ -41,6 +41,17 @@ class DiagnosticsBlockTest {
 	}
 
 	@Test
+	void fabricatedsVersionIsItsReleaseWithoutTheMinecraftVersionItsJarCarries() {
+		assertEquals("0.6.0-beta.3", new Launch("Forge", "61.2.4", "1.21.11", "0.6.0-beta.3+mc1.21.11").fabricatedVersion());
+		assertEquals("0.6.0-beta.3+mc1.21.1", new Launch("Forge", "61.2.4", "1.21.11", "0.6.0-beta.3+mc1.21.1").fabricatedVersion(),
+				"another version's suffix is no suffix of this launch's");
+		assertEquals("0.6.0-beta.3", new Launch("NeoForge", "21.1.265", "1.21.1", "0.6.0-beta.3").fabricatedVersion());
+		String block = DiagnosticsBlock.render(List.of(new Entry(LEDGER, "ledger.mixins.json:A", "", null)),
+				new Launch("NeoForge", "21.1.200", "1.21.1", "0.6.0-beta.3+mc1.21.1"), DiagnosticsBlock.LEFT_OUT);
+		assertTrue(block.contains("\nLoader:      NeoForge 21.1.200, Minecraft 1.21.1, Fabricated 0.6.0-beta.3\n"), block);
+	}
+
+	@Test
 	void aMixinWhoseTargetIsUnknownIsNamedAlone() {
 		String block = DiagnosticsBlock.render(List.of(new Entry(LEDGER, "ledger.mixins.json:A", "", null)), LAUNCH, DiagnosticsBlock.NOT_RECORDED);
 		assertTrue(block.contains("\nMixin:       ledger.mixins.json:A\n"), block);

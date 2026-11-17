@@ -52,8 +52,17 @@ public final class DiagnosticsBlock {
 	/** What Fabricated does for a mod's class in the stack trace. */
 	public static final String UNCHANGED = "changes nothing for this; " + REPORT + " says how it loaded the mod";
 
-	/** The launch: the loader and its build, Minecraft's and Fabricated's versions. */
+	/**
+	 * The launch: the loader and its build, Minecraft's and Fabricated's versions. Fabricated's is its release, without
+	 * the {@code +mc<minecraft>} its jar's version carries: Minecraft's is beside it.
+	 */
 	public record Launch(String loader, String loaderVersion, String minecraftVersion, String fabricatedVersion) {
+		public Launch {
+			String suffix = "+mc" + minecraftVersion;
+			if (fabricatedVersion != null && minecraftVersion != null && fabricatedVersion.endsWith(suffix) && fabricatedVersion.length() > suffix.length()) {
+				fabricatedVersion = fabricatedVersion.substring(0, fabricatedVersion.length() - suffix.length());
+			}
+		}
 	}
 
 	/** What the block says of a Fabric mod: its id, name and version, and its jar's file name (the parent's for a nested one). */
