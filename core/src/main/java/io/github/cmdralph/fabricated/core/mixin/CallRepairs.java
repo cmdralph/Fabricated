@@ -119,6 +119,7 @@ final class CallRepairs extends PreflightPart {
 			int calls = 0;
 			boolean named = false;
 			boolean ambiguous = false;
+			List<MethodNode> making = new ArrayList<>();
 			for (MethodNode method : methods) {
 				for (AbstractInsnNode insn : method.instructions) {
 					if (!(insn instanceof MethodInsnNode call) || !ref.matchesMethod(call.name, call.desc)) continue;
@@ -128,12 +129,13 @@ final class CallRepairs extends PreflightPart {
 						ambiguous |= subtype != null && !subtype.equals(call.owner) || wrapper && call.getOpcode() == Opcodes.INVOKESTATIC;
 						subtype = call.owner;
 						calls++;
+						if (!making.contains(method)) making.add(method);
 					}
 				}
 			}
 			int ordinal = InjectionPoints.ordinalOf(at);
 			if (named || subtype == null || ambiguous || ordinal >= calls) continue;
-			Boolean inVanilla = vanillaMakes(injector, declared, at, target, ctx);
+			Boolean inVanilla = vanillaMakes(injector, declared, at, target, making, ctx);
 			if (Boolean.FALSE.equals(inVanilla) || wrapper && inVanilla == null) continue;
 			if (wrapper && !takesReceiverAs(handler, injector, ref)) continue;
 			String retargeted = "L" + subtype + ";" + ref.name() + ref.desc();
@@ -147,21 +149,24 @@ final class CallRepairs extends PreflightPart {
 	}
 
 	/**
-	 * Whether vanilla's version of the methods an injector's selectors, as the mod declares them, pick in the target makes
-	 * the call {@code at} names, which Fabric's Mixin then finds there (VANILLA-1). Null where vanilla's class isn't at hand,
-	 * the selectors pick nothing in it, or a point can't be told.
+	 * Whether vanilla's version of each method in {@code where}, the injector's methods here in which its moved point would
+	 * find something, makes the call {@code at} names, which Fabric's Mixin then finds there (VANILLA-1): the point moves
+	 * only where it applies on Fabric, in each method alike. Vanilla's version is the method of that name the injector's
+	 * selectors, as the mod declares them, pick in vanilla's class (NeoForge 21.1's lambda takes another parameter type).
+	 * The injector's other methods, where nothing is found here, don't count: Mixin counts its injections across them all.
+	 * Null where vanilla's class isn't at hand or a method's version or point can't be told.
 	 */
-	private Boolean vanillaMakes(AnnotationNode injector, List<?> declared, AnnotationNode at, ClassNode target, Context ctx) {
+	private Boolean vanillaMakes(AnnotationNode injector, List<?> declared, AnnotationNode at, ClassNode target, List<MethodNode> where, Context ctx) {
 		ClassNode original = vanillaClass(target.name);
-		if (original == null || declared.isEmpty()) return null;
+		if (original == null || declared.isEmpty() || where.isEmpty()) return null;
 		AnnotationNode asDeclared = new AnnotationNode(injector.desc);
 		asDeclared.values = new ArrayList<>(List.of("method", new ArrayList<>(declared)));
-		List<MethodNode> methods = PreflightAsm.selectedMethods(asDeclared, original, ctx);
-		if (methods.isEmpty()) return null;
+		List<MethodNode> selected = PreflightAsm.selectedMethods(asDeclared, original, ctx);
 		boolean found = true;
-		for (MethodNode method : methods) {
-			InjectionPoints.Verdict verdict = method.instructions == null ? InjectionPoints.Verdict.UNKNOWN
-					: InjectionPoints.pointsIn(List.of(at), List.of(), method, ctx);
+		for (MethodNode here : where) {
+			List<MethodNode> was = selected.stream().filter(m -> m.name.equals(here.name)).distinct().toList();
+			InjectionPoints.Verdict verdict = was.size() != 1 || was.get(0).instructions == null ? InjectionPoints.Verdict.UNKNOWN
+					: InjectionPoints.pointsIn(List.of(at), List.of(), was.get(0), ctx);
 			if (verdict == InjectionPoints.Verdict.MISSING) return false;
 			found &= verdict == InjectionPoints.Verdict.FOUND;
 		}
@@ -935,7 +940,8 @@ final class CallRepairs extends PreflightPart {
 			// value of the call's class, which the hook can't take (narrowedHookHint says so).
 			boolean coerced = false;
 			if (narrowed != null && !pointOnly) {
-				if (injector.desc.equals(MixinNames.REDIRECT) || !Boolean.TRUE.equals(vanillaMakes(injector, declared, at, target, ctx))
+				List<MethodNode> making = methods.stream().filter(m -> countCalls(List.of(m), hook) > 0).toList();
+				if (injector.desc.equals(MixinNames.REDIRECT) || !Boolean.TRUE.equals(vanillaMakes(injector, declared, at, target, making, ctx))
 						|| !takesReceiverAs(handler, injector, new MemberRef(owner, name, original, false))) continue;
 				coerced = HandlerBridges.coerceParameter(handler, 0);
 			}

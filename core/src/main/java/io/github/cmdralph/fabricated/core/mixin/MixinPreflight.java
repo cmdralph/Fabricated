@@ -662,7 +662,8 @@ public final class MixinPreflight extends PreflightPart {
 	/**
 	 * Whether a private field of a mixin, which only its constructors and static initialiser write, holds a value that can't
 	 * keep the mixin's state: a primitive, a string, or a game class's object each write takes from the game, the object the
-	 * game holds ({@link #theGames}) or null.
+	 * game holds ({@link #theGames}) or null, pushed right before the write, with no way into the code between them (a
+	 * condition's other branch, {@code cond ? new MutableBlockPos() : null}, joins there).
 	 */
 	private static boolean constant(ClassNode mixin, FieldNode field, Function<String, ClassNode> game) {
 		if ((field.access & Opcodes.ACC_PRIVATE) == 0) return false;
@@ -672,11 +673,16 @@ public final class MixinPreflight extends PreflightPart {
 		boolean any = false;
 		for (MethodNode method : mixin.methods) {
 			if (method.instructions == null || !method.name.equals("<init>") && !method.name.equals("<clinit>")) continue;
+			Set<LabelNode> entered = null;
 			for (AbstractInsnNode insn : method.instructions) {
 				if (!(insn instanceof FieldInsnNode put) || put.getOpcode() != Opcodes.PUTFIELD && put.getOpcode() != Opcodes.PUTSTATIC
 						|| !put.owner.equals(mixin.name) || !put.name.equals(field.name) || !put.desc.equals(field.desc)) continue;
+				if (entered == null) entered = PreflightAsm.jumpTargets(method);
 				AbstractInsnNode value = put.getPrevious();
-				while (value != null && value.getOpcode() < 0) value = value.getPrevious();
+				while (value != null && value.getOpcode() < 0) {
+					if (value instanceof LabelNode label && entered.contains(label) || value instanceof FrameNode) return false;
+					value = value.getPrevious();
+				}
 				if (value == null || value.getOpcode() != Opcodes.ACONST_NULL && !theGames(value, game)) return false;
 				any = true;
 			}

@@ -716,17 +716,28 @@ final class MixinRepairs extends PreflightPart {
 	}
 
 	/**
-	 * Whether a repaired injector's {@code @Group} (on its handler, or on the bridge the injector moved to) sets a max its
-	 * injections in a target may exceed, as its points now count there ({@link #injections}), or can't be counted. Mixin's
-	 * group validation fails then ("maximum of 1 invocation(s) allowed"): jGui's char typed groups (ReplayMod) set max = 1.
+	 * Whether a repaired injector's group (its {@code @Group}, on its handler or on the bridge the injector moved to) has a
+	 * max its injections in a target may exceed, as its points now count there ({@link #injections}), or can't be counted.
+	 * Mixin's group validation fails then ("maximum of 1 invocation(s) allowed"): jGui's char typed groups (ReplayMod) set
+	 * max = 1. Mixin takes the smallest max any member declares ({@code InjectorGroupInfo.setMaxAllowed}).
 	 */
 	private boolean exceedsGroupMax(RepairSite site) {
 		MethodNode holder = site.handler();
 		for (MethodNode bridge : site.bridges()) {
 			if (Annotations.all(bridge).contains(site.injector())) holder = bridge;
 		}
-		AnnotationNode group = Annotations.find(holder, MixinNames.GROUP);
-		if (group == null || !(Annotations.value(group, "max") instanceof Integer max) || max <= 0) return false;
+		String name = PreflightAsm.group(holder);
+		if (name == null) return false;
+		int max = Integer.MAX_VALUE;
+		List<MethodNode> members = new ArrayList<>(site.mixin().methods);
+		members.addAll(site.bridges());
+		for (MethodNode member : members) {
+			if (name.equals(PreflightAsm.group(member)) && Annotations.value(Annotations.find(member, MixinNames.GROUP), "max") instanceof Integer declared
+					&& declared > 0) {
+				max = Math.min(max, declared);
+			}
+		}
+		if (max == Integer.MAX_VALUE) return false;
 		for (ClassNode target : site.targets()) {
 			int n = injections(site.injector(), target, site.ctx());
 			if (n < 0 || n > max) return true;
