@@ -31,10 +31,12 @@ public final class TokenRemapper {
 	 * A class Intermediary leaves under its own name, outside {@code net/minecraft/}, with nested classes it names:
 	 * Mojang's {@code com.mojang.blaze3d} classes keep their names in the game's jar, their nested classes don't
 	 * ({@code com/mojang/blaze3d/opengl/GlStateManager$class_1017}). Iris's access widener opens such classes on 1.21.11,
-	 * and ImmediatelyFast's a field of such a type on 1.21.1; unmapped, both lines were dropped (TOKEN-1).
+	 * and ImmediatelyFast's a field of such a type on 1.21.1; unmapped, both lines were dropped (TOKEN-1). A path's lead
+	 * ({@code /}, {@code ./} or {@code .}: a class file asked for with {@code Class.getResource}) comes before it and is
+	 * kept as it is, as the token can't start after a path character (SEC-12).
 	 */
-	private static final Pattern NESTED_CLASS_TOKEN = Pattern.compile(
-			"(?<![A-Za-z0-9_/.$])[A-Za-z_][A-Za-z0-9_]*+(?:([/.])[A-Za-z_][A-Za-z0-9_]*+)(?:\\1[A-Za-z_][A-Za-z0-9_]*+)*+(?:\\$class_\\d++)++");
+	private static final Pattern NESTED_CLASS_TOKEN = Pattern.compile("(?<![A-Za-z0-9_/.$])(?:\\.?/|\\.)?+"
+			+ "(?<name>[A-Za-z_][A-Za-z0-9_]*+(?<sep>[/.])[A-Za-z_][A-Za-z0-9_]*+(?:\\k<sep>[A-Za-z_][A-Za-z0-9_]*+)*+(?:\\$class_\\d++)++)");
 	private static final Pattern MEMBER_TOKEN = Pattern.compile("(?<![A-Za-z0-9_$])(?:method|field|comp)_\\d+(?![A-Za-z0-9_])");
 	/** A member's descriptor in a selector, right after its name: a field's after a colon, or a method's. */
 	private static final Pattern FOLLOWING_DESCRIPTOR = Pattern.compile(
@@ -104,8 +106,9 @@ public final class TokenRemapper {
 		Matcher m = NESTED_CLASS_TOKEN.matcher(s);
 		StringBuilder sb = new StringBuilder(s.length());
 		while (m.find()) {
-			String token = m.group();
-			String sep = m.group(1);
+			String token = m.group("name");
+			String sep = m.group("sep");
+			String lead = s.substring(m.start(), m.start("name"));
 			String internal = token.replace('.', '/');
 			String mapped = table.mapClass(internal);
 			String prefix = "";
@@ -117,7 +120,7 @@ public final class TokenRemapper {
 				}
 			}
 			if (sep.equals(".")) mapped = mapped.replace('/', '.');
-			m.appendReplacement(sb, Matcher.quoteReplacement(mapped.equals(internal) ? token : prefix + mapped));
+			m.appendReplacement(sb, Matcher.quoteReplacement(lead + (mapped.equals(internal) ? token : prefix + mapped)));
 		}
 		m.appendTail(sb);
 		return sb.toString();
