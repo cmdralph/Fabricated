@@ -16847,6 +16847,222 @@ class MixinPreflightTest {
 		}
 	}
 
+	@Test
+	void aRedirectAtAHookTakingTheReceiverAsASubtypeStaysOutStaticOrNotWithOrWithoutVanillasClasses() throws Exception {
+		// LAMBDA-14: the redirect stays out whatever its handler's kind, and whether or not vanilla's classes are at hand; its
+		// line says why either way.
+		String listener = "L" + LISTENER + ";";
+		String hookDesc = "(L" + SCREEN + ";CI)Z";
+		Map<String, byte[]> classes = new HashMap<>(listenerAndScreen());
+		classes.put(TARGET, typingTarget(SCREEN, Opcodes.INVOKESTATIC, HOOKS, "typed", hookDesc));
+		classes.put(HOOKS, screenCharHooks(hookDesc));
+		ClassIndex game = new ClassIndex(classes::get);
+		Map<String, byte[]> vanilla = new HashMap<>(listenerAndScreen());
+		vanilla.put(TARGET, typingTarget(LISTENER, Opcodes.INVOKEINTERFACE, LISTENER, "typed", TYPED));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Typed"));
+		for (boolean isStatic : new boolean[] {true, false}) {
+			byte[] original = mixin("com/example/mixin/Typed", false, cw -> {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | (isStatic ? Opcodes.ACC_STATIC : 0), "redirect", "(" + listener + "CI)Z", null, null);
+				AnnotationVisitor ann = mv.visitAnnotation(REDIRECT, false);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, "typed");
+				methods.visitEnd();
+				AnnotationVisitor at = ann.visitAnnotation("at", AT);
+				at.visit("value", "INVOKE");
+				at.visit("target", "L" + LISTENER + ";typed" + TYPED);
+				at.visitEnd();
+				ann.visitEnd();
+				mv.visitCode();
+				int base = isStatic ? 0 : 1;
+				mv.visitVarInsn(Opcodes.ALOAD, base);
+				mv.visitVarInsn(Opcodes.ILOAD, base + 1);
+				mv.visitVarInsn(Opcodes.ILOAD, base + 2);
+				mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, LISTENER, "typed", TYPED, true);
+				mv.visitInsn(Opcodes.IRETURN);
+				mv.visitMaxs(3, base + 3);
+				mv.visitEnd();
+			});
+			Map<String, byte[]> mod = Map.of("com/example/mixin/Typed", original);
+			for (boolean withVanilla : new boolean[] {true, false}) {
+				Supplier<MixinPreflight> preflight = () -> withVanilla
+						? new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+						: preflight(game, mod::get, ClassBytesSource.EMPTY, false);
+				List<PreflightFinding> notes = new ArrayList<>();
+				Map<String, byte[]> repaired = preflight.get().repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+				assertTrue(repaired.isEmpty() && notes.isEmpty(), isStatic + " " + withVanilla + ": " + notes);
+				List<PreflightFinding> after = preflight.get().check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+				assertTrue(after.stream().anyMatch(f -> f.suggestion().contains("which takes the receiver as a net.minecraft.world.Screen")),
+						isStatic + " " + withVanilla + ": " + after);
+			}
+		}
+	}
+
+	/**
+	 * {@link #keepsObject}'s mixin, its constructor setting the field from a condition: {@code pos = Cond.on() ? new Pos() :
+	 * otherwise}, otherwise being null or a game class's static field, which then comes right before the write both branches
+	 * reach.
+	 */
+	private static byte[] keepsConditionally(String fieldType, boolean nullOtherwise) {
+		String name = "com/example/mixin/Keeps";
+		String fieldDesc = "L" + fieldType + ";";
+		return mixin(name, false, cw -> {
+			cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "pos", fieldDesc, null, null).visitEnd();
+			MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+			init.visitCode();
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitMethodInsn(Opcodes.INVOKESTATIC, "com/example/Cond", "on", "()Z", false);
+			Label otherwise = new Label();
+			Label put = new Label();
+			init.visitJumpInsn(Opcodes.IFEQ, otherwise);
+			init.visitTypeInsn(Opcodes.NEW, fieldType);
+			init.visitInsn(Opcodes.DUP);
+			init.visitMethodInsn(Opcodes.INVOKESPECIAL, fieldType, "<init>", "()V", false);
+			init.visitJumpInsn(Opcodes.GOTO, put);
+			init.visitLabel(otherwise);
+			init.visitFrame(Opcodes.F_FULL, 1, new Object[] {name}, 1, new Object[] {name});
+			if (nullOtherwise) init.visitInsn(Opcodes.ACONST_NULL);
+			else init.visitFieldInsn(Opcodes.GETSTATIC, "net/minecraft/core/BlockPos", "ZERO_MUTABLE", fieldDesc);
+			init.visitLabel(put);
+			init.visitFrame(Opcodes.F_FULL, 1, new Object[] {name}, 2, new Object[] {name, fieldType});
+			init.visitFieldInsn(Opcodes.PUTFIELD, name, "pos", fieldDesc);
+			init.visitInsn(Opcodes.RETURN);
+			init.visitMaxs(3, 1);
+			init.visitEnd();
+			atHelperCall(cw, "Lorg/spongepowered/asm/mixin/injection/ModifyArg;", "capture", "(I)I", mv -> {
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitFieldInsn(Opcodes.GETFIELD, name, "pos", fieldDesc);
+				mv.visitVarInsn(Opcodes.ILOAD, 1);
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, fieldType, "set", "(III)" + fieldDesc, false);
+				mv.visitInsn(Opcodes.POP);
+				mv.visitVarInsn(Opcodes.ILOAD, 1);
+				mv.visitInsn(Opcodes.IRETURN);
+				mv.visitMaxs(4, 2);
+				mv.visitEnd();
+			});
+			grouped(cw, INJECT, "after", "(" + CALLBACK_INFO + ")V", "L" + TARGET + ";helper(I)V", true, null, mv -> {
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitFieldInsn(Opcodes.GETFIELD, name, "pos", fieldDesc);
+				mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, fieldType, "getX", "()I", false);
+				mv.visitInsn(Opcodes.POP);
+				mv.visitInsn(Opcodes.RETURN);
+				mv.visitMaxs(1, 2);
+				mv.visitEnd();
+			});
+		});
+	}
+
+	@Test
+	void anObjectTheConstructorMakesOnOneBranchOfAConditionIsState() throws Exception {
+		// STATE-1, HOOK-2: pos = Cond.on() ? new MutableBlockPos() : null (or a game class's static field) puts the other
+		// branch's value right before the write both branches reach; the object one branch makes is state all the same, and the
+		// @Inject after the call NeoForge's hook took over stays with the @ModifyArg the hook can't take.
+		String plain = "(L" + TARGET + ";I)V";
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingHook(plain), HOOKS, hooks(plain, true))::get);
+		Map<String, byte[]> vanilla = Map.of(TARGET, targetClass());
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Keeps"));
+		for (boolean nullOtherwise : new boolean[] {true, false}) {
+			byte[] bytes = keepsConditionally("net/minecraft/core/BlockPos$MutableBlockPos", nullOtherwise);
+			ClassNode node = new ClassNode();
+			new ClassReader(bytes).accept(node, 0);
+			assertFalse(MixinPreflight.independentHandlers(node, neoForge::readNode).contains("after(" + CALLBACK_INFO + ")V"), "null: " + nullOtherwise);
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = new MixinPreflight(neoForge, InstalledClasses.NONE, Map.of("com/example/mixin/Keeps", bytes)::get, ClassBytesSource.EMPTY,
+					false, true, vanilla::get).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+			assertTrue(repaired.isEmpty() && notes.isEmpty(), "null: " + nullOtherwise + ": " + notes);
+		}
+	}
+
+	/**
+	 * {@link #typingTarget} with a second static method {@code other(L<receiver>;CI)V}, which makes the same call if
+	 * {@code otherCalls}, else none.
+	 */
+	private static byte[] typingTargetWithOther(String receiver, int opcode, String owner, boolean otherCalls) {
+		ClassNode node = new ClassNode();
+		new ClassReader(typingTarget(receiver, opcode, owner, "typed", TYPED)).accept(node, 0);
+		MethodNode typed = node.methods.stream().filter(m -> m.name.equals("typed")).findFirst().orElseThrow();
+		MethodNode other = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "other", typed.desc, null, null);
+		if (otherCalls) typed.instructions.accept(other);
+		else other.instructions.add(new InsnNode(Opcodes.RETURN));
+		node.methods.add(other);
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		node.accept(cw);
+		return cw.toByteArray();
+	}
+
+	@Test
+	void anInjectNamingTwoMethodsMovesWhereVanillaMakesTheCallInTheOneThatMakesItHere() throws Exception {
+		// LAMBDA-14, VANILLA-1: vanilla's typed calls the listener's typed, its other makes no call; this build's typed calls the
+		// screen's. Fabric's Mixin injects into vanilla's typed (require counts the injections across both methods), so the
+		// @Inject moves to the screen's call. Where this build's other also calls the screen's typed, which vanilla's doesn't,
+		// it would inject there too, which Fabric's doesn't: it stays.
+		byte[] original = mixin("com/example/mixin/Typed", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "inject", "(" + CALLBACK_INFO + ")V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "typed");
+			methods.visit(null, "other");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + LISTENER + ";typed" + TYPED);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visit("require", 1);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 1);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Typed"));
+		Map<String, byte[]> vanilla = new HashMap<>(listenerAndScreen());
+		vanilla.put(TARGET, typingTargetWithOther(LISTENER, Opcodes.INVOKEINTERFACE, LISTENER, false));
+		for (boolean otherCalls : new boolean[] {false, true}) {
+			Map<String, byte[]> classes = new HashMap<>(listenerAndScreen());
+			classes.put(TARGET, typingTargetWithOther(SCREEN, Opcodes.INVOKEVIRTUAL, SCREEN, otherCalls));
+			ClassIndex game = new ClassIndex(classes::get);
+			Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Typed", original));
+			List<PreflightFinding> notes = new ArrayList<>();
+			byte[] repaired = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Typed.class");
+			if (otherCalls) {
+				assertNull(repaired, notes.toString());
+				continue;
+			}
+			assertNotNull(repaired, notes.toString());
+			assertTrue(notes.stream().anyMatch(n -> n.message().contains("which this game build calls through net.minecraft.world.Screen")), notes.toString());
+			mod.put("com/example/mixin/Typed", repaired);
+			List<PreflightFinding> after = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+					.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(after.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), after.toString());
+		}
+	}
+
+	@Test
+	void aGroupMaxAnotherMemberDeclaresBindsTheSoleAlternative() throws Exception {
+		// LAMBDA-14: Mixin takes a group's max as the smallest any member declares (InjectorGroupInfo.setMaxAllowed), so the
+		// OptiFine alternative's max = 1 binds the sole alternative that declares none: moved to a hook this build calls twice,
+		// it would inject twice.
+		String plain = "(L" + TARGET + ";I)V";
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingHookTwice(plain), HOOKS, hooks(plain, true))::get);
+		Map<String, byte[]> vanilla = Map.of(TARGET, targetClass());
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Grouped"));
+		byte[] bytes = mixin("com/example/mixin/Grouped", false, cw -> {
+			grouped(cw, "sole", "g", 1, -1, "L" + TARGET + ";helper(I)V");
+			grouped(cw, "optifine", "g", 1, 1, "L" + TARGET + ";optifineOnly()V");
+		});
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Grouped", bytes);
+		List<PreflightFinding> notes = new ArrayList<>();
+		assertNull(new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Grouped.class"), notes.toString());
+		assertTrue(notes.isEmpty(), notes.toString());
+	}
+
 	private static MixinPreflight preflight(ClassIndex game, ClassBytesSource mod, ClassBytesSource untransformable, boolean clientSide) {
 		return preflight(game, mod, untransformable, clientSide, true);
 	}
