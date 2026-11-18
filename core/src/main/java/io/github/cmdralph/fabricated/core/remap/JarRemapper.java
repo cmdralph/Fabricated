@@ -63,6 +63,7 @@ public final class JarRemapper {
 
 	private final MappingTable table;
 	private final Supertypes supertypes;
+	private final GameMethods gameMethods;
 	private final IntermediaryRemapper remapper;
 	private final TokenRemapper tokens;
 
@@ -70,21 +71,28 @@ public final class JarRemapper {
 		this(table, Supertypes.NONE);
 	}
 
+	public JarRemapper(MappingTable table, Supertypes supertypes) {
+		this(table, supertypes, GameMethods.NONE);
+	}
+
 	/**
 	 * @param supertypes the classes outside a jar its classes may inherit from (the game's), and for
 	 *                   {@link #remapClass(byte[], String)} the jar's own: a method Intermediary leaves under its official
 	 *                   name, and the runtime renames, is renamed in a class that inherits it (CORPUS-86)
+	 * @param gameMethods the game's classes' methods in their files' order, which a mixin's selector by name alone picks
+	 *                    from ({@link PlainTargets})
 	 */
-	public JarRemapper(MappingTable table, Supertypes supertypes) {
+	public JarRemapper(MappingTable table, Supertypes supertypes, GameMethods gameMethods) {
 		this.table = table;
 		this.supertypes = supertypes;
+		this.gameMethods = gameMethods;
 		this.remapper = new IntermediaryRemapper(table, supertypes);
 		this.tokens = remapper.tokens();
 	}
 
 	/** This remapper, knowing {@code first}'s classes before its own. */
 	public JarRemapper with(Supertypes first) {
-		return new JarRemapper(table, first.or(supertypes));
+		return new JarRemapper(table, first.or(supertypes), gameMethods);
 	}
 
 	/**
@@ -119,20 +127,28 @@ public final class JarRemapper {
 			if (table.hasPlainMembers() && name.endsWith(".class")) {
 				try {
 					ClassReader reader = new ClassReader(data);
-					classes.putIfAbsent(reader.getClassName(), Supertypes.withMixinTargets(reader));
+					classes.putIfAbsent(reader.getClassName(), Supertypes.of(reader));
 				} catch (RuntimeException e) {
 					// remapping it reports the problem
 				}
 			}
 		}
 		IntermediaryRemapper names = classes.isEmpty() ? remapper : new IntermediaryRemapper(table, ((Supertypes) classes::get).or(supertypes));
+		// The selectors each mixin's refmaps key, which Mixin reads through them (PLAIN-2: PlainTargets leaves them be).
+		Map<String, Set<String>> keyed = new HashMap<>();
+		if (table.hasPlainMembers()) {
+			for (String refmap : refmaps) {
+				byte[] data = entries.get(refmap);
+				if (data != null) refmapKeys(data, keyed);
+			}
+		}
 		for (Iterator<Map.Entry<String, byte[]>> it = entries.entrySet().iterator(); it.hasNext();) {
 			Map.Entry<String, byte[]> entry = it.next();
 			it.remove(); // held once: the remapped copy replaces it
 			String name = entry.getKey();
 			byte[] data = entry.getValue();
 			if (name.endsWith(".class")) {
-				byte[] remapped = remapClass(data, name, leftOut, names);
+				byte[] remapped = remapClass(data, name, leftOut, names, keyed);
 				String newName = remapClassPath(name);
 				out.put(newName, remapped);
 			} else if (name.equals("META-INF/MANIFEST.MF")) {
@@ -150,22 +166,30 @@ public final class JarRemapper {
 	}
 
 	public byte[] remapClass(byte[] data, String nameForErrors) throws MappingException {
-		return remapClass(data, nameForErrors, new ArrayList<>(), remapper);
+		return remapClass(data, nameForErrors, new ArrayList<>(), remapper, Map.of());
 	}
 
 	byte[] remapClass(byte[] data, String nameForErrors, List<String> leftOut) throws MappingException {
-		return remapClass(data, nameForErrors, leftOut, remapper);
+		return remapClass(data, nameForErrors, leftOut, remapper, Map.of());
 	}
 
-	private byte[] remapClass(byte[] data, String nameForErrors, List<String> leftOut, IntermediaryRemapper names) throws MappingException {
+	private byte[] remapClass(byte[] data, String nameForErrors, List<String> leftOut, IntermediaryRemapper names, Map<String, Set<String>> keyed)
+			throws MappingException {
 		try {
 			ClassReader reader = new ClassReader(data);
 			ClassWriter writer = new ClassWriter(0);
-			ClassVisitor remapping = new InferredTargets(new LambdaAwareRemapper(writer, names));
-			if (table.hasPlainMembers()) remapping = new PlainTargets(remapping, table, Supertypes.mixinTargets(reader));
+			// A mixin's members take its targets' runtime names (PLAIN-2); those its targets name apart are noted.
+			List<String> targets = table.hasPlainMembers() ? Supertypes.mixinTargets(reader) : List.of();
+			Set<String> apart = new java.util.LinkedHashSet<>();
+			IntermediaryRemapper classNames = targets.isEmpty() ? names : names.forMixin(reader.getClassName(), targets, apart);
+			ClassVisitor remapping = new InferredTargets(new LambdaAwareRemapper(writer, classNames));
+			if (!targets.isEmpty()) {
+				remapping = new PlainTargets(remapping, table, targets, keyed.getOrDefault(reader.getClassName(), Set.of()), gameMethods, apart);
+			}
 			Set<String> twins = otherLoadersTwins(reader, leftOut);
 			if (!twins.isEmpty()) remapping = new LeavingOut(remapping, twins);
 			reader.accept(table.hasOverloadedMethods() ? new SelectorPins(remapping, table) : remapping, 0);
+			leftOut.addAll(apart);
 			return writer.toByteArray();
 		} catch (RuntimeException e) {
 			throw new MappingException("Failed to remap " + nameForErrors + ": " + e, e);
@@ -336,32 +360,55 @@ public final class JarRemapper {
 
 	/**
 	 * Writes the runtime's names in a mixin's selectors of members of its targets that Intermediary leaves under their
-	 * official names and the runtime renames, before the class is remapped (PLAIN-2): the target of an {@code @Accessor} or
-	 * {@code @Invoker}, written out or inferred from its method's name, and an injector's method named without its owner,
-	 * by its name alone (each of its target's methods of that name, by its descriptor, where they have more than one runtime
-	 * name) or with its descriptor. Fabric Loom's refmap has no entry for such a name, which it doesn't remap, and no
-	 * remapping of the mod's strings reads a bare name: Iris's {@code GlStateManagerAccessor} names
-	 * {@code GlStateManager.BLEND}, which Forge 43 names {@code f_84066_}, and pre-flight refused Iris there; its hook into
-	 * {@code RenderSystem.initRenderer} ({@code m_69580_}) was left out. Anything else is left as it is, and so is an
-	 * accessor of a mixin of more than one class naming them apart.
+	 * official names and the runtime renames, before the class is remapped (PLAIN-2). Fabric Loom's refmap has no entry
+	 * for such a name, which it doesn't remap, and no remapping of the mod's strings reads a bare name: Iris's
+	 * {@code GlStateManagerAccessor} names {@code GlStateManager.BLEND}, which Forge 43 names {@code f_84066_}, and
+	 * pre-flight refused Iris there; its hook into {@code RenderSystem.initRenderer} ({@code m_69580_}) was left out.
+	 *
+	 * <ul>
+	 *   <li>An {@code @Accessor}'s or {@code @Invoker}'s target, written out or inferred from its method's name, takes the
+	 *       targets' runtime name; an accessor's matches a field whose name differs only in case where no field has the
+	 *       name itself and one does so, as Mixin takes it. An empty target is left out, as Mixin reads it as none.</li>
+	 *   <li>An injector's method named without its owner, with its descriptor, takes the runtime name of the targets'
+	 *       method of that name and descriptor; by its name alone, the runtime name of the first of that name in the
+	 *       target's class file ({@link GameMethods}), which is the one Mixin picks on Fabric, and stays a name alone.</li>
+	 * </ul>
+	 *
+	 * A selector the mixin's refmap keys is left as it is: Mixin reads it through the refmap, whose value remapping maps. So
+	 * is one whose targets name it apart, or whose first overload isn't known, with a note.
 	 */
 	private static final class PlainTargets extends ClassVisitor {
 		/** A method named without its owner: its name, then its descriptor, if any. */
-		private static final Pattern OWNERLESS = Pattern.compile("([A-Za-z_$][A-Za-z0-9_$]*)(\\(.*)?");
+		private static final Pattern OWNERLESS = Pattern.compile("([A-Za-z_$][A-Za-z0-9_$]*+)(\\(.*)?");
+		/** {@link #firstNamed}'s answer where the class's method order isn't known. */
+		private static final String UNKNOWN = "";
 
 		private final MappingTable table;
 		private final List<String> targets;
+		private final Set<String> keyed;
+		private final GameMethods gameMethods;
+		private final Set<String> notes;
+		private String mixin;
 
-		PlainTargets(ClassVisitor next, MappingTable table, List<String> targets) {
+		PlainTargets(ClassVisitor next, MappingTable table, List<String> targets, Set<String> keyed, GameMethods gameMethods, Set<String> notes) {
 			super(Opcodes.ASM9, next);
 			this.table = table;
 			this.targets = targets;
+			this.keyed = keyed;
+			this.gameMethods = gameMethods;
+			this.notes = notes;
+		}
+
+		@Override
+		public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
+			mixin = name;
+			super.visit(version, access, name, signature, superName, interfaces);
 		}
 
 		@Override
 		public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
 			MethodVisitor method = super.visitMethod(access, name, descriptor, signature, exceptions);
-			if (method == null || targets.isEmpty()) return method;
+			if (method == null) return null;
 			return new MethodVisitor(api, method) {
 				@Override
 				public AnnotationVisitor visitAnnotation(String annotation, boolean visible) {
@@ -375,11 +422,7 @@ public final class JarRemapper {
 								return new AnnotationVisitor(api, selectors) {
 									@Override
 									public void visit(String unnamed, Object value) {
-										if (!(value instanceof String selector)) {
-											super.visit(unnamed, value);
-											return;
-										}
-										for (String runtime : runtimeSelectors(selector)) super.visit(unnamed, runtime);
+										super.visit(unnamed, value instanceof String selector ? runtimeSelector(selector) : value);
 									}
 								};
 							}
@@ -392,7 +435,9 @@ public final class JarRemapper {
 
 						@Override
 						public void visit(String attribute, Object value) {
-							if ("value".equals(attribute) && value instanceof String target && !target.isEmpty()) {
+							if ("value".equals(attribute) && value instanceof String target) {
+								// Mixin reads an empty target as none: it infers one, which a second value would hide.
+								if (target.isEmpty()) return;
 								written = true;
 								String runtime = runtimeName(accessor, target, descriptor);
 								if (runtime != null) value = runtime;
@@ -414,42 +459,79 @@ public final class JarRemapper {
 			};
 		}
 
-		/**
-		 * The selectors an injector's selector of a method named without its owner stands for in the runtime's names: the
-		 * one with the runtime's name of the targets' method of that name and descriptor, or of each of the targets' methods
-		 * of that name where it names none; the selector itself where they rename none.
-		 */
-		private List<String> runtimeSelectors(String selector) {
+		/** An injector's selector of a method named without its owner, in the runtime's names; the selector itself otherwise. */
+		private String runtimeSelector(String selector) {
 			Matcher m = OWNERLESS.matcher(selector);
-			if (!m.matches() || JarRemapper.INTERMEDIARY_MEMBER.matcher(m.group(1)).matches()) return List.of(selector);
+			if (!m.matches() || JarRemapper.INTERMEDIARY_MEMBER.matcher(m.group(1)).matches() || keyed.contains(selector)) return selector;
 			String name = m.group(1);
 			String desc = m.group(2);
-			Map<String, String> renamed = new TreeMap<>();
+			Map<String, String> named = new TreeMap<>();
 			for (String owner : targets) {
-				if (desc != null) {
-					String runtime = table.ownPlainMethod(owner, name, desc);
-					if (runtime != null) renamed.put(desc, runtime);
-				} else {
-					renamed.putAll(table.plainMethodsNamed(owner, name));
-				}
+				String runtime = desc != null ? table.ownPlainMethod(owner, name, desc) : firstNamed(owner, name);
+				if (UNKNOWN.equals(runtime)) return selector;
+				if (runtime != null) named.put(owner, runtime);
 			}
-			if (renamed.isEmpty()) return List.of(selector);
-			Set<String> names = new HashSet<>(renamed.values());
-			if (desc == null && names.size() == 1) return List.of(names.iterator().next());
-			List<String> runtime = new ArrayList<>();
-			renamed.forEach((d, n) -> runtime.add(n + d));
-			return runtime;
+			if (named.isEmpty()) return selector;
+			if (new HashSet<>(named.values()).size() > 1) {
+				notes.add("Left " + mixin + "'s selector \"" + selector + "\" as it is: its targets name the method apart on this platform " + named
+						+ " (PLAIN-2)");
+				return selector;
+			}
+			return named.values().iterator().next() + (desc == null ? "" : desc);
 		}
 
-		/** The runtime's name of the targets' field or method of that name, where they give it one, or null. */
+		/**
+		 * The runtime name of the first of the target's methods of that name in its class file, which a selector by the
+		 * name alone picks, where the runtime names them apart: the only one's, or, of several runtime names, the first in
+		 * the class's method order. Null where the target has no method of that name that the runtime renames, and
+		 * {@link #UNKNOWN}, noted, where the class's order isn't known.
+		 */
+		private String firstNamed(String owner, String name) {
+			Map<String, String> overloads = table.plainMethodsNamed(owner, name);
+			if (overloads.isEmpty()) return null;
+			Set<String> names = new HashSet<>(overloads.values());
+			if (names.size() == 1) return names.iterator().next();
+			List<String> order = gameMethods.of(table.mapClass(owner));
+			if (order != null) {
+				for (String method : order) {
+					if (names.contains(method)) return method;
+				}
+			}
+			notes.add("Left " + mixin + "'s selector \"" + name + "\" as it is: " + owner.replace('/', '.') + "'s methods of that name have the runtime"
+					+ " names " + new TreeMap<>(overloads) + ", and the class's method order, which tells the one Mixin picks, isn't known (PLAIN-2)");
+			return UNKNOWN;
+		}
+
+		/**
+		 * The runtime's name of the targets' field or method of that name, where they give it one, or null, noted where they
+		 * name it apart. A field whose name differs only in case is taken where no field has the name itself and one does
+		 * so, as Mixin's accessor takes it.
+		 */
 		private String runtimeName(boolean accessor, String target, String descriptor) {
-			if (JarRemapper.INTERMEDIARY_MEMBER.matcher(target).matches()) return null;
-			String found = null;
+			if (JarRemapper.INTERMEDIARY_MEMBER.matcher(target).matches() || keyed.contains(target)) return null;
+			Map<String, String> named = new TreeMap<>();
 			for (String owner : targets) {
-				String runtime = accessor ? table.mapPlainField(owner, target) : table.ownPlainMethod(owner, target, descriptor);
-				if (runtime == null) continue;
-				if (found != null && !found.equals(runtime)) return null;
-				found = runtime;
+				String runtime = accessor ? field(owner, target) : table.ownPlainMethod(owner, target, descriptor);
+				if (runtime != null) named.put(owner, runtime);
+			}
+			if (named.isEmpty()) return null;
+			if (new HashSet<>(named.values()).size() > 1) {
+				notes.add("Left " + mixin + "'s " + (accessor ? "accessor" : "invoker") + " target \"" + target + "\" as it is: its targets name it"
+						+ " apart on this platform " + named + " (PLAIN-2)");
+				return null;
+			}
+			return named.values().iterator().next();
+		}
+
+		/** The owner's field of that name the runtime renames, or the one whose name differs only in case, where only one does. */
+		private String field(String owner, String target) {
+			String exact = table.mapPlainField(owner, target);
+			if (exact != null) return exact;
+			String found = null;
+			for (Map.Entry<String, String> field : table.plainFieldsOf(owner).entrySet()) {
+				if (!field.getKey().equalsIgnoreCase(target)) continue;
+				if (found != null) return null;
+				found = field.getValue();
 			}
 			return found;
 		}
@@ -507,6 +589,27 @@ public final class JarRemapper {
 	private String remapClassPath(String name) {
 		String internal = name.substring(0, name.length() - ".class".length());
 		return remapper.map(internal) + ".class";
+	}
+
+	/** Adds the keys a refmap gives each mixin, in its mappings and in each of its data contexts, by the mixin's name. */
+	private static void refmapKeys(byte[] data, Map<String, Set<String>> keyed) {
+		try {
+			Object tree = Json.parse(new String(data, StandardCharsets.UTF_8), Refmap.MAX_LENGTH, Json.DEFAULT_MAX_DEPTH);
+			if (!(tree instanceof Map<?, ?> root)) return;
+			List<Object> tables = new ArrayList<>();
+			tables.add(root.get("mappings"));
+			if (root.get("data") instanceof Map<?, ?> contexts) tables.addAll(contexts.values());
+			for (Object mixins : tables) {
+				if (!(mixins instanceof Map<?, ?> byMixin)) continue;
+				for (Map.Entry<?, ?> mixin : byMixin.entrySet()) {
+					if (!(mixin.getValue() instanceof Map<?, ?> keys)) continue;
+					Set<String> known = keyed.computeIfAbsent(String.valueOf(mixin.getKey()), k -> new HashSet<>());
+					for (Object key : keys.keySet()) known.add(String.valueOf(key));
+				}
+			}
+		} catch (JsonException | RuntimeException e) {
+			// remapping the refmap reports it
+		}
 	}
 
 	/**

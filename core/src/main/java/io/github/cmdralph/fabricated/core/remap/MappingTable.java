@@ -49,6 +49,8 @@ public final class MappingTable {
 	private volatile Set<String> plainFieldNames;
 	/** {@link #plainMembers}' methods by {@code owner.name}, then by descriptor. */
 	private volatile Map<String, Map<String, String>> plainMethodsByName;
+	/** {@link #plainMembers}' fields by owner, then by name. */
+	private volatile Map<String, Map<String, String>> plainFieldsByOwner;
 	private volatile Map<String, String> inverseClasses;
 	/** Qualified members by {@code name+desc}, to their runtime name when it is the same for every owner. */
 	private volatile Map<String, String> byNameAndDesc;
@@ -208,6 +210,29 @@ public final class MappingTable {
 			plainMethodsByName = index;
 		}
 		return index.getOrDefault(owner + "." + name, Map.of());
+	}
+
+	/**
+	 * The owner's own fields that Intermediary leaves under their official names and SRG renames, by name, to their
+	 * runtime names; empty when none (PLAIN-2: an accessor's target, which Mixin matches ignoring case).
+	 *
+	 * @param owner intermediary internal name of the owner
+	 */
+	public Map<String, String> plainFieldsOf(String owner) {
+		if (plainMembers.isEmpty() || owner == null) return Map.of();
+		Map<String, Map<String, String>> index = plainFieldsByOwner;
+		if (index == null) {
+			Map<String, Map<String, String>> built = new HashMap<>();
+			for (Map.Entry<String, String> e : plainMembers.entrySet()) {
+				String key = e.getKey();
+				if (key.indexOf('(') >= 0) continue;
+				int dot = key.lastIndexOf('.');
+				built.computeIfAbsent(key.substring(0, dot), k -> new TreeMap<>()).put(key.substring(dot + 1), e.getValue());
+			}
+			index = built;
+			plainFieldsByOwner = index;
+		}
+		return index.getOrDefault(owner, Map.of());
 	}
 
 	/** Whether some owner gives a field of that name a runtime name of its own (PLAIN-2). */

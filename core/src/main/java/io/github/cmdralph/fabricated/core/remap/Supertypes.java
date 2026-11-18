@@ -45,7 +45,7 @@ public interface Supertypes {
 			byte[] data = classBytes.apply(name);
 			if (data == null) return null;
 			try {
-				return withMixinTargets(new ClassReader(data));
+				return of(new ClassReader(data));
 			} catch (RuntimeException e) {
 				return null; // not a class remapping can read; remapping it reports the problem
 			}
@@ -76,18 +76,10 @@ public interface Supertypes {
 	}
 
 	/**
-	 * As {@link #of(ClassReader)}, then, for a mixin, its targets: Mixin merges a mixin's members into its targets, so its
-	 * {@code @Shadow}s of their members, and its uses of those, are theirs. A member Intermediary leaves under its official
-	 * name and the runtime renames takes the runtime's name in the mixin too (PLAIN-2: Forge 43 renames the fields and
-	 * methods of Mojang's {@code com/mojang/blaze3d} classes).
+	 * The classes a mixin's {@code @Mixin} names, by its {@code value} and its {@code targets}, by intermediary name; none
+	 * for another class. Mixin merges a mixin's members into them, so a member Intermediary leaves under its official name
+	 * and the runtime renames takes, in the mixin, the runtime's name they give it (PLAIN-2).
 	 */
-	static List<String> withMixinTargets(ClassReader reader) {
-		List<String> types = of(reader);
-		types.addAll(mixinTargets(reader));
-		return types;
-	}
-
-	/** The classes a mixin's {@code @Mixin} names, by its {@code value} and its {@code targets}; none for another class. */
 	static List<String> mixinTargets(ClassReader reader) {
 		List<String> targets = new ArrayList<>();
 		reader.accept(new ClassVisitor(Opcodes.ASM9) {
