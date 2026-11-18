@@ -1497,11 +1497,15 @@ Where the in-game mod has no such method and the platform's method only passes t
 bridge itself (LEAVE-6). The call then runs the platform's version of vanilla's method, as an invoker of a method the
 platform patched without changing its parameters does: what the platform changed in the method, it changes for the
 invoking mod too. What Fabricated proves, from the platform's classes, is that the value it passes changes nothing for
-whatever keeps the platform's own code: the method never stores into the parameter and passes each value it reads of it
+whatever keeps the platform's own code as those classes have it (a coremod or transformer that changes that code before
+the class loads isn't read again): the method never stores into the parameter and passes each value it reads of it
 straight to a method of the platform's own code (the one that runs: an extension's default, a method of its packages),
 as an argument, which ignores it the same way, three methods deep. The game class then declares, as it loads, a private
 method with vanilla's parameters that calls the platform's with the value the platform's own first call of it passes, a
-constant of the parameter's type, and the invoker is pointed there. `FireBlock.checkBurnOut` qualifies on NeoForge
+constant of the parameter's type, and the invoker is pointed there. Where the class, as it loads, isn't the one the mod
+was translated against (its method gone, or its first call passing another value), it gets a method of that name that
+throws instead: the game starts, and only a call of the invoker fails, with an error saying why, which the log gives as
+the class loads and the report once loading completes. `FireBlock.checkBurnOut` qualifies on NeoForge
 21.1, 21.11 and 26.1.2 and Forge 43 and 47 (as `tryCatchFire`), 52, 61, 64, 65 and 66 (their classes read; NeoForge
 26.2's and 26.3's patches make the same change): the side goes only to the block state's `getFlammability` and
 `onCaughtFire`, whose defaults pass it to the block's, which ignore it, and the bridge passes `Direction.WEST`, which
@@ -1518,9 +1522,13 @@ platform's own fire spread does, which differs from vanilla's (read in their cla
 - On NeoForge 21.11 and 26.1 and Forge 61 to 66, `onCaughtFire` answers a boolean, which the method drops.
 
 A block that overrides those extensions answers for the west side, whatever side the invoking mod meant: a NeoForge or
-Forge mod's, or the game's own, whose overrides Fabricated doesn't check (`TntBlock.onCaughtFire`, the only one on the
-builds read, ignores the side). Where the proof fails the invoker stays out, as before, the report saying what the
-platform's method does with the parameter, a known limit, and a call of it fails. An invoker of an installed mod's
+Forge mod's, or the game's own. Fabricated doesn't check the game's own as the game starts; CI checks them on each pinned
+platform build (the `invoker-bridge-overrides` check: on each, every override of what the parameter reaches, in the
+game's and the platform's classes, ignores it as the code it overrides does; `TntBlock.onCaughtFire` is the only one,
+and it ignores the side). A newer platform build of the same Minecraft version isn't checked: a game class there
+overriding those extensions and reading the side would be asked for the west side. Where the proof fails the invoker
+stays out, as before, the report saying what the platform's method does with the parameter, a known limit, and a call
+of it fails. An invoker of an installed mod's
 class, or of a game class whose vanilla class pre-flight can't read, is checked as before, without LEAVE-6.
 
 A mod's own call of a game constructor NeoForge replaced with one taking a name too, `LootPool`'s on every version
