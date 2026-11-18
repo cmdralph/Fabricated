@@ -1,8 +1,10 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -151,26 +153,43 @@ final class CallRepairs extends PreflightPart {
 	/**
 	 * Whether vanilla's version of each method in {@code where}, the injector's methods here in which its moved point would
 	 * find something, makes the call {@code at} names, which Fabric's Mixin then finds there (VANILLA-1): the point moves
-	 * only where it applies on Fabric, in each method alike. Vanilla's version is the method of that name the injector's
-	 * selectors, as the mod declares them, pick in vanilla's class (NeoForge 21.1's lambda takes another parameter type).
-	 * The injector's other methods, where nothing is found here, don't count: Mixin counts its injections across them all.
-	 * Null where vanilla's class isn't at hand or a method's version or point can't be told.
+	 * only where it applies on Fabric, in each method alike. A method's vanilla version is the one the mod's selector picks
+	 * in vanilla's class, as the mod declares it ({@code declared}), where the selector at the same index picks the method
+	 * here: a repair may have pointed it at this build's name for the method (Forge 47's lambdas, named by SRG in vanilla's
+	 * classes and by javac in its own, LAMBDA-6) or its descriptor (NeoForge 21.1's lambda takes the screen), each in its
+	 * place. The injector's other methods, where nothing is found here, don't count: Mixin counts its injections across
+	 * them all. Null where vanilla's class isn't at hand or a method's version or point can't be told.
 	 */
 	private Boolean vanillaMakes(AnnotationNode injector, List<?> declared, AnnotationNode at, ClassNode target, List<MethodNode> where, Context ctx) {
 		ClassNode original = vanillaClass(target.name);
-		if (original == null || declared.isEmpty() || where.isEmpty()) return null;
-		AnnotationNode asDeclared = new AnnotationNode(injector.desc);
-		asDeclared.values = new ArrayList<>(List.of("method", new ArrayList<>(declared)));
-		List<MethodNode> selected = PreflightAsm.selectedMethods(asDeclared, original, ctx);
+		List<?> current = Annotations.value(injector, "method") instanceof List<?> selectors ? selectors : List.of();
+		if (original == null || declared.isEmpty() || current.size() != declared.size() || where.isEmpty()) return null;
+		Map<MethodNode, MethodNode> versions = new IdentityHashMap<>();
+		Set<MethodNode> unclear = Collections.newSetFromMap(new IdentityHashMap<>());
+		for (int i = 0; i < declared.size(); i++) {
+			MethodNode here = picked(current.get(i), target, ctx);
+			if (here == null) continue;
+			MethodNode was = picked(declared.get(i), original, ctx);
+			MethodNode known = versions.putIfAbsent(here, was);
+			if (was == null || known != null && known != was) unclear.add(here);
+		}
 		boolean found = true;
 		for (MethodNode here : where) {
-			List<MethodNode> was = selected.stream().filter(m -> m.name.equals(here.name)).distinct().toList();
-			InjectionPoints.Verdict verdict = was.size() != 1 || was.get(0).instructions == null ? InjectionPoints.Verdict.UNKNOWN
-					: InjectionPoints.pointsIn(List.of(at), List.of(), was.get(0), ctx);
+			MethodNode was = unclear.contains(here) ? null : versions.get(here);
+			InjectionPoints.Verdict verdict = was == null || was.instructions == null ? InjectionPoints.Verdict.UNKNOWN
+					: InjectionPoints.pointsIn(List.of(at), List.of(), was, ctx);
 			if (verdict == InjectionPoints.Verdict.MISSING) return false;
 			found &= verdict == InjectionPoints.Verdict.FOUND;
 		}
 		return found ? Boolean.TRUE : null;
+	}
+
+	/** The method of {@code owner} one selector picks, as {@link PreflightAsm#selectedMethods} takes it; null for none or a pattern. */
+	private static MethodNode picked(Object selector, ClassNode owner, Context ctx) {
+		if (!(selector instanceof String raw)) return null;
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null) return null;
+		return owner.methods.stream().filter(m -> ref.matchesMethod(m.name, m.desc)).findFirst().orElse(null);
 	}
 
 	/**

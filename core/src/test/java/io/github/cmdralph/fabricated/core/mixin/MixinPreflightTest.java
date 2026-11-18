@@ -17063,6 +17063,162 @@ class MixinPreflightTest {
 		assertTrue(notes.isEmpty(), notes.toString());
 	}
 
+	/** A class whose {@code charTyped(II)V} makes a Runnable of the static {@code lambda} over a {@code receiver}, which calls its {@code typed}. */
+	private static byte[] lambdaTypingTarget(String lambda, String receiver, boolean viaInterface) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		String desc = "(L" + receiver + ";II)V";
+		Handle metafactory = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+				"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
+		MethodVisitor typed = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "charTyped", "(II)V", null, null);
+		typed.visitCode();
+		typed.visitInsn(Opcodes.ACONST_NULL);
+		typed.visitTypeInsn(Opcodes.CHECKCAST, receiver);
+		typed.visitVarInsn(Opcodes.ILOAD, 0);
+		typed.visitVarInsn(Opcodes.ILOAD, 1);
+		typed.visitInvokeDynamicInsn("run", "(L" + receiver + ";II)Ljava/lang/Runnable;", metafactory, Type.getType("()V"),
+				new Handle(Opcodes.H_INVOKESTATIC, TARGET, lambda, desc, false), Type.getType("()V"));
+		typed.visitInsn(Opcodes.POP);
+		typed.visitInsn(Opcodes.RETURN);
+		typed.visitMaxs(0, 0);
+		typed.visitEnd();
+		MethodVisitor body = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, lambda, desc, null, null);
+		body.visitCode();
+		body.visitVarInsn(Opcodes.ALOAD, 0);
+		body.visitVarInsn(Opcodes.ILOAD, 1);
+		body.visitInsn(Opcodes.I2C);
+		body.visitVarInsn(Opcodes.ILOAD, 2);
+		body.visitMethodInsn(viaInterface ? Opcodes.INVOKEINTERFACE : Opcodes.INVOKEVIRTUAL, receiver, "typed", TYPED, viaInterface);
+		body.visitInsn(Opcodes.POP);
+		body.visitInsn(Opcodes.RETURN);
+		body.visitMaxs(0, 0);
+		body.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aWrapperInALambdaThisBuildNamesOtherwiseMovesWhereVanillasLambdaMakesTheCall() throws Exception {
+		// LAMBDA-14, LAMBDA-6, VANILLA-1: Forge 47's vanilla classes name the lambda by SRG (m_1000_), its own by javac
+		// (lambda$charTyped$0), which calls the screen's typed. The lambda repair points the selector at this build's lambda;
+		// the vanilla check takes vanilla's version of it through the selector the mod declares in that place.
+		String listener = "L" + LISTENER + ";";
+		Map<String, byte[]> classes = new HashMap<>(listenerAndScreen());
+		classes.put(TARGET, lambdaTypingTarget("lambda$charTyped$0", SCREEN, false));
+		ClassIndex game = new ClassIndex(classes::get);
+		Map<String, byte[]> vanilla = new HashMap<>(listenerAndScreen());
+		vanilla.put(TARGET, lambdaTypingTarget("m_1000_", LISTENER, true));
+		byte[] wrap = mixin("com/example/mixin/Typed", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "wrap", "(" + listener + "CI" + OPERATION + ")Z", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(WRAP_OPERATION, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "m_1000_");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + LISTENER + ";typed" + TYPED);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 3);
+			mv.visitInsn(Opcodes.ICONST_3);
+			mv.visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/Object");
+			mv.visitInsn(Opcodes.DUP);
+			mv.visitInsn(Opcodes.ICONST_0);
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitInsn(Opcodes.AASTORE);
+			mv.visitInsn(Opcodes.DUP);
+			mv.visitInsn(Opcodes.ICONST_1);
+			mv.visitVarInsn(Opcodes.ILOAD, 1);
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Character", "valueOf", "(C)Ljava/lang/Character;", false);
+			mv.visitInsn(Opcodes.AASTORE);
+			mv.visitInsn(Opcodes.DUP);
+			mv.visitInsn(Opcodes.ICONST_2);
+			mv.visitVarInsn(Opcodes.ILOAD, 2);
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false);
+			mv.visitInsn(Opcodes.AASTORE);
+			mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, OPERATION.substring(1, OPERATION.length() - 1), "call", "([Ljava/lang/Object;)Ljava/lang/Object;", true);
+			mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Boolean");
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Boolean", "booleanValue", "()Z", false);
+			mv.visitInsn(Opcodes.IRETURN);
+			mv.visitMaxs(6, 4);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Typed"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Typed", wrap));
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Typed.class");
+		assertNotNull(repaired, notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("wrap")).findFirst().orElseThrow();
+		assertEquals("L" + SCREEN + ";typed" + TYPED, atTarget(handler), notes.toString());
+		assertTrue(coerces(handler, 0), notes.toString());
+		mod.put("com/example/mixin/Typed", repaired);
+		List<PreflightFinding> after = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), after.toString());
+	}
+
+	/** {@link #typingTarget} on {@code receiver} calling {@code owner}'s typed, with an overload {@code typed(L<receiver>;CIZ)V} making no call. */
+	private static byte[] typingTargetWithOverload(String receiver, int opcode, String owner) {
+		ClassNode node = new ClassNode();
+		new ClassReader(typingTarget(receiver, opcode, owner, "typed", TYPED)).accept(node, 0);
+		MethodNode overload = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "typed", "(L" + receiver + ";CIZ)V", null, null);
+		overload.instructions.add(new InsnNode(Opcodes.RETURN));
+		node.methods.add(overload);
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		node.accept(cw);
+		return cw.toByteArray();
+	}
+
+	@Test
+	void anInjectAtOverloadsMovesOnlyWhereVanillasOverloadMakesTheCall() throws Exception {
+		// LAMBDA-14, VANILLA-1: overloads named by descriptor, each paired with vanilla's through its selector. Where vanilla's
+		// typed(CI) already calls the screen's typed, the hook of the listener's call finds nothing on Fabric: it stays. Where
+		// vanilla's calls the listener's, it moves. Named by name alone, the selector picks the first overload, alike.
+		String listener = "L" + LISTENER + ";";
+		Map<String, byte[]> classes = new HashMap<>(listenerAndScreen());
+		classes.put(TARGET, typingTargetWithOverload(LISTENER, Opcodes.INVOKEVIRTUAL, SCREEN));
+		ClassIndex game = new ClassIndex(classes::get);
+		Map<String, byte[]> throughScreen = new HashMap<>(classes);
+		Map<String, byte[]> throughListener = new HashMap<>(listenerAndScreen());
+		throughListener.put(TARGET, typingTargetWithOverload(LISTENER, Opcodes.INVOKEINTERFACE, LISTENER));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Typed"));
+		for (List<String> selectors : List.of(List.of("typed(" + listener + "CI)V", "typed(" + listener + "CIZ)V"), List.of("typed"))) {
+			byte[] inject = mixin("com/example/mixin/Typed", false, cw -> {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "inject", "(" + CALLBACK_INFO + ")V", null, null);
+				AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+				AnnotationVisitor methods = ann.visitArray("method");
+				selectors.forEach(selector -> methods.visit(null, selector));
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", "INVOKE");
+				at.visit("target", "L" + LISTENER + ";typed" + TYPED);
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visit("require", 1);
+				ann.visitEnd();
+				mv.visitCode();
+				mv.visitInsn(Opcodes.RETURN);
+				mv.visitMaxs(0, 1);
+				mv.visitEnd();
+			});
+			for (boolean vanillaListens : new boolean[] {false, true}) {
+				Map<String, byte[]> vanilla = vanillaListens ? throughListener : throughScreen;
+				List<PreflightFinding> notes = new ArrayList<>();
+				Map<String, byte[]> repaired = new MixinPreflight(game, InstalledClasses.NONE, Map.of("com/example/mixin/Typed", inject)::get, ClassBytesSource.EMPTY,
+						false, true, vanilla::get).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+				assertEquals(vanillaListens, !repaired.isEmpty(), selectors + " " + vanillaListens + ": " + notes);
+			}
+		}
+	}
+
 	private static MixinPreflight preflight(ClassIndex game, ClassBytesSource mod, ClassBytesSource untransformable, boolean clientSide) {
 		return preflight(game, mod, untransformable, clientSide, true);
 	}
