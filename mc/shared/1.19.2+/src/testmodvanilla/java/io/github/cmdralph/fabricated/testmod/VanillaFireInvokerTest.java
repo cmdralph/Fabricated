@@ -3,7 +3,7 @@ package io.github.cmdralph.fabricated.testmod;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.github.cmdralph.fabricated.testmod.mixin.FireBlockInvoker;
+import io.github.cmdralph.fabricated.testmod.vanilla.FireBlockInvoker;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -15,7 +15,7 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * CI test mod part for an invoker of a vanilla method the platform gave a parameter vanilla's never had (LEAVE-6): the
- * test mod's {@code mixin.FireBlockInvoker} invokes vanilla's private {@code FireBlock.checkBurnOut(level, pos, chance,
+ * test mod's {@code vanilla.FireBlockInvoker} invokes vanilla's private {@code FireBlock.checkBurnOut(level, pos, chance,
  * random, age)}, as Supplementaries' lit lumisene does, where NeoForge and Forge 52 to 66 take the side the fire comes from
  * too (Forge 43 and 47 in their {@code tryCatchFire}), which they only pass to the block state's flammability and
  * caught-fire extensions, whose defaults ignore it: pre-flight points the invoker at the bridge Fabricated declares in
