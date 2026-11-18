@@ -106,6 +106,13 @@ class OfficialClassesTest {
 		assertEquals(List.of("net/minecraft/client/SubCamera.xRot:F", "net/minecraft/client/SubCamera.setRotation(FF)V"), references(tick),
 				"what it inherits, named as the class declaring it maps it");
 		assertNull(vanilla.read("net/minecraft/client/Missing"));
+
+		// Its members alone: the same names, no code.
+		ClassNode members = node(vanilla.readMembers("net/minecraft/client/SubCamera"));
+		assertEquals("net/minecraft/client/Camera", members.superName);
+		assertEquals(List.of("tick"), members.methods.stream().map(m -> m.name).toList());
+		assertEquals(0, members.methods.getFirst().instructions.size());
+		assertNull(vanilla.readMembers("net/minecraft/client/Missing"));
 	}
 
 	@Test
