@@ -76,6 +76,7 @@ import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.MixinEntry;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
+import io.github.cmdralph.fabricated.core.mixin.InvokerBridge;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
@@ -266,6 +267,8 @@ public final class ModTranslator {
 				Set<String> widened = new TreeSet<>();
 				// The game classes its mixins target that have vanilla methods put back as they load (SEAM-1).
 				Set<String> seams = new TreeSet<>();
+				// The bridges game classes declare as they load for its invokers (LEAVE-6).
+				Set<InvokerBridge> invokers = new LinkedHashSet<>();
 				// Fields the platform retyped, as the mod's classes and mixins reach them (CORPUS-33); before pre-flight,
 				// which then sees the mod's accessors of them as they will load.
 				if (!retyped.isEmpty()) {
@@ -284,7 +287,7 @@ public final class ModTranslator {
 				String newerEntrypoint = newerJavaEntrypoint(candidate.metadata(), files);
 				if (newerEntrypoint != null) throw newerJava("its entrypoint " + newerEntrypoint);
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files, classEntries, overlay, findings,
-						installedClasses, enumEntries, enumTargets, lookup, bridges, notes, widened, seams, generatedConfigs);
+						installedClasses, enumEntries, enumTargets, lookup, bridges, notes, widened, seams, invokers, generatedConfigs);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
 
 				// The mod's own files translation rewrites (not the ones it adds).
@@ -434,11 +437,12 @@ public final class ModTranslator {
 				meta.put("environmentClasses", List.copyOf(environmentClasses));
 				meta.put("overridableMethods", List.copyOf(overridable));
 				meta.put("restoredSeams", List.copyOf(seams));
+				meta.put("invokerBridges", invokers.stream().map(ModTranslator::invokerBridgeToJson).toList());
 				meta.put("installedClasses", installedClasses);
 				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
 				Path jar = ownJar != null ? entry.file(remapped(neoId)) : candidate.path();
 				return new TranslatedMod(candidate, neoId, jar, entry.file(overlay(neoId)), List.copyOf(findings), atLines,
-						List.copyOf(notes), injections, List.copyOf(bridges), environmentClasses, overridable, Set.copyOf(seams), false, millis);
+						List.copyOf(notes), injections, List.copyOf(bridges), environmentClasses, overridable, Set.copyOf(seams), Set.copyOf(invokers), false, millis);
 			} catch (ArchiveException e) {
 				throw new TranslationException("The jar is unsafe or corrupt: " + e.getMessage(), "Re-download the mod from its official page.");
 			} catch (MappingException e) {
@@ -655,7 +659,7 @@ public final class ModTranslator {
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, Set<String> plannedSkips, FileView files,
 			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses,
 			List<EnumExtensions.Entry> enumEntries, Set<String> enumTargets, ClassLookup lookup, Set<DefaultBridge> bridges,
-			List<String> notes, Set<String> widened, Set<String> seams, List<MixinEntry> generatedConfigs)
+			List<String> notes, Set<String> widened, Set<String> seams, Set<InvokerBridge> invokers, List<MixinEntry> generatedConfigs)
 			throws ArchiveException, TranslationException {
 		Function<String, ClassNode> classes = lookup::node;
 		FabricModMetadata md = candidate.metadata();
@@ -878,6 +882,7 @@ public final class ModTranslator {
 		// A hook left out after its config's check (SHARE-2, a mixin translation left out whole) applies to nothing put back.
 		preflight.withoutSeamNotesOfLeftOut(findings);
 		seams.addAll(preflight.restoredSeams());
+		invokers.addAll(preflight.invokerBridges());
 		Set<String> written = new TreeSet<>(override.skipMixins());
 		written.removeAll(plannedSkips);
 		unmatchedSkips(written, matchedSkips, md.compatHints().mixinsOr(md.mixins()), configs.keySet(), findings);
@@ -1976,10 +1981,17 @@ public final class ModTranslator {
 		if (meta.get("overridableMethods") instanceof List<?> list) list.forEach(o -> overridable.add(String.valueOf(o)));
 		Set<String> seams = new TreeSet<>();
 		if (meta.get("restoredSeams") instanceof List<?> list) list.forEach(o -> seams.add(String.valueOf(o)));
+		Set<InvokerBridge> invokers = new LinkedHashSet<>();
+		if (meta.get("invokerBridges") instanceof List<?> list) {
+			for (Object o : list) {
+				if (o instanceof Map<?, ?> m) invokers.add(invokerBridgeFromJson(m));
+			}
+		}
 		int at = meta.get("accessTransformers") instanceof Number n ? n.intValue() : 0;
 		Path jar = entry.has(remapped(neoId)) ? entry.file(remapped(neoId)) : candidate.path();
 		return new TranslatedMod(candidate, neoId, jar, entry.file(overlay(neoId)), List.copyOf(findings), at, List.copyOf(notes),
-				List.copyOf(injections), List.copyOf(bridges), Set.copyOf(environmentClasses), Set.copyOf(overridable), Set.copyOf(seams), true, 0);
+				List.copyOf(injections), List.copyOf(bridges), Set.copyOf(environmentClasses), Set.copyOf(overridable), Set.copyOf(seams),
+				Set.copyOf(invokers), true, 0);
 	}
 
 	private static Map<String, Object> findingToJson(PreflightFinding f) {
@@ -2143,6 +2155,24 @@ public final class ModTranslator {
 	private static DefaultBridge bridgeFromJson(Map<?, ?> m) {
 		return new DefaultBridge(String.valueOf(m.get("target")), String.valueOf(m.get("owner")), String.valueOf(m.get("name")),
 				String.valueOf(m.get("descriptor")));
+	}
+
+	private static Map<String, Object> invokerBridgeToJson(InvokerBridge b) {
+		Map<String, Object> m = new LinkedHashMap<>();
+		m.put("target", b.target());
+		m.put("vanillaName", b.vanillaName());
+		m.put("descriptor", b.descriptor());
+		m.put("method", b.method());
+		m.put("methodDescriptor", b.methodDescriptor());
+		m.put("parameter", b.parameter());
+		m.put("constant", b.constant());
+		return m;
+	}
+
+	private static InvokerBridge invokerBridgeFromJson(Map<?, ?> m) {
+		return new InvokerBridge(String.valueOf(m.get("target")), String.valueOf(m.get("vanillaName")), String.valueOf(m.get("descriptor")),
+				String.valueOf(m.get("method")), String.valueOf(m.get("methodDescriptor")), m.get("parameter") instanceof Number n ? n.intValue() : -1,
+				String.valueOf(m.get("constant")));
 	}
 
 	private static Map<String, Object> injectionToJson(InjectedInterface i) {

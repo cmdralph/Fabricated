@@ -599,7 +599,7 @@ final class LambdaRepairs extends PreflightPart {
 	 * Where each of {@code wanted} is in {@code captured}, taken in order, when they occur in it that way only once; else
 	 * null. A value of {@code captured} takes the place of one of {@code wanted} where {@code fits} holds of the two.
 	 */
-	private static int[] inOrder(List<Type> wanted, List<Type> captured, BiPredicate<Type, Type> fits) {
+	static int[] inOrder(List<Type> wanted, List<Type> captured, BiPredicate<Type, Type> fits) {
 		int n = wanted.size();
 		int m = captured.size();
 		// ways[i][j]: in how many ways (up to 2) wanted from i on occurs in order in captured from j on.

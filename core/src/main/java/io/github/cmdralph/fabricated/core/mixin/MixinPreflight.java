@@ -83,6 +83,10 @@ import org.objectweb.asm.tree.VarInsnNode;
 public final class MixinPreflight extends PreflightPart {
 	private final MixinRepairs repairer;
 	private final ReplacedMethods replacedMethods;
+	/** Whether a method the platform gave a parameter vanilla's never had serves vanilla's invokers (LEAVE-6), shared with the repairs. */
+	final AddedParameters addedParameters;
+	/** The invokers pointed at a bridge Fabricated declares ({@link InvokerBridge}), across the mod's configs. */
+	private final List<BridgedInvoker> bridgedInvokers = new ArrayList<>();
 	/** The hooks of seams put back noted so far ({@link #noteRestoredSeams}), across the mod's configs. */
 	private final List<SeamNote> seamNotes = new ArrayList<>();
 	/**
@@ -96,6 +100,10 @@ public final class MixinPreflight extends PreflightPart {
 
 	/** A hook of a seam put back: its mixin, its handler, and the class to rewrite for it. */
 	private record SeamNote(String mixin, String handler, String target) {
+	}
+
+	/** An invoker pointed at a bridge Fabricated declares: its mixin (dotted), its method, and the bridge. */
+	private record BridgedInvoker(String mixin, String invoker, InvokerBridge bridge) {
 	}
 
 	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2). */
@@ -272,8 +280,9 @@ public final class MixinPreflight extends PreflightPart {
 		super(new PreflightClasses(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader,
 				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields,
 				handsOffConstructorArguments, overlapsWideArguments, keepsLocalsPastScope, restrictsInitialisers));
-		this.repairer = new MixinRepairs(classes, this);
 		this.replacedMethods = new ReplacedMethods(classes);
+		this.addedParameters = new AddedParameters(classes, replacedMethods);
+		this.repairer = new MixinRepairs(classes, this);
 	}
 
 	/**
@@ -413,6 +422,23 @@ public final class MixinPreflight extends PreflightPart {
 			if (!leftOut(leftOutHandlers, note.mixin(), note.handler())) restored.add(note.target());
 		}
 		return Collections.unmodifiableSet(restored);
+	}
+
+	/** Notes an invoker the repairs pointed at a bridge Fabricated declares in a game class as it loads (LEAVE-6). */
+	void bridgedInvoker(String mixin, String invoker, InvokerBridge bridge) {
+		bridgedInvokers.add(new BridgedInvoker(mixin, invoker, bridge));
+	}
+
+	/**
+	 * The bridges the game classes must declare as they load ({@link InvokerBridge}, LEAVE-6): those of the invokers the
+	 * repairs pointed at one, but of an invoker left out with its mixin or alone, which nothing would call.
+	 */
+	public Set<InvokerBridge> invokerBridges() {
+		Set<InvokerBridge> bridges = new LinkedHashSet<>();
+		for (BridgedInvoker b : bridgedInvokers) {
+			if (!leftOut(leftOutHandlers, b.mixin(), b.invoker())) bridges.add(b.bridge());
+		}
+		return Collections.unmodifiableSet(bridges);
 	}
 
 	/**
@@ -1953,11 +1979,18 @@ public final class MixinPreflight extends PreflightPart {
 		if (PreflightAsm.declares(target, methodName, desc)) return;
 		String retyped = retypedMethodHint(target, methodName, desc, ctx);
 		ReplacedMethods.Replaced replaced = retyped == null ? replacedMethods.replaced(target, methodName, desc) : null;
-		// Supplementaries' invoker of FireBlock.checkBurnOut, which Forge 47 replaced with tryCatchFire taking the side the
-		// fire comes from too: no method of the platform's takes what the invoker is given (STRUCT-2).
+		// An invoker of a private method the platform replaced with one taking other parameters (Forge 47's FireBlock.tryCatchFire,
+		// taking the side the fire comes from too) that no bridge serves (LEAVE-6): no method of the platform's takes what the
+		// invoker is given (STRUCT-2).
 		String hint = retyped != null ? retyped : replaced != null ? loader + " replaced that private method with " + replaced.named() + ", "
 				+ replaced.where() + ", and has no method taking vanilla's parameters for the invoker to call; a call of it fails."
 				: "The method was renamed or removed by " + ctx.changer(false) + ".";
+		// Where the platform's method takes a parameter vanilla's never had, why no fixed value of it serves the invoker.
+		AddedParameters.Verdict verdict = addedParameters.of(target, methodName, desc);
+		if (verdict != null && verdict.why() != null) {
+			hint += " Fabricated gives an invoker of it a fixed " + verdict.typeName() + " only where " + loader + "'s method passes it only to its"
+					+ " extensions' methods whose defaults ignore it, and makes nothing else vanilla's doesn't; " + verdict.why() + " (LEAVE-6).";
+		}
 		ctx.accessorMember(method, "@Invoker target method " + methodName + desc + " does not exist in " + target.name.replace('/', '.'), hint);
 	}
 

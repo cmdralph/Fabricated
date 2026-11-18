@@ -2690,8 +2690,11 @@ class MixinPreflightTest {
 				assertNull(limit, f.toString());
 				continue;
 			}
+			// LEAVE-6's bridge doesn't serve it: the face goes to a method of the game's.
 			assertEquals("Forge replaced that private method with catchFire" + CATCH_FIRE + ", which tick calls in its place at each of its 2 calls, and has no"
-					+ " method taking vanilla's parameters for the invoker to call; a call of it fails.", f.suggestion());
+					+ " method taking vanilla's parameters for the invoker to call; a call of it fails. Fabricated gives an invoker of it a fixed String only"
+					+ " where Forge's method passes it only to its extensions' methods whose defaults ignore it, and makes nothing else vanilla's doesn't;"
+					+ " Thing.catchFire passes the String to Thing.flammable, which isn't a method of Forge's own code (LEAVE-6).", f.suggestion());
 			assertNotNull(limit, f.toString());
 			assertTrue(limit.startsWith("Known limit: NeoForge and Forge replaced that private method") && limit.endsWith("(STRUCT-2)"), limit);
 		}

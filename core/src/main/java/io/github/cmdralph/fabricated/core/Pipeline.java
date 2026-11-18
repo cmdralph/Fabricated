@@ -41,6 +41,7 @@ import io.github.cmdralph.fabricated.core.metadata.CompatHints;
 import io.github.cmdralph.fabricated.core.metadata.CustomValueImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
+import io.github.cmdralph.fabricated.core.mixin.InvokerBridge;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
 import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
 import io.github.cmdralph.fabricated.core.mixin.NativeModMixins;
@@ -236,6 +237,9 @@ public final class Pipeline {
 	 *                           handlers, by mixin class ({@link NativeModMixins}, immutable)
 	 * @param restoredSeams      the game classes in which {@code mods}' mixins hook vanilla methods put back as they load
 	 *                           ({@link VanillaSeams}, SEAM-1; immutable)
+	 * @param invokerBridges     the methods game classes declare as they load for {@code mods}' invokers of vanilla methods
+	 *                           the platform gave a parameter vanilla's never had, by target class ({@link InvokerBridge},
+	 *                           LEAVE-6; immutable)
 	 */
 	public record Result(
 			FabricatedConfig config,
@@ -250,13 +254,14 @@ public final class Pipeline {
 			Set<String> dependencyFailures,
 			Set<String> providedElsewhere,
 			Map<String, Set<String>> instanceHandlers,
-			Set<String> restoredSeams) {
+			Set<String> restoredSeams,
+			Map<String, List<InvokerBridge>> invokerBridges) {
 
 		Result(FabricatedConfig config, List<LoadedMod> mods, FabricLoaderRuntime runtime, Map<String, ModContainerImpl> containers,
 				Report report, Set<String> dependencyFailures, Set<String> providedElsewhere, Map<String, Set<String>> instanceHandlers) {
 			this(config, List.copyOf(mods), injectedInterfacesOf(mods), defaultBridgesOf(mods), environmentClassesOf(mods),
 					overridableMethodsOf(mods), runtime, containers, report, dependencyFailures, Set.copyOf(providedElsewhere), Map.copyOf(instanceHandlers),
-					mods.stream().flatMap(m -> m.translated().restoredSeams().stream()).collect(Collectors.toUnmodifiableSet()));
+					mods.stream().flatMap(m -> m.translated().restoredSeams().stream()).collect(Collectors.toUnmodifiableSet()), invokerBridgesOf(mods));
 		}
 
 		/**
@@ -269,7 +274,7 @@ public final class Pipeline {
 			Set<String> all = new LinkedHashSet<>(providedElsewhere);
 			all.addAll(modules);
 			return new Result(config, mods, injectedInterfaces, defaultBridges, environmentClasses, overridableMethods, runtime, containers,
-					report, dependencyFailures, Set.copyOf(all), instanceHandlers, restoredSeams);
+					report, dependencyFailures, Set.copyOf(all), instanceHandlers, restoredSeams, invokerBridges);
 		}
 
 		/**
@@ -290,6 +295,19 @@ public final class Pipeline {
 			}
 			injections.replaceAll((target, list) -> List.copyOf(list));
 			return Map.copyOf(injections);
+		}
+
+		/** The mods' invoker bridges by target class, each once: two mods invoking the same method share one. */
+		private static Map<String, List<InvokerBridge>> invokerBridgesOf(List<LoadedMod> mods) {
+			Map<String, List<InvokerBridge>> bridges = new HashMap<>();
+			for (LoadedMod mod : mods) {
+				for (InvokerBridge bridge : mod.translated().invokerBridges()) {
+					List<InvokerBridge> list = bridges.computeIfAbsent(bridge.target(), k -> new ArrayList<>());
+					if (!list.contains(bridge)) list.add(bridge);
+				}
+			}
+			bridges.replaceAll((target, list) -> List.copyOf(list));
+			return Map.copyOf(bridges);
 		}
 
 		private static Map<String, List<DefaultBridge>> defaultBridgesOf(List<LoadedMod> mods) {
@@ -1350,7 +1368,7 @@ public final class Pipeline {
 		}).toList();
 		return findings.equals(t.findings()) ? t : new TranslatedMod(t.candidate(), t.neoForgeId(), t.jar(), t.overlay(), findings,
 				t.accessTransformers(), t.notes(), t.injectedInterfaces(), t.defaultBridges(), t.environmentClasses(), t.overridableMethods(),
-				t.restoredSeams(), t.cacheHit(), t.millis());
+				t.restoredSeams(), t.invokerBridges(), t.cacheHit(), t.millis());
 	}
 
 	/** @param leftOutMixins the mixins the linkage analysis left out of the mod, each with why */
