@@ -1,6 +1,6 @@
 # Fabricated — Phase 0 Research
 
-> Status: research complete, awaiting architecture approval before implementation.
+> Status: research complete; the architecture built on it is implemented (`ARCHITECTURE.md`).
 > Research date: **2026-10-10**. Everything below was verified on that date unless marked *unverified*.
 
 ## 0. How this was researched (and its limits)
@@ -180,16 +180,16 @@ Other loader facts:
 | Item | Choice | Why |
 |---|---|---|
 | Gradle | **9.7.0** wrapper | Matches NeoForge 26.2/26.3. ≥ 9.1 is required for Java 25. |
-| Build plugin | **ModDevGradle 2.0.142** (`net.neoforged.moddev`) for every MC subproject | Version-agnostic, and used by both NeoForge and Connector. NeoGradle isn't needed. |
-| Java | Toolchain **21** for `core`, `loader` and `mc-1.21.11`; toolchain **25** for `mc-26.*`. `core`, `api` and `fabric-loader-api` compile their main code at **release 17** (tests at 21) | Matches each NeoForge line's requirement. The shared modules' bytecode runs on every line, and on 1.20.1's Java 17 (§8, D2). |
+| Build plugin | **ModDevGradle 2.0.142** (`net.neoforged.moddev`) for every NeoForge project, and its `legacyforge` plugin for Forge 43 and 47; **ForgeGradle 7.0.40** for Forge 52 and 61 to 66 (§8, D5) | Version-agnostic, and used by both NeoForge and Connector. NeoGradle isn't needed. |
+| Java | Toolchain **21** for `core` and the 1.21.1 and 1.21.11 projects, **25** for the 26.x projects, **17** for Forge 43's and 47's (each version project's `java_version`, which its `loader` and in-game mod compile for). `core`, `api` and `fabric-loader-api` compile their main code at **release 17** (tests at 21) | Matches each loader line's requirement. The shared modules' bytecode runs on every line, and on 1.19.2's and 1.20.1's Java 17 (§8, D2). |
 | Runtime dependencies | **None beyond what NeoForge already ships** (ASM, Gson, Mixin, MixinExtras, night-config, SLF4J/log4j) | Lightweight requirement. |
 | Test dependencies | JUnit Jupiter (Maven Central) | |
-| Bundled data | `intermediary/1.21.11.tiny` (CC0), Fabric Loader API types (Apache-2.0, with NOTICE) | |
+| Bundled data | Intermediary's mappings for 1.19.2, 1.20.1, 1.21.1 and 1.21.11 (CC0), each in its version's builds, Fabric Loader API types (Apache-2.0, with NOTICE) | |
 
 ## 6. Licensing decision
 
 * Originally MIT; the project has since moved to **GPL-3.0** (`LICENSE`). Apache-2.0 and CC0 inputs remain compatible.
-* Add `NOTICE` for: Fabric Loader API types (Apache-2.0, FabricMC) and Intermediary 1.21.11 (CC0, FabricMC, attribution given as a courtesy).
+* Add `NOTICE` for: Fabric Loader API types (Apache-2.0, FabricMC) and Intermediary 1.19.2, 1.20.1, 1.21.1 and 1.21.11 (CC0, FabricMC, attribution given as a courtesy).
 * **No** code from Connector, Launchpad, Adapter, FFAPI or Forgified Fabric Loader. Their designs were studied; the implementation is clean-room.
 
 ## 7. Environment action needed for Phase 2
@@ -209,16 +209,16 @@ The owner's decisions after the platform evaluation. The evidence for each fact 
 | D2 | **The shared modules stay loadable on Java 17.** `core`, `api` and `fabric-loader-api` compile their main code with `release = 17` (tests at 21, toolchain 21), so the build itself rejects Java 21-only APIs and language features in them. | Code written on `main` merges into `forge-legacy` without breaking it. |
 | D3 | Native Fabric API modules on 1.20.1 (delegated): **`main`'s native set where Fabric API 0.92.12 has the module**, the rest passed through as on `main`; the list is fixed in phase L2 against the 1.20.1 corpus. | Which bridges the branch writes first. |
 | D4 | 1.20.1 release criteria (delegated): **the gates `main` has**: the test mods' server and client smoke, the client module gate, Fabric API 0.92.12 booting, and corpus runs where no client or server crashes and every mod left out is reported with its reason. | When `forge-legacy`'s 1.20.1 target leaves its evaluation and stabilisation phases. |
-| D5 | **Modern Forge builds with ForgeGradle** (version to verify against Gradle 9.7 when the `forge` branch starts). | ModDevGradle supports NeoForge, and Forge only up to 1.20.1 through `legacyforge`. |
-| D6 | **CI on secondary branches runs for pull requests only** (replaced on 2026-10-27 by one pull request per task into `main`, with a quick check on each push). A push builds only `main`; work on `forge` and `forge-legacy` is built when a pull request targets them (`.github/workflows/build.yml`: `push: branches: [main]`, `pull_request` for any base). | Runner time: each game target costs about 25 minutes per run. |
+| D5 | **Modern Forge builds with ForgeGradle** (7.0.40, pinned in `settings.gradle`; it builds on Gradle 9.7.0, `PORTING.md` §8). | ModDevGradle supports NeoForge, and Forge only up to 1.20.1 through `legacyforge`. |
+| D6 | **CI on secondary branches runs for pull requests only** (replaced on 2026-10-27 by one pull request per task into its base branch, with a quick check on each push). A push builds only `main`; work on `forge` and `forge-legacy` is built when a pull request targets them (`.github/workflows/build.yml`: `push: branches: [main]`, `pull_request` for any base). | Runner time: each game target costs about 25 minutes per run. |
 
 **Build paths.**
 
 | Branch | Platform | Build plugin | Java | Runtime names | CI target |
 |---|---|---|---|---|---|
-| `main` | NeoForge 21.11, 26.1, 26.2, 26.3 | ModDevGradle 2.0.142 (`net.neoforged.moddev`) | 21 (1.21.11), 25 (26.x) | Mojang | NeoForge installers, HeadlessMC, mc-runtime-test |
-| `forge-legacy` | Forge 47.4 (1.20.1) | ModDevGradle `net.neoforged.moddev.legacyforge` (`legacyForge { version = "1.20.1-47.4.x" }`, `reobfJar` to SRG, mixin refmaps); on Gradle 9.7 UNVERIFIED (R1) | 17 | Mojang classes, SRG members (`f_…_`, `m_…_`) from MCPConfig | Forge installer from `maven.minecraftforge.net`, HeadlessMC `forge-47.x`, mc-runtime-test's 1.20.1 LexForge build |
-| `forge` | Forge 61 (1.21.11), 64 to 66 (26.1.2 to 26.3) | ForgeGradle (D5) | 21, 25 | Mojang | Forge installers |
+| `main` | NeoForge 21.1, 21.11, 26.1, 26.2, 26.3 | ModDevGradle 2.0.142 (`net.neoforged.moddev`) | 21 (1.21.1, 1.21.11), 25 (26.x) | Mojang | NeoForge installers, HeadlessMC, mc-runtime-test |
+| `forge-legacy` | Forge 43.5 (1.19.2, in beta), Forge 47.4 (1.20.1) | ModDevGradle `net.neoforged.moddev.legacyforge` (`legacyForge { version = project.forge_version }`: `1.19.2-43.5.2`, `1.20.1-47.4.28`; reobfuscated to SRG, mixin refmaps); on Gradle 9.7 since #71 (R1) | 17 | Mojang classes, SRG members (`f_…_`, `m_…_`) from MCPConfig | Forge installers from `maven.minecraftforge.net`, HeadlessMC, mc-runtime-test's LexForge builds |
+| `forge` | Forge 52 (1.21.1), 61 (1.21.11), 64 to 66 (26.1.2 to 26.3) | ForgeGradle 7.0.40 (D5) | 21 (1.21.1, 1.21.11), 25 (26.x) | Mojang | Forge installers |
 
 **What 1.20.1 changes in the engine** (`PORTING.md` §3.2): discovery on forgespi 7 (`IModLocator`, `IDependencyLocator`,
 `IModLanguageProvider`; the locator jar leaves normal mod loading), a remap target of Mojang class names with SRG

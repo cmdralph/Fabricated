@@ -1,9 +1,10 @@
 # Fabricated beyond modern NeoForge: the 1.20.1 and Forge evaluation
 
-Status: **in progress**: both Forge targets run the game on dedicated servers, `forge` at F4 and `forge-legacy` at L4
-(§7 has the detail; `COMPATIBILITY.md`'s support matrix compares the platforms). Written 2026-10-21; the owner's decisions are in §8 and
-`RESEARCH.md` §8. Of §6's seams on `main`, items 1 to 3 and the trigger part of 4 are done. NeoForge stays the primary
-platform: Minecraft 1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3, all five on stable NeoForge lines. This document
+Status: **in progress**: both Forge targets run the game on dedicated servers and clients, `forge` at F4 and
+`forge-legacy` at L4 (§7 has the detail; `COMPATIBILITY.md`'s support matrix compares the platforms). Written
+2026-10-21; the owner's decisions are in §8 and `RESEARCH.md` §8. Of §6's seams on `main`, items 1 to 4 are done, and
+item 5's descriptor part. NeoForge stays the primary platform: Minecraft 1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3, all
+five on stable NeoForge lines. This document
 says what of the engine carries over to Minecraft Forge for 1.20.1 and other legacy versions (branch
 `forge-legacy`) and for the versions `main` covers (branch `forge`), what the build needs, what must change on `main` first, and in which order the work goes.
 Facts about other projects cite their repository, ref and file; what could not be checked is marked UNVERIFIED.
@@ -25,12 +26,11 @@ Gradle wrapper, the shared CI in `ci`, and the code both Forge platforms share: 
 `mc/forge-shared`, `ci/forge-shared`) and NeoForge's folders (`loader/neoforge`, `mc/neoforge/<version>`,
 `ci/neoforge`, `mc/platform-neoforge.gradle`); `forge` and `forge-legacy` hold the shared modules and their own
 platform's folders (`mc/forge`, `ci/forge`; `mc/forge-legacy`, `ci/forge-legacy`). Shared changes go to
-`main` and reach the Forge branches by merge (`scripts/sync-platform-branch.sh`, which keeps the branch's own platform
-and leaves NeoForge's out, then a pull request into the branch); Forge work goes to its branch by pull request from a
-working branch made from it; a Forge branch is never merged into `main`. From 2026-10-26 to 2026-10-28 one working
-branch, `claude/dev`, held every platform and all three branches the same tree, with each Forge branch's README copied
-in by `branch-readme.yml`; before that each Forge branch had a working branch of its own (`claude/forge`,
-`claude/forge-legacy`) and took `main` by merge, as now.
+`main` and reach the Forge branches only through `scripts/sync-platform-branch.sh`, which merges `main` into a working
+branch made from the Forge branch, keeping the branch's own platform and leaving NeoForge's out, then a pull request
+into the branch, squash-merged as every pull request is; Forge work goes to its branch by pull request from a working
+branch made from it (`claude/dev-forge`, `claude/dev-forge-legacy`); a Forge branch is never merged into `main`, and no
+code is copied between branches.
 
 ## 2. What of the engine is portable
 
@@ -120,8 +120,9 @@ makes native the 14 of `main`'s 16 native modules (1.21.11's plan) that exist th
 through on `main`; whether Forge 47's patches leave their hooks in place is for L4, with pre-flight against Forge's
 game jar. Three modules have no `main` counterpart: `fabric-blockrenderlayer-v1`, `fabric-client-tags-api-v1` and
 `fabric-mining-level-api-v1` (pass-through until L4 says otherwise); `fabric-gametest-api-v1` stays unsupported. The
-plan file itself (`mc/forge-legacy/1.20.1`'s `fabric-api-plan.json`) is written in L4, with the vendored modules: a native entry
-before Fabricated ships the module would hide the player's copy.
+plan file itself (`mc/forge-legacy/1.20.1`'s `fabric-api-plan.json`) marks native only the modules Fabricated ships,
+seven on Forge 47 (§3.3), and the others load from the player's jar: a native entry before Fabricated ships the module
+would hide the player's copy.
 
 ### 3.3 Minecraft 1.19.2 (Forge 43)
 
@@ -174,10 +175,10 @@ bakery finishes, and places an item from the game's frames on the stack.
 
 | Fact | Evidence |
 |---|---|
-| Forge is maintained for every version `main` targets: branches `1.21.11` (Forge 61, recommended build 61.2), `26.1.2` (64.1 RB), `26.2` (65.1 RB), `26.3` (66.1 RB, 2026-10-21). That the binaries are published is UNVERIFIED (Forge's maven is not reachable here). | MinecraftForge/MinecraftForge branches and tags |
+| Forge is maintained for the versions `main` targets: branches `1.21.11` (Forge 61, recommended build 61.2), `26.1.2` (64.1 RB), `26.2` (65.1 RB), `26.3` (66.1 RB, 2026-10-21); for 1.21.1 there is branch `1.21.1` (Forge 52). The builds CI pins are on Forge's maven (`maven.minecraftforge.net`), where the build and CI's installs get them. | MinecraftForge/MinecraftForge branches and tags; `ci/forge-shared/platform.sh` |
 | Discovery is forgespi 8.0: the same `IModLocator`/`IDependencyLocator` list shapes as 1.20.1, `ModFile`s built by `ModFileFactory` over `SecureJar`; `IModLanguageProvider` in the plugin layer. No `ClassProcessor`: `ITransformationService` from `mods/` (called after the mod scan); JS coremods are gone. | MinecraftForge/forgespi `8.0`; Forge `26.3` `ModDiscoverer.java`; ModLauncher `LaunchPluginHandler.java:38-43` |
 | `META-INF/mods.toml` with `mandatory`; no `[[mixins]]` (manifest `MixinConfigs`), no `enumExtensions`; access transformers as a top-level list. | Forge `26.3` `ModFileParser.java:33`, `ModFile.identifyMods` |
-| Mojang names at runtime on 1.21.11 (26.x is unobfuscated); upstream Mixin 0.8.7; MixinExtras 0.5.4 added by Forge when a mod's manifest declares mixin configs (`MixinConfigs`). | Forge `1.21.11` `build.gradle:183-188` ("runtime official mappings") and its `mappings-channel = "official"` (an earlier version of this row cited `ForgeProdLaunchHandler.getNaming()`, which returns `"mcp"` and shows nothing about names); `JarInJarDependencyLocator.java:74,236` |
+| Mojang names at runtime on 1.21.11 (26.x is unobfuscated); upstream Mixin 0.8.7; MixinExtras 0.5.4 added by Forge when a mod's manifest declares mixin configs (`MixinConfigs`). | Forge `1.21.11` `build.gradle:183-188` ("runtime official mappings") and its `mappings-channel = "official"`; `JarInJarDependencyLocator.java:74,236` |
 | EventBus 7: each event has its own static bus (`X.BUS.addListener`), events are records or `MutableEvent`s, cancellation is a listener's return value, `Event.Result` gone. Every bridge Fabricated has is written against NeoForge's bus. | MinecraftForge/EventBus 7.0.x |
 | Old capabilities, `ChannelBuilder` networking (with a payload channel), no data maps, `AddGuiOverlayLayersEvent` for HUD layers, `forge:condition` (single object), `IExtensibleEnum` only. | Forge `26.3` sources |
 | Forge is LGPL-2.1 with an exception for mods using it through ordinary Java mechanisms; ModLauncher LGPL-3.0. Calling these APIs from a GPL-3.0 mod appears compatible (not legal advice). | Forge `LICENSE.txt` |
@@ -199,8 +200,8 @@ Java 25 for every target and downloads from Forge's maven. A version project dep
 Read in source (2026-10-25): Forge `1.21.11`, `26.1.2`, `26.2` and `26.3`, forgespi 8.0.0, ModLauncher 10.2.6,
 securemodules 2.2.24 and Mixin 0.8.7, the versions all four Forge targets ship. The discovery classes are the same
 on 61 to 66; two internals differ on 61 (`FMLLoader.getLanguageLoadingProvider()` is an instance method, and
-`ModLoader.addWarning` is an instance method where 66 has a static one). Nothing here has run yet: every row is
-UNVERIFIED at runtime until a Forge server smoke runs.
+`ModLoader.addWarning` is an instance method where 66 has a static one). What the Forge server and client runs answered
+is below the design, from *What the first runs answered* on.
 
 **Each NeoForge SPI Fabricated uses, and Forge's counterpart.**
 
@@ -232,9 +233,8 @@ GAME(PLUGIN, SERVICE): plugin-layer code can't see service-layer classes. The la
 - **Translated mods**: `new ModFile(SecureJar.from(metadata, filter, jar, ..., overlay), this,
   ModFileParser::modsTomlParser)` with the overlay **last**: securemodules' union file system searches its last path
   first ("later elements are first in search order", `UnionFileSystem`), and the manifest and primary path come from
-  the last too, so the overlay's files win without a filter hiding the jar's (an earlier version of this bullet said
-  the first path wins; corrected after reading the source). Mixin reads `MixinConfigs` from the overlay's manifest
-  (verified, below). `ModJarMetadata`'s constructor is package-private: Fabricated has its own `JarMetadata`.
+  the last too, so the overlay's files win without a filter hiding the jar's. Mixin reads `MixinConfigs` from the
+  overlay's manifest (verified, below). `ModJarMetadata`'s constructor is package-private: Fabricated has its own `JarMetadata`.
 - The three parts share no package (GAME's automatic modules read every module).
 
 Fallbacks, both read in source: return the language jar as a PLUGIN `Resource` from
@@ -345,9 +345,9 @@ compiles a renamed copy of them (`renamed_classes`, 1.21.1's `Identifier=Resourc
 settings, the mod descriptor, `gameDependencies`), builds the in-game mod as `game-mod.jar` and merges `loader`
 (`loader/common` and `loader/neoforge`, or `loader/forge-shared` for both Forge platforms: their discovery classes and
 language provider, with Forge 43's and 47's differences below the game in its variant, `loader_variant`), `core`, `api` and
-`fabric-loader-api` into `fabricatedJar` (§6, items 2 and 3). The test sources every platform shares are in `mc/shared`. NeoForge's CI step conditions still name versions,
-and its matrix, installers (`neoforge-<v>-installer.jar`), HeadlessMC launch names and mc-runtime-test assets are
-NeoForge's.
+`fabric-loader-api` into `fabricatedJar` (§6, items 2 and 3). The test sources every platform shares are in `mc/shared`.
+CI is one workflow and harness for every platform (§6, item 4): each platform's adapter, `ci/<platform>/platform.sh`,
+names its build tasks, its installer and how it launches the game.
 
 **1.20.1 with ModDevGradle's `legacyforge` plugin.** MDG ships `net.neoforged.moddev.legacyforge` at the same
 version as the main plugin (our 2.0.142 has it): "support for developing mods against MinecraftForge and Vanilla
@@ -361,9 +361,10 @@ without deprecation warnings and planned a reobfuscated jar; executing it needs 
 can't reach. **`forge-legacy`'s first CI run (cmdralph/Fabricated#71) then built the 1.20.1 project with it on Gradle
 9.7.0** (`createMinecraftArtifacts`, both compiles, the jar) in 1 min 13 s: risk R1 is settled. Forge's newest 1.20.1
 build on its maven that day was 47.4.28 (the branch tip of 2026-10-13); an access transformer for 1.20.1 names members
-by SRG name. A `mc/forge-legacy/1.20.1`
-project would apply it, reobfuscate `game-mod.jar` (loader classes name no game members), build against Java 17,
-and use its own source folders: `mc/neoforge/common` is NeoForge's and 1.21's (45 of its 149 files import `net.neoforged`).
+by SRG name. The `mc/forge-legacy/1.20.1`
+project (and `mc/forge-legacy/1.19.2`) applies it, reobfuscates `game-mod.jar` (loader classes name no game members),
+builds against Java 17, and uses its own source folders (`mc/forge-legacy/common` and `mc/forge-shared`):
+`mc/neoforge/common` is NeoForge's and 1.21's (45 of its 149 files import `net.neoforged`).
 
 **CI.** A 1.20.1 job: Java 17, Forge's installer from `maven.minecraftforge.net` (`--installServer`,
 `--installClient`), HeadlessMC launching `forge-47.x`, and mc-runtime-test's `1.20.1` LexForge asset (its 1.20.1
@@ -416,11 +417,11 @@ the abstractions below are added when the branch work starts (owner decision D2 
 | Phase | Work | Exit criterion |
 |---|---|---|
 | L0 Evaluation (done) | This document; decisions D1 to D6. | Decisions recorded (§8). |
-| L1 Seams on `main` | §6, items 1 to 6, by pull request (items 1 to 3 done, and item 4's trigger; the rest of 4, and 5 and 6, when L3 needs them). | `main` green on all four versions after each; `core` builds at release 17. |
-| L2 Scaffolding | Merge `main` into `forge-legacy`; `mc/forge-legacy/1.20.1` on `legacyforge` (R1 settled first); Fabric API 0.92.12 plan (which modules native); compile only. | `:mc:forge-legacy-1.20.1:fabricatedJar` builds in CI (done for the project, #71; the Fabric API plan is next). |
+| L1 Seams on `main` | §6, items 1 to 6, by pull request (items 1 to 4 done, and item 5's descriptor part; the rest of 5, and 6, as the branches need them). | `main` green on all four versions after each; `core` builds at release 17. |
+| L2 Scaffolding | Merge `main` into `forge-legacy`; `mc/forge-legacy/1.20.1` on `legacyforge` (R1 settled first); Fabric API 0.92.12 plan (which modules native); compile only. | `:mc:forge-legacy-1.20.1:fabricatedJar` builds in CI (done: the project in #71, and the Fabric API plan). |
 | L3 Discovery and translation | forgespi 7 adapter (locator, dependency locator, language provider, nested jars); Intermediary → SRG composer from MCPConfig; Forge descriptor writer; MixinExtras provision; class transforms through `ITransformationService`. | The test mods' server smoke passes on Forge 47.4 (entrypoints, registries, mixins, access wideners). Done (#88, #89, #92, #93, #97, #98, #100): the adapter (the forge branch's, ported), `MappingComposer.composeSrg`, `ForgeDescriptor` (Forge's dialect, 1.20.1's `pack_format`, Forge as the report's loader), the transformation service, the main and server entrypoints in Forge's registry events with the registries open, MixinExtras 0.5.5 nested in the in-game mod for Forge's jar-in-jar locator. The gated smoke passes 20 checks: discovery, translation, the in-game mod, packs, entrypoints, an item registered by Intermediary names and kept after freezing, a private field read through the access widener, a mixin in SRG names, a `@WrapMethod`, an injected interface, a stripped client method, and Forge's loading warnings naming a Fabric mod that wasn't loaded (#103). |
 | L4 Native Fabric API | Lifecycle, registries, networking on `SimpleChannel`, resource loader, events, transfer on `LazyOptional` capabilities, the old renderer API; client smoke with HeadlessMC and mc-runtime-test (done, `bd45389`). First, from the informational run with the official Fabric API 0.92.12 jar (#107: 36 modules load, 13 client-only are skipped): pre-flight disables registry sync (`DebugLevelSource` fields), both loot modules (`LootTable.pools` is a `List` on Forge), interaction events, dimensions (`changeDimension` takes an `ITeleporter`) and tags, so those come first; the server then stopped on the furnace hook (ALLOW-1, fixed in `core`). | Server and client smoke gates green; Fabric API 0.92.12 boots. |
-| L5 Corpus and stabilisation | 1.20.1 corpus from Modrinth; pre-flight repairs against Forge 47's patches, vanilla code through MCPConfig; Fabric's Mixin fork features measured (R2). | Release criteria met (to be set with the owner, as for `main`). |
+| L5 Corpus and stabilisation | 1.20.1 corpus from Modrinth; pre-flight repairs against Forge 47's patches, vanilla code through MCPConfig; Fabric's Mixin fork features measured (R2). | Release criteria met (`CONTRIBUTING.md`, *Releasing*). |
 
 **Where it stands.** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions, built with ModDevGradle's
 `legacyforge`. L3's server smoke passes on Forge 47.4.28, a gate since #97: a translated Fabric mod is discovered,
@@ -502,7 +503,11 @@ sides' own do. Item storages in items have nothing to cross to: Fabric API for 1
 | F4 Bridges | Native Fabric API modules against EventBus 7, old capabilities, `ChannelBuilder` networking, `AddGuiOverlayLayersEvent`. First, from the informational runs with the official Fabric API jars (#108): Forge 61 to 66 run SpongePowered's Mixin 0.8.7, which stopped Forge 64 to 66 on Fabric API's JAVA_25 level (LEVEL-1, fixed in `core`); Forge 61 stopped at bootstrap on the furnace hook, as Forge 47 did (ALLOW-1, fixed in `core`). Pre-flight disables dimensions (`TaggedChoice` is a library class there), tags and datagen (methods Forge's patches add), and on 26.x object builder (Forge changed `AttributeSupplier.Builder`'s field), data attachment (needs it) and content registries (Forge's fluid hooks), so those come first. | Server and client smoke gates on every version. |
 | F5 Corpus | As L5. | Release criteria. |
 
-**Where it stands.** Minecraft Forge 61 to 66 for the versions `main` covers, built with ForgeGradle. F3 steps 1 to 4 done:
+**Where it stands.** Minecraft Forge 52 and 61 to 66 for the versions `main` covers, built with ForgeGradle. Forge 52
+(Minecraft 1.21.1) builds on `forge` since #463, with Forge 61 to 66's discovery services (`loader/forge-shared`'s
+`src/modern`: securemodules, Mixin 0.8.7 and Mojang's names) and the code it compiles as other Forge versions do in
+`mc/forge-shared`, and its own in-game mod beside that, as it has EventBus 6 and 1.21.1's game
+(`mc/forge/1.21.1/gradle.properties`). F3 steps 1 to 4 done:
 on Forge 61 (1.21.11) and 64 to 66 (26.x) a translated Fabric mod is discovered, loads, runs its main and server
 entrypoints in Forge's registry events with the registries open, registers an item that stays in the frozen registry,
 has its mixins applied, its injected interfaces added and its other side's members stripped, and the report names
@@ -577,11 +582,11 @@ the same locator interfaces), so the second one is a port of the first.
 
 | ID | Risk | Mitigation |
 |---|---|---|
-| R1 | ModDevGradle `legacyforge` on Gradle 9.7 is untested upstream. | Settled: `forge-legacy`'s first CI run built the 1.20.1 project with `legacyforge` on Gradle 9.7.0 (#71). Should a later Gradle break it, fix forward (a ModDevGradle update on `main`): a branch-local older wrapper won't do, as the branch also carries `main`'s 26.x projects, whose Java 25 toolchain needs Gradle 9.1 or later. |
+| R1 | ModDevGradle `legacyforge` on Gradle 9.7 is untested upstream. | Settled: `forge-legacy`'s first CI run built the 1.20.1 project with `legacyforge` on Gradle 9.7.0 (#71). Should a later Gradle break it, fix forward (a ModDevGradle update on `main`): a branch-local older wrapper won't do, as the branch takes `main`'s Gradle wrapper with every sync. |
 | R2 | Fabric mods for 1.20.1 were built against Fabric's Mixin fork (0.12.5 to 0.15.5); upstream 0.8.5 may lack what they use. | Measure on the corpus in L5; pre-flight reports the gap per mod rather than crashing. |
 | R3 | Discovery: the locator jar leaves normal mod loading, and a language provider must sit in the plugin layer; how a single download carries all three parts is UNVERIFIED. | A layout for Forge 61 to 66 read through in source, with two fallbacks (§4.1); prototyped in F3 (and L3) before the bridges. |
 | R4 | SRG names: every name-bearing data file (access transformers, refmaps, rename tables) must target members by SRG name. | One mapping table drives all of them, as Intermediary → Mojang does today. |
-| R5 | CI cost: every target adds about 25 minutes per run. | A quick check of one version per touched platform on each push, the full matrix on the task's pull request to `main` (2026-10-27, replacing D6); docs-only changes build nothing. |
+| R5 | CI cost: every target adds about 25 minutes per run. | A quick check of one version per touched platform on each push, the full matrix on the task's pull request into its base branch (2026-10-27, replacing D6); docs-only changes build nothing. |
 
 Decisions (the owner's, 2026-10-21; D3 and D4 delegated, both provisional until the phase that fixes them):
 
@@ -595,5 +600,6 @@ Decisions (the owner's, 2026-10-21; D3 and D4 delegated, both provisional until 
 - **D5:** modern Forge builds with ForgeGradle (7.0.40, pinned in `settings.gradle`: Gradle 9.3 or later; builds on
   9.7.0, #72).
 - **D6:** CI runs on secondary branches for pull requests only; a push builds only `main` (already so in
-  `build.yml`). Replaced on 2026-10-27: one pull request per task into `main` runs every touched platform's full
-  matrix, and each push to a working branch gets the quick check (`claude.md`, *Working rules*).
+  `build.yml`). Replaced on 2026-10-27: one pull request per task into its base branch (`main`, `forge` or
+  `forge-legacy`) runs the full matrix for the versions it touches, and each push to a working branch gets the quick
+  check (`claude.md`, *Working rules*).
