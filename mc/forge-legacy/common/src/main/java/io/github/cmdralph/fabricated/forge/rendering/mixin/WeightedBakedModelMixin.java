@@ -15,8 +15,8 @@ import net.minecraft.client.resources.model.WeightedBakedModel;
 import net.minecraft.util.random.WeightedEntry;
 
 /**
- * Lets a vanilla weighted model (random variants) say whether one of its variants is a Fabric model (Forge 47): then
- * Fabric's renderer draws the block, whichever variant it picks, as upstream's own mixin on it does (see
+ * Lets a vanilla weighted model (random variants) say whether one of its variants is a Fabric model (Forge 43 and 47):
+ * then Fabric's renderer draws the block, whichever variant it picks, as upstream's own mixin on it does (see
  * {@link FabricBlockRendering}). A variant whose drawing threw makes Forge's renderer draw the block (FRAPI rule 8).
  */
 @Mixin(WeightedBakedModel.class)

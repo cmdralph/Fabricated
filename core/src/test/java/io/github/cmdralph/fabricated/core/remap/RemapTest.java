@@ -5,11 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -357,6 +359,401 @@ class RemapTest {
 		assertNull(t.mapPlainMethod("net/minecraft/class_8", "get", "(F)F"), "an override of the renamed get(F)F isn't joined");
 	}
 
+	@Test
+	void joinsTheFieldsIntermediaryLeavesUnderTheirOfficialNamesToSrgs(@TempDir Path tmp) throws Exception {
+		// PLAIN-2: MCPConfig for 1.19.2 renames the members of the classes the official jar keeps unobfuscated, which
+		// Intermediary lists none of: GlStateManager.BLEND is f_84066_ on Forge 43. Iris's accessor of it, by its official
+		// name, failed pre-flight there, and its redirect of RenderSystem.setShader, named so in its @At, found no call.
+		String gl = "com/mojang/blaze3d/platform/GlStateManager";
+		String tiny = TINY + "CLASS\tc\tnet/minecraft/class_4\nFIELD\tc\tI\tlisted\tfield_40\n";
+		String tsrg2 = TSRG2 + gl + " net/minecraft/src/C_3112_ 3112\n\tBLEND f_84066_ 84066\n\tDEPTH f_84067_ 84067\n"
+				+ "\t_enableBlend ()V m_84525_ 84525\n"
+				+ "com/mojang/blaze3d/systems/RenderSystem net/minecraft/src/C_3_ 3\n\tsetShader (Ljava/util/function/Supplier;)V m_157427_ 157427\n"
+				+ "\tinitRenderer (IZ)V m_69580_ 69580\n\t_setShaderTexture (II)V m_157176_ 157176\n\t_setShaderTexture (ILa;)V m_157179_ 157179\n"
+				+ "c net/minecraft/src/C_4_ 4\n\tlisted f_40_ 40\n\tkept f_41_ 41\n\tsame same 42\n";
+		MappingTable t = MappingComposer.composeSrg(new StringReader(tiny), new StringReader(tsrg2), null);
+		assertEquals("f_84066_", t.mapPlainField(gl, "BLEND"), "a field of a class the official jar keeps");
+		assertEquals("f_41_", t.mapPlainField("net/minecraft/class_4", "kept"), "one the official jar keeps in a class it renames");
+		assertNull(t.mapPlainField("net/minecraft/class_4", "listed"), "one Intermediary renames maps by its intermediary name");
+		assertEquals("f_40_", t.mapMemberFlat("field_40"));
+		assertNull(t.mapPlainField("net/minecraft/class_4", "same"), "one SRG keeps");
+		assertNull(t.mapPlainField("mod/Other", "BLEND"), "another owner's");
+		assertEquals("m_84525_", t.ownPlainMethod(gl, "_enableBlend", "()V"));
+		assertNull(table().mapPlainField(gl, "BLEND"), "Mojang's names keep official ones: NeoForge's table has none");
+		assertEquals("f_84066_", MappingTable.deserialize(t.serialize()).mapPlainField(gl, "BLEND"), "cached with the table");
+
+		TokenRemapper tokens = new TokenRemapper(t);
+		assertEquals("L" + gl + ";f_84066_:L" + gl + "$BlendState;", tokens.remap("L" + gl + ";BLEND:L" + gl + "$BlendState;"), "a field's @At target");
+		assertEquals("Lcom/mojang/blaze3d/systems/RenderSystem;m_157427_(Ljava/util/function/Supplier;)V",
+				tokens.remap("Lcom/mojang/blaze3d/systems/RenderSystem;setShader(Ljava/util/function/Supplier;)V"), "a method's, whose owner Intermediary keeps");
+		assertEquals("Lmod/Other;setShader(Ljava/util/function/Supplier;)V", tokens.remap("Lmod/Other;setShader(Ljava/util/function/Supplier;)V"),
+				"an owner outside Minecraft's is judged by itself");
+		assertEquals("L" + gl + ";BLEND:I", new TokenRemapper(table()).remap("L" + gl + ";BLEND:I"));
+
+		// An accessor interface of Iris's kind, a mixin shadowing the field and the method, and a class using the field.
+		ClassWriter accessors = new ClassWriter(0);
+		accessors.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, "mod/GlAccessor", null, "java/lang/Object", null);
+		AnnotationVisitor mixin = accessors.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor value = mixin.visitArray("value");
+		value.visit(null, Type.getObjectType(gl));
+		value.visitEnd();
+		mixin.visitEnd();
+		accessorMethod(accessors, "getBlend", "()Ljava/lang/Object;", "Lorg/spongepowered/asm/mixin/gen/Accessor;", "BLEND");
+		accessorMethod(accessors, "getDEPTH", "()Ljava/lang/Object;", "Lorg/spongepowered/asm/mixin/gen/Accessor;", null);
+		accessorMethod(accessors, "callEnable", "()V", "Lorg/spongepowered/asm/mixin/gen/Invoker;", "_enableBlend");
+		accessorMethod(accessors, "getCount", "()I", "Lorg/spongepowered/asm/mixin/gen/Accessor;", "count");
+		accessors.visitEnd();
+
+		ClassWriter shadows = new ClassWriter(0);
+		shadows.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "mod/GlMixin", null, "java/lang/Object", null);
+		AnnotationVisitor targets = shadows.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitArray("targets");
+		targets.visit(null, gl.replace('/', '.'));
+		targets.visitEnd();
+		shadows.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "BLEND", "Ljava/lang/Object;", null, null).visitEnd();
+		MethodVisitor enable = shadows.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "_enableBlend", "()V", null, null);
+		enable.visitInsn(Opcodes.RETURN);
+		enable.visitMaxs(0, 0);
+		enable.visitEnd();
+		MethodVisitor use = shadows.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "use", "()Ljava/lang/Object;", null, null);
+		use.visitMethodInsn(Opcodes.INVOKESTATIC, "mod/GlMixin", "_enableBlend", "()V", false);
+		use.visitFieldInsn(Opcodes.GETSTATIC, "mod/GlMixin", "BLEND", "Ljava/lang/Object;");
+		use.visitInsn(Opcodes.ARETURN);
+		use.visitMaxs(1, 0);
+		use.visitEnd();
+		shadows.visitEnd();
+
+		ClassWriter user = new ClassWriter(0);
+		user.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "mod/GlUser", null, "java/lang/Object", null);
+		user.visitField(Opcodes.ACC_STATIC, "BLEND", "Ljava/lang/Object;", null, null).visitEnd();
+		MethodVisitor read = user.visitMethod(Opcodes.ACC_STATIC, "read", "()V", null, null);
+		read.visitFieldInsn(Opcodes.GETSTATIC, gl, "BLEND", "Ljava/lang/Object;");
+		read.visitFieldInsn(Opcodes.GETSTATIC, "mod/GlUser", "BLEND", "Ljava/lang/Object;");
+		read.visitInsn(Opcodes.POP2);
+		read.visitInsn(Opcodes.RETURN);
+		read.visitMaxs(2, 0);
+		read.visitEnd();
+		user.visitEnd();
+
+		// Hooks into RenderSystem's methods by their names alone, or with their descriptors, as Iris's are (remap = false).
+		ClassWriter hooks = new ClassWriter(0);
+		hooks.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "mod/RenderMixin", null, "java/lang/Object", null);
+		AnnotationVisitor render = hooks.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitArray("value");
+		render.visit(null, Type.getObjectType("com/mojang/blaze3d/systems/RenderSystem"));
+		render.visitEnd();
+		String[][] hooked = {{"initRenderer"}, {"_setShaderTexture"}, {"_setShaderTexture(II)V"}, {"setShader", "own"}};
+		for (int i = 0; i < hooked.length; i++) {
+			MethodVisitor handler = hooks.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "hook" + i, "()V", null, null);
+			AnnotationVisitor inject = handler.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Inject;", true);
+			AnnotationVisitor methods = inject.visitArray("method");
+			for (String selector : hooked[i]) methods.visit(null, selector);
+			methods.visitEnd();
+			inject.visitEnd();
+			handler.visitInsn(Opcodes.RETURN);
+			handler.visitMaxs(0, 0);
+			handler.visitEnd();
+		}
+		hooks.visitEnd();
+
+		Path jar = TestJars.create().bytes("mod/GlAccessor.class", accessors.toByteArray()).bytes("mod/GlMixin.class", shadows.toByteArray())
+				.bytes("mod/GlUser.class", user.toByteArray()).bytes("mod/RenderMixin.class", hooks.toByteArray()).write(tmp.resolve("gl.jar"));
+		// RenderSystem's methods in its class file's order: a selector by a name alone picks the first of that name.
+		GameMethods order = name -> name.equals("com/mojang/blaze3d/systems/RenderSystem")
+				? List.of("m_69580_(IZ)V", "m_157179_(ILnet/minecraft/src/C_1_;)V", "m_157176_(II)V", "m_157427_(Ljava/util/function/Supplier;)V") : null;
+		Map<String, byte[]> files;
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			files = new JarRemapper(t, Supertypes.NONE, order).remap(archive, Set.of()).files();
+		}
+		ClassNode accessor = new ClassNode();
+		new ClassReader(files.get("mod/GlAccessor.class")).accept(accessor, 0);
+		Map<String, Object> written = new java.util.LinkedHashMap<>();
+		for (MethodNode m : accessor.methods) {
+			List<Object> values = m.invisibleAnnotations.get(0).values;
+			written.put(m.name, values == null ? null : values.get(1));
+		}
+		assertEquals(Map.of("getBlend", "f_84066_", "getDEPTH", "f_84067_", "callEnable", "m_84525_", "getCount", "count"), written,
+				"an accessor's or invoker's target, named or inferred, takes SRG's name; another stays");
+
+		ClassNode shadowing = new ClassNode();
+		new ClassReader(files.get("mod/GlMixin.class")).accept(shadowing, 0);
+		assertEquals(List.of("f_84066_"), shadowing.fields.stream().map(f -> f.name).toList(), "a mixin's shadow of its target's field");
+		List<String> uses = new ArrayList<>();
+		for (MethodNode m : shadowing.methods) {
+			if (!m.name.equals("use")) {
+				uses.add("declares " + m.name);
+				continue;
+			}
+			for (AbstractInsnNode insn : m.instructions) {
+				if (insn instanceof MethodInsnNode call) uses.add(call.name);
+				if (insn instanceof FieldInsnNode field) uses.add(field.name);
+			}
+		}
+		assertEquals(List.of("declares m_84525_", "m_84525_", "f_84066_"), uses, "and of its method, and their uses");
+
+		ClassNode using = new ClassNode();
+		new ClassReader(files.get("mod/GlUser.class")).accept(using, 0);
+		List<String> reads = new ArrayList<>();
+		for (AbstractInsnNode insn : using.methods.get(0).instructions) {
+			if (insn instanceof FieldInsnNode field) reads.add(field.owner + "." + field.name);
+		}
+		assertEquals(List.of(gl + ".f_84066_", "mod/GlUser.BLEND"), reads, "a read of the game's field; a class's own keeps its name");
+		assertEquals(List.of("BLEND"), using.fields.stream().map(f -> f.name).toList());
+
+		ClassNode hooking = new ClassNode();
+		new ClassReader(files.get("mod/RenderMixin.class")).accept(hooking, 0);
+		List<Object> selectors = new ArrayList<>();
+		for (MethodNode m : hooking.methods) selectors.add(m.visibleAnnotations.get(0).values.get(1));
+		assertEquals(List.of(List.of("m_69580_"), List.of("m_157179_"), List.of("m_157176_(II)V"), List.of("m_157427_", "own")),
+				selectors.stream().map(s -> List.copyOf((List<?>) s)).toList(), "an injector's method of its target's, by name (the first of"
+						+ " that name in the class, which Mixin picks, still by name alone) or with its descriptor; another stays");
+
+		// Without the class's order, a name its overloads give apart stays, with a note: which one Mixin picks isn't known.
+		JarRemapper.Result unordered;
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			unordered = new JarRemapper(t).remap(archive, Set.of());
+		}
+		ClassNode unknown = new ClassNode();
+		new ClassReader(unordered.files().get("mod/RenderMixin.class")).accept(unknown, 0);
+		assertEquals(List.of("_setShaderTexture"), unknown.methods.get(1).visibleAnnotations.get(0).values.get(1));
+		assertTrue(unordered.leftOutMembers().stream().anyMatch(n -> n.contains("\"_setShaderTexture\" as it is")), unordered.leftOutMembers().toString());
+	}
+
+	@Test
+	void aSelectorByNameAloneKeepsPickingTheOneOverloadMixinPicksOnForge47(@TempDir Path tmp) throws Exception {
+		// PLAIN-2 on Forge 47's table, which has plain methods and no plain fields: a Fabric mixin's @Inject(method =
+		// "getElement") into LootDataResolver, whose two overloads Intermediary leaves under that name and SRG names apart.
+		// Loom's refmap keys it to one overload; turned into a selector per overload, the annotation no longer matched the
+		// key, and the hook went into both. Unkeyed, Mixin takes the first of the name in the class: so does the remap.
+		String tiny = TINY + "CLASS\th\tnet/minecraft/class_9\n";
+		String tsrg2 = TSRG2 + "h net/minecraft/src/C_9_ 9\n\tgetElement (La;)Ljava/lang/Object; m_278667_ 278667\n"
+				+ "\tgetElement (Lb;)Ljava/util/Optional; m_278789_ 278789\n";
+		MappingTable t = MappingComposer.composeSrg(new StringReader(tiny), new StringReader(tsrg2), null);
+		assertNull(t.mapPlainField("net/minecraft/class_9", "getElement"));
+		assertEquals(Map.of(), t.plainFieldsOf("net/minecraft/class_9"), "Forge 47's table has no plain fields");
+		String resolver = "net/minecraft/class_9";
+		GameMethods order = name -> name.equals("net/minecraft/src/C_9_")
+				? List.of("<init>()V", "m_278789_(Lnet/minecraft/src/C_2_;)Ljava/util/Optional;", "m_278667_(Lnet/minecraft/src/C_1_;)Ljava/lang/Object;") : null;
+
+		String pinned = "L" + resolver + ";getElement(Lnet/minecraft/class_1;)Ljava/lang/Object;";
+		Path keyed = TestJars.create().bytes("mod/LootMixin.class", injectingMixin("mod/LootMixin", List.of(resolver), "getElement"))
+				.text("mod.refmap.json", "{\"mappings\":{\"mod/LootMixin\":{\"getElement\":\"" + pinned + "\"}}}").write(tmp.resolve("keyed.jar"));
+		Map<String, byte[]> files;
+		try (SafeArchive archive = SafeArchive.open(keyed, ArchiveLimits.DEFAULTS)) {
+			files = new JarRemapper(t, Supertypes.NONE, order).remap(archive, Set.of("mod.refmap.json")).files();
+		}
+		assertEquals(List.of("getElement"), injectSelectors(files.get("mod/LootMixin.class")), "a selector the refmap keys stays, as Mixin reads it there");
+		Refmap refmap = Refmap.parse(new String(files.get("mod.refmap.json"), StandardCharsets.UTF_8));
+		assertEquals("Lnet/minecraft/src/C_9_;m_278667_(Lnet/minecraft/src/C_1_;)Ljava/lang/Object;", refmap.resolve("mod/LootMixin", "getElement"),
+				"and the refmap's value is mapped");
+
+		Path unkeyed = TestJars.create().bytes("mod/LootMixin.class", injectingMixin("mod/LootMixin", List.of(resolver), "getElement"))
+				.bytes("mod/DescribedMixin.class", injectingMixin("mod/DescribedMixin", List.of(resolver), "getElement(Lnet/minecraft/class_1;)Ljava/lang/Object;"))
+				.write(tmp.resolve("unkeyed.jar"));
+		try (SafeArchive archive = SafeArchive.open(unkeyed, ArchiveLimits.DEFAULTS)) {
+			files = new JarRemapper(t, Supertypes.NONE, order).remap(archive, Set.of()).files();
+		}
+		assertEquals(List.of("m_278789_"), injectSelectors(files.get("mod/LootMixin.class")), "the first of the name in the class, by name alone");
+		assertEquals(List.of("m_278667_(Lnet/minecraft/src/C_1_;)Ljava/lang/Object;"), injectSelectors(files.get("mod/DescribedMixin.class")));
+
+		// The order is the game class's, which the platform's patches add methods to: one of its own named so (in Mojang's
+		// names) or under an SRG name of vanilla's, placed first, isn't what Fabric picks. The first of vanilla's own, which
+		// the mapping table knows, is; where the class has another method of its runtime name, its descriptor pins it.
+		GameMethods patched = name -> name.equals("net/minecraft/src/C_9_") ? List.of("getElement(Lnet/minecraftforge/Extra;)Ljava/lang/Object;",
+				"m_278667_(Lnet/minecraftforge/Extra;)Ljava/lang/Object;", "m_278789_(Lnet/minecraft/src/C_2_;)Ljava/util/Optional;",
+				"m_278667_(Lnet/minecraft/src/C_1_;)Ljava/lang/Object;") : null;
+		GameMethods shared = name -> name.equals("net/minecraft/src/C_9_") ? List.of("m_278789_(Lnet/minecraftforge/Extra;)Ljava/util/Optional;",
+				"m_278789_(Lnet/minecraft/src/C_2_;)Ljava/util/Optional;", "m_278667_(Lnet/minecraft/src/C_1_;)Ljava/lang/Object;") : null;
+		try (SafeArchive archive = SafeArchive.open(unkeyed, ArchiveLimits.DEFAULTS)) {
+			files = new JarRemapper(t, Supertypes.NONE, patched).remap(archive, Set.of()).files();
+		}
+		assertEquals(List.of("m_278789_"), injectSelectors(files.get("mod/LootMixin.class")), "the platform's methods placed first aren't picked");
+		try (SafeArchive archive = SafeArchive.open(unkeyed, ArchiveLimits.DEFAULTS)) {
+			files = new JarRemapper(t, Supertypes.NONE, shared).remap(archive, Set.of()).files();
+		}
+		assertEquals(List.of("m_278789_(Lnet/minecraft/src/C_2_;)Ljava/util/Optional;"), injectSelectors(files.get("mod/LootMixin.class")),
+				"vanilla's, pinned by its descriptor where the platform's own of that runtime name comes first");
+	}
+
+	@Test
+	void aSelectorByNameAloneTakesTheOneOverloadsNameWhereThePlatformChangedItsDescriptor(@TempDir Path tmp) throws Exception {
+		// One method of the name, whose descriptor a platform's patch changed: no method of the game's class has vanilla's
+		// descriptor, so the class's order picks nothing, and the name's one runtime name is the one Mixin finds there.
+		String tiny = TINY + "CLASS\th\tnet/minecraft/class_9\n";
+		String tsrg2 = TSRG2 + "h net/minecraft/src/C_9_ 9\n\tgetElement (La;)Ljava/lang/Object; m_278667_ 278667\n";
+		MappingTable t = MappingComposer.composeSrg(new StringReader(tiny), new StringReader(tsrg2), null);
+		GameMethods patched = name -> name.equals("net/minecraft/src/C_9_")
+				? List.of("<init>()V", "m_278667_(Lnet/minecraft/src/C_1_;Lnet/minecraftforge/Extra;)Ljava/lang/Object;") : null;
+		Path jar = TestJars.create().bytes("mod/LootMixin.class", injectingMixin("mod/LootMixin", List.of("net/minecraft/class_9"), "getElement"))
+				.write(tmp.resolve("patched.jar"));
+		JarRemapper.Result result;
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			result = new JarRemapper(t, Supertypes.NONE, patched).remap(archive, Set.of());
+		}
+		assertEquals(List.of("m_278667_"), injectSelectors(result.files().get("mod/LootMixin.class")));
+		assertTrue(result.leftOutMembers().stream().noneMatch(n -> n.contains("getElement")), result.leftOutMembers().toString());
+	}
+
+	@Test
+	void aMixinOfSeveralClassesKeepsAMemberTheyNameApart(@TempDir Path tmp) throws Exception {
+		// PLAIN-2: a mixin of GlStateManager's DestFactor and SourceFactor shadowing the value both have, which Forge 43
+		// names f_84646_ in one and f_84751_ in the other. Its shadow took the first target's name, which the second lacks.
+		// No one name finds it in each, so it stays, with a note, as do an accessor and a selector of such a member; one
+		// both name alike takes that name.
+		String dest = "com/mojang/blaze3d/platform/GlStateManager$DestFactor";
+		String source = "com/mojang/blaze3d/platform/GlStateManager$SourceFactor";
+		String tsrg2 = TSRG2 + dest + " net/minecraft/src/C_4534_ 4534\n\tvalue f_84646_ 84646\n\tapply ()V m_1_ 1\n\tshared ()V m_3_ 3\n"
+				+ source + " net/minecraft/src/C_4535_ 4535\n\tvalue f_84751_ 84751\n\tapply ()V m_2_ 2\n\tshared ()V m_3_ 3\n";
+		MappingTable t = MappingComposer.composeSrg(new StringReader(TINY), new StringReader(tsrg2), null);
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "mod/FactorMixin", null, "java/lang/Object", null);
+		AnnotationVisitor value = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitArray("value");
+		value.visit(null, Type.getObjectType(dest));
+		value.visit(null, Type.getObjectType(source));
+		value.visitEnd();
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, "value", "I", null, null).visitEnd();
+		MethodVisitor read = cw.visitMethod(Opcodes.ACC_PUBLIC, "read", "()I", null, null);
+		read.visitVarInsn(Opcodes.ALOAD, 0);
+		read.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "mod/FactorMixin", "shared", "()V", false);
+		read.visitVarInsn(Opcodes.ALOAD, 0);
+		read.visitFieldInsn(Opcodes.GETFIELD, "mod/FactorMixin", "value", "I");
+		read.visitInsn(Opcodes.IRETURN);
+		read.visitMaxs(1, 1);
+		read.visitEnd();
+		MethodVisitor shared = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "shared", "()V", null, null);
+		shared.visitEnd();
+		accessorMethod(cw, "getValue", "()I", "Lorg/spongepowered/asm/mixin/gen/Accessor;", "value");
+		MethodVisitor hook = cw.visitMethod(Opcodes.ACC_PRIVATE, "hook", "()V", null, null);
+		AnnotationVisitor inject = hook.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Inject;", true);
+		AnnotationVisitor methods = inject.visitArray("method");
+		methods.visit(null, "apply()V");
+		methods.visitEnd();
+		inject.visitEnd();
+		hook.visitInsn(Opcodes.RETURN);
+		hook.visitMaxs(0, 1);
+		hook.visitEnd();
+		cw.visitEnd();
+
+		Path jar = TestJars.create().bytes("mod/FactorMixin.class", cw.toByteArray()).write(tmp.resolve("factor.jar"));
+		JarRemapper.Result result;
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			result = new JarRemapper(t).remap(archive, Set.of());
+		}
+		ClassNode node = new ClassNode();
+		new ClassReader(result.files().get("mod/FactorMixin.class")).accept(node, 0);
+		assertEquals(List.of("value"), node.fields.stream().map(f -> f.name).toList(), "the shadow its targets name apart stays");
+		List<String> uses = new ArrayList<>();
+		for (AbstractInsnNode insn : node.methods.stream().filter(m -> m.name.equals("read")).findFirst().orElseThrow().instructions) {
+			if (insn instanceof FieldInsnNode f) uses.add(f.name);
+			if (insn instanceof MethodInsnNode m) uses.add(m.name);
+		}
+		assertEquals(List.of("m_3_", "value"), uses, "a method both name alike takes that name");
+		assertTrue(node.methods.stream().anyMatch(m -> m.name.equals("m_3_")), "its declaration too");
+		MethodNode getter = node.methods.stream().filter(m -> m.name.equals("getValue")).findFirst().orElseThrow();
+		assertEquals(List.of("value", "value"), getter.invisibleAnnotations.get(0).values, "an accessor of it stays");
+		assertEquals(List.of("apply()V"), node.methods.stream().filter(m -> m.name.equals("hook")).findFirst().orElseThrow().visibleAnnotations.get(0).values.get(1),
+				"a selector of a method they name apart stays");
+		String notes = String.join("\n", result.leftOutMembers());
+		assertTrue(notes.contains("Left mod/FactorMixin.value under its name"), notes);
+		assertTrue(notes.contains("accessor target \"value\""), notes);
+		assertTrue(notes.contains("selector \"apply()V\""), notes);
+	}
+
+	@Test
+	void anAccessorTakesTheFieldMixinMatchesAndAnEmptyTargetIsLeftOut(@TempDir Path tmp) throws Exception {
+		// PLAIN-2: Mixin reads @Accessor("") as no target and infers one; the remap wrote the inferred one as a second value,
+		// and Mixin read the first, "". And where no field has the accessor's name, Mixin takes the one field whose name
+		// differs only in case (getBlend for BLEND): the remap looked the name up as it was and wrote nothing.
+		String gl = "com/mojang/blaze3d/platform/GlStateManager";
+		String tsrg2 = TSRG2 + gl + " net/minecraft/src/C_3112_ 3112\n\tBLEND f_84066_ 84066\n\tDEPTH f_84067_ 84067\n\tMODE f_1_ 1\n\tMode f_2_ 2\n";
+		MappingTable t = MappingComposer.composeSrg(new StringReader(TINY), new StringReader(tsrg2), null);
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, "mod/GlAccessor", null, "java/lang/Object", null);
+		AnnotationVisitor value = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitArray("value");
+		value.visit(null, Type.getObjectType(gl));
+		value.visitEnd();
+		accessorMethod(cw, "getDEPTH", "()Ljava/lang/Object;", "Lorg/spongepowered/asm/mixin/gen/Accessor;", "");
+		accessorMethod(cw, "getBlend", "()Ljava/lang/Object;", "Lorg/spongepowered/asm/mixin/gen/Accessor;", null);
+		accessorMethod(cw, "getBlendState", "()Ljava/lang/Object;", "Lorg/spongepowered/asm/mixin/gen/Accessor;", "blend");
+		accessorMethod(cw, "getMode", "()I", "Lorg/spongepowered/asm/mixin/gen/Accessor;", null);
+		cw.visitEnd();
+		Path jar = TestJars.create().bytes("mod/GlAccessor.class", cw.toByteArray()).write(tmp.resolve("gl.jar"));
+		Map<String, byte[]> files;
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			files = new JarRemapper(t).remap(archive, Set.of()).files();
+		}
+		ClassNode node = new ClassNode();
+		new ClassReader(files.get("mod/GlAccessor.class")).accept(node, 0);
+		Map<String, Object> written = new java.util.LinkedHashMap<>();
+		for (MethodNode m : node.methods) written.put(m.name, m.invisibleAnnotations.get(0).values == null ? List.of() : m.invisibleAnnotations.get(0).values);
+		assertEquals(List.of("value", "f_84067_"), written.get("getDEPTH"), "the empty target is left out for the inferred one");
+		assertEquals(List.of("value", "f_84066_"), written.get("getBlend"), "an inferred name matching a field but for its case");
+		assertEquals(List.of("value", "f_84066_"), written.get("getBlendState"), "a written one too");
+		assertEquals(List.of(), written.get("getMode"), "two fields matching but for case: none is the one");
+	}
+
+	@Test
+	void longRunsOfIdentifierCharactersAreScannedQuickly() throws Exception {
+		// SEC-12: the patterns finding a member reference with any owner (PLAIN-2) and a class Intermediary keeps with
+		// nested classes it names (TOKEN-1) started at every letter, and scanned what followed again from each: a string of
+		// 64,000 'L's took 56 s, and one of 4,000 path segments overflowed the stack. Every string of a mod's class, its
+		// annotations, refmaps (to 16 MiB), access wideners and service files is remapped so.
+		MappingTable forge43 = MappingComposer.composeSrg(new StringReader(TINY), new StringReader(TSRG2
+				+ "com/mojang/blaze3d/platform/GlStateManager net/minecraft/src/C_3112_ 3112\n\tBLEND f_84066_ 84066\n"), null);
+		List<String> hostile = List.of("L".repeat(1_000_000) + ";(:", "La/b;".repeat(200_000) + "x(", "a/".repeat(500_000) + " x$class_1",
+				"a".repeat(1_000_000) + " b/c$class_1", "a.".repeat(500_000) + "b$class_1", "field_1:L" + "a".repeat(1_000_000),
+				"La/b;c(" + "L".repeat(1_000_000), "./".repeat(400_000) + "a/b$class_1", "/.".repeat(400_000) + "a.b$class_1 x",
+				"/a".repeat(400_000) + " $class_1");
+		assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+			for (MappingTable table : List.of(forge43, table())) {
+				TokenRemapper tokens = new TokenRemapper(table);
+				for (String s : hostile) assertEquals(s, tokens.remap(s));
+			}
+		});
+		TokenRemapper tokens = new TokenRemapper(forge43);
+		assertEquals("Lcom/mojang/blaze3d/platform/GlStateManager;f_84066_:I", tokens.remap("Lcom/mojang/blaze3d/platform/GlStateManager;BLEND:I"),
+				"a reference still matches");
+		assertEquals("(Lcom/mojang/blaze3d/platform/GlStateManager;f_84066_:I)", tokens.remap("(Lcom/mojang/blaze3d/platform/GlStateManager;BLEND:I)"));
+		assertEquals("Lcom/mojang/blaze3d/platform/GlStateManager$class_1017;", tokens.remap("Lcom/mojang/blaze3d/platform/GlStateManager$class_1017;"),
+				"a nested class token is still read (unknown here, so kept)");
+		assertEquals("xLcom/mojang/blaze3d/platform/GlStateManager;BLEND:I", tokens.remap("xLcom/mojang/blaze3d/platform/GlStateManager;BLEND:I"),
+				"an L inside a word starts no reference");
+	}
+
+	/** A mixin of the targets with one {@code @Inject(method = selector)} handler. */
+	private static byte[] injectingMixin(String name, List<String> targets, String selector) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object", null);
+		AnnotationVisitor value = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitArray("value");
+		for (String target : targets) value.visit(null, Type.getObjectType(target));
+		value.visitEnd();
+		MethodVisitor handler = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "hook", "()V", null, null);
+		AnnotationVisitor inject = handler.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Inject;", true);
+		AnnotationVisitor methods = inject.visitArray("method");
+		methods.visit(null, selector);
+		methods.visitEnd();
+		inject.visitEnd();
+		handler.visitInsn(Opcodes.RETURN);
+		handler.visitMaxs(0, 0);
+		handler.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** The selectors of a class's {@code @Inject}. */
+	private static List<?> injectSelectors(byte[] cls) {
+		ClassNode node = new ClassNode();
+		new ClassReader(cls).accept(node, 0);
+		return List.copyOf((List<?>) node.methods.get(0).visibleAnnotations.get(0).values.get(1));
+	}
+
+	/** An abstract or static accessor or invoker method with its annotation, its target written out or not. */
+	private static void accessorMethod(ClassWriter cw, String name, String desc, String annotation, String target) {
+		MethodVisitor m = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, desc, null, null);
+		AnnotationVisitor av = m.visitAnnotation(annotation, false);
+		if (target != null) av.visit("value", target);
+		av.visitEnd();
+		m.visitEnd();
+	}
+
 	/**
 	 * Intermediary and SRG names for PLAIN-1: c.open, d.run and e.get(), which Intermediary leaves under their official
 	 * names, f.get(F)F, which it renames, and g's override of that.
@@ -531,6 +928,20 @@ class RemapTest {
 		assertEquals("(Lnet/minecraft/world/Entity;Lcom/mojang/blaze3d/opengl/GlStateManager$TextureState;)V",
 				r.remap("(Lnet/minecraft/class_2;Lcom/mojang/blaze3d/opengl/GlStateManager$class_1017;)V"));
 		assertEquals("com/example/Thing$class_9", r.remap("com/example/Thing$class_9"), "a class the table doesn't know stays");
+
+		// After a path's lead, as Class.getResource is asked for a class file: SEC-12's start rule had left these alone.
+		String n = "com/mojang/blaze3d/opengl/GlStateManager$class_1017";
+		String mapped = "com/mojang/blaze3d/opengl/GlStateManager$TextureState";
+		assertEquals("/" + mapped + ".class", r.remap("/" + n + ".class"));
+		assertEquals("./" + mapped, r.remap("./" + n));
+		assertEquals("/" + mapped.replace('/', '.'), r.remap("/" + n.replace('/', '.')));
+		assertEquals("." + mapped.replace('/', '.'), r.remap("." + n.replace('/', '.')));
+		assertEquals(mapped + ".class", r.remap(n + ".class"));
+		assertEquals("[L" + mapped + ";", r.remap("[L" + n + ";"));
+		assertEquals("Ljava/util/List<L" + mapped + ";>;", r.remap("Ljava/util/List<L" + n + ";>;"));
+		assertEquals("{\"" + mapped + "\"}", r.remap("{\"" + n + "\"}"));
+		assertEquals("assets/" + n, r.remap("assets/" + n), "a path in another folder isn't the class");
+		assertEquals("(IL" + n + ";)V", r.remap("(IL" + n + ";)V"), "after a primitive in a descriptor: unmapped, as before SEC-12 (PLAIN-2's limits)");
 	}
 
 	@Test

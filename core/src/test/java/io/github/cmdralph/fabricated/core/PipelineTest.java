@@ -428,6 +428,103 @@ class PipelineTest {
 	}
 
 	/**
+	 * A library every platform provides that the platform's game doesn't have (JOML before Minecraft 1.19.3) stays the
+	 * mod's where the descriptor says the game lacks it, as Sodium 0.4 for 1.19.2 nests JOML; elsewhere the mod's copy is
+	 * left out for the platform's.
+	 */
+	@Test
+	void aLibraryThePlatformsGameLacksStaysInTheMod(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String matrix = "org/joml/Matrix4f";
+		Path renderer = TestJars.create().fabricModJson(TestJars.modJson("joml-user", "1.0", ""))
+				.bytes(matrix + ".class", TestJars.emptyClass(matrix, "java/lang/Object"))
+				.write(mods.resolve("joml-user.jar"));
+		PlatformDescriptor withoutJoml = new PlatformDescriptor.Forge() {
+			@Override
+			public List<String> absentLibraryPackages() {
+				return List.of("org/joml/");
+			}
+		};
+
+		Pipeline.Result lacking = Pipeline.run(withDescriptor(input(game, List.of(renderer), Namespace.OFFICIAL, Map.of(), null, List.of()), withoutJoml));
+		Pipeline.LoadedMod mod = lacking.mods().stream().filter(m -> m.translated().candidate().id().equals("joml-user")).findFirst()
+				.orElseThrow(() -> new AssertionError(lacking.report().render()));
+		assertEquals(Set.of(), mod.packages().excludedPackages(), lacking.report().render());
+		Pipeline.Result providing = Pipeline.run(withDescriptor(input(game, List.of(renderer), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
+		Pipeline.LoadedMod left = providing.mods().stream().filter(m -> m.translated().candidate().id().equals("joml-user")).findFirst()
+				.orElseThrow(() -> new AssertionError(providing.report().render()));
+		assertEquals(Set.of("org/joml"), left.packages().excludedPackages(), providing.report().render());
+	}
+
+	/** PLAT-8: a platform mod's own copy of a library the game lacks (JOML) is the platform's, which a Fabric mod's yields to. */
+	@Test
+	void aPlatformModsCopyOfALibraryTheGameLacksWins(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("joml-user", "1.0", ""))
+				.bytes("org/joml/Matrix4f.class", TestJars.emptyClass("org/joml/Matrix4f", "java/lang/Object")).write(mods.resolve("joml-user.jar"));
+		Pipeline.Input in = withDescriptor(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(), null, List.of()), WITHOUT_JOML);
+		Pipeline.Result result = Pipeline.run(withPlatformPackages(in, Set.of("net/neoforged/neoforge", "org/joml")));
+		assertEquals(Set.of("org/joml"), loaded(result, "joml-user").packages().excludedPackages(), result.report().render());
+	}
+
+	/** PLAT-8: where the game lacks JOML, the other libraries the platform provides are still left out, and only JOML's package is kept. */
+	@Test
+	void otherProvidedLibrariesAreLeftOutWhereTheGameLacksOne(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("libs", "1.0", ""))
+				.bytes("org/joml/Matrix4f.class", TestJars.emptyClass("org/joml/Matrix4f", "java/lang/Object"))
+				.bytes("org/jomlx/Other.class", TestJars.emptyClass("org/jomlx/Other", "java/lang/Object"))
+				.bytes("com/google/gson/Gson.class", TestJars.emptyClass("com/google/gson/Gson", "java/lang/Object")).write(mods.resolve("libs.jar"));
+		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(), null, List.of()), WITHOUT_JOML));
+		assertEquals(Set.of("com/google/gson"), loaded(result, "libs").packages().excludedPackages(), result.report().render());
+	}
+
+	/** PLAT-8: two Fabric mods nesting JOML where the game has none share the first's, as any package two mods bring. */
+	@Test
+	void twoModsNestingALibraryTheGameLacksShareOneCopy(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path a = TestJars.create().fabricModJson(TestJars.modJson("a-renderer", "1.0", ""))
+				.bytes("org/joml/Matrix4f.class", TestJars.emptyClass("org/joml/Matrix4f", "java/lang/Object")).write(mods.resolve("a.jar"));
+		Path b = TestJars.create().fabricModJson(TestJars.modJson("b-renderer", "1.0", ""))
+				.bytes("org/joml/Matrix4f.class", TestJars.emptyClass("org/joml/Matrix4f", "java/lang/Object", "java/io/Serializable"))
+				.bytes("org/joml/Vector3f.class", TestJars.emptyClass("org/joml/Vector3f", "java/lang/Object")).write(mods.resolve("b.jar"));
+		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, List.of(a, b), Namespace.OFFICIAL, Map.of(), null, List.of()), WITHOUT_JOML));
+		Pipeline.LoadedMod first = loaded(result, "a-renderer");
+		Pipeline.LoadedMod second = loaded(result, "b-renderer");
+		assertEquals(Set.of(), first.packages().excludedPackages(), result.report().render());
+		assertEquals(Set.of("org/joml"), second.packages().excludedPackages(), result.report().render());
+		assertTrue(second.packages().notes().stream().anyMatch(n -> n.startsWith("WARNING: has a different org.joml.Matrix4f")), second.packages().notes().toString());
+		assertTrue(first.packages().borrowed().values().stream().anyMatch(f -> f.contains("org/joml/Vector3f.class")), first.packages().toString());
+	}
+
+	/** A platform without JOML in its game (Forge 43's: PLAT-8). */
+	private static final PlatformDescriptor WITHOUT_JOML = new PlatformDescriptor.Forge() {
+		@Override
+		public List<String> absentLibraryPackages() {
+			return List.of("org/joml/");
+		}
+	};
+
+	/** The mod of that id the run loaded. */
+	private static Pipeline.LoadedMod loaded(Pipeline.Result result, String id) {
+		return result.mods().stream().filter(m -> m.translated().candidate().id().equals(id)).findFirst()
+				.orElseThrow(() -> new AssertionError(result.report().render()));
+	}
+
+	/** {@code in} with these platform loader packages. */
+	private static Pipeline.Input withPlatformPackages(Pipeline.Input in, Set<String> packages) throws Exception {
+		java.lang.reflect.RecordComponent[] parts = Pipeline.Input.class.getRecordComponents();
+		Class<?>[] types = new Class<?>[parts.length];
+		Object[] values = new Object[parts.length];
+		for (int i = 0; i < parts.length; i++) {
+			types[i] = parts[i].getType();
+			values[i] = parts[i].getName().equals("platformPackages") ? packages : parts[i].getAccessor().invoke(in);
+		}
+		return Pipeline.Input.class.getDeclaredConstructor(types).newInstance(values);
+	}
+
+	/**
 	 * A mod nesting a module of LWJGL the game doesn't ship (NanoVG) keeps it, while its copy of the game's LWJGL core is
 	 * left out: the game's LWJGL is on no module layer on FML 10 and later, so the platform's loaders decide (PLAT-2).
 	 */
