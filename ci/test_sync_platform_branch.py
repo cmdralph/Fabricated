@@ -47,6 +47,46 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(git(self.repo, "show", "HEAD:shared.txt"), "2\n")
         self.assertEqual(len(git(self.repo, "rev-list", "--parents", "-n", "1", "HEAD").split()), 3)
 
+    def sync(self):
+        return subprocess.run(["bash", str(SCRIPT), "forge", "main"], cwd=self.repo, env=ENV, capture_output=True, text=True)
+
+    def squash_merged_sync(self):
+        """Syncs forge with main and squash-merges the sync into forge, as its pull request is merged."""
+        self.assertEqual(self.sync().returncode, 0)
+        git(self.repo, "checkout", "-q", "forge")
+        git(self.repo, "merge", "-q", "--squash", "claude/dev-forge")
+        git(self.repo, "commit", "-q", "-m", "chore: sync forge with main (#1)")
+        git(self.repo, "checkout", "-q", "-B", "claude/dev-forge", "forge")
+
+    def change_main(self, files):
+        git(self.repo, "checkout", "-q", "main")
+        write(self.repo, files)
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "shared")
+        git(self.repo, "checkout", "-q", "claude/dev-forge")
+
+    def test_after_a_squash_merged_sync_main_s_changes_are_not_named_as_the_branch_s(self):
+        self.squash_merged_sync()
+        self.change_main({"shared.txt": "3\n"})
+        result = self.sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("warning", result.stderr)
+        self.assertEqual(git(self.repo, "show", "HEAD:shared.txt"), "3\n")
+
+    def test_a_shared_file_the_branch_changed_after_a_squash_merged_sync_is_named(self):
+        self.squash_merged_sync()
+        write(self.repo, {"other.txt": "f\n"})
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "a shared file changed on forge")
+        self.change_main({"shared.txt": "3\n"})
+        result = self.sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stderr.splitlines()
+        self.assertTrue(lines[0].startswith("warning:"), result.stderr)
+        self.assertEqual(lines[1], "other.txt")
+        self.assertNotIn("shared.txt", lines)
+        self.assertNotIn("other.txt", git(self.repo, "ls-tree", "-r", "--name-only", "HEAD").split())
+
     def test_main_s_own_workflows_stay_on_main(self):
         git(self.repo, "checkout", "-q", "main")
         write(self.repo, {".github/workflows/ci.yml": "c\n", ".github/workflows/release.yml": "r\n", ".github/workflows/weekly.yml": "w\n"})
