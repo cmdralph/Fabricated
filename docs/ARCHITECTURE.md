@@ -96,7 +96,8 @@ Fabricated/
 │                            FabricDependencyLocator, FabricLanguageLoader, FabricModContainer, and what changes classes as
 │                            they load, FabricClassTransforms in common/: interface injection, default bridges,
 │                            @Environment members, methods the platform made final, vanilla's methods put back,
-│                            invokers' bridges),
+│                            the bridges calling the platform's version of a method it gave a parameter, for
+│                            Fabric mods' invokers of vanilla's),
 │                            in two variants: src/fml for FML 10 to 12
 │                            (1.21.11, 26.x), src/modlauncher for NeoForge 21.1's FML 4 on ModLauncher (1.21.1),
 │                            each behind its own Fml facade; forge-shared/ (both Forge platforms' discovery
