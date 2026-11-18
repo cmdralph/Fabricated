@@ -219,7 +219,11 @@ class TranslationCacheTest {
 		}
 	}
 
-	/** FC-6: a launch sharing the game directory that stores an entry another stored first keeps that one's files. */
+	/**
+	 * FC-6: a launch sharing the game directory that stores an entry another stored first keeps that one's files. Its
+	 * record, where it differs (an edited entry.json, which reading it rejected), is written over, with a note: kept, the
+	 * mod would be translated again each launch.
+	 */
 	@Test
 	void keepsTheSameEntryAnotherLaunchStored(@TempDir Path game) throws Exception {
 		String name = TranslationCache.entryName("shared_mod", "33".repeat(32));
@@ -232,8 +236,14 @@ class TranslationCacheTest {
 		Object fileKey = Files.readAttributes(stored.file("overlay.jar"), BasicFileAttributes.class).fileKey();
 		TranslationCache.Entry again = second.store(name, Map.of("overlay.jar", new byte[] {1, 2}), Map.of("by", "second"));
 		assertEquals(stored.dir(), again.dir());
-		assertEquals("first", again.metadata().get("by"), "the entry already there is kept");
 		assertEquals(fileKey, Files.readAttributes(again.file("overlay.jar"), BasicFileAttributes.class).fileKey(), "its file wasn't replaced");
+		assertEquals("second", again.metadata().get("by"), "this translation's record");
+		assertEquals("second", new TranslationCache(game, true, true).lookup(name).orElseThrow().metadata().get("by"));
+		assertTrue(second.notes().stream().anyMatch(n -> n.contains(name) && n.endsWith(": rewritten")), second.notes().toString());
+		// The same record but for the translation's time is kept as it is, without a note.
+		TranslationCache third = new TranslationCache(game, true, true);
+		third.store(name, Map.of("overlay.jar", new byte[] {1, 2}), Map.of("by", "second", "millis", 5));
+		assertTrue(third.notes().isEmpty(), third.notes().toString());
 	}
 
 	/** FC-6: an entry already there with other files, or damaged ones, is replaced. */

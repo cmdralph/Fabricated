@@ -4,10 +4,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
+import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.GamePackages;
 
+import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -16,8 +20,10 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 /**
@@ -32,8 +38,13 @@ import org.objectweb.asm.tree.VarInsnNode;
  * chance, random, age)}, to which the platforms add the side the fire comes from.
  * <p>
  * The bridge is private: Mixin's invoker of a private method calls it with {@code invokespecial} (its
- * {@code AccessorGeneratorMethodProxy}, in Forge's 0.8.5 and Fabric's 0.16), so no other class can call it, and no
- * subclass's method of its name stands in for it.
+ * {@code AccessorGeneratorMethodProxy}: Forge's 0.8.5, Fabric's 0.16), or with {@code invokevirtual} where the class's
+ * version has nestmates (Fabric's 0.17, which NeoForge 26.x runs), which runs a private method itself as well; so no
+ * other class can call it, and no subclass's method of its name stands in for it.
+ * <p>
+ * Where the class, as it loads, can't take the bridge, it gets a private method of the bridge's name and descriptor
+ * that throws ({@link #stub}): Mixin then applies the invokers pointed there, as it does any accessor, and only a call
+ * of one fails, as a call of an invoker Fabricated left out did, with a message saying why.
  *
  * @param target           the class (internal name) that gets the method
  * @param vanillaName      vanilla's method's name, as the game runs (SRG's on Forge 47), which the bridge is named after
@@ -52,6 +63,9 @@ public record InvokerBridge(String target, String vanillaName, String descriptor
 	 */
 	public static final String MARKER = "Lio/github/cmdralph/fabricated/loader/InvokerBridgeMethod;";
 
+	/** The start of every bridge's name, the in-game mod's (LEAVE-5) and the ones game classes declare. */
+	public static final String NAME_PREFIX = MixinNames.BRIDGE_INVOKER;
+
 	/** The bridge's name: {@code fabricated$invoke$} and vanilla's method's. */
 	public String name() {
 		return MixinNames.BRIDGE_INVOKER + vanillaName;
@@ -64,6 +78,7 @@ public record InvokerBridge(String target, String vanillaName, String descriptor
 	 */
 	public String malformed() {
 		if (target == null || !GamePackages.isGame(target)) return "its class " + target + " isn't a game class";
+		if (Stream.of(vanillaName, method, constant).anyMatch(n -> n == null || LITERALS.contains(n))) return "a name in it isn't one a class can declare";
 		if (!identifier(vanillaName) || !identifier(method) || !identifier(constant)) return "a name in it isn't one a class can declare";
 		if (descriptor == null || methodDescriptor == null) return "it has no descriptor";
 		try {
@@ -77,6 +92,9 @@ public record InvokerBridge(String target, String vanillaName, String descriptor
 		}
 		return null;
 	}
+
+	/** What a Java identifier can't be: an empty value read back from a cache entry reads as {@code "null"}. */
+	private static final Set<String> LITERALS = Set.of("null", "true", "false");
 
 	/** Whether {@code name} is a Java identifier (what a method or field of a class may be named). */
 	private static boolean identifier(String name) {
@@ -145,57 +163,118 @@ public record InvokerBridge(String target, String vanillaName, String descriptor
 		Type result = Type.getReturnType(methodDescriptor);
 		code.add(new InsnNode(result.getOpcode(Opcodes.IRETURN)));
 		bridge.maxLocals = slot;
-		// The receiver and the platform's arguments; then what it returns.
-		bridge.maxStack = Math.max(Type.getArgumentsAndReturnSizes(methodDescriptor) >> 2, result.getSize());
+		// The receiver and the platform's arguments, at least two slots, which what it returns (two at most) then takes.
+		bridge.maxStack = Type.getArgumentsAndReturnSizes(methodDescriptor) >> 2;
 		return bridge;
+	}
+
+	/**
+	 * The method {@code node} gets in the bridge's place where it can't take the bridge: private, of the bridge's name and
+	 * descriptor, throwing an {@link AbstractMethodError} with {@code message}, the error a call of an invoker left out of
+	 * its accessor throws (Mixin applies the accessor without it), so a mod handling that one handles this the same way.
+	 */
+	MethodNode stub(String message) {
+		MethodNode stub = new MethodNode(Opcodes.ACC_PRIVATE, name(), descriptor, null, null);
+		stub.invisibleAnnotations = new ArrayList<>(List.of(new AnnotationNode(MARKER)));
+		InsnList code = stub.instructions;
+		code.add(new TypeInsnNode(Opcodes.NEW, "java/lang/AbstractMethodError"));
+		code.add(new InsnNode(Opcodes.DUP));
+		code.add(new LdcInsnNode(message));
+		code.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, "java/lang/AbstractMethodError", "<init>", "(Ljava/lang/String;)V", false));
+		code.add(new InsnNode(Opcodes.ATHROW));
+		stub.maxStack = 3;
+		stub.maxLocals = Type.getArgumentsAndReturnSizes(descriptor) >> 2;
+		return stub;
 	}
 
 	/**
 	 * Declares in {@code node}, as it loads, the bridges Fabric mods' invokers call there ({@code bridges}, each with its
 	 * invokers, {@code "<mod>: <mixin> @Invoker <method>"}), and returns their names. A bridge the class can't take
-	 * ({@link #unfit}) is declared nowhere, and {@code errors} gets why, naming its invokers, whose calls then fail as they
-	 * did without it. Of bridges of one name and descriptor that differ, the class keeps the one its own code backs (its
-	 * first call passes that constant, to that method), as pre-flight's rule chose it from the same class: the others,
-	 * which no translation of this game could have made, are errors. Where more than one fits it, it keeps none: which one
-	 * the invokers' translations meant can't be told.
+	 * ({@link #unfit}) becomes a {@link #stub} throwing why, and {@code errors} gets the same, naming its invokers: Mixin
+	 * still applies them, and only a call of one fails. Of bridges of one name and descriptor that differ, the class keeps
+	 * the one its own code backs (its first call passes that constant, to that method), as pre-flight's rule chose it
+	 * from the same class: the others, which no translation of this game could have made, are errors, and their invokers
+	 * call the one kept, whose value the rule gives them too. Where more than one fits, which one the invokers'
+	 * translations meant can't be told, and every invoker of that name gets the stub, none silently the other's bridge.
+	 * Where the class declares the name itself (a transformer that ran before), it keeps its own method, as declaring a
+	 * second would make the class fail to load.
 	 */
 	public static List<String> declare(ClassNode node, Map<InvokerBridge, List<String>> bridges, Consumer<String> errors) {
 		Map<String, List<InvokerBridge>> byMethod = new LinkedHashMap<>();
-		for (Map.Entry<InvokerBridge, List<String>> e : bridges.entrySet()) {
-			InvokerBridge bridge = e.getKey();
-			String unfit = bridge.unfit(node);
-			if (unfit != null) {
-				errors.accept(bridge.error(node, e.getValue(), unfit));
-				continue;
-			}
-			byMethod.computeIfAbsent(bridge.name() + bridge.descriptor(), k -> new ArrayList<>()).add(bridge);
-		}
+		for (InvokerBridge bridge : bridges.keySet()) byMethod.computeIfAbsent(bridge.name() + bridge.descriptor(), k -> new ArrayList<>()).add(bridge);
 		List<String> declared = new ArrayList<>();
 		for (List<InvokerBridge> same : byMethod.values()) {
-			InvokerBridge bridge = same.get(0);
-			if (same.size() > 1) {
-				List<String> invokers = new ArrayList<>();
-				for (InvokerBridge other : same) invokers.addAll(bridges.get(other));
-				errors.accept(bridge.error(node, invokers, same.size() + " bridges of that name fit the class, calling " + String.join(", ",
-						same.stream().map(b -> b.method() + " with " + b.constant()).toList())));
+			InvokerBridge first = same.get(0);
+			List<String> invokers = new ArrayList<>();
+			for (InvokerBridge b : same) invokers.addAll(bridges.get(b));
+			if (PreflightAsm.declares(node, first.name(), first.descriptor())) {
+				errors.accept(first.error(node, invokers, "the class already declares " + first.name() + first.descriptor()
+						+ ", which those invokers call instead (LEAVE-6)"));
 				continue;
 			}
-			MethodNode method = bridge.method(node);
-			if (method == null) {
-				// The class declares the name itself (a mixin applied before Fabricated's transform, another transformer).
-				errors.accept(bridge.error(node, bridges.get(bridge), "the class already declares " + bridge.name() + bridge.descriptor()));
+			Map<InvokerBridge, String> unfit = new LinkedHashMap<>();
+			List<InvokerBridge> fit = new ArrayList<>();
+			for (InvokerBridge b : same) {
+				String why = b.unfit(node);
+				if (why == null) fit.add(b);
+				else unfit.put(b, why);
+			}
+			if (fit.size() == 1) {
+				InvokerBridge kept = fit.get(0);
+				node.methods.add(kept.method(node));
+				declared.add(kept.name());
+				unfit.forEach((b, why) -> errors.accept(b.error(node, bridges.get(b), why + "; they call the one the class's own code backs, with "
+						+ AddedParameters.typeName(Type.getArgumentTypes(kept.methodDescriptor())[kept.parameter()]) + "." + kept.constant() + " (LEAVE-6)")));
 				continue;
 			}
-			node.methods.add(method);
-			declared.add(bridge.name());
+			String why = same.size() == 1 ? unfit.get(first)
+					: fit.isEmpty() ? "none of the " + same.size() + " bridges of that name fits the class (" + String.join("; ", unfit.values()) + ")"
+					: fit.size() + " bridges of that name fit the class, calling " + String.join(", ", fit.stream().map(b -> b.method() + " with " + b.constant()).toList())
+							+ ", and which one the invokers' translations meant can't be told";
+			errors.accept(first.refused(node, invokers, why));
+			node.methods.add(first.stub(first.message(node, invokers, why)));
+			declared.add(first.name());
 		}
 		return declared;
 	}
 
-	/** The error for an invoker bridge {@code node} doesn't get: what, why, and the invokers whose calls fail. */
+	/** The error for a bridge {@code node} doesn't get as made, with {@code why}, naming the invokers. */
 	private String error(ClassNode node, List<String> invokers, String why) {
 		return "Fabricated couldn't declare " + name() + descriptor + " in " + node.name.replace('/', '.') + " for " + String.join(", ", invokers)
-				+ ": " + why + ". Calls of those invokers fail (LEAVE-6)";
+				+ ": " + why;
+	}
+
+	/** The error for a bridge {@code node} gets a {@link #stub} for, saying what a call of its invokers then does. */
+	private String refused(ClassNode node, List<String> invokers, String why) {
+		return error(node, invokers, why) + ". The class gets a method of that name throwing an AbstractMethodError that says so, so Mixin applies those"
+				+ " invokers and only a call of one fails (LEAVE-6)";
+	}
+
+	/** What the stub throws: the same, and where the report is. */
+	private String message(ClassNode node, List<String> invokers, String why) {
+		return error(node, invokers, why) + " (LEAVE-6); logged as the class loaded, and in logs/fabric-bridge-report.txt";
+	}
+
+	/**
+	 * The invokers of a translated mixin ({@code classBytes}) pointed at a bridge, each as {@code "@Invoker <method> ->
+	 * <bridge>"} ({@link #pointedKey}): what a translation cache entry's record of them must cover.
+	 */
+	public static List<String> pointedAtBridges(byte[] classBytes) {
+		ClassNode node = new ClassNode();
+		new ClassReader(classBytes).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+		List<String> pointed = new ArrayList<>();
+		for (MethodNode m : node.methods) {
+			AnnotationNode invoker = Annotations.find(m, MixinNames.INVOKER);
+			if (invoker != null && Annotations.value(invoker, "value") instanceof String value && value.startsWith(NAME_PREFIX)) {
+				pointed.add(pointedKey(m.name + m.desc, value));
+			}
+		}
+		return pointed;
+	}
+
+	/** An invoker's key as {@link #pointedAtBridges} gives it: its method, and the bridge's name. */
+	public static String pointedKey(String method, String bridge) {
+		return "@Invoker " + method + " -> " + bridge;
 	}
 
 	/** Whether the method is a bridge {@link #method} made, by its {@link #MARKER}. */
