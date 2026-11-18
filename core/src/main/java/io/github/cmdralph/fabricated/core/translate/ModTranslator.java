@@ -60,6 +60,7 @@ import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerParser;
 import io.github.cmdralph.fabricated.core.archive.ArchiveException;
+import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.DeterministicJarWriter;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
@@ -267,8 +268,9 @@ public final class ModTranslator {
 				Set<String> widened = new TreeSet<>();
 				// The game classes its mixins target that have vanilla methods put back as they load (SEAM-1).
 				Set<String> seams = new TreeSet<>();
-				// The bridges game classes declare as they load for its invokers (LEAVE-6).
+				// The bridges game classes declare as they load for its invokers (LEAVE-6), and every invoker pointed at a bridge.
 				Map<InvokerBridge, List<String>> invokers = new LinkedHashMap<>();
+				Map<String, String> pointed = new LinkedHashMap<>();
 				// Fields the platform retyped, as the mod's classes and mixins reach them (CORPUS-33); before pre-flight,
 				// which then sees the mod's accessors of them as they will load.
 				if (!retyped.isEmpty()) {
@@ -287,7 +289,7 @@ public final class ModTranslator {
 				String newerEntrypoint = newerJavaEntrypoint(candidate.metadata(), files);
 				if (newerEntrypoint != null) throw newerJava("its entrypoint " + newerEntrypoint);
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files, classEntries, overlay, findings,
-						installedClasses, enumEntries, enumTargets, lookup, bridges, notes, widened, seams, invokers, generatedConfigs);
+						installedClasses, enumEntries, enumTargets, lookup, bridges, notes, widened, seams, invokers, pointed, generatedConfigs);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
 
 				// The mod's own files translation rewrites (not the ones it adds).
@@ -438,6 +440,7 @@ public final class ModTranslator {
 				meta.put("overridableMethods", List.copyOf(overridable));
 				meta.put("restoredSeams", List.copyOf(seams));
 				meta.put("invokerBridges", invokers.entrySet().stream().map(e -> invokerBridgeToJson(e.getKey(), e.getValue())).toList());
+				meta.put("pointedInvokers", pointedToJson(pointed, invokers));
 				meta.put("installedClasses", installedClasses);
 				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
 				Path jar = ownJar != null ? entry.file(remapped(neoId)) : candidate.path();
@@ -660,8 +663,8 @@ public final class ModTranslator {
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, Set<String> plannedSkips, FileView files,
 			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses,
 			List<EnumExtensions.Entry> enumEntries, Set<String> enumTargets, ClassLookup lookup, Set<DefaultBridge> bridges,
-			List<String> notes, Set<String> widened, Set<String> seams, Map<InvokerBridge, List<String>> invokers, List<MixinEntry> generatedConfigs)
-			throws ArchiveException, TranslationException {
+			List<String> notes, Set<String> widened, Set<String> seams, Map<InvokerBridge, List<String>> invokers, Map<String, String> pointed,
+			List<MixinEntry> generatedConfigs) throws ArchiveException, TranslationException {
 		Function<String, ClassNode> classes = lookup::node;
 		FabricModMetadata md = candidate.metadata();
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
@@ -884,6 +887,7 @@ public final class ModTranslator {
 		preflight.withoutSeamNotesOfLeftOut(findings);
 		seams.addAll(preflight.restoredSeams());
 		invokers.putAll(preflight.invokerBridges());
+		pointed.putAll(preflight.pointedInvokers());
 		Set<String> written = new TreeSet<>(override.skipMixins());
 		written.removeAll(plannedSkips);
 		unmatchedSkips(written, matchedSkips, md.compatHints().mixinsOr(md.mixins()), configs.keySet(), findings);
@@ -1983,18 +1987,11 @@ public final class ModTranslator {
 		if (meta.get("overridableMethods") instanceof List<?> list) list.forEach(o -> overridable.add(String.valueOf(o)));
 		Set<String> seams = new TreeSet<>();
 		if (meta.get("restoredSeams") instanceof List<?> list) list.forEach(o -> seams.add(String.valueOf(o)));
-		Map<InvokerBridge, List<String>> invokers = new LinkedHashMap<>();
-		if (meta.get("invokerBridges") instanceof List<?> list) {
-			for (Object o : list) {
-				InvokerBridge bridge = o instanceof Map<?, ?> m ? invokerBridgeFromJson(m) : null;
-				// An entry no translation made (another build's, an edited file) is dropped, and the mod translated again: a
-				// bridge the class then declared could call any of its methods (LEAVE-6).
-				if (bridge == null || bridge.malformed() != null) return null;
-				List<String> users = new ArrayList<>();
-				if (((Map<?, ?>) o).get("invokers") instanceof List<?> names) names.forEach(n -> users.add(String.valueOf(n)));
-				invokers.put(bridge, List.copyOf(users));
-			}
-		}
+		// An entry no translation made (another build's, an edited file) is dropped, and the mod translated again: a bridge the
+		// class then declared could call any of its methods, and an invoker pointed at a bridge no class declares stops the
+		// game as Mixin applies it (LEAVE-6).
+		Map<InvokerBridge, List<String>> invokers = invokerBridgesFromJson(meta, entry.file(overlay(neoId)));
+		if (invokers == null) return null;
 		int at = meta.get("accessTransformers") instanceof Number n ? n.intValue() : 0;
 		Path jar = entry.has(remapped(neoId)) ? entry.file(remapped(neoId)) : candidate.path();
 		return new TranslatedMod(candidate, neoId, jar, entry.file(overlay(neoId)), List.copyOf(findings), at, List.copyOf(notes),
@@ -2179,9 +2176,79 @@ public final class ModTranslator {
 	}
 
 	private static InvokerBridge invokerBridgeFromJson(Map<?, ?> m) {
-		return new InvokerBridge(String.valueOf(m.get("target")), String.valueOf(m.get("vanillaName")), String.valueOf(m.get("descriptor")),
-				String.valueOf(m.get("method")), String.valueOf(m.get("methodDescriptor")), m.get("parameter") instanceof Number n ? n.intValue() : -1,
-				String.valueOf(m.get("constant")));
+		return new InvokerBridge(text(m, "target"), text(m, "vanillaName"), text(m, "descriptor"), text(m, "method"), text(m, "methodDescriptor"),
+				m.get("parameter") instanceof Number n ? n.intValue() : -1, text(m, "constant"));
+	}
+
+	/** A text value of a cache record, or null where it has none. */
+	private static String text(Map<?, ?> m, String key) {
+		return m.get(key) instanceof String s ? s : null;
+	}
+
+	/**
+	 * Every invoker pointed at a bridge, with the bridge's name, and whether a game class declares it for that invoker
+	 * (LEAVE-6) rather than the in-game mod adding it or the invoker being left out.
+	 */
+	private static List<Map<String, Object>> pointedToJson(Map<String, String> pointed, Map<InvokerBridge, List<String>> invokers) {
+		Set<String> declared = new HashSet<>();
+		invokers.forEach((bridge, users) -> users.forEach(u -> declared.add(u + " -> " + bridge.name())));
+		List<Map<String, Object>> out = new ArrayList<>();
+		pointed.forEach((invoker, bridge) -> {
+			Map<String, Object> m = new LinkedHashMap<>();
+			m.put("invoker", invoker);
+			m.put("bridge", bridge);
+			m.put("declared", declared.contains(invoker + " -> " + bridge));
+			out.add(m);
+		});
+		return out;
+	}
+
+	/**
+	 * The bridges a cache entry's record holds, each with its invokers; null where the record is none a translation makes:
+	 * a bridge malformed ({@link InvokerBridge#malformed}), either list missing, an invoker a game class declares a bridge
+	 * for without that bridge in the record, or an invoker of the overlay's mixins pointed at a bridge the record doesn't
+	 * list (by its method and the bridge's name: the mixin's own name may have been moved).
+	 */
+	private static Map<InvokerBridge, List<String>> invokerBridgesFromJson(Map<String, Object> meta, Path overlay) {
+		if (!(meta.get("invokerBridges") instanceof List<?> listed) || !(meta.get("pointedInvokers") instanceof List<?> pointed)) return null;
+		Map<InvokerBridge, List<String>> invokers = new LinkedHashMap<>();
+		Set<String> served = new HashSet<>();
+		for (Object o : listed) {
+			InvokerBridge bridge = o instanceof Map<?, ?> m ? invokerBridgeFromJson(m) : null;
+			if (bridge == null || bridge.malformed() != null || !(((Map<?, ?>) o).get("invokers") instanceof List<?> names)) return null;
+			List<String> users = new ArrayList<>();
+			for (Object n : names) {
+				if (!(n instanceof String user)) return null;
+				users.add(user);
+				served.add(user + " -> " + bridge.name());
+			}
+			invokers.put(bridge, List.copyOf(users));
+		}
+		Set<String> keys = new HashSet<>();
+		for (Object o : pointed) {
+			if (!(o instanceof Map<?, ?> m) || text(m, "invoker") == null || text(m, "bridge") == null || !(m.get("declared") instanceof Boolean declared)) return null;
+			String invoker = text(m, "invoker");
+			if (declared && !served.contains(invoker + " -> " + text(m, "bridge"))) return null;
+			int at = invoker.indexOf("@Invoker ");
+			if (at < 0) return null;
+			keys.add(InvokerBridge.pointedKey(invoker.substring(at + "@Invoker ".length()), text(m, "bridge")));
+		}
+		byte[] marker = InvokerBridge.NAME_PREFIX.getBytes(StandardCharsets.ISO_8859_1);
+		try (SafeArchive archive = SafeArchive.open(overlay, ArchiveLimits.DEFAULTS)) {
+			for (String name : archive.classEntryNames()) {
+				byte[] data = archive.read(name);
+				if (data == null || !contains(data, marker)) continue;
+				if (!keys.containsAll(InvokerBridge.pointedAtBridges(data))) return null;
+			}
+		} catch (IOException | RuntimeException e) {
+			return null;
+		}
+		return invokers;
+	}
+
+	/** Whether {@code data} holds {@code wanted}. */
+	private static boolean contains(byte[] data, byte[] wanted) {
+		return new String(data, StandardCharsets.ISO_8859_1).contains(new String(wanted, StandardCharsets.ISO_8859_1));
 	}
 
 	private static Map<String, Object> injectionToJson(InjectedInterface i) {

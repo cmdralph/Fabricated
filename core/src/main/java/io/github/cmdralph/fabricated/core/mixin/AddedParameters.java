@@ -122,6 +122,9 @@ final class AddedParameters extends PreflightPart {
 		String why = null;
 		if ((target.access & Opcodes.ACC_INTERFACE) != 0) {
 			why = simpleName(target.name) + " is an interface, and Fabricated declares bridges in classes only";
+		} else if (PreflightAsm.declares(vanillaClass, platform.name, platform.desc)) {
+			why = "vanilla's class has " + platform.name + platform.desc + " too, so that is vanilla's own method, not " + loaderName + " version of the"
+					+ " one the invoker names";
 		} else if (named.size() > 1) {
 			why = simpleName(target.name) + " has " + named.size() + " methods of that name taking one parameter more than vanilla's, and which one stands"
 					+ " in for it can't be told";
@@ -249,7 +252,8 @@ final class AddedParameters extends PreflightPart {
 	 * The code the JVM runs for {@code call} on an object of the class it names, as the JVM selects it: the method of that
 	 * class or the nearest superclass declaring it, else the one maximally specific default of their interfaces (JVMS
 	 * 5.4.3.3); for a static call, the class's or a superclass's static method. Why there is none to follow where the
-	 * method found has no code, isn't of the call's kind, can't be read, or more than one interface's default could run.
+	 * method found has no code, isn't of the call's kind, is a superclass's private one (which the call resolves to and
+	 * can't reach), can't be read, or more than one interface's default could run.
 	 * Not {@link PreflightClasses#declaration}, which takes the first default it meets: the repairs that ask it (HOOK-2,
 	 * HOOK-3, STRUCT-1's hooks, overloads) find calls through it, and would see others if it changed.
 	 */
@@ -260,15 +264,17 @@ final class AddedParameters extends PreflightPart {
 			ClassNode node = readable(c);
 			if (node == null) return new Runs(null, "whose class " + simpleName(c) + " can't be read");
 			MethodNode m = PreflightAsm.declared(node, call.name, call.desc);
-			// A private method of a superclass isn't selected for a call through a subclass; the call's own class's is.
-			if (m != null && (c.equals(call.owner) || (m.access & Opcodes.ACC_PRIVATE) == 0)) {
+			// A superclass's private method is what the call resolves to, and can't reach (IllegalAccessError).
+			if (m != null && !c.equals(call.owner) && (m.access & Opcodes.ACC_PRIVATE) != 0) {
+				return new Runs(null, "which " + simpleName(c) + " declares private, so the call can't reach it");
+			}
+			if (m != null) {
 				if (((m.access & Opcodes.ACC_STATIC) != 0) != isStatic) {
 					return new Runs(null, "which " + simpleName(c) + " declares " + (isStatic ? "as an instance method" : "static") + " where the call is "
 							+ (isStatic ? "static" : "not"));
 				}
 				return hasCode(m) ? new Runs(new PreflightClasses.Code(c, m), null) : new Runs(null, "which " + simpleName(c) + " declares without code");
 			}
-			if (isStatic && (node.access & Opcodes.ACC_INTERFACE) != 0) break;
 			superinterfaces.addAll(node.interfaces);
 			if ((node.access & Opcodes.ACC_INTERFACE) != 0) break;
 			c = node.superName;

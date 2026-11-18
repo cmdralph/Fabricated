@@ -127,9 +127,10 @@ public final class FabricClassTransforms {
 		}
 		Map<InvokerBridge, List<String>> invokers = state.invokerBridges().getOrDefault(node.name, Map.of());
 		if (!invokers.isEmpty()) {
-			// Not silent: a bridge the class can't take leaves its invokers' calls failing, which the log and the report say.
+			// Not silent: a bridge the class can't take becomes a method that throws, so Mixin still applies its invokers and
+			// only a call fails; the log says so as the class loads, and the report once loading completes.
 			List<String> declared = InvokerBridge.declare(node, invokers, error -> {
-				LOGGER.error(error);
+				LOGGER.error("{} (listed in logs/fabric-bridge-report.txt, under \"{}\", once loading completes)", error, INVOKER_BRIDGES);
 				state.report().line(INVOKER_BRIDGES, error);
 			});
 			if (!declared.isEmpty()) {
