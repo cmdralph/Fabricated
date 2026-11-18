@@ -32,7 +32,7 @@ import io.github.cmdralph.fabricated.core.testutil.TestSources;
  * fluid interaction, keyed by fluid type; 26.3's, by fluid, which answers a tag by the fluid's tags) against stand-ins whose
  * defaults are NeoForge's. The class rewritten answers what NeoForge's did for every entity and every fluid at its eyes;
  * a hook of vanilla's call (Artifacts' underwater mining speed, FrozenLib's air bubbles) runs where it goes back, and only
- * there; and the check makes nothing on the common path (an entity with no fluid at its eyes).
+ * there; and the put-back's own code makes nothing on the common path (an entity with no fluid at its eyes).
  */
 public class EyesInWaterTest {
 	private static final String PLAYER = "net/minecraft/world/entity/player/Player";
@@ -44,6 +44,14 @@ public class EyesInWaterTest {
 	}
 
 	static Map<String, String> sources(Form form) {
+		return sources(form, null);
+	}
+
+	/**
+	 * {@link #sources(Form)}, or a variant of NeoForge's places that mustn't be rewritten: {@code "deep"}, the mining speed's
+	 * predicate reading the height; {@code "mixed"}, the air bubbles asking one player's fluid interaction about another.
+	 */
+	static Map<String, String> sources(Form form, String variant) {
 		Map<String, String> sources = new HashMap<>();
 		put(sources, "net.minecraft.core.Holder", "public interface Holder<T> { T value(); }");
 		put(sources, "net.minecraft.tags.TagKey", "public record TagKey<T>(String name) { }");
@@ -96,15 +104,20 @@ public class EyesInWaterTest {
 						for (int i = 0; i < count; i++) if (eyes[i] && types[i] == fluid) return true;
 						return false;
 					}
+					static FluidType getFluidTypeByTag(net.minecraft.tags.TagKey<?> fluid) {
+						return fluid == net.minecraft.tags.FluidTags.WATER ? net.neoforged.neoforge.common.NeoForgeMod.WATER_TYPE.value()
+								: net.neoforged.neoforge.common.NeoForgeMod.LAVA_TYPE.value();
+					}
 					%s
 				}""".formatted(isEyeInTag));
 		put(sources, "net.minecraft.world.entity.Entity", """
 				public class Entity {
 					final EntityFluidInteraction fluidInteraction = new EntityFluidInteraction();
 					public EntityFluidInteraction getFluidInteraction() { return fluidInteraction; }
-					public boolean isEyeInFluid(net.minecraft.tags.TagKey<?> type) { return this.fluidInteraction.isEyeInFluid(type); }
+					public boolean isEyeInFluid(net.minecraft.tags.TagKey<?> type) { return %s; }
 					public boolean isEyeInFluid(net.neoforged.neoforge.fluids.FluidType type) { return this.fluidInteraction.isEyeInFluid(type); }
-				}""");
+				}""".formatted(form == Form.BY_TYPE ? "this.isEyeInFluid(EntityFluidInteraction.getFluidTypeByTag(type))"
+						: "this.fluidInteraction.isEyeInFluid(type)"));
 		put(sources, "net.minecraft.world.entity.LivingEntity", """
 				public class LivingEntity extends Entity {
 					public boolean canBreatheUnderwater() { return false; }
@@ -113,32 +126,32 @@ public class EyesInWaterTest {
 						return type.canDrownIn(this);
 					}
 				}""");
-		// NeoForge's forms of the two places: the mining speed (water-like types), the air bubbles (drowning types); and a
-		// predicate reading the height, which the put-back can't ask without it.
+		// NeoForge's forms of the two places: the mining speed (water-like types), the air bubbles (drowning types). The
+		// variants: a predicate reading the height, which the put-back can't ask without it; another player's eyes asked.
 		put(sources, "net.minecraft.world.entity.player.Player", """
 				public class Player extends net.minecraft.world.entity.LivingEntity {
 					public float getDestroySpeed() {
 						float speed = 1.0F;
-						if (this.getFluidInteraction().isEyeInFluidMatching(this, (e, type, h) -> type.getIsWaterLike())) speed *= 0.2F;
+						if (this.getFluidInteraction().isEyeInFluidMatching(this, (e, type, h) -> %stype.getIsWaterLike())) speed *= 0.2F;
 						return speed;
 					}
-					public float getDeepSpeed() {
-						float speed = 1.0F;
-						if (this.getFluidInteraction().isEyeInFluidMatching(this, (e, type, h) -> h > 0.5 && type.getIsWaterLike())) speed *= 0.2F;
-						return speed;
-					}
-				}""");
+				}""".formatted("deep".equals(variant) ? "h > 0.5 && " : ""));
 		put(sources, "net.minecraft.client.gui.Gui", """
 				public class Gui {
 					public String extractAirBubbles(net.minecraft.world.entity.player.Player player) {
-						boolean isUnderWater = player.getFluidInteraction().isEyeInFluidMatching(player, (e, type, h) -> e.canDrownInFluidType(type));
+						%s
+						boolean isUnderWater = player.getFluidInteraction().isEyeInFluidMatching(%s, (e, type, h) -> e.canDrownInFluidType(type));
 						return isUnderWater ? "bubbles" : "none";
 					}
-				}""");
+				}""".formatted("mixed".equals(variant) ? "net.minecraft.world.entity.player.Player other = new net.minecraft.world.entity.player.Player();" : "",
+						"mixed".equals(variant) ? "other" : "player"));
 		put(sources, "com.example.Gills", "public class Gills extends net.minecraft.world.entity.player.Player { @Override public boolean canBreatheUnderwater() {"
 				+ " return true; } }");
 		put(sources, "com.example.OwnEyes", "public class OwnEyes extends net.minecraft.world.entity.player.Player { @Override public boolean isEyeInFluid("
 				+ "net.minecraft.tags.TagKey<?> type) { Hook.LOG.add(\"own eyes asked\"); return true; } }");
+		// An entity overriding the fluid type's check alone, which 26.1.2's check of the tag calls.
+		put(sources, "com.example.OwnTypeEyes", "public class OwnTypeEyes extends net.minecraft.world.entity.player.Player { @Override public boolean"
+				+ " isEyeInFluid(net.neoforged.neoforge.fluids.FluidType type) { Hook.LOG.add(\"own type eyes asked\"); return true; } }");
 		// The hooks, as Artifacts' and FrozenLib's make them: of vanilla's call, its answer passed on.
 		put(sources, "com.example.Hook", """
 				public class Hook {
@@ -167,7 +180,8 @@ public class EyesInWaterTest {
 
 	/** What is at the entity's eyes: nothing, vanilla's water or lava or both, a mod's fluid type, a mod's fluid of water's type. */
 	private static final List<String> EYES = List.of("none", "water", "lava", "water lava", "mud", "water mud", "watery", "feet water");
-	private static final List<String> ENTITIES = List.of("net.minecraft.world.entity.player.Player", "com.example.Gills", "com.example.OwnEyes");
+	private static final List<String> ENTITIES = List.of("net.minecraft.world.entity.player.Player", "com.example.Gills", "com.example.OwnEyes",
+			"com.example.OwnTypeEyes");
 
 	@Test
 	void theChecksAnswerWhatNeoForgesDidForEveryEntityAndFluid(@TempDir Path dir) throws Exception {
@@ -184,9 +198,17 @@ public class EyesInWaterTest {
 				assertEquals(List.of("Player.isEyeInFluid in " + (owner.equals(GUI) ? "extractAirBubbles" : "getDestroySpeed") + " SEAM-9"), seams, form + " " + owner);
 				assertTrue(VanillaSeams.findings(owner).contains("SEAM-9"), VanillaSeams.findings(owner));
 			}
-			// The predicate reading the height stays NeoForge's: no vanilla call there.
-			MethodNode deep = node(restored.get(PLAYER)).methods.stream().filter(m -> m.name.equals("getDeepSpeed")).findFirst().orElseThrow();
-			assertEquals(0, calls(deep, "isEyeInFluid"), form.name());
+			// A predicate reading the height, or another entity's eyes asked: NeoForge's check stays, no vanilla call there.
+			for (String variant : List.of("deep", "mixed")) {
+				Map<String, byte[]> other = TestSources.compileWithLocals(dir.resolve(form.name() + variant), sources(form, variant));
+				String owner = variant.equals("deep") ? PLAYER : GUI;
+				ClassNode node = node(other.get(owner));
+				VanillaSeams.restoreWhole(node);
+				assertTrue(VanillaSeams.restoredIn(node).isEmpty(), form + " " + variant);
+				MethodNode place = node.methods.stream().filter(m -> m.name.equals(variant.equals("deep") ? "getDestroySpeed" : "extractAirBubbles")).findFirst()
+						.orElseThrow();
+				assertEquals(0, calls(place, "isEyeInFluid"), form + " " + variant);
+			}
 		}
 	}
 
@@ -225,8 +247,10 @@ public class EyesInWaterTest {
 	}
 
 	/**
-	 * The common path, an entity with no fluid at its eyes: the check put back makes nothing (warmed up, then measured over
-	 * many calls), and costs a few calls more than NeoForge's own check.
+	 * The common path, an entity with no fluid at its eyes: the put-back's own code makes nothing (warmed up, then measured
+	 * over many calls), over a fluid interaction whose trackers make nothing as they are passed. NeoForge's own tracker map
+	 * (fastutil's {@code Reference2ObjectArrayMap}) makes an entry for each tracker its iterator passes, in NeoForge's check
+	 * as in the put-back's one pass, which this fixture doesn't model.
 	 */
 	@Test
 	void theCheckMakesNothingWhereTheEyesAreInNoFluid(@TempDir Path dir) throws Throwable {

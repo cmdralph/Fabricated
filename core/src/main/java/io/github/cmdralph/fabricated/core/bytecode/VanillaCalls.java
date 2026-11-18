@@ -560,6 +560,7 @@ final class VanillaCalls {
 	private static final String BOX = "net/minecraft/world/phys/AABB";
 	private static final String HOLDER = "net/minecraft/core/Holder";
 	private static final String STATE_BASE = "net/minecraft/world/level/block/state/BlockBehaviour$BlockStateBase";
+	private static final String STATE_HOLDER = "net/minecraft/world/level/block/state/StateHolder";
 	private static final String PIGLIN_AI = ENTITIES + "monster/piglin/PiglinAi";
 	private static final String ENCHANTMENT_HELPER = "net/minecraft/world/item/enchantment/EnchantmentHelper";
 	private static final String FRICTION_DESC = "(" + LEVEL_READER + POS + ENTITY + ")F";
@@ -1735,38 +1736,32 @@ final class VanillaCalls {
 	/**
 	 * {@code private static boolean fabricated$vanillaEyes(Entity entity, InFluidPredicate predicate)}: whether vanilla's
 	 * {@code entity.isEyeInFluid(FluidTags.WATER)} answers what NeoForge's {@code isEyeInFluidMatching(entity, predicate)}
-	 * does (SEAM-9). Where the entity's class keeps Entity's {@code isEyeInFluid} (both, the tag's and the fluid type's) and
-	 * its eyes are in no fluid type but vanilla's water's and lava's ({@code fabricated$otherFluid}, one pass over the
-	 * fluids, as NeoForge's check makes): in no fluid, both answer no; in water or lava, NeoForge's check answers the
-	 * predicate's answer for those types (the eyes' heights aside, which the predicate doesn't read), and vanilla's call, as
-	 * NeoForge's fluid interaction answers it ({@code isEyeInFluid(FluidTags.WATER)}), whether the eyes are in water: they
-	 * must agree. Made of constants and the entity's own state: it makes nothing, as the predicates capture nothing.
+	 * does (SEAM-9), where the entity's class keeps Entity's {@code isEyeInFluid} (both, the tag's and the fluid type's).
+	 * NeoForge's check answers yes where a fluid type the eyes are in passes the predicate; vanilla's call, as NeoForge's
+	 * fluid interaction answers it ({@code isEyeInFluid(FluidTags.WATER)}), whether they are in water. Where the eyes are in
+	 * no fluid type but vanilla's water's and lava's, NeoForge's check answers whether one they are in passes the predicate
+	 * (asked without a height, which it doesn't read), and vanilla's call goes back where the two agree. Each of water's and
+	 * lava's is a lookup of its tracker, as vanilla's call makes; where the two disagree on them, NeoForge's check stays at
+	 * once, and only where they agree are the eyes asked for another fluid type ({@code fabricated$otherFluid}: one pass
+	 * over the fluids at the eyes, as NeoForge's check makes), which keeps NeoForge's check. So no path makes more passes
+	 * over NeoForge's tracker map than NeoForge's check alone, but a mod's fluid at the eyes, which makes this one and
+	 * NeoForge's. Made of constants and the entity's own state: the predicates capture nothing, and it makes nothing such a
+	 * pass doesn't.
 	 */
 	private static MethodNode vanillaEyes(String owner) {
 		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, VANILLA_EYES, VANILLA_EYES_DESC, null, null);
 		InsnList code = method.instructions;
 		String fi = FLUID_INTERACTION, fluidType = FLUID_TYPE;
-		LabelNode no = new LabelNode(), vanillaOnly = new LabelNode(), notInWater = new LabelNode(), answeredNo = new LabelNode(), answeredYes = new LabelNode(),
-				compare = new LabelNode(), disagree = new LabelNode();
+		LabelNode no = new LabelNode(), notInWater = new LabelNode(), noneOfThem = new LabelNode(), oneOfThem = new LabelNode(), agree = new LabelNode(),
+				platform = new LabelNode();
 		Object[] two = {ENTITY_CLASS, IN_FLUID_PREDICATE};
-		Object[] three = {ENTITY_CLASS, IN_FLUID_PREDICATE, fi};
-		Object[] all = {ENTITY_CLASS, IN_FLUID_PREDICATE, fi, fluidType, fluidType, Opcodes.INTEGER, Opcodes.INTEGER};
+		Object[] all = {ENTITY_CLASS, IN_FLUID_PREDICATE, fi, fluidType, fluidType, Opcodes.INTEGER, Opcodes.INTEGER, Opcodes.INTEGER};
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, KEEPS_EYES, "(Ljava/lang/Object;)Z", false));
 		code.add(new JumpInsnNode(Opcodes.IFEQ, no));
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, ENTITY_CLASS, FLUID_INTERACTION_OF.name(), FLUID_INTERACTION_OF.desc(), false));
 		code.add(new VarInsnNode(Opcodes.ASTORE, 2));
-		// Another fluid type at the eyes: the platform's check, as it is.
-		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
-		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		code.add(new InvokeDynamicInsnNode("test", "()L" + IN_FLUID_PREDICATE + ";", new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC,
-				"java/lang/invoke/LambdaMetafactory", "metafactory", "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;"
-						+ "Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
-				Type.getMethodType(PREDICATE_DESC), new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC, owner, OTHER_FLUID, PREDICATE_DESC, false),
-				Type.getMethodType(PREDICATE_DESC)));
-		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, fi, EYES_MATCHING.name(), EYES_MATCHING.desc(), false));
-		code.add(new JumpInsnNode(Opcodes.IFNE, no));
 		vanillaType(code, "WATER_TYPE");
 		code.add(new VarInsnNode(Opcodes.ASTORE, 3));
 		vanillaType(code, "LAVA_TYPE");
@@ -1777,43 +1772,47 @@ final class VanillaCalls {
 			code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, fi, "isEyeInFluid", "(L" + fluidType + ";)Z", false));
 			code.add(new VarInsnNode(Opcodes.ISTORE, slot + 2));
 		}
-		// In no fluid: both no.
-		code.add(new VarInsnNode(Opcodes.ILOAD, 5));
-		code.add(new JumpInsnNode(Opcodes.IFNE, vanillaOnly));
-		code.add(new VarInsnNode(Opcodes.ILOAD, 6));
-		code.add(new JumpInsnNode(Opcodes.IFNE, vanillaOnly));
-		code.add(new InsnNode(Opcodes.ICONST_1));
-		code.add(new InsnNode(Opcodes.IRETURN));
-		// The platform's answer: the predicate's for water, where the eyes are in it, or for lava.
-		code.add(vanillaOnly);
-		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
-		code.add(new VarInsnNode(Opcodes.ILOAD, 5));
-		code.add(new JumpInsnNode(Opcodes.IFEQ, notInWater));
-		predicateOf(code, 3);
-		code.add(new JumpInsnNode(Opcodes.IFNE, answeredYes));
-		code.add(notInWater);
-		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
-		code.add(new VarInsnNode(Opcodes.ILOAD, 6));
-		code.add(new JumpInsnNode(Opcodes.IFEQ, answeredNo));
-		predicateOf(code, 4);
-		code.add(new JumpInsnNode(Opcodes.IFNE, answeredYes));
-		code.add(answeredNo);
-		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
-		code.add(new InsnNode(Opcodes.ICONST_0));
-		code.add(new JumpInsnNode(Opcodes.GOTO, compare));
-		code.add(answeredYes);
-		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
-		code.add(new InsnNode(Opcodes.ICONST_1));
-		// Vanilla's call's answer, as the fluid interaction gives it, must be the platform's.
-		code.add(compare);
-		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 1, new Object[] {Opcodes.INTEGER}));
+		// Vanilla's call's answer, as the fluid interaction gives it.
 		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
 		code.add(new FieldInsnNode(Opcodes.GETSTATIC, WATER_TAG.owner(), WATER_TAG.name(), WATER_TAG.desc()));
 		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, fi, "isEyeInFluid", "(" + TAG_KEY + ")Z", false));
-		code.add(new JumpInsnNode(Opcodes.IF_ICMPNE, disagree));
+		code.add(new VarInsnNode(Opcodes.ISTORE, 7));
+		// Water or lava at the eyes passing the predicate: NeoForge's check answers yes.
+		code.add(new VarInsnNode(Opcodes.ILOAD, 5));
+		code.add(new JumpInsnNode(Opcodes.IFEQ, notInWater));
+		predicateOf(code, 3);
+		code.add(new JumpInsnNode(Opcodes.IFNE, oneOfThem));
+		code.add(notInWater);
+		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
+		code.add(new VarInsnNode(Opcodes.ILOAD, 6));
+		code.add(new JumpInsnNode(Opcodes.IFEQ, noneOfThem));
+		predicateOf(code, 4);
+		code.add(new JumpInsnNode(Opcodes.IFNE, oneOfThem));
+		// Neither: they agree where vanilla's call answers no.
+		code.add(noneOfThem);
+		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
+		code.add(new VarInsnNode(Opcodes.ILOAD, 7));
+		code.add(new JumpInsnNode(Opcodes.IFNE, platform));
+		// They agree: vanilla's call goes back where the eyes are in no other fluid type.
+		code.add(agree);
+		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new InvokeDynamicInsnNode("test", "()L" + IN_FLUID_PREDICATE + ";", new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC,
+				"java/lang/invoke/LambdaMetafactory", "metafactory", "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
+				Type.getMethodType(PREDICATE_DESC), new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC, owner, OTHER_FLUID, PREDICATE_DESC, false),
+				Type.getMethodType(PREDICATE_DESC)));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, fi, EYES_MATCHING.name(), EYES_MATCHING.desc(), false));
+		code.add(new JumpInsnNode(Opcodes.IFNE, platform));
 		code.add(new InsnNode(Opcodes.ICONST_1));
 		code.add(new InsnNode(Opcodes.IRETURN));
-		code.add(disagree);
+		// One of them: they agree where vanilla's call answers yes.
+		code.add(oneOfThem);
+		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
+		code.add(new VarInsnNode(Opcodes.ILOAD, 7));
+		code.add(new JumpInsnNode(Opcodes.IFNE, agree));
+		code.add(platform);
 		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
 		code.add(new InsnNode(Opcodes.ICONST_0));
 		code.add(new InsnNode(Opcodes.IRETURN));
@@ -1822,7 +1821,7 @@ final class VanillaCalls {
 		code.add(new InsnNode(Opcodes.ICONST_0));
 		code.add(new InsnNode(Opcodes.IRETURN));
 		method.maxStack = 6;
-		method.maxLocals = 7;
+		method.maxLocals = 8;
 		return method;
 	}
 
@@ -3214,7 +3213,9 @@ final class VanillaCalls {
 	 * stand in for; Forge's {@code ForgeHooks.isCorrectToolForDrops}, no longer called, and {@code
 	 * Player.hasCorrectToolForDrops}, called where Forge's default only fires the event (a block needing no tool). For the
 	 * item checks, vanilla's {@code ItemStack.is}, called where the platform's code didn't (on NeoForge either era's stack
-	 * extension), and the elytra layer's {@code shouldRender}, no longer called for the layers keeping it.
+	 * extension), and the elytra layer's {@code shouldRender}, no longer called for the layers keeping it. For a crop's growth
+	 * speed, vanilla's checks the defaults don't make and Forge's crop checks; for the eyes' check, Entity's and the fluid
+	 * interaction's checks.
 	 */
 	static Map<String, Set<String>> others(PutBack row) {
 		Map<String, Set<String>> others = new TreeMap<>();
@@ -3240,6 +3241,21 @@ final class VanillaCalls {
 				case GOLD, GOLD_HOLDER -> others.computeIfAbsent(HOLDER, k -> new TreeSet<>()).add(HOLDER_IS.name());
 				// The platforms' lookup of the shovel's path, which their block extension's default makes.
 				case FLATTEN -> others.computeIfAbsent(SHOVEL, k -> new TreeSet<>()).add("getShovelPathingState");
+				// A crop's growth speed (SEAM-12). Vanilla's farmland check, BlockStateBase.is, which the defaults don't make for
+				// a farm block (NeoForge 21.x's and Forge 52's and 61's ask instanceof, Forge 64 to 66's mayPlaceOn too); and on
+				// Forge the crop's checks Block's canSustainPlant asks, which the crops keeping them no longer reach: its
+				// mayPlaceOn, its plant (BushBlock's, from 1.21.5 VegetationBlock's, IPlantable's) and its plant type.
+				case FARMLAND -> others.computeIfAbsent(STATE_BASE, k -> new TreeSet<>()).addAll(List.of(IS_BLOCK.name(), IS_BLOCK.srgName()));
+				case FORGE_FARMLAND, GROWS_CROPS -> {
+					others.computeIfAbsent(STATE_BASE, k -> new TreeSet<>()).addAll(List.of(IS_BLOCK.name(), IS_BLOCK.srgName()));
+					others.computeIfAbsent(CROP, k -> new TreeSet<>()).addAll(List.of(MAY_PLACE_ON.name(), MAY_PLACE_ON.srgName()));
+					for (String plant : List.of(BLOCKS + "BushBlock", BLOCKS + "VegetationBlock", PLANTABLE)) {
+						others.computeIfAbsent(plant, k -> new TreeSet<>()).add(PLANT.name());
+					}
+					others.computeIfAbsent(PLANTABLE, k -> new TreeSet<>()).add(PLANT_TYPE.name());
+				}
+				// 26.x's moisture check, StateHolder.getValueOrElse, where the defaults read getValue.
+				case MOISTURE_OR_ELSE -> others.computeIfAbsent(STATE_HOLDER, k -> new TreeSet<>()).add(STATE_VALUE_OR_ELSE.name());
 				// The stack's getTagEnchantments, no longer called, either era's stack extension.
 				case ENCHANTMENT -> {
 					others.computeIfAbsent(STACK_CLASS, k -> new TreeSet<>()).addAll(List.of("getTagEnchantments", "getEnchantments"));
@@ -3252,6 +3268,13 @@ final class VanillaCalls {
 		}
 		switch (row.code()) {
 			case ACTION -> others.computeIfAbsent(NEOFORGE_ACTION_26.stateInterface(), k -> new TreeSet<>()).add(NEOFORGE_ACTION_26.name());
+			// The eyes' check (SEAM-9): Entity's isEyeInFluid, the tag's and the fluid type's it may call, which vanilla's call
+			// makes; the fluid interaction's checks of a fluid type, of a tag, and of the fluid types at the eyes, which the
+			// entities whose call goes back no longer reach with NeoForge's predicate, and its lookup of a tag's fluid type.
+			case EYES -> {
+				others.computeIfAbsent(ENTITY_CLASS, k -> new TreeSet<>()).add("isEyeInFluid");
+				others.computeIfAbsent(FLUID_INTERACTION, k -> new TreeSet<>()).addAll(List.of("isEyeInFluid", EYES_MATCHING.name(), "getFluidTypeByTag"));
+			}
 			case LAYER -> {
 				others.computeIfAbsent(row.platform().owner(), k -> new TreeSet<>()).add(row.platform().name());
 				others.computeIfAbsent(FORGE_ELYTRA_LAYER, k -> new TreeSet<>()).add(row.platform().name());
@@ -3280,7 +3303,12 @@ final class VanillaCalls {
 	static Map<String, Set<String>> otherMethods(String owner) {
 		Map<String, Set<String>> methods = new TreeMap<>();
 		for (PutBack row : PUT_BACKS) {
-			if (row.owner().equals(owner)) others(row).forEach((c, names) -> methods.computeIfAbsent(c, k -> new TreeSet<>()).addAll(names));
+			if (!row.owner().equals(owner)) continue;
+			// With the forms another era's class gives the row (variant): 26.x's moisture check, Forge 64 to 66's farmland check.
+			List<PutBack> forms = new ArrayList<>(List.of(row));
+			if (row.form() == OnReceiver.MOISTURE) forms.add(row.with(row.extension(), OnReceiver.MOISTURE_OR_ELSE));
+			if (row.form() == OnReceiver.FORGE_FARMLAND) forms.add(row.with(row.extension(), OnReceiver.GROWS_CROPS));
+			for (PutBack form : forms) others(form).forEach((c, names) -> methods.computeIfAbsent(c, k -> new TreeSet<>()).addAll(names));
 		}
 		return methods;
 	}

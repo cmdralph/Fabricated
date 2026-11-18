@@ -229,6 +229,50 @@ class SeamConflictsTest {
 	}
 
 	/**
+	 * SEAM-12: a native mod's mixin of what putting vanilla's checks back in a crop's growth speed bypasses on Forge keeps
+	 * the class as the platform has it: the crop's {@code mayPlaceOn}, its plant ({@code BushBlock}'s, {@code IPlantable}'s)
+	 * and its plant type, which Block's {@code canSustainPlant} asks and the crops keeping them no longer reach, as the
+	 * extensions' defaults. One of another of Block's methods doesn't. And what the rows name besides: vanilla's checks the defaults
+	 * don't make, {@code BlockStateBase.is} and 26.x's {@code StateHolder.getValueOrElse}.
+	 */
+	@Test
+	void aNativeMixinOfWhatPuttingTheGrowthChecksBackBypassesKeepsTheClass(@TempDir Path dir) throws Exception {
+		String crop = "net/minecraft/world/level/block/CropBlock";
+		SeamConflicts.Conflict expected = new SeamConflicts.Conflict("breaker", "com/moon/NativeBreak", true);
+		String head = " @Inject(method = \"%s\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		Map<String, String> forge = CropGrowthTest.sources(CropGrowthTest.Form.FORGE_52);
+		assertEquals(expected, conflict(dir.resolve("may-place-on"), forge, head.formatted("mayPlaceOn"), crop.replace('/', '.'), crop));
+		assertEquals(expected, conflict(dir.resolve("plant"), forge, head.formatted("getPlant"), "net.minecraft.world.level.block.BushBlock", crop));
+		assertEquals(expected, conflict(dir.resolve("plant-type"), forge, head.formatted("getPlantType"), "net.minecraftforge.common.IPlantable", crop));
+		assertEquals(expected, conflict(dir.resolve("sustain"), forge, head.formatted("canSustainPlant"), "net.minecraft.world.level.block.Block", crop));
+		assertNull(conflict(dir.resolve("block-other"), forge, head.formatted("defaultBlockState"), "net.minecraft.world.level.block.Block", crop));
+		Map<String, Set<String>> others = VanillaSeams.mayChange(crop);
+		assertTrue(others.getOrDefault("net/minecraft/world/level/block/state/BlockBehaviour$BlockStateBase", Set.of()).containsAll(Set.of("is", "m_60713_")), others.toString());
+		assertTrue(others.getOrDefault("net/minecraft/world/level/block/state/StateHolder", Set.of()).contains("getValueOrElse"), others.toString());
+		assertTrue(others.getOrDefault("net/minecraft/world/level/block/VegetationBlock", Set.of()).contains("getPlant"), others.toString());
+	}
+
+	/**
+	 * SEAM-9: a native mod's mixin of what putting vanilla's eye check back makes or bypasses keeps the class as the platform
+	 * has it: Entity's {@code isEyeInFluid}, which vanilla's call makes (26.1.2's of a tag calling the fluid type's), and the
+	 * fluid interaction's {@code isEyeInFluid}, {@code isEyeInFluidMatching} and {@code getFluidTypeByTag}. One of another
+	 * of Entity's methods doesn't.
+	 */
+	@Test
+	void aNativeMixinOfWhatPuttingTheEyeCheckBackChangesKeepsTheClass(@TempDir Path dir) throws Exception {
+		String player = "net/minecraft/world/entity/player/Player";
+		SeamConflicts.Conflict expected = new SeamConflicts.Conflict("breaker", "com/moon/NativeBreak", true);
+		String head = " @Inject(method = \"%s\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		Map<String, String> neoForge = EyesInWaterTest.sources(EyesInWaterTest.Form.BY_TYPE);
+		String interaction = "net.minecraft.world.entity.EntityFluidInteraction";
+		assertEquals(expected, conflict(dir.resolve("entity"), neoForge, head.formatted("isEyeInFluid"), "net.minecraft.world.entity.Entity", player));
+		for (String method : List.of("isEyeInFluid", "isEyeInFluidMatching", "getFluidTypeByTag")) {
+			assertEquals(expected, conflict(dir.resolve(method), neoForge, head.formatted(method), interaction, player), method);
+		}
+		assertNull(conflict(dir.resolve("entity-other"), neoForge, head.formatted("getFluidInteraction"), "net.minecraft.world.entity.Entity", player));
+	}
+
+	/**
 	 * A native mixin's selectors are read as Mixin reads them: a name with a quantifier, an owner or a descriptor
 	 * annotation selects that name's methods; a quantifier alone, a regex or an unknown name, what can't be told. A Forge
 	 * mod's mixin of another of Player's methods leaves the server's game mode and BlockBehaviour to be put back.

@@ -1438,8 +1438,10 @@ public final class MixinPreflight extends PreflightPart {
 		boolean pseudo = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, MixinNames.PSEUDO) != null;
 		// The @Pseudo mixin's targets that aren't there though what they belong to is (PRE-37), named once for the mixin.
 		List<String> skipped = new ArrayList<>();
+		List<String> targets = targetsOf(mixin, ctx);
+		int missing = 0;
 
-		for (String target : targetsOf(mixin, ctx)) {
+		for (String target : targets) {
 			boolean isGame = PreflightAsm.isGameClass(target);
 			String owner = isGame ? null : installed.owner(target);
 			ClassNode targetNode = isGame ? gameTarget(target) : owner != null ? installedTarget(target) : null;
@@ -1448,6 +1450,7 @@ public final class MixinPreflight extends PreflightPart {
 				// its package, while that stays so: the @Pseudo note below depends on it).
 				if (!isGame && owner == null) installedRead.putIfAbsent(target, absentFingerprint(target));
 				if (pseudo) {
+					missing++;
 					String absent = pseudoTargetOf(target, isGame);
 					if (absent != null) skipped.add(target.replace('/', '.') + absent);
 					continue;
@@ -1491,8 +1494,12 @@ public final class MixinPreflight extends PreflightPart {
 			if (isGame) noteRestoredSeams(mixin, targetNode, targetCtx);
 		}
 		if (!skipped.isEmpty()) {
-			ctx.info("@Pseudo target" + (skipped.size() == 1 ? " " : "s ") + String.join("; ", skipped) + ": Mixin skips the mixin, as it skips any @Pseudo"
-					+ " mixin whose target is missing, so none of it applies (PRE-37)");
+			// Mixin skips a @Pseudo mixin's missing targets, and applies it to the others: none of it applies only where none is there.
+			boolean none = missing == targets.size();
+			ctx.info("@Pseudo target" + (skipped.size() == 1 ? " " : "s ") + String.join("; ", skipped) + (none
+					? ": Mixin skips the mixin, as it skips any @Pseudo mixin whose targets are missing, so none of it applies (PRE-37)"
+					: ": Mixin skips it for " + (skipped.size() == 1 ? "that target" : "those targets") + ", as it skips any @Pseudo mixin's missing"
+							+ " target, and applies it to the others (PRE-37)"));
 		}
 	}
 

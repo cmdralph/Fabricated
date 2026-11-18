@@ -15039,22 +15039,29 @@ class MixinPreflightTest {
 		mixins.put("com/example/mixin/Held", pseudoMixin("com/example/mixin/Held", heldButAbsent));
 		mixins.put("com/example/mixin/Optional", pseudoMixin("com/example/mixin/Optional", notInstalled));
 		mixins.put("com/example/mixin/ClientOnly", pseudoMixin("com/example/mixin/ClientOnly", clientClass));
+		// One of its targets missing, another there: Mixin skips it for the missing one and applies it to the other.
+		mixins.put("com/example/mixin/Partly", pseudoMixin("com/example/mixin/Partly", registrySync, TARGET));
 		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("Other Mod", "com/othermod/api/Present"::equals,
 				name -> null))).withPackages(Set.of("com/othermod/api"));
 		for (boolean client : new boolean[] {false, true}) {
 			MixinPreflight preflight = new MixinPreflight(new ClassIndex(Map.of(TARGET, targetClass())::get), installed, mixins::get, ClassBytesSource.EMPTY,
 					client, true, ClassBytesSource.EMPTY, "NeoForge");
 			List<PreflightFinding> findings = preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "Sync", "Both", "Held", "Optional",
-					"ClientOnly")), Refmap.EMPTY, Set.of());
+					"ClientOnly", "Partly")), Refmap.EMPTY, Set.of());
 			assertTrue(findings.stream().allMatch(f -> f.severity() == Severity.INFO), findings.toString());
 			Map<String, List<String>> byMixin = new java.util.TreeMap<>();
 			findings.forEach(f -> byMixin.computeIfAbsent(f.mixin(), k -> new ArrayList<>()).add(f.message()));
-			assertEquals(client ? Set.of("com.example.mixin.Sync", "com.example.mixin.Both", "com.example.mixin.Held", "com.example.mixin.ClientOnly")
-					: Set.of("com.example.mixin.Sync", "com.example.mixin.Both", "com.example.mixin.Held"), byMixin.keySet());
+			assertEquals(client ? Set.of("com.example.mixin.Sync", "com.example.mixin.Both", "com.example.mixin.Held", "com.example.mixin.ClientOnly",
+					"com.example.mixin.Partly") : Set.of("com.example.mixin.Sync", "com.example.mixin.Both", "com.example.mixin.Held", "com.example.mixin.Partly"),
+					byMixin.keySet());
 			byMixin.values().forEach(lines -> assertEquals(1, lines.size(), lines.toString()));
 			assertEquals("@Pseudo target net.fabricmc.fabric.impl.registry.sync.RegistrySyncManager, a class of Fabric API's, isn't in this game's Fabric API"
-					+ " (Fabricated's own modules and those it passes through): Mixin skips the mixin, as it skips any @Pseudo mixin whose target is missing,"
+					+ " (Fabricated's own modules and those it passes through): Mixin skips the mixin, as it skips any @Pseudo mixin whose targets are missing,"
 					+ " so none of it applies (PRE-37)", byMixin.get("com.example.mixin.Sync").getFirst());
+			assertEquals("@Pseudo target net.fabricmc.fabric.impl.registry.sync.RegistrySyncManager, a class of Fabric API's, isn't in this game's Fabric API"
+					+ " (Fabricated's own modules and those it passes through): Mixin skips it for that target, as it skips any @Pseudo mixin's missing target,"
+					+ " and applies it to the others (PRE-37)", byMixin.get("com.example.mixin.Partly").getFirst());
+			assertTrue(byMixin.get("com.example.mixin.Both").getFirst().endsWith("so none of it applies (PRE-37)"), byMixin.get("com.example.mixin.Both").toString());
 			String both = byMixin.get("com.example.mixin.Both").getFirst();
 			assertTrue(both.startsWith("@Pseudo targets net.fabricmc.fabric.impl.registry.sync.RegistrySyncManager, ") && both.contains("; "
 					+ "net.fabricmc.fabric.impl.registry.sync.trackers.StateIdTracker, a class of Fabric API's"), both);
@@ -15080,6 +15087,7 @@ class MixinPreflightTest {
 	private static final String GROWTH_DESC = "(Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)F";
 	private static final String RETYPED_DESC = "(L" + GROWN_STATE + ";Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)F";
 	private static final String SHARE = "Lcom/llamalad7/mixinextras/sugar/Share;";
+	private static final String MODIFY_EXPRESSION_VALUE = "Lcom/llamalad7/mixinextras/injector/ModifyExpressionValue;";
 
 	/**
 	 * The game's stand-ins and {@code CropBlock.getGrowthSpeed}: vanilla's, taking the crop's block, or (with {@code first},
@@ -15087,7 +15095,11 @@ class MixinPreflightTest {
 	 * Its body is vanilla's, a soil's farmland check and the neighbours' check of the crop's block.
 	 */
 	private static Map<String, String> growingSources(String first) {
-		String param = first == null ? "Block block" : "BlockState state";
+		return growingSources(first == null ? "Block block" : "BlockState state", first);
+	}
+
+	/** {@link #growingSources(String)} with the method's parameters before the level and the position given, and its first statement. */
+	private static Map<String, String> growingSources(String param, String first) {
 		return Map.of(
 				"net/minecraft/core/BlockPos.java", "package net.minecraft.core; public record BlockPos(int y) { public BlockPos below() { return new BlockPos(y - 1); } }",
 				"net/minecraft/world/level/BlockGetter.java", "package net.minecraft.world.level; public interface BlockGetter {"
@@ -15201,6 +15213,174 @@ class MixinPreflightTest {
 		// Without vanilla's class nothing tells what the platform's method is: as before.
 		List<PreflightFinding> blind = retypedRun(platform, Map.of(), mixins, config, new HashMap<>());
 		assertTrue(blind.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT), blind.toString());
+	}
+
+	/**
+	 * SEAM-12's repair tells a handler's own arguments from the method's parameters it takes after them, counted from its
+	 * injector's kind and point: a {@code @Redirect} of the soil's {@code is(Block)} taking the state and the block, a
+	 * {@code @ModifyArg} of that block and a {@code @ModifyExpressionValue} of the {@code Blocks.FARMLAND} read, each taking
+	 * a {@code Block} of its own, aren't bridged: named by vanilla's descriptor they are pointed at NeoForge's method as they
+	 * are, which is what Mixin applies of them named by their name alone, and so named they are left as they are, as
+	 * without the repair. A {@code @ModifyVariable} of a {@code Block}, or a handler taking a {@code @Local} {@code Block} by
+	 * its slot, its ordinal or among the arguments, takes what NeoForge's method works out, not vanilla's parameter: not
+	 * repaired, left out with its line as before; nor a local of any type taken by its slot. Nor is an injector naming the method twice, nor a local of the state's
+	 * type by its ordinal where vanilla's method has a parameter of that type before the retyped one (the ordinal would pick
+	 * another), nor one by its ordinal whose locals the two methods name otherwise; and nothing where the platform's method
+	 * stores into the retyped parameter or vanilla's into its own. A local of the state's type by an explicit ordinal is
+	 * counted past the state: vanilla's 0 is NeoForge's 1.
+	 */
+	@Test
+	void retypedRepairsTellTheHandlersOwnArgumentsFromTheMethodsParameters(@TempDir Path dir) throws Exception {
+		Map<String, byte[]> vanilla = TestSources.compileWithLocals(dir.resolve("vanilla"), growingSources(null));
+		Map<String, byte[]> platform = TestSources.compileWithLocals(dir.resolve("platform"), growingSources("Block block = state.getBlock();"));
+		String block = "L" + GROWN_BLOCK + ";", state = "L" + GROWN_STATE + ";";
+		String is = "L" + GROWN_STATE + ";is(L" + GROWN_BLOCK + ";)Z", farmland = "Lnet/minecraft/world/level/block/Blocks;FARMLAND:" + block;
+		String pointed = "which NeoForge's CropBlock declares as";
+		// Its own arguments only, each by vanilla's descriptor and by name alone.
+		Map<String, java.util.function.BiConsumer<ClassWriter, String>> own = new java.util.LinkedHashMap<>();
+		own.put("Redirect", (cw, selector) -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "redirect", "(" + state + block + ")Z", null, null);
+			selectorAndPoint(mv.visitAnnotation(REDIRECT, false), selector, "INVOKE", is, 0);
+			returning(mv, Opcodes.ICONST_0, Opcodes.IRETURN);
+		});
+		own.put("Argument", (cw, selector) -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "argument", "(" + block + ")" + block, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_ARG, false);
+			ann.visit("index", 0);
+			selectorAndPoint(ann, selector, "INVOKE", is, 0);
+			returning(mv, Opcodes.ALOAD, Opcodes.ARETURN);
+		});
+		own.put("Read", (cw, selector) -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "read", "(" + block + ")" + block, null, null);
+			selectorAndPoint(mv.visitAnnotation(MODIFY_EXPRESSION_VALUE, false), selector, "FIELD", farmland, null);
+			returning(mv, Opcodes.ALOAD, Opcodes.ARETURN);
+		});
+		for (Map.Entry<String, java.util.function.BiConsumer<ClassWriter, String>> shape : own.entrySet()) {
+			for (String selector : List.of("getGrowthSpeed" + GROWTH_DESC, "getGrowthSpeed")) {
+				String name = "com/example/mixin/" + shape.getKey();
+				Map<String, byte[]> mixins = Map.of(name, growthMixin(name, cw -> shape.getValue().accept(cw, selector)));
+				String config = config(true, shape.getKey());
+				Map<String, byte[]> repaired = new HashMap<>();
+				List<PreflightFinding> with = retypedRun(platform, vanilla, mixins, config, repaired);
+				List<PreflightFinding> without = retypedRun(platform, Map.of(), mixins, config, new HashMap<>());
+				ClassNode mixin = node(repaired.getOrDefault(name + ".class", mixins.get(name)));
+				assertTrue(mixin.methods.stream().noneMatch(m -> m.name.contains("$fabricated")), shape.getKey() + " " + selector + ": no bridge");
+				if (selector.contains("(")) {
+					// Pointed as it is: what Mixin applies of it named by its name alone, and nothing left out.
+					assertTrue(with.stream().anyMatch(f -> f.message().contains(pointed) && !f.message().contains("its handler given")), shape.getKey() + ": " + with);
+					assertTrue(with.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), shape.getKey() + ": " + with);
+					assertEquals(List.of("getGrowthSpeed" + RETYPED_DESC), Annotations.value(mixin.methods.stream().filter(m -> !m.name.equals("<init>"))
+							.findFirst().orElseThrow().invisibleAnnotations.getFirst(), "method"));
+					assertTrue(without.stream().anyMatch(f -> f.message().contains("targets method getGrowthSpeed" + GROWTH_DESC + ", which does not exist")),
+							shape.getKey() + ": " + without);
+				} else {
+					// By its name alone: as without the repair.
+					assertEquals(without.stream().map(PreflightFinding::message).toList(), with.stream().map(PreflightFinding::message).toList(), shape.getKey());
+					assertTrue(with.stream().noneMatch(f -> f.message().contains(pointed)), shape.getKey() + ": " + with);
+				}
+			}
+		}
+		// What takes vanilla's type as a local, or names the method twice: not repaired, left out as before.
+		Map<String, Consumer<ClassWriter>> refused = new java.util.LinkedHashMap<>();
+		refused.put("Variable", cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "variable", "(" + block + ")" + block, null, null);
+			selectorAndPoint(mv.visitAnnotation(MODIFY_VARIABLE, false), "getGrowthSpeed" + GROWTH_DESC, "INVOKE", is, 0);
+			returning(mv, Opcodes.ALOAD, Opcodes.ARETURN);
+		});
+		for (String discriminator : List.of("index", "ordinal", "argsOnly")) {
+			refused.put("Local" + discriminator, cw -> {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "local", "(Z" + block + ")Z", null, null);
+				selectorAndPoint(mv.visitAnnotation(MODIFY_EXPRESSION_VALUE, false), "getGrowthSpeed" + GROWTH_DESC, "INVOKE", is, 0);
+				AnnotationVisitor local = mv.visitParameterAnnotation(1, LOCAL, false);
+				local.visit(discriminator, discriminator.equals("argsOnly") ? (Object) Boolean.TRUE : (Object) 0);
+				local.visitEnd();
+				returning(mv, Opcodes.ILOAD, Opcodes.IRETURN);
+			});
+		}
+		// A local by its slot, whatever its type: NeoForge's method keeps the block it works out in a slot of its own (vanilla's
+		// slot 3, the speed, is NeoForge's block).
+		refused.put("Slot", cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "slot", "(ZF)Z", null, null);
+			selectorAndPoint(mv.visitAnnotation(MODIFY_EXPRESSION_VALUE, false), "getGrowthSpeed" + GROWTH_DESC, "INVOKE", is, 0);
+			AnnotationVisitor local = mv.visitParameterAnnotation(1, LOCAL, false);
+			local.visit("index", 3);
+			local.visitEnd();
+			returning(mv, Opcodes.ILOAD, Opcodes.IRETURN);
+		});
+		refused.put("Twice", cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "twice", "(F" + block + "Lnet/minecraft/world/level/BlockGetter;"
+					+ "Lnet/minecraft/core/BlockPos;)F", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, false);
+			ann.visit("ordinal", 1);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "getGrowthSpeed");
+			methods.visit(null, "getGrowthSpeed" + GROWTH_DESC);
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "LOAD");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			returning(mv, Opcodes.FLOAD, Opcodes.FRETURN);
+		});
+		for (Map.Entry<String, Consumer<ClassWriter>> shape : refused.entrySet()) {
+			String name = "com/example/mixin/" + shape.getKey();
+			Map<String, byte[]> mixins = Map.of(name, growthMixin(name, shape.getValue()));
+			Map<String, byte[]> repaired = new HashMap<>();
+			List<PreflightFinding> with = retypedRun(platform, vanilla, mixins, config(true, shape.getKey()), repaired);
+			assertTrue(with.stream().noneMatch(f -> f.message().contains(pointed)), shape.getKey() + ": " + with);
+			assertTrue(with.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT || f.message().contains("which does not exist")), shape.getKey() + ": " + with);
+			assertTrue(!repaired.containsKey(name + ".class") || node(repaired.get(name + ".class")).methods.stream().noneMatch(m -> m.name.contains("$fabricated")),
+					shape.getKey());
+		}
+		// A local of the state's type by an explicit ordinal: vanilla's 0, the soil, is NeoForge's 1, past the state.
+		Consumer<ClassWriter> soil = cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "soil", "(" + state + ")" + state, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, false);
+			ann.visit("ordinal", 0);
+			selectorAndPoint(ann, "getGrowthSpeed" + GROWTH_DESC, "INVOKE", is, 0);
+			returning(mv, Opcodes.ALOAD, Opcodes.ARETURN);
+		};
+		Map<String, byte[]> soilMixin = Map.of("com/example/mixin/Soil", growthMixin("com/example/mixin/Soil", soil));
+		Map<String, byte[]> counted = new HashMap<>();
+		List<PreflightFinding> shifted = retypedRun(platform, vanilla, soilMixin, config(true, "Soil"), counted);
+		assertTrue(shifted.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT), shifted.toString());
+		assertEquals(1, Annotations.value(Annotations.find(injectorMethod(node(counted.get("com/example/mixin/Soil.class")), MODIFY_VARIABLE), MODIFY_VARIABLE),
+				"ordinal"));
+		// The same where the two methods name their locals of the type otherwise, where vanilla's has a parameter of the
+		// state's type before the retyped one, where NeoForge's stores into the state, or vanilla's into its block: as before.
+		Map<String, Map<String, byte[]>> otherwise = new java.util.LinkedHashMap<>();
+		Map<String, String> renamed = new HashMap<>(growingSources("Block block = state.getBlock();"));
+		renamed.put(GROWING + ".java", renamed.get(GROWING + ".java").replace("soil", "ground"));
+		otherwise.put("renamed", TestSources.compileWithLocals(dir.resolve("renamed"), renamed));
+		otherwise.put("stored", TestSources.compileWithLocals(dir.resolve("stored"), growingSources("BlockState state",
+				"Block block = state.getBlock(); if (pos.y() > 3) state = null;")));
+		for (Map.Entry<String, Map<String, byte[]>> form : otherwise.entrySet()) {
+			Map<String, byte[]> classes = new HashMap<>(platform);
+			classes.putAll(form.getValue());
+			List<PreflightFinding> stays = retypedRun(classes, vanilla, soilMixin, config(true, "Soil"), new HashMap<>());
+			assertTrue(stays.stream().noneMatch(f -> f.message().contains(pointed)), form.getKey() + ": " + stays);
+			assertTrue(stays.stream().anyMatch(f -> f.message().contains("which does not exist")), form.getKey() + ": " + stays);
+		}
+		Map<String, byte[]> storing = TestSources.compileWithLocals(dir.resolve("vanilla-stores"), growingSources("Block block",
+				"if (pos.y() > 3) block = null;"));
+		List<PreflightFinding> vanillaStores = retypedRun(platform, storing, soilMixin, config(true, "Soil"), new HashMap<>());
+		assertTrue(vanillaStores.stream().noneMatch(f -> f.message().contains(pointed)), vanillaStores.toString());
+		Map<String, byte[]> extraVanilla = TestSources.compileWithLocals(dir.resolve("extra-vanilla"), growingSources("BlockState other, Block block", null));
+		Map<String, byte[]> extraPlatform = TestSources.compileWithLocals(dir.resolve("extra-platform"), growingSources("BlockState other, BlockState state",
+				"Block block = state.getBlock();"));
+		String extraDesc = "(" + state + block + "Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)F";
+		Consumer<ClassWriter> first = cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "first", "(" + state + ")" + state, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, false);
+			ann.visit("ordinal", 0);
+			selectorAndPoint(ann, "getGrowthSpeed" + extraDesc, "INVOKE", is, 0);
+			returning(mv, Opcodes.ALOAD, Opcodes.ARETURN);
+		};
+		List<PreflightFinding> before = retypedRun(extraPlatform, extraVanilla, Map.of("com/example/mixin/First", growthMixin("com/example/mixin/First", first)),
+				config(true, "First"), new HashMap<>());
+		assertTrue(before.stream().noneMatch(f -> f.message().contains(pointed)), before.toString());
 	}
 
 	/** Pre-flight's repairs of the mixins against the platform's classes (and vanilla's), then its check of them as repaired: the notes and findings. */

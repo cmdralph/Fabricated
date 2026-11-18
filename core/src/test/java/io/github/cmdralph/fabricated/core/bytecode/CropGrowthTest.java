@@ -247,6 +247,7 @@ public class CropGrowthTest {
 					public static final Block $FARMLAND$ = new %s("farmland");
 					public static final Block OWN_FARM = new com.example.OwnFarm(), OVERRIDING = new com.example.OverridingSoil(), TAGGED_DIRT = new Block("tagged dirt");
 					public static final Block WHEAT = new CropBlock("wheat"), PICKY = new com.example.PickyCrop(), STEM = new BushBlock("stem");
+					public static final Block PLAINS_CROP = new com.example.PlainsCrop(), CACTUS_PLANT = new com.example.CactusPlant();
 					public static final java.util.Set<Block> TAGGED = java.util.Set.of($FARMLAND$, TAGGED_DIRT);
 				}""".formatted(farm));
 		// The platform's crop: its growth speed, the soil checks in its form, each soil's farmland decision and fertility.
@@ -312,6 +313,14 @@ public class CropGrowthTest {
 						Hook.LOG.add("overriding soil fertile"); return true;
 					}
 				}""".formatted(overriding));
+		// On Forge, crops overriding the other checks Forge's canSustainPlant asks: a plant type of PLAINS (dirt sustains it), a
+		// plant answering as a cactus (only a cactus sustains it).
+		put(sources, "com.example.PlainsCrop", "public class PlainsCrop extends net.minecraft.world.level.block.CropBlock { public PlainsCrop() { super(\"plains crop\"); }"
+				+ (form.forge ? " @Override public net.minecraftforge.common.PlantType getPlantType(net.minecraft.world.level.BlockGetter level,"
+						+ " net.minecraft.core.BlockPos pos) { return net.minecraftforge.common.PlantType.PLAINS; }" : "") + " }");
+		put(sources, "com.example.CactusPlant", "public class CactusPlant extends net.minecraft.world.level.block.CropBlock { public CactusPlant() { super(\"cactus plant\"); }"
+				+ (form.forge ? " @Override public net.minecraft.world.level.block.state.BlockState getPlant(net.minecraft.world.level.BlockGetter world,"
+						+ " net.minecraft.core.BlockPos pos) { return net.minecraft.world.level.block.Blocks.CACTUS.defaultBlockState(); }" : "") + " }");
 		put(sources, "com.example.PickyCrop", """
 				public class PickyCrop extends net.minecraft.world.level.block.CropBlock {
 					public PickyCrop() { super("picky"); }
@@ -366,7 +375,7 @@ public class CropGrowthTest {
 
 	/** The soils around the crop, by the stand-in's field: each kept by every place, then each place but the middle in turn. */
 	private static final List<String> SOILS = List.of("FARMLAND", "DRY_FARMLAND", "DIRT", "STONE", "OWN_FARM", "OVERRIDING", "TAGGED_DIRT");
-	private static final List<String> CROPS = List.of("WHEAT", "PICKY", "STEM");
+	private static final List<String> CROPS = List.of("WHEAT", "PICKY", "STEM", "PLAINS_CROP", "CACTUS_PLANT");
 
 	@Test
 	void theGrowthSpeedIsThePlatformsForEveryCropAndSoil(@TempDir Path dir) throws Exception {

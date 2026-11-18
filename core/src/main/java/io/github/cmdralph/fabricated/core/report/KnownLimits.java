@@ -305,6 +305,14 @@ public final class KnownLimits {
 					"NeoForge and Forge ask the soil's canSustainPlant where vanilla checks the soil of a cactus, a mushroom or a stem's fruit,"
 							+ " answering for every kind of plant at once, so hooks of vanilla's checks there can't apply: Farmer's Delight's rich soil"
 							+ " doesn't take cactus, mushrooms or stems' fruit through them (SEAM-12)"),
+			// A hook of vanilla's farmland check in a crop's growth speed on Forge, which Fabricated puts back for the CropBlocks
+			// keeping the checks Forge's canSustainPlant asks: a stem's and the pitcher crop's growth, which make the method's
+			// checks too, are asked as Forge has it. The hook applies, and doesn't run for them.
+			new Limit(Set.of("Forge"), null,
+					Pattern.compile("in (?:getGrowthSpeed|m_52272_), vanilla's call Forge's CropBlock makes through the soil state's canSustainPlant\\("),
+					"Forge asks the soil's canSustainPlant in a crop's growth speed, which Fabricated answers with vanilla's farmland check for the crops"
+							+ " that are CropBlocks keeping their checks: a stem's and the pitcher crop's growth, which ask the same method, are asked as"
+							+ " Forge has it, so hooks of vanilla's farmland check there don't run for them (SEAM-12)", true),
 			// FrozenLib's hooks of vanilla's container lookups in the hopper's ejectItems and suckInItems, which NeoForge 21.11 on
 			// makes through a lookup of its own answering a container or an item handler.
 			Limit.ofMod(Set.of("NeoForge"), mixins("mixin/frozenlib.block.mixins.json", "net.frozenblock.lib.block.mixin.storage.hopper", "HopperBlockEntityMixin"),

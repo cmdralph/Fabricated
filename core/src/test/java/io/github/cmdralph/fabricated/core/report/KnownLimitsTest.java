@@ -94,6 +94,30 @@ class KnownLimitsTest {
 				"", "handler()V")));
 	}
 
+	/**
+	 * SEAM-12: on Forge, pre-flight's note of a hook of vanilla's farmland check in a crop's growth speed, which goes back for
+	 * the CropBlocks keeping their checks, names the stems and the pitcher crop it doesn't run for; by Mojang's names and
+	 * Forge 47's. Not NeoForge's note (its condition is the soil's, every plant's), nor the moisture check's (any plant's on
+	 * farmland), nor a hook left out with that message.
+	 */
+	@Test
+	void aHookOfVanillasFarmlandCheckOnForgeNamesTheStemsAndThePitcherCrop() {
+		String forge = "@ModifyVariable capture hooks BlockState.is(Lnet/minecraft/world/level/block/Block;)Z in getGrowthSpeed, vanilla's call Forge's CropBlock"
+				+ " makes through the soil state's canSustainPlant(level, pos, facing, plantable) instead; Fabricated puts it back there for the soils"
+				+ " keeping that method's default (SEAM-12)";
+		for (String message : List.of(forge, forge.replace("BlockState.is(", "BlockState.m_60713_(").replace("in getGrowthSpeed,", "in m_52272_,"))) {
+			String limit = KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+					message, "", "capture()V"));
+			assertTrue(limit != null && limit.contains("a stem's and the pitcher crop's growth") && limit.endsWith("(SEAM-12)"), message + ": " + limit);
+		}
+		assertNull(KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+				forge.replace("Forge's", "NeoForge's"), "", "capture()V")));
+		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+				forge.replace("canSustainPlant(level, pos, facing, plantable)", "isFertile(level, pos)"), "", "capture()V")));
+		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.LEFT_OUT, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+				forge, "", "capture()V")));
+	}
+
 	@Test
 	void aHookOfTheServersPlayerWillDestroyCallIsSeam3OnForgeOnly() {
 		String message = "@ModifyExpressionValue in m_9280_ expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;"

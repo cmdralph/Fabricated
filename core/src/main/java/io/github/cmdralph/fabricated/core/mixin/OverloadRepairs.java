@@ -20,6 +20,7 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InsnList;
@@ -281,11 +282,18 @@ final class OverloadRepairs extends PreflightPart {
 	 * ({@link HandlerBridges#retypedParameterBridge}). A local the handler takes by its type alone or by its ordinal among
 	 * those of the platform's parameter type ({@code @ModifyVariable}'s, a MixinExtras {@code @Local}'s), whose locals are
 	 * vanilla's in the platform's method (the same names, in order, by the local variable tables), counts the parameter
-	 * first, as Mixin does: its ordinal is vanilla's plus one, a lone one's 1. Not for an {@code @Inject} capturing locals,
-	 * nor a local taken by its slot, its name or among the arguments. Returns a description of each move.
+	 * first, as Mixin does: its ordinal is vanilla's plus one, a lone one's 1, which holds as vanilla's method has no
+	 * parameter of the platform's type and the platform's has that one alone, its locals all after its parameters. Which of
+	 * a handler's arguments are the method's parameters is told exactly ({@link #ownArguments}): the injector's own come
+	 * first, counted from its kind and its point, and what follows must be the method's first parameters, else it isn't
+	 * repaired. Nothing is repaired either for an {@code @Inject} capturing locals, an injector naming several methods, a
+	 * local taken by its slot, by its name or among the arguments of the platform's parameter type, or one of vanilla's
+	 * parameter type however it is taken (that type is the platform's local worked out of the parameter there, not the
+	 * parameter); and a selector by name alone, which Mixin takes for the platform's method, only where the handler needs a
+	 * bridge or its locals counted, so it applies as it did otherwise. Returns a description of each move.
 	 */
 	List<String> retypedParameterRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx, List<MethodNode> bridges) {
-		if (!(Annotations.value(injector, "method") instanceof List<?> selectors) || Annotations.value(injector, "locals") != null
+		if (!(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1 || Annotations.value(injector, "locals") != null
 				|| (mixin.access & Opcodes.ACC_INTERFACE) != 0) return List.of();
 		ClassNode vanilla = vanillaClass(target.name);
 		if (vanilla == null) return List.of();
@@ -312,11 +320,18 @@ final class OverloadRepairs extends PreflightPart {
 					at = retyped.index();
 				}
 			} else {
-				int prefix = capturedPrefix(handler, before);
-				if (prefix > retyped.index()) at = handlerIndex(handler, args.size() - prefix + retyped.index());
+				// Its own arguments, then the method's first parameters, exactly: what it takes past its own is the method's.
+				int own = ownArguments(injector, handler, before, ctx);
+				if (own < 0 || own > args.size()) continue;
+				List<Type> captured = args.subList(own, args.size());
+				if (captured.size() > params.length || !captured.equals(List.of(params).subList(0, captured.size()))) continue;
+				if (captured.size() > retyped.index()) at = handlerIndex(handler, own + retyped.index());
 			}
+			if (takesVanillasType(handler, injector, params[retyped.index()])) continue;
 			List<Runnable> counted = countingTheParameter(handler, injector, retyped, before, ctx);
 			if (counted == null) continue;
+			// By its name alone Mixin takes the platform's method itself: repaired only where the handler needs it.
+			if (ref.desc() == null && at < 0 && counted.isEmpty()) continue;
 			counted.forEach(Runnable::run);
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
@@ -338,6 +353,76 @@ final class OverloadRepairs extends PreflightPart {
 
 	/** The platform's method in place of vanilla's whose parameter at {@code index} it retyped, and the call working vanilla's out of it. */
 	record Retyped(MethodNode method, int index, MethodInsnNode getter) {
+	}
+
+	/**
+	 * How many of the handler's arguments, MixinExtras sugar aside, are its injector's own, before any of the target
+	 * method's parameters it takes, as Mixin and MixinExtras pass them, told from the injector's kind and its one point as
+	 * vanilla's method {@code before} has it ({@link #retypedParameterRepairs}); -1 where that can't be told. A value
+	 * modifier ({@code @ModifyVariable}, {@code @ModifyExpressionValue}, {@code @ModifyReturnValue}, {@code @ModifyConstant})
+	 * takes the value, a {@code @ModifyConstant} of an {@code instanceof} the object and the class; {@code @ModifyArgs} its
+	 * {@code Args}; {@code @ModifyArg} the argument it takes alone (one taking the call's arguments can't be told from one
+	 * taking the method's parameters after it); {@code @Redirect}, {@code @WrapWithCondition} and {@code @WrapOperation} at an {@code INVOKE} or a
+	 * {@code FIELD} point the call's or the field access's operands, the receiver where each of vanilla's instructions the
+	 * point names takes one (all alike, or it can't be told), the call's arguments or the written value, and a
+	 * {@code @WrapOperation} its {@code Operation} after them. Any other injector, or point, can't be told.
+	 */
+	static int ownArguments(AnnotationNode injector, MethodNode handler, MethodNode before, Context ctx) {
+		List<Type> args = PreflightAsm.handlerArgs(handler);
+		if (args == null) return -1;
+		String kind = injector.desc;
+		if (kind.equals(MixinNames.MODIFY_CONSTANT)) {
+			boolean instanceOf = args.size() >= 2 && args.get(0).equals(Type.getType(Object.class)) && args.get(1).equals(Type.getType(Class.class))
+					&& Annotations.list(Annotations.value(injector, "constant")).stream().anyMatch(c -> Annotations.value(c, "classValue") != null);
+			return instanceOf ? 2 : 1;
+		}
+		if (MixinNames.VALUE_MODIFIERS.contains(kind) || kind.equals(MixinNames.MODIFY_ARGS)) return 1;
+		if (kind.equals(MODIFY_ARG)) return args.size() == 1 ? 1 : -1;
+		boolean wrapper = kind.equals(MixinNames.WRAP_OPERATION);
+		if (!wrapper && !kind.equals(MixinNames.REDIRECT) && !MixinNames.WRAP_WITH_CONDITION.contains(kind)) return -1;
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.size() != 1 || !(Annotations.value(ats.get(0), "target") instanceof String raw)) return -1;
+		String point = InjectionPoints.pointOf(ats.get(0));
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null || ref.desc() == null) return -1;
+		int operands = -1;
+		for (AbstractInsnNode insn : before.instructions) {
+			int n;
+			if (point.equals("INVOKE") && insn instanceof MethodInsnNode call && call.name.equals(ref.name()) && call.desc.equals(ref.desc())
+					&& (ref.owner() == null || call.owner.equals(ref.owner()))) {
+				n = Type.getArgumentTypes(call.desc).length + (call.getOpcode() == Opcodes.INVOKESTATIC ? 0 : 1);
+			} else if (point.equals("FIELD") && insn instanceof FieldInsnNode field && field.name.equals(ref.name()) && field.desc.equals(ref.desc())
+					&& (ref.owner() == null || field.owner.equals(ref.owner()))) {
+				n = switch (field.getOpcode()) {
+					case Opcodes.GETSTATIC -> 0;
+					case Opcodes.GETFIELD, Opcodes.PUTSTATIC -> 1;
+					default -> 2;
+				};
+			} else {
+				continue;
+			}
+			if (operands >= 0 && operands != n) return -1;
+			operands = n;
+		}
+		return operands < 0 ? -1 : operands + (wrapper ? 1 : 0);
+	}
+
+	private static final String MODIFY_ARG = "Lorg/spongepowered/asm/mixin/injection/ModifyArg;";
+
+	/**
+	 * Whether the handler takes a local of vanilla's parameter type, {@code vanillas}, by any discriminator: a
+	 * {@code @ModifyVariable} of that type, or a MixinExtras {@code @Local} of it, or of a reference type, whose local's type
+	 * its descriptor doesn't tell. In the platform's method that type is the local it works out of its parameter, not a
+	 * parameter, so neither its slot, its ordinal nor its place among the arguments is vanilla's ({@link #retypedParameterRepairs}).
+	 */
+	private static boolean takesVanillasType(MethodNode handler, AnnotationNode injector, Type vanillas) {
+		if (injector.desc.equals(MixinNames.MODIFY_VARIABLE) && Type.getReturnType(handler.desc).equals(vanillas)) return true;
+		Type[] own = Type.getArgumentTypes(handler.desc);
+		for (int p = 0; p < own.length; p++) {
+			boolean ref = own[p].getSort() == Type.OBJECT && own[p].getInternalName().startsWith("com/llamalad7/mixinextras/sugar/ref/");
+			if ((own[p].equals(vanillas) || ref) && Annotations.ofParameter(handler, p).stream().anyMatch(a -> a.desc.equals(MixinNames.LOCAL))) return true;
+		}
+		return false;
 	}
 
 	/** {@link #retypedParameterRepairs}'s platform method for vanilla's {@code before} in {@code target}, told from both one's code; null where there is none. */
@@ -423,8 +508,20 @@ final class OverloadRepairs extends PreflightPart {
 				if (local.desc.equals(MixinNames.LOCAL)) discriminators.add(local);
 			}
 		}
+		// A local taken by its slot is refused whatever its type: the platform's method stores the worked-out one in a slot of
+		// its own, which the others' needn't keep.
+		if (injector.desc.equals(MixinNames.MODIFY_VARIABLE) && Annotations.value(injector, "index") != null) return null;
+		for (int p = 0; p < own.length; p++) {
+			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+				if (local.desc.equals(MixinNames.LOCAL) && Annotations.value(local, "index") != null) return null;
+			}
+		}
 		if (discriminators.isEmpty()) return List.of();
 		MethodNode method = retyped.method();
+		// Mixin counts the parameters first, by slot: the platform's parameter of that type counts first, and vanilla's
+		// ordinals one on, only where vanilla's method has no parameter of that type and the platform's this one alone.
+		if (List.of(Type.getArgumentTypes(before.desc)).stream().anyMatch(t -> t.getDescriptor().equals(desc))
+				|| List.of(Type.getArgumentTypes(method.desc)).stream().filter(t -> t.getDescriptor().equals(desc)).count() != 1) return null;
 		List<Runnable> changes = new ArrayList<>();
 		for (AnnotationNode d : discriminators) {
 			if (Annotations.value(d, "index") != null || Annotations.value(d, "name") != null || Boolean.TRUE.equals(Annotations.value(d, "argsOnly"))) return null;
