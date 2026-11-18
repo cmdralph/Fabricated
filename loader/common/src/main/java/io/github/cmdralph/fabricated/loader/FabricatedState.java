@@ -169,9 +169,9 @@ public final class FabricatedState {
 
 	/**
 	 * The methods game classes declare as they load for Fabric mods' invokers of vanilla methods the platform gave a
-	 * parameter vanilla's never had, by class (LEAVE-6, {@link InvokerBridge}).
+	 * parameter vanilla's never had, by class, each with its invokers (LEAVE-6, {@link InvokerBridge}).
 	 */
-	public Map<String, List<InvokerBridge>> invokerBridges() {
+	public Map<String, Map<InvokerBridge, List<String>>> invokerBridges() {
 		return result.invokerBridges();
 	}
 

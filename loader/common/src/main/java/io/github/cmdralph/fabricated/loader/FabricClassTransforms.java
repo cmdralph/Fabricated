@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.loader;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.BiConsumer;
@@ -45,6 +46,8 @@ import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
  */
 public final class FabricClassTransforms {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
+	/** The report's section for an invoker bridge a class couldn't take (LEAVE-6). */
+	private static final String INVOKER_BRIDGES = "Invoker bridges";
 
 	private FabricClassTransforms() {
 	}
@@ -122,19 +125,17 @@ public final class FabricClassTransforms {
 				changed = true;
 			}
 		}
-		for (InvokerBridge bridge : state.invokerBridges().getOrDefault(node.name, List.of())) {
-			MethodNode method = bridge.method(node);
-			if (method == null) {
-				// Pre-flight read the platform's method there; the class as it loads lacks it, or declares the bridge itself.
-				if (node.methods.stream().noneMatch(m -> m.name.equals(bridge.name()) && m.desc.equals(bridge.descriptor()))) {
-					LOGGER.error("Fabricated couldn't declare {}{} in {}: the class has no {}{} to call, so Fabric mods' invokers of vanilla's {} fail",
-							bridge.name(), bridge.descriptor(), node.name.replace('/', '.'), bridge.method(), bridge.methodDescriptor(), bridge.vanillaName());
-				}
-				continue;
+		Map<InvokerBridge, List<String>> invokers = state.invokerBridges().getOrDefault(node.name, Map.of());
+		if (!invokers.isEmpty()) {
+			// Not silent: a bridge the class can't take leaves its invokers' calls failing, which the log and the report say.
+			List<String> declared = InvokerBridge.declare(node, invokers, error -> {
+				LOGGER.error(error);
+				state.report().line(INVOKER_BRIDGES, error);
+			});
+			if (!declared.isEmpty()) {
+				audit.accept("fabricated:invoker_bridge", String.join(", ", declared));
+				changed = true;
 			}
-			node.methods.add(method);
-			audit.accept("fabricated:invoker_bridge", bridge.name());
-			changed = true;
 		}
 		return changed;
 	}

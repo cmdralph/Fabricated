@@ -239,7 +239,7 @@ public final class Pipeline {
 	 *                           ({@link VanillaSeams}, SEAM-1; immutable)
 	 * @param invokerBridges     the methods game classes declare as they load for {@code mods}' invokers of vanilla methods
 	 *                           the platform gave a parameter vanilla's never had, by target class ({@link InvokerBridge},
-	 *                           LEAVE-6; immutable)
+	 *                           LEAVE-6), each with its invokers ({@code "<mod>: <mixin> @Invoker <method>"}; immutable)
 	 */
 	public record Result(
 			FabricatedConfig config,
@@ -255,7 +255,7 @@ public final class Pipeline {
 			Set<String> providedElsewhere,
 			Map<String, Set<String>> instanceHandlers,
 			Set<String> restoredSeams,
-			Map<String, List<InvokerBridge>> invokerBridges) {
+			Map<String, Map<InvokerBridge, List<String>>> invokerBridges) {
 
 		Result(FabricatedConfig config, List<LoadedMod> mods, FabricLoaderRuntime runtime, Map<String, ModContainerImpl> containers,
 				Report report, Set<String> dependencyFailures, Set<String> providedElsewhere, Map<String, Set<String>> instanceHandlers) {
@@ -297,17 +297,25 @@ public final class Pipeline {
 			return Map.copyOf(injections);
 		}
 
-		/** The mods' invoker bridges by target class, each once: two mods invoking the same method share one. */
-		private static Map<String, List<InvokerBridge>> invokerBridgesOf(List<LoadedMod> mods) {
-			Map<String, List<InvokerBridge>> bridges = new HashMap<>();
+		/**
+		 * The mods' invoker bridges by target class, each once with all its invokers: two mods invoking the same method share
+		 * one. Ordered as the mods are, so a class declares them in the same order each launch.
+		 */
+		private static Map<String, Map<InvokerBridge, List<String>>> invokerBridgesOf(List<LoadedMod> mods) {
+			Map<String, Map<InvokerBridge, List<String>>> bridges = new LinkedHashMap<>();
 			for (LoadedMod mod : mods) {
-				for (InvokerBridge bridge : mod.translated().invokerBridges()) {
-					List<InvokerBridge> list = bridges.computeIfAbsent(bridge.target(), k -> new ArrayList<>());
-					if (!list.contains(bridge)) list.add(bridge);
-				}
+				mod.translated().invokerBridges().forEach((bridge, invokers) -> {
+					List<String> users = bridges.computeIfAbsent(bridge.target(), k -> new LinkedHashMap<>()).computeIfAbsent(bridge, k -> new ArrayList<>());
+					for (String invoker : invokers) users.add(mod.translated().candidate().id() + ": " + invoker);
+				});
 			}
-			bridges.replaceAll((target, list) -> List.copyOf(list));
-			return Map.copyOf(bridges);
+			Map<String, Map<InvokerBridge, List<String>>> frozen = new LinkedHashMap<>();
+			bridges.forEach((target, byBridge) -> {
+				Map<InvokerBridge, List<String>> copy = new LinkedHashMap<>();
+				byBridge.forEach((bridge, users) -> copy.put(bridge, List.copyOf(users)));
+				frozen.put(target, Collections.unmodifiableMap(copy));
+			});
+			return Collections.unmodifiableMap(frozen);
 		}
 
 		private static Map<String, List<DefaultBridge>> defaultBridgesOf(List<LoadedMod> mods) {
