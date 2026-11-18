@@ -20,14 +20,19 @@ What changed, and how it was verified, newest first. What is open and what comes
   the west side, whatever side the invoking mod meant. Blocks keeping the platform's defaults ignore the side.
 - **Where it can't be served:** where the platform's method uses the parameter otherwise, the invoker is left out as
   before, and the report says why, a known limit. Where the game class, as it loads, isn't the one the mod was
-  translated against, it gets no such method, and the log and the report name the invokers whose calls fail.
+  translated against, it gets a method of that name that throws instead: the game starts, and only a call of the
+  invoker fails, with an error saying why, which the log gives as the class loads and the report once loading
+  completes.
 - **Checks:** `vanilla-fire-invoker`: the test mod's invoker of vanilla's `checkBurnOut` burns oak planks on every
-  platform.
+  platform. `invoker-bridge-overrides`: on each pinned platform build, every override in the game's and the platform's
+  classes of what such a parameter reaches ignores it (`TntBlock.onCaughtFire` does), which Fabricated doesn't check as
+  the game starts; a newer platform build isn't checked.
 
 Verified with core's unit tests, CI's script tests and the mixin inventory on the three branches; each of the checks
-the proof makes, removed one at a time, fails a test. Pre-flight on the `FireBlock` classes of NeoForge 21.1, 21.11 and
-26.1.2 and Forge 43, 47, 52, 61, 64, 65 and 66 bridges the invoker on each, and the class declares the bridge as it
-loads. NeoForge 1.21.1, Forge 52 and Forge 47 built, and their servers' runs pass, the test mod's invoker burning the
+the proof, the class-load step, the cache and the guard make, changed one at a time, fails a test. Pre-flight on the
+`FireBlock` classes of NeoForge 21.1, 21.11 and 26.1.2 and Forge 43, 47, 52, 61, 64, 65 and 66 bridges the invoker on
+each, and the class declares the bridge as it loads, or a stub where its code doesn't back it. The guard is OK on the
+ten builds, in about a second (2.4 s on NeoForge 1.21.11, read through Mojang's mappings). NeoForge 1.21.1, Forge 52 and Forge 47 built, and their servers' runs pass, the test mod's invoker burning the
 planks; on NeoForge 1.21.1 without the change it failed pre-flight. In their server corpus runs Supplementaries'
 invoker is the only left-out line that changed, now served.
 
