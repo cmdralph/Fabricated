@@ -2060,37 +2060,38 @@ by the server runs (the colours, screens, key mappings and config screens by the
 - **Fabric's renderer API:** a Fabric block model (one with its own emitter) is drawn in chunk sections, alone and
   inside a vanilla multipart model, as a falling block and with the breaking overlay, on Forge 61 to 66 as a minecart's
   block too and on Forge 43 and 47 as a block a piston moves, and a Fabric item model's quads in the hotbar, the hand,
-  an item frame and on the ground (all five, with Fabric API, client run; on Forge 43 with Fabric API 0.77's Indigo). On Forge 61 to 66 upstream's hooks send every block
-  through Fabric's renderer, as on Fabric. Forge 61 moved the code three of them hook into, so pre-flight leaves out
-  those for moving blocks, the breaking overlay and blocks drawn as entities, and the in-game mod sends a block whose
-  model is a Fabric model, or a multipart or weighted model with one among its parts, to Fabric's renderer there
-  instead; every other block keeps Forge's path. A model without an emitter of its own that reads Forge's model data (a
-  Forge mod's level-aware model), drawn by Fabric's renderer as a block's model or inside a Fabric model, emits the
-  parts for its model data, which it is asked with the level as Forge's chunk section compiler asks it; upstream's
-  default emitter collects its parts without it (Forge 61 to 66, the renderer test mod's level-aware default check).
-  Forge 61 to 66 also ask a block model for its particle sprite with Forge's model data where upstream's hooks ask
-  Fabric's level-aware one, in places those hooks no longer reach: the screen effect inside a block (Forge 65 draws none
-  for any block: its patch submits it only where a listener cancelled Forge's `RenderBlockScreenEffectEvent` for it), a
-  block marker (Forge 64 to 66) and a block particle, whose sprite Forge sets again from the block's position. There the
-  in-game mod asks Fabric's for such a model, and a model whose class gives its own sprite for model data keeps Forge's
-  (PART-4; the test block's model, Forge 61 to 66). On Forge 43 and 47 upstream's hooks miss Forge's chunk section
-  compiler and block renderers, which call Forge's overloads taking model data and a render type (on Forge 43 one more
-  taking whether to ask the model for its data): pre-flight leaves out the chunk
-  section redirect and keeps the hook that prepares Indigo's terrain context, and the in-game mod has Indigo draw such a
-  block, once (at its first render type), in chunk sections, as a falling block, as a block a piston moves, with the
-  breaking overlay and wherever the block renderer draws one block. Items keep Indigo's own hook there, and blocks drawn
-  as entities their vanilla quads, as upstream draws them on 1.19.2 and 1.20.1. Indigo 0.77, Forge 43's, moves a block
-  by its offset only where upstream's own hooks did, so the in-game mod moves it there. FRAPI rule 8: where Fabric's renderer (Indigo)
-  calls a block model's emitter, a Fabric model that throws fails alone. The block is drawn from the model's parts (on
-  Forge 43 and 47 by Forge's renderer, from the quads the model gives it), the failure is logged once and listed in the report,
-  and the model's class is drawn that way from then on, but not the class of a model wrapping it (as Continuity's wrap
-  others). A transform it left pushed never reaches another block: it is popped from Indigo's emitter, and on Forge 64
-  to 66 a model drawn into another renderer's (Sodium's Fabric build) draws into an emitter of Fabricated's, dropped
-  after a throw (FRAPI-12). The renderer test mod checks each of these with a model that throws in a chunk section, as a
-  multipart model's part, inside a model wrapping it, and on Forge 61 to 66 as a minecart's block. The outline Fabric's
-  renderer draws around a glowing falling block is checked on Forge 65 and, since v0.6.0-beta, on Forge 66. Fabricated's
-  guards apply only with Fabric's renderer API installed (they name its types), and the two that sit in methods upstream
-  replaces (blocks drawn as entities, and the breaking overlay on Forge 64) apply after upstream's replacement.
+  an item frame and on the ground (all five, with Fabric API, client run; on Forge 43 with Fabric API 0.77's Indigo). On
+  Forge 61 to 66 upstream's hooks send every block through Fabric's renderer, as on Fabric. Forge 61 moved the code
+  three of them hook into, so pre-flight leaves out those for moving blocks, the breaking overlay and blocks drawn as
+  entities, and the in-game mod sends a block whose model is a Fabric model, or a multipart or weighted model with one
+  among its parts, to Fabric's renderer there instead; every other block keeps Forge's path. A model without an emitter
+  of its own that reads Forge's model data (a Forge mod's level-aware model), drawn by Fabric's renderer as a block's
+  model or inside a Fabric model, emits the parts for its model data, which it is asked with the level as Forge's chunk
+  section compiler asks it; upstream's default emitter collects its parts without it (Forge 61 to 66, the renderer test
+  mod's level-aware default check). Forge 61 to 66 also ask a block model for its particle sprite with Forge's model
+  data where upstream's hooks ask Fabric's level-aware one, in places those hooks no longer reach: the screen effect
+  inside a block (Forge 65 draws none for any block: its patch submits it only where a listener cancelled Forge's
+  `RenderBlockScreenEffectEvent` for it), a block marker (Forge 64 to 66) and a block particle, whose sprite Forge sets
+  again from the block's position. There the in-game mod asks Fabric's for such a model, and a model whose class gives
+  its own sprite for model data keeps Forge's (PART-4; the test block's model, Forge 61 to 66). On Forge 43 and 47
+  upstream's hooks miss Forge's chunk section compiler and block renderers, which call Forge's overloads taking model
+  data and a render type (on Forge 43 one more taking whether to ask the model for its data): pre-flight leaves out the
+  chunk section redirect and keeps the hook that prepares Indigo's terrain context, and the in-game mod has Indigo draw
+  such a block, once (at its first render type), in chunk sections, as a falling block, as a block a piston moves, with
+  the breaking overlay and wherever the block renderer draws one block. Items keep Indigo's own hook there, and blocks
+  drawn as entities their vanilla quads, as upstream draws them on 1.19.2 and 1.20.1. Indigo 0.77, Forge 43's, moves a
+  block by its offset only where upstream's own hooks did, so the in-game mod moves it there. FRAPI rule 8: where
+  Fabric's renderer (Indigo) calls a block model's emitter, a Fabric model that throws fails alone. The block is drawn
+  from the model's parts (on Forge 43 and 47 by Forge's renderer, from the quads the model gives it), the failure is
+  logged once and listed in the report, and the model's class is drawn that way from then on, but not the class of a
+  model wrapping it (as Continuity's wrap others). A transform it left pushed never reaches another block: it is popped
+  from Indigo's emitter, and on Forge 64 to 66 a model drawn into another renderer's (Sodium's Fabric build) draws into
+  an emitter of Fabricated's, dropped after a throw (FRAPI-12). The renderer test mod checks each of these with a model
+  that throws in a chunk section, as a multipart model's part, inside a model wrapping it, and on Forge 61 to 66 as a
+  minecart's block. The outline Fabric's renderer draws around a glowing falling block is checked on Forge 65 and, since
+  v0.6.0-beta, on Forge 66. Fabricated's guards apply only with Fabric's renderer API installed (they name its types),
+  and the two that sit in methods upstream replaces (blocks drawn as entities, and the breaking overlay on Forge 64)
+  apply after upstream's replacement.
 
 What else differs on Forge, for Fabric mods in general:
 
