@@ -887,8 +887,10 @@ class PipelineTest {
 	/**
 	 * LEAVE-6: a Fabric mod's invoker of a vanilla method the platform gave a parameter vanilla's never had, which the
 	 * platform's method only passes to its extension's method whose default ignores it, gets a bridge the game class
-	 * declares as it loads: the result names it for that class, from a fresh translation and from the cache alike.
-	 * Without vanilla's classes to compare the platform's method with, there is none, and the invoker is left out.
+	 * declares as it loads: the result names it for that class, with the invokers calling it, from a fresh translation
+	 * and from the cache alike. A cache entry holding a bridge no translation makes (an edited file) is dropped, and the
+	 * mod translated again. Without vanilla's classes to compare the platform's method with, there is none, and the
+	 * invoker is left out as before, the line naming no LEAVE-6 reason.
 	 */
 	@Test
 	void anInvokersBridgeReachesTheResultFromATranslationAndFromTheCache(@TempDir Path game, @TempDir Path src) throws Exception {
@@ -924,21 +926,45 @@ class PipelineTest {
 				"(Ljava/lang/Object;L" + state + ";ILnet/minecraft/world/level/Side;)V", 3, "WEST");
 
 		Pipeline.Input fresh = withVanilla(input(game, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()), vanilla);
+		Map<String, Map<InvokerBridge, List<String>>> expected = Map.of(burner, Map.of(bridge, List.of("burning: com.burn.mixin.BurnerAccessor @Invoker"
+				+ " invokeBurn(Ljava/lang/Object;L" + state + ";I)V")));
 		Pipeline.Result translated = Pipeline.run(fresh);
 		assertFalse(translated.mods().getFirst().translated().cacheHit());
-		assertEquals(Map.of(burner, List.of(bridge)), translated.invokerBridges(), translated.report().render());
+		assertEquals(expected, translated.invokerBridges(), translated.report().render());
 		fresh.cache().finish(5);
 		Pipeline.Input again = withVanilla(input(game, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()), vanilla);
 		Pipeline.Result cached = Pipeline.run(again);
 		assertTrue(cached.mods().getFirst().translated().cacheHit());
-		assertEquals(Map.of(burner, List.of(bridge)), cached.invokerBridges());
+		assertEquals(expected, cached.invokerBridges());
 		again.cache().finish(5);
+
+		// The entry edited to a constant no class could declare a field of.
+		List<Path> entries;
+		try (var files = Files.walk(game.resolve(".fabricated"))) {
+			entries = files.filter(f -> f.getFileName().toString().equals("entry.json")).toList();
+		}
+		int edited = 0;
+		for (Path entry : entries) {
+			String json = Files.readString(entry);
+			String bad = json.replaceAll("(\"constant\"\\s*:\\s*)\"WEST\"", "$1\"WEST; ignite\"");
+			if (bad.equals(json)) continue;
+			Files.writeString(entry, bad);
+			edited++;
+		}
+		assertEquals(1, edited, entries.toString());
+		Pipeline.Input edit = withVanilla(input(game, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()), vanilla);
+		Pipeline.Result retranslated = Pipeline.run(edit);
+		assertFalse(retranslated.mods().getFirst().translated().cacheHit(), "an entry no translation makes is dropped");
+		assertEquals(expected, retranslated.invokerBridges());
+		edit.cache().finish(5);
 
 		Path other = Files.createDirectories(game.resolve("other"));
 		Pipeline.Result unread = Pipeline.run(input(other, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()));
 		assertEquals(Map.of(), unread.invokerBridges());
-		assertTrue(unread.mods().getFirst().translated().findings().stream().anyMatch(f -> f.severity() == PreflightFinding.Severity.LEFT_OUT
-				&& f.suggestion().contains("vanilla's class, which it is compared with, can't be read (LEAVE-6)")), unread.report().render());
+		List<PreflightFinding> left = unread.mods().getFirst().translated().findings().stream().filter(f -> f.severity() == PreflightFinding.Severity.LEFT_OUT)
+				.toList();
+		assertEquals(1, left.size(), unread.report().render());
+		assertFalse(left.getFirst().suggestion().contains("LEAVE-6"), left.getFirst().suggestion());
 	}
 
 	/** {@code in} with vanilla's classes ({@link Pipeline.VanillaGame}). */
@@ -1410,9 +1436,12 @@ class PipelineTest {
 		// SEAM-1: the classes whose vanilla methods are put back, once.
 		assertEquals(Set.of("net/minecraft/world/Thing"), result.restoredSeams());
 		assertTrue(result.without(Set.of("mod-a", "mod-b")).restoredSeams().isEmpty());
-		// LEAVE-6: an invoker bridge two mods' invokers call is declared once.
-		assertEquals(1, result.invokerBridges().get("net/minecraft/world/Thing").size(), result.invokerBridges().toString());
-		assertEquals(1, kept.invokerBridges().get("net/minecraft/world/Thing").size());
+		// LEAVE-6: an invoker bridge two mods' invokers call is declared once, naming both mods' invokers.
+		InvokerBridge thing = new InvokerBridge("net/minecraft/world/Thing", "burn", "(I)V", "burn", "(ILnet/minecraft/core/Direction;)V", 1, "WEST");
+		assertEquals(Map.of("net/minecraft/world/Thing", Map.of(thing, List.of("mod-a: com.example.ThingAccessor @Invoker invokeBurn(I)V",
+				"mod-b: com.example.ThingAccessor @Invoker invokeBurn(I)V"))), result.invokerBridges());
+		assertEquals(Map.of("net/minecraft/world/Thing", Map.of(thing, List.of("mod-a: com.example.ThingAccessor @Invoker invokeBurn(I)V"))),
+				kept.invokerBridges());
 		assertTrue(result.without(Set.of("mod-a", "mod-b")).invokerBridges().isEmpty());
 		// Read from any class-loading thread: never changed after it is published.
 		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().get("net/minecraft/world/Thing").clear());
@@ -1444,7 +1473,8 @@ class PipelineTest {
 		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
 				List.of(new DefaultBridge("net/minecraft/world/Thing", "net/minecraft/world/Extension", "size", "()I")), Set.of(environmentClass),
 				Set.of("net/minecraft/world/Thing check()Z"), Set.of("net/minecraft/world/Thing"),
-				Set.of(new InvokerBridge("net/minecraft/world/Thing", "burn", "(I)V", "burn", "(ILnet/minecraft/core/Direction;)V", 1, "WEST")), false, 0);
+				Map.of(new InvokerBridge("net/minecraft/world/Thing", "burn", "(I)V", "burn", "(ILnet/minecraft/core/Direction;)V", 1, "WEST"),
+						List.of("com.example.ThingAccessor @Invoker invokeBurn(I)V")), false, 0);
 		return new Pipeline.LoadedMod(mod, PackageGuard.Decision.NONE, List.of());
 	}
 

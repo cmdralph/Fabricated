@@ -430,15 +430,20 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * The bridges the game classes must declare as they load ({@link InvokerBridge}, LEAVE-6): those of the invokers the
-	 * repairs pointed at one, but of an invoker left out with its mixin or alone, which nothing would call.
+	 * The bridges the game classes must declare as they load ({@link InvokerBridge}, LEAVE-6), each with its invokers
+	 * ({@code "<mixin> @Invoker <method>"}, for the error where a class can't take it): those of the invokers the repairs
+	 * pointed at one, but of an invoker left out with its mixin or alone, which nothing would call.
 	 */
-	public Set<InvokerBridge> invokerBridges() {
-		Set<InvokerBridge> bridges = new LinkedHashSet<>();
+	public Map<InvokerBridge, List<String>> invokerBridges() {
+		Map<InvokerBridge, List<String>> bridges = new LinkedHashMap<>();
 		for (BridgedInvoker b : bridgedInvokers) {
-			if (!leftOut(leftOutHandlers, b.mixin(), b.invoker())) bridges.add(b.bridge());
+			if (leftOut(leftOutHandlers, b.mixin(), b.invoker())) continue;
+			List<String> invokers = bridges.computeIfAbsent(b.bridge(), k -> new ArrayList<>());
+			String invoker = b.mixin() + " @Invoker " + b.invoker();
+			if (!invokers.contains(invoker)) invokers.add(invoker);
 		}
-		return Collections.unmodifiableSet(bridges);
+		bridges.replaceAll((bridge, invokers) -> List.copyOf(invokers));
+		return Collections.unmodifiableMap(bridges);
 	}
 
 	/**
@@ -1988,8 +1993,8 @@ public final class MixinPreflight extends PreflightPart {
 		// Where the platform's method takes a parameter vanilla's never had, why no fixed value of it serves the invoker.
 		AddedParameters.Verdict verdict = addedParameters.of(target, methodName, desc);
 		if (verdict != null && verdict.why() != null) {
-			hint += " Fabricated gives an invoker of it a fixed " + verdict.typeName() + " only where " + loader + "'s method passes it only to its"
-					+ " extensions' methods whose defaults ignore it, and makes nothing else vanilla's doesn't; " + verdict.why() + " (LEAVE-6).";
+			hint += " Fabricated gives an invoker of it a fixed " + verdict.typeName() + " only where " + loader + "'s method passes it only to"
+					+ " methods of " + loader + "'s own code whose code ignores it; here " + verdict.why() + " (LEAVE-6).";
 		}
 		ctx.accessorMember(method, "@Invoker target method " + methodName + desc + " does not exist in " + target.name.replace('/', '.'), hint);
 	}

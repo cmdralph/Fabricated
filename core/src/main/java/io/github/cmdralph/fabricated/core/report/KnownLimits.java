@@ -240,13 +240,15 @@ public final class KnownLimits {
 					Pattern.compile("\\{(\\p{XDigit}+)} has been registered twice, using the names .*\\{(\\p{XDigit}+)}\\)$", Pattern.DOTALL),
 					"Forge's registries take two equal entries for one, so the mod's second one can't be registered;"
 							+ " use NeoForge or the mod's Forge build (REG-13)"),
-			// An invoker of a vanilla method the platform gave a parameter vanilla's never had, where the platform's method needs
-			// it (it reads it, or a default it passes it to does) or makes what vanilla's doesn't: pre-flight's hint says which.
+			// An invoker of a vanilla method of the game's the platform gave a parameter vanilla's never had, where Fabricated gives
+			// it no fixed value of it (the platform's method or one it passes it to reads it, which method stands in for vanilla's
+			// or runs can't be told, or vanilla's is static): pre-flight's hint says why. A line with no such hint (the target an
+			// installed mod's class, or vanilla's class unread) is no LEAVE-6 limit: nothing there was judged.
 			new Limit(Set.of("NeoForge", "Forge"), null,
 					Pattern.compile("^@Invoker target method .*\\n.* Fabricated gives an invoker of it a fixed .* only where", Pattern.DOTALL),
-					"NeoForge and Forge give that method a parameter vanilla's never had, which their code needs, so no value of it Fabricated could"
-							+ " pass makes their method vanilla's: the mod's invoker of vanilla's method has nothing to call, and the feature calling it"
-							+ " fails when it does (LEAVE-6)"),
+					"NeoForge and Forge give that method a parameter vanilla's never had, and Fabricated gives the invoker no fixed value of it to"
+							+ " call their method with (the hint says why), so the mod's invoker of vanilla's method has nothing to call, and the feature"
+							+ " calling it fails when it does (LEAVE-6)"),
 			// Additional Entity Attributes' hooks of vanilla's water sinking constant in goDownInWater (Forge 47's m_21208_),
 			// which the platforms replace with the fluid type's sinkInFluid.
 			Limit.ofMod(Set.of("NeoForge", "Forge"), union(mixins("additionalentityattributes.mixins.json", "de.dafuqs.additionalentityattributes.mixin.common",
