@@ -168,6 +168,15 @@ public interface PlatformDescriptor {
 		return List.of("net/neoforged/");
 	}
 
+	/**
+	 * Package prefixes of the libraries every platform provides ({@code PlatformLibraries.PROVIDED_PACKAGES}) that this
+	 * platform's game doesn't have: a Fabric mod's copy of a package there stays the mod's. None by default; Minecraft
+	 * 1.19.2 has no JOML, which the game ships from 1.19.3, so a mod for it nests its own (Sodium 0.4).
+	 */
+	default List<String> absentLibraryPackages() {
+		return List.of();
+	}
+
 	/** The loader's name as players know it, for Fabricated's report: {@code NeoForge} by default. */
 	default String loaderName() {
 		return "NeoForge";

@@ -17,15 +17,15 @@ import net.minecraftforge.fml.ModContainer;
 
 /**
  * FRAPI rule 8 on Forge: a Fabric block model that throws while Fabric's renderer draws it fails alone. Upstream's own
- * hooks send blocks through Fabric's renderer on Forge, so Fabricated's guards sit at the renderer's entry points
- * (each version's {@code FabricBlockRendering}); a model class that threw there is drawn from the parts it gives, for
- * the rest of the session. The failure is logged once and listed in the report, naming the mod the class belongs to. A
+ * hooks send blocks through Fabric's renderer on Forge, so Fabricated's guards sit at the renderer's entry points (each
+ * version's {@code FabricBlockRendering}); a model class that threw there is drawn from the parts it gives, for the
+ * rest of the session. The failure is logged once and listed in the report, naming the mod the class belongs to. A
  * throw is put down to the model whose code threw, not to one wrapping it ({@link #putDown}): a mod whose models wrap
  * others (Continuity's) keeps its own drawing when a model it wraps is broken. As NeoForge's, in Forge's terms; shared
- * by Forge 47, 52 and 61 to 66.
+ * by Forge 43, 47, 52 and 61 to 66.
  *
- * <p>Each version keeps a {@link ModelClass} per model class (in a {@code ClassValue}), so the healthy path reads a final
- * field and, for a Fabric model, a volatile one. A composite model (multipart, weighted) keeps its answer for one
+ * <p>Each version keeps a {@link ModelClass} per model class (in a {@code ClassValue}), so the healthy path reads a
+ * final field and, for a Fabric model, a volatile one. A composite model (multipart, weighted) keeps its answer for one
  * {@link #generation()}: marking a class bumps it, so composites holding that class ask their parts again, once.
  */
 public final class FrapiFailures {

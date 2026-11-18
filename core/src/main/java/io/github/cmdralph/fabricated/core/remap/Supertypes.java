@@ -4,7 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
+import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 
 /**
  * The direct supertypes of classes, by intermediary name: what remapping a Fabric jar knows of the classes it names, so
@@ -69,5 +73,34 @@ public interface Supertypes {
 		if (reader.getSuperName() != null) types.add(reader.getSuperName());
 		types.addAll(List.of(reader.getInterfaces()));
 		return types;
+	}
+
+	/**
+	 * The classes a mixin's {@code @Mixin} names, by its {@code value} and its {@code targets}, by intermediary name; none
+	 * for another class. Mixin merges a mixin's members into them, so a member Intermediary leaves under its official name
+	 * and the runtime renames takes, in the mixin, the runtime's name they give it (PLAIN-2).
+	 */
+	static List<String> mixinTargets(ClassReader reader) {
+		List<String> targets = new ArrayList<>();
+		reader.accept(new ClassVisitor(Opcodes.ASM9) {
+			@Override
+			public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
+				if (!descriptor.equals("Lorg/spongepowered/asm/mixin/Mixin;")) return null;
+				return new AnnotationVisitor(api) {
+					@Override
+					public AnnotationVisitor visitArray(String name) {
+						if (!"value".equals(name) && !"targets".equals(name)) return null;
+						return new AnnotationVisitor(api) {
+							@Override
+							public void visit(String unnamed, Object value) {
+								if (value instanceof Type type && type.getSort() == Type.OBJECT) targets.add(type.getInternalName());
+								else if (value instanceof String target && !target.isEmpty()) targets.add(target.replace('.', '/'));
+							}
+						};
+					}
+				};
+			}
+		}, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+		return targets;
 	}
 }
