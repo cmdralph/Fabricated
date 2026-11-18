@@ -161,7 +161,10 @@ public final class MappingComposer {
 					.put(intermediaryOwner + "." + intermediaryName + intermediaryDesc, mojang);
 		}
 		MappingTable table = MappingTable.fromMembers(classes, members).withOverloadedMethods(overloadedMethods(memberLines, pg, officialToIntermediary));
-		return plain ? table.withPlainMembers(plainMethods(memberLines, pg, officialToIntermediary)) : table;
+		if (!plain) return table;
+		Map<String, String> plainMembers = plainMethods(memberLines, pg, officialToIntermediary);
+		plainMembers.putAll(plainFields(memberLines, pg, officialToIntermediary));
+		return table.withPlainMembers(plainMembers);
 	}
 
 	/**
@@ -223,6 +226,29 @@ public final class MappingComposer {
 			if (name.equals(e.getValue()) || name.startsWith("<") || renamed.contains(name + key.substring(paren)) || listed.contains(key)) continue;
 			plain.put(officialToIntermediary.getOrDefault(owner, owner) + "." + name + remapDescriptor(key.substring(paren), officialToIntermediary),
 					e.getValue());
+		}
+		return plain;
+	}
+
+	/**
+	 * The fields Intermediary leaves under their official names, which the runtime renames: those the runtime file names
+	 * without a descriptor and Intermediary doesn't, keyed by intermediary owner and name (PLAIN-2). MCPConfig for 1.19.2
+	 * renames the fields of the classes the official jar keeps unobfuscated (Mojang's {@code com/mojang/blaze3d}, whose
+	 * {@code GlStateManager.BLEND} is SRG's {@code f_84066_}); MCPConfig for 1.20.1 keeps their names.
+	 */
+	private static Map<String, String> plainFields(List<String[]> memberLines, Proguard pg, Map<String, String> officialToIntermediary) {
+		Set<String> listed = new HashSet<>();
+		for (String[] p : memberLines) {
+			if (p[0].equals("FIELD")) listed.add(p[1] + "." + p[3]);
+		}
+		Map<String, String> plain = new HashMap<>();
+		for (Map.Entry<String, String> e : pg.fieldsByName.entrySet()) {
+			String key = e.getKey();
+			int dot = key.lastIndexOf('.');
+			String owner = key.substring(0, dot);
+			String name = key.substring(dot + 1);
+			if (name.equals(e.getValue()) || listed.contains(key)) continue;
+			plain.put(officialToIntermediary.getOrDefault(owner, owner) + "." + name, e.getValue());
 		}
 		return plain;
 	}

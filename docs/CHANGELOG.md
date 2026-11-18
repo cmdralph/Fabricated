@@ -3,6 +3,39 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-18: Fabric's renderer API on Forge 43, Minecraft 1.19.2 in beta, Sodium and Iris for 1.19.2 (PLAT-8, PLAIN-2)
+
+- **Fabric's renderer API on Forge 43:** it is bridged through Fabric API 0.77's Indigo as on Forge 47, with the same
+  code: a Fabric block model is drawn in chunk sections, alone and inside a vanilla multipart or weighted model, as a
+  falling block, as a block a piston moves and with the breaking overlay, and a Fabric item model in the hotbar, the
+  hand, an item frame and on the ground; a model that throws fails alone (FRAPI rule 8). The bridge's block renderer
+  calls and its Forge hooks are `mc/forge-legacy/common`'s, its failure list and mixin plugin `mc/forge-shared`'s base
+  group's, and its falling block and multipart hooks `1.19.2-1.21.1`'s. Forge 43's own are its chunk section compiler's
+  and block renderer's calls, which take one more argument than Forge 47's, and what Indigo 0.77 does otherwise: it
+  moves a block by its offset only where upstream's hooks did, and has no transform depth to pop to. The renderer test
+  mod is one for both versions (`mc/forge-legacy/common/src/testmodfrapi`); on 1.19.2 it puts its models in place as
+  the model bakery finishes, as Fabric API 0.77 has no model loading plugins.
+- **Checks:** `client-fapi` runs on 1.19.2 with the renderer test mod, and `frapi-forge-moving-block`,
+  `frapi-forge-breaking`, `frapi-forge-legacy-piston` and the test mod's checks gate there. `frapi-model-plugin`,
+  `frapi-model-plugin-part` and `forge-client-model-bake-events` stay out on 1.19.2: Fabric API 0.77 has no model
+  loading plugins.
+- **Sodium and Iris for 1.19.2:** `client-sodium-indium` and `client-sodium-iris` run Sodium 0.4.4, Indium 1.0.9 and
+  Iris 1.6.11, the last builds for 1.19.2, pinned by Modrinth version id, as informational runs.
+- **PLAT-8** (P0), fixed: Sodium 0.4 nests JOML, which Minecraft 1.19.2 doesn't ship; Fabricated left the copy out for
+  the platform's, and Forge 43's client stopped as Mixin read Sodium's mixins. A platform descriptor now names the
+  provided libraries its game lacks, and a mod's copy of those stays the mod's.
+- **PLAIN-2** (P1), fixed: MCPConfig for 1.19.2 renames the members of the classes the official jar keeps unobfuscated
+  (`RenderSystem`, `GlStateManager`), which Fabric mods name by their official names. Fabricated renamed their methods
+  in code only: fields, a mixin's shadows of them, its accessors and invokers, its selectors without an owner and
+  strings naming `com/mojang/blaze3d`'s members kept the official names. Pre-flight refused Iris 1.6 on Forge 43, and
+  let through, its renderer setup hook was left out and the client stopped. All of these take SRG's names now.
+- **1.19.2 in beta:** the support matrix has a Forge 1.19.2 column, with what doesn't work there in its notes and under
+  *Unsupported on Forge*; the README, the bug report form and the roadmap name it.
+- Verified (local runs, 2026-11-17): core's tests and CI's script tests; both versions build; Forge 43's and 47's
+  server and client parts pass; on Forge 43 the mods part's plugin hosts, malilib and Essential runs pass (Modrinth has
+  no Flashback for 1.19.2), and Sodium with Indium and Iris with them reach their world, every smoke check passing; the
+  mixin inventory matches the sources.
+
 ## 2026-11-17: FrozenLib's shovel behaviours on NeoForge and Forge (SEAM-13); the report names the plant, hopper and fluid hooks Fabricated can't serve (SEAM-12, SEAM-14, SEAM-9)
 
 - **SEAM-13** (P1), fixed: FrozenLib's shovel behaviours, which Wilder Wild's blocks use, were left out on NeoForge

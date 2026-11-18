@@ -12,7 +12,10 @@ import java.util.regex.Pattern;
  * {@code method_N}/{@code field_N}/{@code comp_N} bounded by non-identifier characters), so ordinary text is left
  * alone. So is a method reference with its owner and descriptor whose name Intermediary leaves under its official name
  * and the runtime renames (PLAIN-1: Fabric API's transfer refmap names
- * {@code Lnet/minecraft/class_2357;dispense(...)}, SRG's {@code m_6115_}). Where one intermediary name stands for members
+ * {@code Lnet/minecraft/class_2357;dispense(...)}, SRG's {@code m_6115_}), and a field reference with its owner and
+ * descriptor so (PLAIN-2), whose owner may be a class the official jar keeps unobfuscated, then named by its own: Forge 43
+ * renames {@code com/mojang/blaze3d}'s members, as Iris's {@code @At} target
+ * {@code Lcom/mojang/blaze3d/systems/RenderSystem;setShader(...)V} names one. Where one intermediary name stands for members
  * the runtime names apart, the descriptor a selector gives right after it ({@code name:desc}, {@code name(desc)ret})
  * picks the member when that alone tells them apart (REMAP-5: a record component's field and its accessor method, which
  * SRG names {@code f_} and {@code m_}).
@@ -29,9 +32,14 @@ public final class TokenRemapper {
 	private static final Pattern MEMBER_TOKEN = Pattern.compile("(?<![A-Za-z0-9_$])(?:method|field|comp)_\\d+(?![A-Za-z0-9_])");
 	/** A member's descriptor in a selector, right after its name: a field's after a colon, or a method's. */
 	private static final Pattern FOLLOWING_DESCRIPTOR = Pattern.compile(":(\\[*(?:[ZBCSIJFD]|L[^;()]+;))|(\\((?:\\[*(?:[ZBCSIJFD]|L[^;()]+;))*\\)\\[*(?:[ZBCSIJFDV]|L[^;()]+;))");
-	/** {@code Lowner;name(desc)} with a Minecraft owner, as refmaps and {@code @At} targets name a method. */
-	private static final Pattern METHOD_REFERENCE = Pattern.compile("L(net/minecraft/class_\\d+(?:\\$class_\\d+)*);"
+	/** {@code Lowner;name(desc)}, as refmaps and {@code @At} targets name a method. */
+	private static final Pattern METHOD_REFERENCE = Pattern.compile("L([A-Za-z_$][A-Za-z0-9_$]*(?:/[A-Za-z_$][A-Za-z0-9_$]*)+);"
 			+ "([A-Za-z_$][A-Za-z0-9_$]*)(\\((?:\\[*(?:[ZBCSIJFD]|L[^;()]+;))*\\)\\[*(?:[ZBCSIJFDV]|L[^;()]+;))");
+	/** {@code Lowner;name:desc}, as refmaps and {@code @At} targets name a field. */
+	private static final Pattern FIELD_REFERENCE = Pattern.compile("L([A-Za-z_$][A-Za-z0-9_$]*(?:/[A-Za-z_$][A-Za-z0-9_$]*)+);"
+			+ "([A-Za-z_$][A-Za-z0-9_$]*):\\[*(?:[ZBCSIJFD]|L[^;()]+;)");
+	/** An owner Intermediary names: a method reference naming another is judged by that owner alone. */
+	private static final Pattern MINECRAFT_OWNER = Pattern.compile("net/minecraft/class_\\d+(?:\\$class_\\d+)*");
 
 	private final MappingTable table;
 
@@ -40,10 +48,14 @@ public final class TokenRemapper {
 	}
 
 	public String remap(String s) {
-		if (s == null || s.indexOf('_') < 0) return s;
+		if (s == null) return s;
+		boolean plain = table.hasPlainMembers() && s.indexOf(';') >= 0;
+		if (s.indexOf('_') < 0 && !plain) return s;
 		String result = s;
-		// Before the class tokens: the methods are keyed by their intermediary owner and descriptor.
-		if (table.hasPlainMembers() && result.indexOf('(') >= 0) result = remapPlainMethods(result);
+		// Before the class tokens: the members are keyed by their intermediary owner and descriptor.
+		if (plain && result.indexOf('(') >= 0) result = remapPlainMethods(result);
+		if (plain && result.indexOf(':') >= 0) result = remapPlainFields(result);
+		if (result.indexOf('_') < 0) return result;
 		// Before the class tokens too: a member's descriptor is read in intermediary names.
 		if (result.contains("method_") || result.contains("field_") || result.contains("comp_")) {
 			Matcher m = MEMBER_TOKEN.matcher(result);
@@ -108,7 +120,22 @@ public final class TokenRemapper {
 		StringBuilder sb = null;
 		int copied = 0;
 		while (m.find()) {
-			String plain = table.mapPlainMethod(m.group(1), m.group(2), m.group(3));
+			String plain = MINECRAFT_OWNER.matcher(m.group(1)).matches() ? table.mapPlainMethod(m.group(1), m.group(2), m.group(3))
+					: table.ownPlainMethod(m.group(1), m.group(2), m.group(3));
+			if (plain == null) continue;
+			if (sb == null) sb = new StringBuilder(s.length());
+			sb.append(s, copied, m.start(2)).append(plain);
+			copied = m.end(2);
+		}
+		return sb == null ? s : sb.append(s, copied, s.length()).toString();
+	}
+
+	private String remapPlainFields(String s) {
+		Matcher m = FIELD_REFERENCE.matcher(s);
+		StringBuilder sb = null;
+		int copied = 0;
+		while (m.find()) {
+			String plain = table.mapPlainField(m.group(1), m.group(2));
 			if (plain == null) continue;
 			if (sb == null) sb = new StringBuilder(s.length());
 			sb.append(s, copied, m.start(2)).append(plain);

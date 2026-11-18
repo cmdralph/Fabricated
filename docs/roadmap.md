@@ -29,7 +29,7 @@ of the support matrix that isn't supported says why.
 |---|---|
 | `main` | The shared code (`core`, `api`, `fabric-loader-api`, `loader/common`, `mc/shared`, the code both Forge platforms share, the shared CI and the documents) and NeoForge for all its versions |
 | `forge` | Modern Forge platform code: Forge 52 (Minecraft 1.21.1) and Forge 61 to 66 (1.21.11 and later) |
-| `forge-legacy` | Legacy Forge platform code: Forge 47 (1.20.1), then 1.19.2 |
+| `forge-legacy` | Legacy Forge platform code: Forge 47 (1.20.1) and Forge 43 (1.19.2, in beta) |
 
 - Work happens on `claude/dev` (pull requests into `main`), and for Forge-only changes on `claude/dev-forge` and
   `claude/dev-forge-legacy`, cut from `forge` and `forge-legacy` with pull requests back into them.
@@ -43,14 +43,15 @@ of the support matrix that isn't supported says why.
 ## What comes next
 
 The branch restructure is done: Forge for Minecraft 1.21.1 (Forge 52) moved from `forge-legacy` to `forge`. `forge`
-holds modern Forge (1.21.1, and 1.21.11 and later) and `forge-legacy` legacy Forge (1.20.1, with 1.19.2 next).
+holds modern Forge (1.21.1, and 1.21.11 and later) and `forge-legacy` legacy Forge (1.20.1, and 1.19.2 in beta).
 
 In this order:
 
 1. **v0.6.0-beta.3**, a compatibility release. What it contains is in its
    [release notes](releases/v0.6.0-beta.3.md) and in [`CHANGELOG.md`](CHANGELOG.md).
-2. **Forge for Minecraft 1.19.2 (Forge 43)** on `forge-legacy`, sharing its code with 1.20.1. Its scope is settled
-   before the work starts.
+2. **Forge for Minecraft 1.19.2 (Forge 43)** on `forge-legacy`, sharing its code with 1.20.1: in beta, with Fabric's
+   renderer API bridged as on Forge 47 ([`CHANGELOG.md`](CHANGELOG.md), 2026-11-18). What doesn't work there is in
+   the support matrix's Forge 1.19.2 column.
 3. **A bug-hunting pass, with no new features.** The representative mod set, popular combinations of mods and the
    difficult mods run on every loader and Minecraft version. Failures are grouped by root cause and fixed by impact; a
    parity gap between loaders or versions counts as a bug; every fix gets a regression test. The pass ends when the set

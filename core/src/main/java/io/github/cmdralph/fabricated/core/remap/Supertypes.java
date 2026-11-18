@@ -4,7 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
+import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 
 /**
  * The direct supertypes of classes, by intermediary name: what remapping a Fabric jar knows of the classes it names, so
@@ -41,7 +45,7 @@ public interface Supertypes {
 			byte[] data = classBytes.apply(name);
 			if (data == null) return null;
 			try {
-				return of(new ClassReader(data));
+				return withMixinTargets(new ClassReader(data));
 			} catch (RuntimeException e) {
 				return null; // not a class remapping can read; remapping it reports the problem
 			}
@@ -69,5 +73,42 @@ public interface Supertypes {
 		if (reader.getSuperName() != null) types.add(reader.getSuperName());
 		types.addAll(List.of(reader.getInterfaces()));
 		return types;
+	}
+
+	/**
+	 * As {@link #of(ClassReader)}, then, for a mixin, its targets: Mixin merges a mixin's members into its targets, so its
+	 * {@code @Shadow}s of their members, and its uses of those, are theirs. A member Intermediary leaves under its official
+	 * name and the runtime renames takes the runtime's name in the mixin too (PLAIN-2: Forge 43 renames the fields and
+	 * methods of Mojang's {@code com/mojang/blaze3d} classes).
+	 */
+	static List<String> withMixinTargets(ClassReader reader) {
+		List<String> types = of(reader);
+		types.addAll(mixinTargets(reader));
+		return types;
+	}
+
+	/** The classes a mixin's {@code @Mixin} names, by its {@code value} and its {@code targets}; none for another class. */
+	static List<String> mixinTargets(ClassReader reader) {
+		List<String> targets = new ArrayList<>();
+		reader.accept(new ClassVisitor(Opcodes.ASM9) {
+			@Override
+			public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
+				if (!descriptor.equals("Lorg/spongepowered/asm/mixin/Mixin;")) return null;
+				return new AnnotationVisitor(api) {
+					@Override
+					public AnnotationVisitor visitArray(String name) {
+						if (!"value".equals(name) && !"targets".equals(name)) return null;
+						return new AnnotationVisitor(api) {
+							@Override
+							public void visit(String unnamed, Object value) {
+								if (value instanceof Type type && type.getSort() == Type.OBJECT) targets.add(type.getInternalName());
+								else if (value instanceof String target && !target.isEmpty()) targets.add(target.replace('.', '/'));
+							}
+						};
+					}
+				};
+			}
+		}, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+		return targets;
 	}
 }

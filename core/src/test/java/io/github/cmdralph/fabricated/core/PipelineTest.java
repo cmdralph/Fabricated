@@ -428,6 +428,36 @@ class PipelineTest {
 	}
 
 	/**
+	 * A library every platform provides that the platform's game doesn't have (JOML before Minecraft 1.19.3) stays the
+	 * mod's where the descriptor says the game lacks it, as Sodium 0.4 for 1.19.2 nests JOML; elsewhere the mod's copy is
+	 * left out for the platform's.
+	 */
+	@Test
+	void aLibraryThePlatformsGameLacksStaysInTheMod(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String matrix = "org/joml/Matrix4f";
+		Path renderer = TestJars.create().fabricModJson(TestJars.modJson("joml-user", "1.0", ""))
+				.bytes(matrix + ".class", TestJars.emptyClass(matrix, "java/lang/Object"))
+				.write(mods.resolve("joml-user.jar"));
+		PlatformDescriptor withoutJoml = new PlatformDescriptor.Forge() {
+			@Override
+			public List<String> absentLibraryPackages() {
+				return List.of("org/joml/");
+			}
+		};
+
+		Pipeline.Result lacking = Pipeline.run(withDescriptor(input(game, List.of(renderer), Namespace.OFFICIAL, Map.of(), null, List.of()), withoutJoml));
+		Pipeline.LoadedMod mod = lacking.mods().stream().filter(m -> m.translated().candidate().id().equals("joml-user")).findFirst()
+				.orElseThrow(() -> new AssertionError(lacking.report().render()));
+		assertEquals(Set.of(), mod.packages().excludedPackages(), lacking.report().render());
+		Pipeline.Result providing = Pipeline.run(withDescriptor(input(game, List.of(renderer), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
+		Pipeline.LoadedMod left = providing.mods().stream().filter(m -> m.translated().candidate().id().equals("joml-user")).findFirst()
+				.orElseThrow(() -> new AssertionError(providing.report().render()));
+		assertEquals(Set.of("org/joml"), left.packages().excludedPackages(), providing.report().render());
+	}
+
+	/**
 	 * A mod nesting a module of LWJGL the game doesn't ship (NanoVG) keeps it, while its copy of the game's LWJGL core is
 	 * left out: the game's LWJGL is on no module layer on FML 10 and later, so the platform's loaders decide (PLAT-2).
 	 */

@@ -12,13 +12,13 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 import net.fabricmc.loader.api.FabricLoader;
 
 /**
- * The plugin of Fabricated's renderer mixin configs on Forge (FRAPI rule 8's guards): their mixins apply only when Fabric's
- * renderer API is installed. On Forge the renderer API is upstream's, which comes with the Fabric API jar, and the guards
- * name its types (a model's emitter): without it Mixin can't read them, and the first model class it would change fails to
- * load. Without the renderer API there is nothing to guard, so nothing of these configs applies.
+ * The plugin of Fabricated's renderer mixin configs on Forge (FRAPI rule 8's guards): their mixins apply only when
+ * Fabric's renderer API is installed. On Forge the renderer API is upstream's, which comes with the Fabric API jar, and
+ * the guards name its types (a model's emitter): without it Mixin can't read them, and the first model class it would
+ * change fails to load. Without the renderer API there is nothing to guard, so nothing of these configs applies.
  *
- * <p>Asked when Mixin selects the configs, after Fabricated resolved the Fabric mods (Fabric mods' own plugins ask Fabric
- * Loader the same way). Shared by Forge 47, 52 and 61 to 66.
+ * <p>Asked when Mixin selects the configs, after Fabricated resolved the Fabric mods (Fabric mods' own plugins ask
+ * Fabric Loader the same way). Shared by Forge 43, 47, 52 and 61 to 66.
  */
 public final class FrapiMixinPlugin implements IMixinConfigPlugin {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
