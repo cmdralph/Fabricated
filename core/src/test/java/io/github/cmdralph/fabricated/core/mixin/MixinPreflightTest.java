@@ -17219,6 +17219,77 @@ class MixinPreflightTest {
 		}
 	}
 
+	@Test
+	void aHookNamingTheLambdaByThisBuildsNameAndVanillasMovesWhereVanillasLambdaMakesTheCall() throws Exception {
+		// LAMBDA-14, LAMBDA-12, VANILLA-1: Architectury names a lambda by javac's name and by vanilla's SRG one on Forge 47; the
+		// selector naming this build's lambda picks nothing in vanilla's classes, and the other pairs it with vanilla's, which
+		// makes the listener's call: the wrapper and the @Inject move, in either order of the names.
+		String listener = "L" + LISTENER + ";";
+		Map<String, byte[]> classes = new HashMap<>(listenerAndScreen());
+		classes.put(TARGET, lambdaTypingTarget("lambda$charTyped$0", SCREEN, false));
+		ClassIndex game = new ClassIndex(classes::get);
+		Map<String, byte[]> vanilla = new HashMap<>(listenerAndScreen());
+		vanilla.put(TARGET, lambdaTypingTarget("m_1000_", LISTENER, true));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Typed"));
+		for (List<String> names : List.of(List.of("lambda$charTyped$0", "m_1000_"), List.of("m_1000_", "lambda$charTyped$0"))) {
+			for (String injector : List.of(WRAP_OPERATION, INJECT)) {
+				byte[] hook = mixin("com/example/mixin/Typed", false, cw -> {
+					boolean wraps = injector.equals(WRAP_OPERATION);
+					MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "hook",
+							wraps ? "(" + listener + "CI" + OPERATION + ")Z" : "(" + CALLBACK_INFO + ")V", null, null);
+					AnnotationVisitor ann = mv.visitAnnotation(injector, false);
+					AnnotationVisitor methods = ann.visitArray("method");
+					names.forEach(name -> methods.visit(null, name));
+					methods.visitEnd();
+					AnnotationVisitor ats = ann.visitArray("at");
+					AnnotationVisitor at = ats.visitAnnotation(null, AT);
+					at.visit("value", "INVOKE");
+					at.visit("target", "L" + LISTENER + ";typed" + TYPED);
+					at.visitEnd();
+					ats.visitEnd();
+					ann.visitEnd();
+					mv.visitCode();
+					if (wraps) {
+						mv.visitVarInsn(Opcodes.ALOAD, 3);
+						mv.visitInsn(Opcodes.ICONST_3);
+						mv.visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/Object");
+						mv.visitInsn(Opcodes.DUP);
+						mv.visitInsn(Opcodes.ICONST_0);
+						mv.visitVarInsn(Opcodes.ALOAD, 0);
+						mv.visitInsn(Opcodes.AASTORE);
+						mv.visitInsn(Opcodes.DUP);
+						mv.visitInsn(Opcodes.ICONST_1);
+						mv.visitVarInsn(Opcodes.ILOAD, 1);
+						mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Character", "valueOf", "(C)Ljava/lang/Character;", false);
+						mv.visitInsn(Opcodes.AASTORE);
+						mv.visitInsn(Opcodes.DUP);
+						mv.visitInsn(Opcodes.ICONST_2);
+						mv.visitVarInsn(Opcodes.ILOAD, 2);
+						mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false);
+						mv.visitInsn(Opcodes.AASTORE);
+						mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, OPERATION.substring(1, OPERATION.length() - 1), "call",
+								"([Ljava/lang/Object;)Ljava/lang/Object;", true);
+						mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Boolean");
+						mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Boolean", "booleanValue", "()Z", false);
+						mv.visitInsn(Opcodes.IRETURN);
+					} else {
+						mv.visitInsn(Opcodes.RETURN);
+					}
+					mv.visitMaxs(6, 4);
+					mv.visitEnd();
+				});
+				List<PreflightFinding> notes = new ArrayList<>();
+				byte[] repaired = new MixinPreflight(game, InstalledClasses.NONE, Map.of("com/example/mixin/Typed", hook)::get, ClassBytesSource.EMPTY, false,
+						true, vanilla::get).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Typed.class");
+				assertNotNull(repaired, names + " " + injector + ": " + notes);
+				ClassNode node = new ClassNode();
+				new ClassReader(repaired).accept(node, 0);
+				MethodNode handler = node.methods.stream().filter(m -> m.name.equals("hook")).findFirst().orElseThrow();
+				assertEquals("L" + SCREEN + ";typed" + TYPED, atTarget(handler), names + " " + injector + ": " + notes);
+			}
+		}
+	}
+
 	private static MixinPreflight preflight(ClassIndex game, ClassBytesSource mod, ClassBytesSource untransformable, boolean clientSide) {
 		return preflight(game, mod, untransformable, clientSide, true);
 	}

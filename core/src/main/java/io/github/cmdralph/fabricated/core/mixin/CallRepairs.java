@@ -157,8 +157,10 @@ final class CallRepairs extends PreflightPart {
 	 * in vanilla's class, as the mod declares it ({@code declared}), where the selector at the same index picks the method
 	 * here: a repair may have pointed it at this build's name for the method (Forge 47's lambdas, named by SRG in vanilla's
 	 * classes and by javac in its own, LAMBDA-6) or its descriptor (NeoForge 21.1's lambda takes the screen), each in its
-	 * place. The injector's other methods, where nothing is found here, don't count: Mixin counts its injections across
-	 * them all. Null where vanilla's class isn't at hand or a method's version or point can't be told.
+	 * place. A selector picking nothing in vanilla's class pairs nothing; a method no selector pairs, or two pair with
+	 * different methods, can't be told. The injector's other methods, where nothing is found here, don't count: Mixin
+	 * counts its injections across them all. Null where vanilla's class isn't at hand or a method's version or point can't
+	 * be told.
 	 */
 	private Boolean vanillaMakes(AnnotationNode injector, List<?> declared, AnnotationNode at, ClassNode target, List<MethodNode> where, Context ctx) {
 		ClassNode original = vanillaClass(target.name);
@@ -167,11 +169,13 @@ final class CallRepairs extends PreflightPart {
 		Map<MethodNode, MethodNode> versions = new IdentityHashMap<>();
 		Set<MethodNode> unclear = Collections.newSetFromMap(new IdentityHashMap<>());
 		for (int i = 0; i < declared.size(); i++) {
+			// A selector picking nothing in vanilla's class names this build's own name for the method (LAMBDA-12: Architectury
+			// names a lambda by javac's name and by vanilla's SRG one): another selector may pair it.
 			MethodNode here = picked(current.get(i), target, ctx);
-			if (here == null) continue;
-			MethodNode was = picked(declared.get(i), original, ctx);
+			MethodNode was = here == null ? null : picked(declared.get(i), original, ctx);
+			if (was == null) continue;
 			MethodNode known = versions.putIfAbsent(here, was);
-			if (was == null || known != null && known != was) unclear.add(here);
+			if (known != null && known != was) unclear.add(here);
 		}
 		boolean found = true;
 		for (MethodNode here : where) {
