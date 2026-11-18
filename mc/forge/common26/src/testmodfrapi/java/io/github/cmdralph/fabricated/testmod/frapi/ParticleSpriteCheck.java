@@ -36,17 +36,20 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 
 /**
- * The terrain block's Fabric model gives a level-aware particle material ({@code FabricBlockStateModel.particleMaterial}
- * with the level), which Forge 64 to 66 ask a model with its model data instead of (PART-4): this check's wrapper of the
- * model calls {@link #asked} as it gives it, which logs once for each place the game asked from. Once the player is in the world,
- * this client makes the block's breaking particles (whose sprite Forge sets again in {@code TerrainParticle.updateSprite})
- * and a block marker of it, and shows the screen effect inside it: the block is put at the player's eye on this client
- * only, at the end of each client tick until the effect asked, and taken away at the start of the next, before the
- * player moves (a block there would push them out), so only the frames drawn between have it. On 26.3 a block blocks
- * the view only where it suffocates, which a tag of blocks says (BlockTags.CAUSES_SUFFOCATION), so the test mod's
- * data puts the block in it. Where the effect never asked, what the check met is logged as the game stops: how often
- * the block was put there, whether the effect asked the model's sprite without the level (the game's own call, past
- * Fabricated's), and on Forge 66 what its extraction met ({@code mixin/OverlayProbeMixin}).
+ * The terrain block's Fabric model gives a level-aware particle material
+ * ({@code FabricBlockStateModel.particleMaterial} with the level), which Forge 64 to 66 ask a model with its model data
+ * instead of (PART-4): this check's wrapper of the model calls {@link #asked} as it gives it, which logs once for each
+ * place the game asked from. Once the player is in the world, this client makes the block's breaking particles (whose
+ * sprite Forge sets again in {@code TerrainParticle.updateSprite}) and a block marker of it, and shows the screen
+ * effect inside it: the block is put at the player's eye on this client only, at the end of each client tick until the
+ * effect asked, and taken away at the start of the next, before the player moves (a block there would push them out),
+ * so only the frames drawn between have it. It replaces what the world spawned the head in where a block can (air,
+ * water, the top of tall grass), without updating the neighbours' shapes, so the other half of a tall plant stays as it
+ * is. On 26.3 a block blocks the view only where it suffocates, which a tag of blocks says
+ * (BlockTags.CAUSES_SUFFOCATION), so the test mod's data puts the block in it. Where the effect never asked, what the
+ * check met is logged as the game stops: how often the block was put there, what it first couldn't be put on, whether
+ * the effect asked the model's sprite without the level (the game's own call, past Fabricated's), and on Forge 66 what
+ * its extraction met ({@code mixin/OverlayProbeMixin}).
  */
 public final class ParticleSpriteCheck {
 	/** Client ticks the screen effect is tried for: 20 seconds. */
@@ -56,6 +59,8 @@ public final class ParticleSpriteCheck {
 			new AtomicBoolean());
 	private static final AtomicBoolean SCREEN_WITHOUT_LEVEL = new AtomicBoolean();
 	private static final AtomicBoolean ASKED_ELSEWHERE = new AtomicBoolean();
+	/** The block is put and taken away for this client's frames only: its neighbours' shapes aren't updated for it. */
+	private static final int KEEP_NEIGHBOURS = Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE;
 	// Client thread only.
 	private static boolean particlesMade;
 	private static int screenTicks;
@@ -64,6 +69,8 @@ public final class ParticleSpriteCheck {
 	private static int firstPut = -1;
 	private static @Nullable BlockPos placed;
 	private static @Nullable BlockState replaced;
+	/** The first state at the eye the block couldn't be put on, or null. */
+	private static @Nullable BlockState unplaceable;
 	/** Forge 66's extractions of the player's state, those with the block at the eye, and what its lookup found ({@code mixin/OverlayProbeMixin}). */
 	private static int extractions;
 	private static int extractionsWithBlock;
@@ -85,9 +92,10 @@ public final class ParticleSpriteCheck {
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
 			if (!LOGGED.get(SCREEN).get()) {
 				FrapiTestMod.LOGGER.warn("FABRICATED-TEST frapi screen effect not asked: the block put at the player's eye {} time(s) in {} tick(s) tried,"
-						+ " first at tick {}, its sprite asked without the level {}; the player's state extracted {} time(s), {} with the block there,"
-						+ " Forge's lookup run {} time(s), finding a block {} time(s) (first {}); the first with the block there: {}", puts, screenTicks,
-						firstPut, SCREEN_WITHOUT_LEVEL.get(), extractions, extractionsWithBlock, lookups, overlaysFound, firstOverlay, lookupMet);
+						+ " first at tick {}, first not put on {}, its sprite asked without the level {}; the player's state extracted {} time(s), {} with"
+						+ " the block there, Forge's lookup run {} time(s), finding a block {} time(s) (first {}); the first with the block there: {}", puts,
+						screenTicks, firstPut, unplaceable, SCREEN_WITHOUT_LEVEL.get(), extractions, extractionsWithBlock, lookups, overlaysFound,
+						firstOverlay, lookupMet);
 			}
 		});
 	}
@@ -194,7 +202,10 @@ public final class ParticleSpriteCheck {
 		BlockPos eye = BlockPos.containing(player.getEyePosition());
 		BlockState there = level.getBlockState(eye);
 		// Not where the player's chunk hasn't arrived yet.
-		if (!there.isAir() || !level.setBlockAndUpdate(eye, terrain)) return;
+		if (!there.canBeReplaced() || !level.setBlock(eye, terrain, KEEP_NEIGHBOURS)) {
+			if (unplaceable == null) unplaceable = there;
+			return;
+		}
 		if (puts++ == 0) firstPut = screenTicks;
 		placed = eye;
 		replaced = there;
@@ -205,7 +216,7 @@ public final class ParticleSpriteCheck {
 		BlockState state = replaced;
 		placed = null;
 		replaced = null;
-		if (level != null && pos != null && state != null) level.setBlockAndUpdate(pos, state);
+		if (level != null && pos != null && state != null) level.setBlock(pos, state, KEEP_NEIGHBOURS);
 	}
 
 	private static @Nullable Block terrainBlock() {
