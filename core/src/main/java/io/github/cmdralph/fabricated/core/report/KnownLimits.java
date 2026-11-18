@@ -240,16 +240,13 @@ public final class KnownLimits {
 					Pattern.compile("\\{(\\p{XDigit}+)} has been registered twice, using the names .*\\{(\\p{XDigit}+)}\\)$", Pattern.DOTALL),
 					"Forge's registries take two equal entries for one, so the mod's second one can't be registered;"
 							+ " use NeoForge or the mod's Forge build (REG-13)"),
-			// Supplementaries' invoker of vanilla's FireBlock.checkBurnOut, which NeoForge 21.1 and Forge 52 give the side the
-			// fire comes from too: pre-flight's hint names the platform's parameters.
-			Limit.ofMod(Set.of("NeoForge", "Forge"), mixins("supplementaries.mixins.json", "net.mehvahdjukaar.supplementaries.mixins.fabric", "FireBlockAccessor"),
-					Pattern.compile("^@Invoker target method checkBurnOut\\(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;ILnet/minecraft/util/RandomSource;I\\)V"
-							+ " does not exist in net\\.minecraft\\.world\\.level\\.block\\.FireBlock\\n.*FireBlock\\.checkBurnOut takes"
-							+ " \\(Level, BlockPos, int, RandomSource, int, Direction\\)", Pattern.DOTALL),
-					"the platform's FireBlock.checkBurnOut also takes the side the fire comes from, which vanilla's never had, so Supplementaries'"
-							+ " invoker of vanilla's method has nothing to call: lit lumisene's call of it fails (NoSuchMethodError), and as the call is"
-							+ " made in its block tick, the server stops once lumisene burns the blocks around it; use Supplementaries' NeoForge build,"
-							+ " on NeoForge (LEAVE-5)"),
+			// An invoker of a vanilla method the platform gave a parameter vanilla's never had, where the platform's method needs
+			// it (it reads it, or a default it passes it to does) or makes what vanilla's doesn't: pre-flight's hint says which.
+			new Limit(Set.of("NeoForge", "Forge"), null,
+					Pattern.compile("^@Invoker target method .*\\n.* Fabricated gives an invoker of it a fixed .* only where", Pattern.DOTALL),
+					"NeoForge and Forge give that method a parameter vanilla's never had, which their code needs, so no value of it Fabricated could"
+							+ " pass makes their method vanilla's: the mod's invoker of vanilla's method has nothing to call, and the feature calling it"
+							+ " fails when it does (LEAVE-6)"),
 			// Additional Entity Attributes' hooks of vanilla's water sinking constant in goDownInWater (Forge 47's m_21208_),
 			// which the platforms replace with the fluid type's sinkInFluid.
 			Limit.ofMod(Set.of("NeoForge", "Forge"), union(mixins("additionalentityattributes.mixins.json", "de.dafuqs.additionalentityattributes.mixin.common",
