@@ -485,7 +485,7 @@ public final class Pipeline {
 				.environment("Fabric Loader API", FABRIC_LOADER_COMPAT_VERSION);
 		config.warnings().forEach(w -> report.line("Configuration warnings", w));
 
-		CandidateScanner scanner = new CandidateScanner(in.cache(), config.limits(), in.descriptor().loaderName());
+		CandidateScanner scanner = new CandidateScanner(in.cache(), config.limits(), in.descriptor().loaderName(), in.descriptor().absentLibraryPackages());
 		CandidateScanner.Result scan = scanner.scan(in.fabricJars());
 		// The jars the loaders among them downloaded in an earlier launch join the scan, as jars of the mods folder do.
 		List<DownloadedMods.Download> downloads = DownloadedMods.of(scan.candidates().stream().map(Candidate::id).filter(this::mayLoad).toList(),
