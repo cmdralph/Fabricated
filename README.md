@@ -11,9 +11,9 @@
 > [`forge`](https://github.com/cmdralph/Fabricated/tree/forge).
 
 Fabricated loads Fabric mods and libraries next to Forge mods. This branch holds the shared engine and the legacy
-Forge platform, Forge 43 and 47 (`main` holds NeoForge's, `forge` Forge 52's and 61 to 66's), with the engine merged in
-from `main`. It builds and tests the Forge 1.19.2 and 1.20.1 targets, and the releases'
-`fabricated-forge-*+mc1.19.2.jar` and `fabricated-forge-*+mc1.20.1.jar` come from it.
+Forge platform, Forge 43 and 47 (`main` holds NeoForge's, `forge` Forge 52's and 61 to 66's), with the engine coming
+from `main` through a sync pull request (`scripts/sync-platform-branch.sh`). It builds and tests the Forge 1.19.2 and
+1.20.1 targets, and the releases' `fabricated-forge-*+mc1.19.2.jar` and `fabricated-forge-*+mc1.20.1.jar` come from it.
 
 | Minecraft | Forge | Java | Fabric mods use |
 |---|---|---|---|
