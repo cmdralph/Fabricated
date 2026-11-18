@@ -71,20 +71,31 @@ final class ForgeDescriptor extends PlatformDescriptor.Forge {
 			+ "Lnet/minecraft/world/entity/MobSpawnType;Lnet/minecraft/world/entity/SpawnGroupData;Lnet/minecraft/nbt/CompoundTag;)"
 			+ "Lnet/minecraft/world/entity/SpawnGroupData;";
 	/** Forge 47's, for Minecraft 1.20.1: its data and resource packs have one format. */
-	static final ForgeDescriptor FORGE_47 = new ForgeDescriptor("1.20.1", 15, 15, coremods(true));
-	/** Forge 43's, for Minecraft 1.19.2: its coremods redirect no call of {@code finalizeSpawn} yet. */
-	static final ForgeDescriptor FORGE_43 = new ForgeDescriptor("1.19.2", 10, 9, coremods(false));
+	static final ForgeDescriptor FORGE_47 = new ForgeDescriptor("1.20.1", 15, 15, coremods(true), List.of());
+	/**
+	 * Forge 43's, for Minecraft 1.19.2: its coremods redirect no call of {@code finalizeSpawn} yet, and its game has no
+	 * JOML, which Minecraft ships from 1.19.3, so a Fabric mod's copy is the mod's (Sodium 0.4 nests one).
+	 */
+	static final ForgeDescriptor FORGE_43 = new ForgeDescriptor("1.19.2", 10, 9, coremods(false), List.of("org/joml/"));
 
 	private final String minecraftVersion;
 	private final int dataPackFormat;
 	private final int resourcePackFormat;
 	private final PlatformCoremods coremods;
+	private final List<String> absentLibraryPackages;
 
-	private ForgeDescriptor(String minecraftVersion, int dataPackFormat, int resourcePackFormat, PlatformCoremods coremods) {
+	private ForgeDescriptor(String minecraftVersion, int dataPackFormat, int resourcePackFormat, PlatformCoremods coremods,
+			List<String> absentLibraryPackages) {
 		this.minecraftVersion = minecraftVersion;
 		this.dataPackFormat = dataPackFormat;
 		this.resourcePackFormat = resourcePackFormat;
 		this.coremods = coremods;
+		this.absentLibraryPackages = absentLibraryPackages;
+	}
+
+	@Override
+	public List<String> absentLibraryPackages() {
+		return absentLibraryPackages;
 	}
 
 	/** The descriptor of the Forge build for the Minecraft version, Forge 47's for any but 1.19.2. */

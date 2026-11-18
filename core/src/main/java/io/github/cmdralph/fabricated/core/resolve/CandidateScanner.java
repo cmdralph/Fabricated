@@ -33,6 +33,7 @@ public final class CandidateScanner {
 	private final TranslationCache cache;
 	private final ArchiveLimits limits;
 	private final String loader;
+	private final List<String> absentLibraryPackages;
 
 	public CandidateScanner(TranslationCache cache, ArchiveLimits limits) {
 		this(cache, limits, "NeoForge");
@@ -40,9 +41,19 @@ public final class CandidateScanner {
 
 	/** @param loader the platform's loader, as notes name it ({@code NeoForge}, {@code Forge}) */
 	public CandidateScanner(TranslationCache cache, ArchiveLimits limits, String loader) {
+		this(cache, limits, loader, List.of());
+	}
+
+	/**
+	 * @param absentLibraryPackages the package prefixes of the libraries the platform provides that its game lacks
+	 *                              ({@code PlatformDescriptor.absentLibraryPackages}): a jar of their classes is the mod's
+	 *                              (PLAT-8)
+	 */
+	public CandidateScanner(TranslationCache cache, ArchiveLimits limits, String loader, List<String> absentLibraryPackages) {
 		this.cache = cache;
 		this.limits = limits;
 		this.loader = loader;
+		this.absentLibraryPackages = List.copyOf(absentLibraryPackages);
 	}
 
 	/** A jar that could not be used, with a human-readable reason. */
@@ -198,7 +209,7 @@ public final class CandidateScanner {
 			// A library's own jar under another id (Loom's, for MixinExtras' Fabric jar, which Origins nests three jars deep):
 			// its classes are all left out for the platform's, and its mixin configs, which can only name them, would still be
 			// found by name, MixinExtras' init config before the platform's of the same name, which Mixin then never runs.
-			if (!metadata.mixins().isEmpty() && PlatformLibraries.onlyLibraryClasses(classes)) {
+			if (!metadata.mixins().isEmpty() && PlatformLibraries.onlyLibraryClasses(classes, absentLibraryPackages)) {
 				notes.add(origin + " bundles " + metadata.getId() + ", a copy of a library " + loader + " already provides, with mixin configs"
 						+ " naming its classes; the bundled copy is not loaded (PLAT-7)");
 				return null;

@@ -29,7 +29,7 @@ of the support matrix that isn't supported says why.
 |---|---|
 | `main` | The shared code (`core`, `api`, `fabric-loader-api`, `loader/common`, `mc/shared`, the code both Forge platforms share, the shared CI and the documents) and NeoForge for all its versions |
 | `forge` | Modern Forge platform code: Forge 52 (Minecraft 1.21.1) and Forge 61 to 66 (1.21.11 and later) |
-| `forge-legacy` | Legacy Forge platform code: Forge 47 (1.20.1), then 1.19.2 |
+| `forge-legacy` | Legacy Forge platform code: Forge 47 (1.20.1) and Forge 43 (1.19.2, in beta) |
 
 - Work happens on `claude/dev` (pull requests into `main`), and for Forge-only changes on `claude/dev-forge` and
   `claude/dev-forge-legacy`, cut from `forge` and `forge-legacy` with pull requests back into them.
@@ -43,14 +43,15 @@ of the support matrix that isn't supported says why.
 ## What comes next
 
 The branch restructure is done: Forge for Minecraft 1.21.1 (Forge 52) moved from `forge-legacy` to `forge`. `forge`
-holds modern Forge (1.21.1, and 1.21.11 and later) and `forge-legacy` legacy Forge (1.20.1, with 1.19.2 next).
+holds modern Forge (1.21.1, and 1.21.11 and later) and `forge-legacy` legacy Forge (1.20.1, and 1.19.2 in beta).
 
 In this order:
 
 1. **v0.6.0-beta.3**, a compatibility release. What it contains is in its
    [release notes](releases/v0.6.0-beta.3.md) and in [`CHANGELOG.md`](CHANGELOG.md).
-2. **Forge for Minecraft 1.19.2 (Forge 43)** on `forge-legacy`, sharing its code with 1.20.1. Its scope is settled
-   before the work starts.
+2. **Forge for Minecraft 1.19.2 (Forge 43)** on `forge-legacy`, sharing its code with 1.20.1: in beta, with Fabric's
+   renderer API bridged as on Forge 47 ([`CHANGELOG.md`](CHANGELOG.md), 2026-11-18). What doesn't work there is in
+   the support matrix's Forge 1.19.2 column.
 3. **A bug-hunting pass, with no new features.** The representative mod set, popular combinations of mods and the
    difficult mods run on every loader and Minecraft version. Failures are grouped by root cause and fixed by impact; a
    parity gap between loaders or versions counts as a bug; every fix gets a regression test. The pass ends when the set
@@ -116,6 +117,15 @@ Open with no ID of their own, each left by a fixed finding:
   hint says what moves. On Forge 47's corpus servers the hooks still out at STRUCT-1's methods are Lithium's, Fabric
   API's transfer hook and Porting Lib's, each with its reason in the report.
 
+- **What PLAIN-2 leaves under official names on Forge 43** (MCPConfig for 1.19.2 renames the members of the classes
+  the official jar keeps unobfuscated, `com/mojang/blaze3d`'s): an `@At` target naming such a method without its
+  owner, a selector with a quantifier (`name*`, `name{2}`), a string's field reference naming a class that inherits
+  the field, an access widener's line naming such a member, and Fabric Loader's mapping resolver asked for one keep
+  the official name, so the hook, the widening or the lookup finds nothing. No mod seen does any of them; the report
+  names a hook left out so. On every platform, a nested class of a class Intermediary keeps by name right after a
+  primitive in a descriptor (`(IL…GlStateManager$class_1017;)V`) keeps its intermediary name (TOKEN-1's token starts
+  at the primitive's letter).
+
 - **What PROVIDER-23 leaves of Fabric API's internals on NeoForge 1.21.11 to 26.3.** A hidden pack's enabled state
   doesn't follow its parents, as upstream's predicate says: NeoForge has no such link, so a required hidden pack is
   always on and another is off once its world or the game loads again. Traveler's Backpack's mixin of upstream's
@@ -155,6 +165,9 @@ What the corpus runs still show, each with its reason:
 
 Candidates outside the steps above, each waiting for a mod or a report that needs it:
 
+- One check of whether the platform's game has a library, by package, read off the game's classes, in place of the
+  descriptor's list of the provided libraries its game lacks (`absentLibraryPackages`, PLAT-8) and of the families it
+  ships in part (`PlatformLibraries.PARTIAL_FAMILIES`, PLAT-2).
 - Fabric's level-aware `materialFlags` where NeoForge 26.x asks whether a block is translucent (accuracy, not a fault:
   Fabric's contract allows the context-free answer).
 - A `Map` view of NeoForge's `KeyMappingLookup` for accessors to `KeyMapping.MAP` (KEYMAP-1).

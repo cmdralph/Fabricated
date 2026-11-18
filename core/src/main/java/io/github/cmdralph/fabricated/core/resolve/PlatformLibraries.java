@@ -78,9 +78,21 @@ public final class PlatformLibraries {
 	 * @param classFiles the jar's class files, by name ({@code com/llamalad7/mixinextras/MixinExtrasBootstrap.class})
 	 */
 	public static boolean onlyLibraryClasses(Collection<String> classFiles) {
+		return onlyLibraryClasses(classFiles, List.of());
+	}
+
+	/**
+	 * As {@link #onlyLibraryClasses(Collection)}, where the platform's game lacks the libraries of {@code absentPackages}
+	 * (package prefixes, {@code PlatformDescriptor.absentLibraryPackages}): their classes are the jar's own, as the
+	 * package guard keeps them (PLAT-8: JOML on Forge 43).
+	 */
+	public static boolean onlyLibraryClasses(Collection<String> classFiles, List<String> absentPackages) {
 		if (classFiles.isEmpty()) return false;
 		for (String file : classFiles) {
 			if (!isProvided(file)) return false;
+			for (String absent : absentPackages) {
+				if (file.startsWith(absent)) return false;
+			}
 			for (String family : PARTIAL_FAMILIES) {
 				if (file.startsWith(family)) return false;
 			}
