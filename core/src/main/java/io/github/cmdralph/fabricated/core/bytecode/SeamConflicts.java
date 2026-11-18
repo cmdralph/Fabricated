@@ -77,8 +77,14 @@ public final class SeamConflicts {
 	 * @param mixin    the mixin class, by internal name; or the path of the file listing the mod's mixins that failed to
 	 *                 read (it has a dot, a class's internal name none); or the class, where it failed to read
 	 * @param readable whether pre-flight could read the mixin (it conflicts unread otherwise)
+	 * @param hooked   the game's method the mixin hooks that putting the seams back would change, as {@code Class.method}
+	 *                 (the class's own, or another class's whose calls change); null where unread
 	 */
-	public record Conflict(String owner, String mixin, boolean readable) {
+	public record Conflict(String owner, String mixin, boolean readable, String hooked) {
+		Conflict(String owner, String mixin, boolean readable) {
+			this(owner, mixin, readable, null);
+		}
+
 		/** Where the class failed to read as the platform has it: what the native mods' mixins hook there can't be told. */
 		static Conflict unreadClass(String name) {
 			return new Conflict("", name, false);
@@ -101,7 +107,7 @@ public final class SeamConflicts {
 			}
 			String simple = mixin.substring(mixin.lastIndexOf('/') + 1);
 			return loader + " mod " + owner + "'s mixin " + simple + (readable ? " hooks the platform's code that putting " + what + " back would move"
-					: " can't be read, so it may hook the platform's code that putting " + what + " back would move");
+					+ (hooked == null ? "" : ", " + hooked) : " can't be read, so it may hook the platform's code that putting " + what + " back would move");
 		}
 	}
 
@@ -246,13 +252,16 @@ public final class SeamConflicts {
 			if (mixin == null) return c.kept(new Conflict(listed.owner(), listed.mixin(), false), true);
 			if (mapped == null) return c.kept(new Conflict(listed.owner(), listed.mixin(), false), false);
 			boolean own = targets.contains(c.name);
-			if (!own && c.mayChange.entrySet().stream().noneMatch(d -> targets.contains(d.getKey()) && hooksMethod(mixin, d.getValue(), mapped))) return null;
+			if (!own && c.mayChange.entrySet().stream().noneMatch(d -> targets.contains(d.getKey()) && hooksMethod(mixin, d.getValue(), mapped) != null)) return null;
 			if (c.rewrite().isEmpty()) return new Found(null, true);
-			if (own && hooks(mixin, c.platformClass.get(), c.rewrite(), mapped)
-					|| c.rewrite().others().entrySet().stream().anyMatch(d -> targets.contains(d.getKey()) && hooksMethod(mixin, d.getValue(), mapped))) {
-				return new Found(new Conflict(listed.owner(), listed.mixin(), true), true);
+			// What it hooks, for the report: the class's method, or another class's whose calls putting the seams back changes.
+			String hooked = own ? hooks(mixin, c.platformClass.get(), c.rewrite(), mapped) : null;
+			for (Map.Entry<String, Set<String>> d : c.rewrite().others().entrySet()) {
+				if (hooked != null) break;
+				String method = targets.contains(d.getKey()) ? hooksMethod(mixin, d.getValue(), mapped) : null;
+				if (method != null) hooked = d.getKey().substring(d.getKey().lastIndexOf('/') + 1) + "." + method;
 			}
-			return null;
+			return hooked == null ? null : new Found(new Conflict(listed.owner(), listed.mixin(), true, hooked), true);
 		}
 	}
 
@@ -365,7 +374,8 @@ public final class SeamConflicts {
 		Decision decision = decide(game, installed, read);
 		if (!decision.clean()) return decision.kept();
 		Map<String, Object> json = new TreeMap<>();
-		decision.kept().forEach((owner, c) -> json.put(owner, Map.of("owner", c.owner(), "mixin", c.mixin(), "readable", c.readable())));
+		decision.kept().forEach((owner, c) -> json.put(owner, c.hooked() == null ? Map.of("owner", c.owner(), "mixin", c.mixin(), "readable", c.readable())
+				: Map.of("owner", c.owner(), "mixin", c.mixin(), "readable", c.readable(), "hooked", c.hooked())));
 		try {
 			cache.storeBlob(blob, Json.write(Map.of("kept", json), false).getBytes(StandardCharsets.UTF_8));
 		} catch (IOException e) {
@@ -386,7 +396,7 @@ public final class SeamConflicts {
 						|| !(c.get("owner") instanceof String mod) || !(c.get("mixin") instanceof String mixin) || !(c.get("readable") instanceof Boolean readable)) {
 					return null;
 				}
-				found.put(owner, new Conflict(mod, mixin, readable));
+				found.put(owner, new Conflict(mod, mixin, readable, c.get("hooked") instanceof String hooked ? hooked : null));
 			}
 			return found;
 		} catch (IOException | JsonException | RuntimeException e) {
@@ -401,39 +411,47 @@ public final class SeamConflicts {
 	}
 
 	/**
-	 * Whether the mixin, which targets {@code target}, hooks what the rewrite moves or shifts; {@code mapped}, what its
-	 * refmap reads its annotations' strings as.
+	 * The method of {@code target}'s the mixin hooks that the rewrite moves or shifts, as {@code Class.method} (the
+	 * injector's selector where it can't be read, its {@code @Overwrite}'s method), or null where it hooks none;
+	 * {@code mapped}, what its refmap reads its annotations' strings as.
 	 */
-	private static boolean hooks(ClassNode mixin, ClassNode target, VanillaSeams.Rewrite rewrite, Map<String, String> mapped) {
+	private static String hooks(ClassNode mixin, ClassNode target, VanillaSeams.Rewrite rewrite, Map<String, String> mapped) {
+		String simple = target.name.substring(target.name.lastIndexOf('/') + 1);
 		for (MethodNode method : mixin.methods) {
 			for (AnnotationNode ann : annotations(method)) {
-				if (ann.desc.equals(OVERWRITE) && (rewrite.holders().contains(method.name + method.desc) || rewrite.bypassed().contains(method.name + method.desc))) return true;
+				if (ann.desc.equals(OVERWRITE) && (rewrite.holders().contains(method.name + method.desc) || rewrite.bypassed().contains(method.name + method.desc))) {
+					return simple + "." + method.name;
+				}
 				if (INJECTORS.stream().noneMatch(ann.desc::startsWith)) continue;
-				if (names(ann, rewrite.movedCalls(), mapped)) return true;
 				Selected selected = selected(ann, target, rewrite, mapped);
-				if (selected == Selected.UNKNOWN || selected == Selected.BYPASSED || selected == Selected.HOLDER && shiftable(ann)) return true;
-				if (selected == Selected.HOLDER && names(ann, rewrite.added(), mapped)) return true;
-				if (selected == Selected.HOLDER && rewrite.constants() && (ann.desc.equals(MODIFY_CONSTANT) || points(ann, "CONSTANT"))) return true;
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * Whether the mixin, which targets a class whose method of one of the {@code names} is called otherwise (an extension's
-	 * default, bypassed; Forge's {@code Level.removeBlock}, newly called), hooks it.
-	 */
-	private static boolean hooksMethod(ClassNode mixin, Set<String> names, Map<String, String> mapped) {
-		for (MethodNode method : mixin.methods) {
-			for (AnnotationNode ann : annotations(method)) {
-				if (ann.desc.equals(OVERWRITE) && names.contains(method.name)) return true;
-				if (INJECTORS.stream().noneMatch(ann.desc::startsWith) || ann.desc.startsWith("Lcom/llamalad7/mixinextras/expression/")) continue;
-				for (Selector selector : selectors(ann, mapped)) {
-					if (selector == null || names.contains(selector.name())) return true;
+				if (names(ann, rewrite.movedCalls(), mapped) || selected == Selected.UNKNOWN || selected == Selected.BYPASSED
+						|| selected == Selected.HOLDER && (shiftable(ann) || names(ann, rewrite.added(), mapped)
+								|| rewrite.constants() && (ann.desc.equals(MODIFY_CONSTANT) || points(ann, "CONSTANT")))) {
+					return simple + "." + selectors(ann, mapped).stream().map(sel -> sel == null ? "?" : sel.name()).distinct()
+							.collect(Collectors.joining("/"));
 				}
 			}
 		}
-		return false;
+		return null;
+	}
+
+	/**
+	 * The method of one of the {@code names} the mixin hooks, which targets a class whose method of that name is called
+	 * otherwise (an extension's default, bypassed; Forge's {@code Level.removeBlock}, newly called), or null where it hooks
+	 * none of them; a selector it can't read, {@code "?"}.
+	 */
+	private static String hooksMethod(ClassNode mixin, Set<String> names, Map<String, String> mapped) {
+		for (MethodNode method : mixin.methods) {
+			for (AnnotationNode ann : annotations(method)) {
+				if (ann.desc.equals(OVERWRITE) && names.contains(method.name)) return method.name;
+				if (INJECTORS.stream().noneMatch(ann.desc::startsWith) || ann.desc.startsWith("Lcom/llamalad7/mixinextras/expression/")) continue;
+				for (Selector selector : selectors(ann, mapped)) {
+					if (selector == null) return "?";
+					if (names.contains(selector.name())) return selector.name();
+				}
+			}
+		}
+		return null;
 	}
 
 	private static List<AnnotationNode> annotations(MethodNode method) {

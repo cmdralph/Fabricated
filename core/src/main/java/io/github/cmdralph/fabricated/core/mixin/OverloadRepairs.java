@@ -209,12 +209,37 @@ final class OverloadRepairs extends PreflightPart {
 						|| !independentOf(mixin).contains(handler.name + handler.desc))) continue;
 				// A handler taking the method's parameters takes the other's as they are, when they are the same.
 				boolean sameParameters = Arrays.equals(Type.getArgumentTypes(chosen.desc), Type.getArgumentTypes(overload.desc));
-				int captured = sameParameters ? -1 : inject ? (takesParameters ? 0 : -1) : capturedFrom(handler, chosen);
+				// Where the method's parameters start among a handler's arguments: an @Inject's first, any other's past its own,
+				// which its kind and its point tell exactly (ownArguments, as the overload has the point). A handler whose own
+				// arguments end with the method's parameters' types takes them as its own (a @Redirect of a call passing them on),
+				// which a bridge would hand the overload's in their place, a handler Mixin refuses as it applies the mixin. Where
+				// its own can't be told, a handler whose arguments end with all of the method's parameters isn't moved.
+				int own = sameParameters || inject ? -1 : ownArguments(injector, handler, overload, ctx);
+				List<Type> handlerArgs = PreflightAsm.handlerArgs(handler);
+				List<Type> methodParams = List.of(Type.getArgumentTypes(chosen.desc));
+				int captured, taken;
+				if (sameParameters) {
+					captured = -1;
+					taken = 0;
+				} else if (inject) {
+					captured = takesParameters ? 0 : -1;
+					taken = 0;
+				} else if (own >= 0 && handlerArgs != null && own <= handlerArgs.size()) {
+					List<Type> after = handlerArgs.subList(own, handlerArgs.size());
+					if (after.size() > methodParams.size() || !after.equals(methodParams.subList(0, after.size()))) continue;
+					captured = !after.isEmpty() && after.size() == methodParams.size() ? own : -1;
+					taken = captured >= 0 ? 0 : after.size();
+				} else {
+					if (capturedFrom(handler, chosen) >= 0) continue;
+					captured = -1;
+					taken = capturedPrefix(handler, chosen);
+				}
 				int inserted = replacement != null ? CallRepairs.insertedArgument(chosen.desc, overload.desc) : insertedParameter(chosen, overload);
 				// A handler taking the first of the method's parameters after its own (Mixin passes it as many as it takes) gets
 				// the overload's first: they must be the method's, before the one the overload adds (Fabric API's before-bake
-				// model hook takes the model's id so, which NeoForge 21.1's overload takes first too, MODEL-4).
-				int prefix = inject || captured >= 0 || sameParameters ? 0 : capturedPrefix(handler, chosen);
+				// model hook takes the model's id so, which NeoForge 21.1's overload takes first too, MODEL-4). Where its own
+				// can't be told, capturedPrefix may count some of them as the method's too: that only keeps it from moving.
+				int prefix = taken;
 				if (prefix > 0 && inserted < prefix) continue;
 				// Or, where the method passes its parameters on in order and then defaults, an @Inject handler taking exactly
 				// them gets the overload's first ones: NeoForge 21.1's HumanoidArmorLayer.renderArmorPiece passes six zeros
@@ -1435,8 +1460,10 @@ final class OverloadRepairs extends PreflightPart {
 	}
 
 	/**
-	 * Where a handler of an injector other than {@code @Inject} takes {@code method}'s parameters (all of them, as Mixin
-	 * requires), after its own and before any MixinExtras sugar; -1 when it doesn't take them.
+	 * Where a handler of an injector other than {@code @Inject} may take {@code method}'s parameters (all of them, as Mixin
+	 * requires), after its own and before any MixinExtras sugar, told from its arguments' types alone; -1 when it doesn't
+	 * take them. Its own may end with those types (a {@code @Redirect} of a call passing them on): where its own can't be
+	 * told ({@link #ownArguments}), an answer of 0 or more keeps it from moving, and nothing bridges on it.
 	 */
 	private static int capturedFrom(MethodNode handler, MethodNode method) {
 		List<Type> args = PreflightAsm.handlerArgs(handler);
@@ -1448,7 +1475,8 @@ final class OverloadRepairs extends PreflightPart {
 	/**
 	 * How many of {@code method}'s first parameters a handler that isn't an {@code @Inject}'s may take after its own,
 	 * before any MixinExtras sugar, as Mixin passes them: the most its own end with, which may count some of its own too
-	 * (never too few). 0 when they end with none.
+	 * (never too few). 0 when they end with none. Only ever a bound that keeps a handler from moving, never a place a bridge
+	 * takes the parameters from: too many only refuses a move that would have been sound.
 	 */
 	private static int capturedPrefix(MethodNode handler, MethodNode method) {
 		Type[] own = Type.getArgumentTypes(handler.desc);

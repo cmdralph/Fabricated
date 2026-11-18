@@ -15383,6 +15383,95 @@ class MixinPreflightTest {
 		assertTrue(before.stream().noneMatch(f -> f.message().contains(pointed)), before.toString());
 	}
 
+	private static final String WORKER = "net/minecraft/world/level/Worker";
+
+	/**
+	 * A game class whose {@code work(BlockPos)} NeoForge reduced to a call of an overload taking one more parameter,
+	 * {@code work(pos, 7)}, its code in the overload: a call of {@code Thing.check(Level, BlockPos)} and of
+	 * {@code Thing.touch(Level, BlockPos)}, whose arguments end with the method's parameter's type.
+	 */
+	private static Map<String, String> workerSources() {
+		return Map.of(
+				"net/minecraft/core/BlockPos.java", "package net.minecraft.core; public record BlockPos(int y) { }",
+				"net/minecraft/world/level/Level.java", "package net.minecraft.world.level; public class Level { }",
+				"net/minecraft/world/level/Thing.java", "package net.minecraft.world.level; public class Thing {"
+						+ " public boolean check(Level level, net.minecraft.core.BlockPos pos) { return pos.y() > 0; }"
+						+ " public void touch(Level level, net.minecraft.core.BlockPos pos) { } }",
+				WORKER + ".java", """
+						package net.minecraft.world.level;
+						public class Worker {
+							final Level level = new Level();
+							final Thing thing = new Thing();
+							public boolean work(net.minecraft.core.BlockPos pos) { return this.work(pos, 7); }
+							public boolean work(net.minecraft.core.BlockPos pos, int extra) {
+								this.thing.touch(this.level, pos);
+								return this.thing.check(this.level, pos) && extra > 0;
+							}
+						}""");
+	}
+
+	/**
+	 * The overload repair (a method NeoForge reduced to a call of an overload taking one more parameter) tells a handler's
+	 * own arguments from the method's parameters it takes after them, as the retyped one does: a {@code @Redirect} and a
+	 * {@code @WrapWithCondition} of a call whose arguments end with the method's parameter's type take them as their own,
+	 * and are pointed at the overload as they are, without a bridge, which would hand them the overload's parameters in
+	 * their own arguments' place and be refused as Mixin applies it; a {@code @ModifyArg} taking all the call's arguments,
+	 * which can't be told from one taking the method's parameter after its own, isn't repaired. A value modifier, a
+	 * {@code @WrapOperation} and a {@code @Redirect} that does take the method's parameter after its own are moved as before,
+	 * the last bridged to get the overload's.
+	 */
+	@Test
+	void overloadRepairsTellTheHandlersOwnArgumentsFromTheMethodsParameters(@TempDir Path dir) throws Exception {
+		Map<String, byte[]> platform = TestSources.compileWithLocals(dir.resolve("platform"), workerSources());
+		String pos = "Lnet/minecraft/core/BlockPos;", level = "Lnet/minecraft/world/level/Level;", thing = "Lnet/minecraft/world/level/Thing;";
+		String check = "Lnet/minecraft/world/level/Thing;check(" + level + pos + ")Z", touch = "Lnet/minecraft/world/level/Thing;touch(" + level + pos + ")V";
+		String work = "work(" + pos + ")Z", overload = "work(" + pos + "I)Z";
+		record Shape(String injector, String desc, String point, Integer index, boolean bridged, boolean moved) {
+		}
+		Map<String, Shape> shapes = new java.util.LinkedHashMap<>();
+		shapes.put("Redirect", new Shape(REDIRECT, "(" + thing + level + pos + ")Z", check, null, false, true));
+		shapes.put("Condition", new Shape("Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;", "(" + thing + level + pos + ")Z", touch, null, false, true));
+		shapes.put("Argument", new Shape(MODIFY_ARG, "(" + level + pos + ")" + pos, check, 1, false, false));
+		shapes.put("Value", new Shape(MODIFY_EXPRESSION_VALUE, "(Z)Z", check, null, false, true));
+		shapes.put("Wrap", new Shape(WRAP_OPERATION, "(" + thing + level + pos + OPERATION + ")Z", check, null, false, true));
+		shapes.put("Captures", new Shape(REDIRECT, "(" + thing + level + pos + pos + ")Z", check, null, true, true));
+		for (Map.Entry<String, Shape> e : shapes.entrySet()) {
+			Shape shape = e.getValue();
+			String name = "com/example/mixin/" + e.getKey();
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null);
+			AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+			AnnotationVisitor values = m.visitArray("value");
+			values.visit(null, Type.getObjectType(WORKER));
+			values.visitEnd();
+			m.visitEnd();
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "handler", shape.desc(), null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(shape.injector(), false);
+			if (shape.index() != null) ann.visit("index", shape.index());
+			selectorAndPoint(ann, work, "INVOKE", shape.point(), null);
+			mv.visitCode();
+			Type result = Type.getReturnType(shape.desc());
+			if (result.getSort() == Type.BOOLEAN) mv.visitInsn(Opcodes.ICONST_0);
+			else mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitInsn(result.getOpcode(Opcodes.IRETURN));
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+			cw.visitEnd();
+			Map<String, byte[]> mixins = Map.of(name, cw.toByteArray());
+			Map<String, byte[]> repaired = new HashMap<>();
+			List<PreflightFinding> findings = retypedRun(platform, Map.of(), mixins, config(true, e.getKey()), repaired);
+			ClassNode node = node(repaired.getOrDefault(name + ".class", mixins.get(name)));
+			List<MethodNode> bridges = node.methods.stream().filter(method -> method.name.contains("$fabricated")).toList();
+			boolean moved = findings.stream().anyMatch(f -> f.message().contains(work + ", whose code NeoForge moved into " + overload));
+			assertEquals(shape.moved(), moved, e.getKey() + ": " + findings);
+			assertEquals(shape.bridged() ? 1 : 0, bridges.size(), e.getKey() + ": " + node.methods.stream().map(method -> method.name + method.desc).toList());
+			if (shape.bridged()) assertEquals("(" + thing + level + pos + pos + "I)Z", bridges.getFirst().desc, e.getKey());
+			if (shape.moved()) {
+				assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), e.getKey() + ": " + findings);
+			}
+		}
+	}
+
 	/** Pre-flight's repairs of the mixins against the platform's classes (and vanilla's), then its check of them as repaired: the notes and findings. */
 	private static List<PreflightFinding> retypedRun(Map<String, byte[]> platform, Map<String, byte[]> vanilla, Map<String, byte[]> mixins, String config,
 			Map<String, byte[]> repaired) throws Exception {

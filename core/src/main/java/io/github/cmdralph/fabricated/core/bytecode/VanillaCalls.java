@@ -758,13 +758,14 @@ final class VanillaCalls {
 			onReceiver(CROP, "getGrowthSpeed", "m_52272_", null, new Member(STATE, FERTILE.name(), null, FERTILE_DESC), FERTILE, OnReceiver.MOISTURE));
 
 	// SEAM-9: an entity's eyes in water. Where vanilla asks entity.isEyeInFluid(FluidTags.WATER) in Player.getDestroySpeed (the
-	// slower mining underwater) and in the HUD's air bubbles (Gui.extractAirBubbles, 26.3's Hud), NeoForge 26.1.2.116, 26.2.0.90
-	// and 26.3.0.95 ask entity.getFluidInteraction().isEyeInFluidMatching(entity, predicate) of the fluid types at its eyes
-	// (read in their patches: type.getIsWaterLike() for the mining, e.canDrownInFluidType(type) for the bubbles), which
-	// answers true where a tracker of the eyes' fluids has its predicate true. Where the eyes are in no fluid type but vanilla's
-	// water's and lava's, that is the predicate's answer for those, and vanilla's call answers whether they are in water
-	// (NeoForge's Entity.isEyeInFluid(TagKey) asks its fluid interaction, by the water type on 26.1.2 and 26.2 and by the tag on
-	// 26.3): VANILLA_EYES asks both and puts vanilla's call back where they agree. NeoForge 21.1 and 21.11 and Forge keep
+	// slower mining underwater) and in the HUD's air bubbles (Gui.extractAirBubbles, 26.2's and 26.3's Hud), NeoForge
+	// 26.1.2.116, 26.2.0.90 and 26.3.0.95 ask entity.getFluidInteraction().isEyeInFluidMatching(entity, predicate) of the fluid
+	// types at its eyes (read in their classes: type.getIsWaterLike() for the mining, e.canDrownInFluidType(type) for the
+	// bubbles), which answers true where a tracker of the eyes' fluids has its predicate true. Where water or lava at the eyes
+	// has it true, that answer is true whatever else is there; where the eyes are in no fluid type but vanilla's water's and
+	// lava's, it is the predicate's answer for those. Vanilla's call answers whether they are in water (NeoForge's
+	// Entity.isEyeInFluid(TagKey) asks its fluid interaction, by the water type on 26.1.2 and 26.2 and by the tag on 26.3):
+	// VANILLA_EYES asks both and puts vanilla's call back where they agree. NeoForge 21.1 and 21.11 and Forge keep
 	// vanilla's call in these places.
 	private static final String FLUID_INTERACTION = ENTITIES + "EntityFluidInteraction";
 	private static final String FLUID_TYPE = "net/neoforged/neoforge/fluids/FluidType";
@@ -1738,22 +1739,25 @@ final class VanillaCalls {
 	 * {@code entity.isEyeInFluid(FluidTags.WATER)} answers what NeoForge's {@code isEyeInFluidMatching(entity, predicate)}
 	 * does (SEAM-9), where the entity's class keeps Entity's {@code isEyeInFluid} (both, the tag's and the fluid type's).
 	 * NeoForge's check answers yes where a fluid type the eyes are in passes the predicate; vanilla's call, as NeoForge's
-	 * fluid interaction answers it ({@code isEyeInFluid(FluidTags.WATER)}), whether they are in water. Where the eyes are in
-	 * no fluid type but vanilla's water's and lava's, NeoForge's check answers whether one they are in passes the predicate
-	 * (asked without a height, which it doesn't read), and vanilla's call goes back where the two agree. Each of water's and
-	 * lava's is a lookup of its tracker, as vanilla's call makes; where the two disagree on them, NeoForge's check stays at
-	 * once, and only where they agree are the eyes asked for another fluid type ({@code fabricated$otherFluid}: one pass
-	 * over the fluids at the eyes, as NeoForge's check makes), which keeps NeoForge's check. So no path makes more passes
-	 * over NeoForge's tracker map than NeoForge's check alone, but a mod's fluid at the eyes, which makes this one and
-	 * NeoForge's. Made of constants and the entity's own state: the predicates capture nothing, and it makes nothing such a
-	 * pass doesn't.
+	 * fluid interaction answers it ({@code isEyeInFluid(FluidTags.WATER)}), whether they are in water. Each of water's and
+	 * lava's tracker is looked up, as vanilla's call makes, and the predicate asked of the types the eyes are in (without a
+	 * height, which it doesn't read). Where water or lava at the eyes passes it, NeoForge's check answers yes whatever else
+	 * the eyes are in (it answers whether any type they are in passes), so where vanilla's call answers yes too the two
+	 * agree, a mod's fluid at the eyes or not, and vanilla's call goes back without asking more; where vanilla's answers no
+	 * there (26.3: a mod's fluid of water's type, untagged), NeoForge's check stays. Where neither passes, NeoForge's check
+	 * answers no unless another fluid type the eyes are in passes: where vanilla's call answers yes (gills in water),
+	 * NeoForge's check stays at once; where it answers no, the eyes are asked for another fluid type
+	 * ({@code fabricated$otherFluid}: one pass over the fluids at the eyes, as NeoForge's check makes), which keeps
+	 * NeoForge's check, and vanilla's call goes back without one. So no path makes more passes over NeoForge's tracker map
+	 * than NeoForge's check alone, and the eyes in water none, but where neither water nor lava passes and a mod's fluid is
+	 * at the eyes, which makes this one and NeoForge's. Made of constants and the entity's own state: the predicates capture
+	 * nothing, and it makes nothing such a pass doesn't.
 	 */
 	private static MethodNode vanillaEyes(String owner) {
 		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, VANILLA_EYES, VANILLA_EYES_DESC, null, null);
 		InsnList code = method.instructions;
 		String fi = FLUID_INTERACTION, fluidType = FLUID_TYPE;
-		LabelNode no = new LabelNode(), notInWater = new LabelNode(), noneOfThem = new LabelNode(), oneOfThem = new LabelNode(), agree = new LabelNode(),
-				platform = new LabelNode();
+		LabelNode no = new LabelNode(), notInWater = new LabelNode(), noneOfThem = new LabelNode(), oneOfThem = new LabelNode(), platform = new LabelNode();
 		Object[] two = {ENTITY_CLASS, IN_FLUID_PREDICATE};
 		Object[] all = {ENTITY_CLASS, IN_FLUID_PREDICATE, fi, fluidType, fluidType, Opcodes.INTEGER, Opcodes.INTEGER, Opcodes.INTEGER};
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -1788,14 +1792,11 @@ final class VanillaCalls {
 		code.add(new JumpInsnNode(Opcodes.IFEQ, noneOfThem));
 		predicateOf(code, 4);
 		code.add(new JumpInsnNode(Opcodes.IFNE, oneOfThem));
-		// Neither: they agree where vanilla's call answers no.
+		// Neither: they agree where vanilla's call answers no and the eyes are in no other fluid type.
 		code.add(noneOfThem);
 		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
 		code.add(new VarInsnNode(Opcodes.ILOAD, 7));
 		code.add(new JumpInsnNode(Opcodes.IFNE, platform));
-		// They agree: vanilla's call goes back where the eyes are in no other fluid type.
-		code.add(agree);
-		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
 		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		code.add(new InvokeDynamicInsnNode("test", "()L" + IN_FLUID_PREDICATE + ";", new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC,
@@ -1807,11 +1808,11 @@ final class VanillaCalls {
 		code.add(new JumpInsnNode(Opcodes.IFNE, platform));
 		code.add(new InsnNode(Opcodes.ICONST_1));
 		code.add(new InsnNode(Opcodes.IRETURN));
-		// One of them: they agree where vanilla's call answers yes.
+		// One of them: NeoForge's check answers yes whatever else is at the eyes; they agree where vanilla's call answers yes.
 		code.add(oneOfThem);
 		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
 		code.add(new VarInsnNode(Opcodes.ILOAD, 7));
-		code.add(new JumpInsnNode(Opcodes.IFNE, agree));
+		code.add(new InsnNode(Opcodes.IRETURN));
 		code.add(platform);
 		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
 		code.add(new InsnNode(Opcodes.ICONST_0));

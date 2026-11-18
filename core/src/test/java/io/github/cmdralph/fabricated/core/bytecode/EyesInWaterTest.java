@@ -31,8 +31,9 @@ import io.github.cmdralph.fabricated.core.testutil.TestSources;
  * vanilla's water, lava or no fluid where the two answer alike. Each fixture is NeoForge's code in its form (26.1.2's
  * fluid interaction, keyed by fluid type; 26.3's, by fluid, which answers a tag by the fluid's tags) against stand-ins whose
  * defaults are NeoForge's. The class rewritten answers what NeoForge's did for every entity and every fluid at its eyes;
- * a hook of vanilla's call (Artifacts' underwater mining speed, FrozenLib's air bubbles) runs where it goes back, and only
- * there; and the put-back's own code makes nothing on the common path (an entity with no fluid at its eyes).
+ * a hook of vanilla's call (Artifacts' underwater mining speed, FrozenLib's air bubbles) runs where it goes back (water at
+ * the eyes passing NeoForge's predicate, a mod's fluid there or not), and only there; and the put-back's own code makes
+ * nothing on the common path (an entity with no fluid at its eyes).
  */
 public class EyesInWaterTest {
 	private static final String PLAYER = "net/minecraft/world/entity/player/Player";
@@ -215,8 +216,9 @@ public class EyesInWaterTest {
 	/**
 	 * Artifacts' hook of the mining speed's check and FrozenLib's of the air bubbles' (an {@code @ModifyExpressionValue} of
 	 * vanilla's {@code Player.isEyeInFluid}): once put back each runs for an entity whose eyes are in vanilla's water, lava
-	 * or nothing, with vanilla's answer, and for no other (a mod's fluid at its eyes, an entity overriding the check, one the
-	 * platform's predicate answers otherwise for: gills in water, which can't drown there); the answer is NeoForge's.
+	 * or nothing, or in water passing NeoForge's predicate with a mod's fluid too, with vanilla's answer, and for no other (a
+	 * mod's fluid alone at its eyes, an entity overriding the check, one the platform's predicate answers otherwise for: gills
+	 * in water, which can't drown there); the answer is NeoForge's.
 	 */
 	@Test
 	void hooksOfVanillasCallRunWhereItGoesBack(@TempDir Path dir) throws Exception {
@@ -226,12 +228,14 @@ public class EyesInWaterTest {
 					"isEyeInFluid"), "NeoForge's code makes no vanilla call there");
 			Map<String, byte[]> hooked = hooked(restored(platform));
 			String player = ENTITIES.get(0);
-			for (String eyes : List.of("none", "water", "lava", "water lava", "feet water")) {
+			// Water with a mod's fluid too: water passes both predicates, so NeoForge's checks answer yes whatever else is at the
+			// eyes, as vanilla's call does: it goes back, with NeoForge's answers.
+			for (String eyes : List.of("none", "water", "lava", "water lava", "feet water", "water mud")) {
 				List<String> asked = ask(hooked, form, player, eyes);
 				assertEquals(2, asked.stream().filter(l -> l.startsWith("eyes hooked")).count(), form + " " + eyes + " " + asked);
 				assertEquals(ask(platform, form, player, eyes).subList(0, 2), asked.subList(asked.size() - 2, asked.size()), form + " " + eyes + " " + asked);
 			}
-			for (String eyes : List.of("mud", "water mud")) {
+			for (String eyes : List.of("mud")) {
 				List<String> asked = ask(hooked, form, player, eyes);
 				assertTrue(asked.stream().noneMatch(l -> l.startsWith("eyes hooked")), form + " " + eyes + " " + asked);
 			}

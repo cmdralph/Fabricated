@@ -73,7 +73,12 @@ class SeamConflictsTest {
 	private static SeamConflicts.Conflict conflict(Path dir, String nativeMembers, String nativeTarget) throws Exception {
 		Map<String, byte[]> classes = new HashMap<>(classes(dir, nativeMembers, nativeTarget));
 		ClassBytesSource game = classes::get;
-		return SeamConflicts.find(game.readNode(RESOLVER, 0), nativeJar(classes, List.of("com/moon/NativeSticky")));
+		return stripped(SeamConflicts.find(game.readNode(RESOLVER, 0), nativeJar(classes, List.of("com/moon/NativeSticky"))));
+	}
+
+	/** The conflict without what the mixin hooks, which the report names and the tests of that check apart. */
+	static SeamConflicts.Conflict stripped(SeamConflicts.Conflict conflict) {
+		return conflict == null ? null : new SeamConflicts.Conflict(conflict.owner(), conflict.mixin(), conflict.readable());
 	}
 
 	private static String wrap(String methods, String target) {
@@ -169,6 +174,12 @@ class SeamConflictsTest {
 	/** As {@link #conflict(Path, Map, String, String, String)}, the mixin's config naming {@code refmap} (null for none). */
 	private static SeamConflicts.Conflict conflict(Path dir, Map<String, String> gameSources, String nativeMembers, String nativeTarget, String gameClass,
 			InstalledClasses.RefmapFile refmap) throws Exception {
+		return stripped(found(dir, gameSources, nativeMembers, nativeTarget, gameClass, refmap));
+	}
+
+	/** As {@link #conflict(Path, Map, String, String, String, InstalledClasses.RefmapFile)}, with what the mixin hooks. */
+	private static SeamConflicts.Conflict found(Path dir, Map<String, String> gameSources, String nativeMembers, String nativeTarget, String gameClass,
+			InstalledClasses.RefmapFile refmap) throws Exception {
 		Map<String, String> sources = new HashMap<>(gameSources);
 		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value();"
 				+ " String target() default \"\"; }");
@@ -246,6 +257,13 @@ class SeamConflictsTest {
 		assertEquals(expected, conflict(dir.resolve("plant-type"), forge, head.formatted("getPlantType"), "net.minecraftforge.common.IPlantable", crop));
 		assertEquals(expected, conflict(dir.resolve("sustain"), forge, head.formatted("canSustainPlant"), "net.minecraft.world.level.block.Block", crop));
 		assertNull(conflict(dir.resolve("block-other"), forge, head.formatted("defaultBlockState"), "net.minecraft.world.level.block.Block", crop));
+		// The report's line names the native mod, its mixin and the method it hooks.
+		SeamConflicts.Conflict placing = found(dir.resolve("may-place-on-named"), forge, head.formatted("mayPlaceOn"), crop.replace('/', '.'), crop, null);
+		assertEquals("CropBlock.mayPlaceOn", placing.hooked());
+		assertEquals("Forge mod breaker's mixin NativeBreak hooks the platform's code that putting vanilla's calls back would move, CropBlock.mayPlaceOn",
+				placing.describe("Forge", "vanilla's calls"));
+		assertEquals("IPlantable.getPlantType", found(dir.resolve("plant-type-named"), forge, head.formatted("getPlantType"), "net.minecraftforge.common.IPlantable",
+				crop, null).hooked());
 		Map<String, Set<String>> others = VanillaSeams.mayChange(crop);
 		assertTrue(others.getOrDefault("net/minecraft/world/level/block/state/BlockBehaviour$BlockStateBase", Set.of()).containsAll(Set.of("is", "m_60713_")), others.toString());
 		assertTrue(others.getOrDefault("net/minecraft/world/level/block/state/StateHolder", Set.of()).contains("getValueOrElse"), others.toString());
@@ -270,6 +288,13 @@ class SeamConflictsTest {
 			assertEquals(expected, conflict(dir.resolve(method), neoForge, head.formatted(method), interaction, player), method);
 		}
 		assertNull(conflict(dir.resolve("entity-other"), neoForge, head.formatted("getFluidInteraction"), "net.minecraft.world.entity.Entity", player));
+		assertEquals("EntityFluidInteraction.isEyeInFluidMatching", found(dir.resolve("matching-named"), neoForge, head.formatted("isEyeInFluidMatching"),
+				interaction, player, null).hooked());
+		// The class's own method, where a native mixin hooks the platform's call vanilla's goes back in place of.
+		assertEquals("Player.getDestroySpeed", found(dir.resolve("own-named"), neoForge, " @Inject(method = \"getDestroySpeed\", at = @At(value = \"INVOKE\","
+				+ " target = \"Lnet/minecraft/world/entity/EntityFluidInteraction;isEyeInFluidMatching(Lnet/minecraft/world/entity/Entity;"
+				+ "Lnet/neoforged/neoforge/fluids/InFluidPredicate;)Z\")) private void call(CallbackInfo ci) { }", "net.minecraft.world.entity.player.Player",
+				player, null).hooked());
 	}
 
 	/**
@@ -434,7 +459,8 @@ class SeamConflictsTest {
 				classes::containsKey, counted, () -> new InstalledClasses.Listing(List.of("com/moon/NativeSticky"), List.of()), false, fingerprint)));
 		Supplier<InstalledClasses> current = () -> installed.apply(InstalledClasses.fingerprint(file, ""));
 		TranslationCache cache = new TranslationCache(game, true, true);
-		Map<String, SeamConflicts.Conflict> decided = Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "com/moon/NativeSticky", true));
+		Map<String, SeamConflicts.Conflict> decided = Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "com/moon/NativeSticky", true,
+				"PistonStructureResolver.resolve"));
 
 		// A miss: decided, and stored.
 		assertEquals(decided, SeamConflicts.of(gameClasses, current.get(), cache, "env"));
@@ -509,7 +535,8 @@ class SeamConflictsTest {
 				() -> listFails[0] ? new InstalledClasses.Listing(List.of(), List.of("moonlight.mixins.json"))
 						: new InstalledClasses.Listing(List.of("com/moon/NativeSticky"), List.of()), false, InstalledClasses.fingerprint(file, ""))));
 		TranslationCache cache = new TranslationCache(game, true, true);
-		Map<String, SeamConflicts.Conflict> decided = Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "com/moon/NativeSticky", true));
+		Map<String, SeamConflicts.Conflict> decided = Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "com/moon/NativeSticky", true,
+				"PistonStructureResolver.resolve"));
 
 		// The jar's mixin config fails to read: it lists none that read, so without it the seams would be put back, and
 		// cached so, Moonlight's mixin then failing at every launch. The class is kept, by the list that failed.
