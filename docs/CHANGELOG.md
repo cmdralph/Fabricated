@@ -9,20 +9,25 @@ What changed, and how it was verified, newest first. What is open and what comes
   blocks around it alight through vanilla's `FireBlock.checkBurnOut`, which NeoForge and Forge 52 to 66 give the side the
   fire comes from, and Forge 43 and 47 replace with `tryCatchFire`, taking it too. The mod's invoker of vanilla's method
   was left out, and once lumisene burnt the blocks around it the call failed and the server stopped. Where the
-  platform's method only passes such a parameter on to its extensions, whose defaults ignore it, and does nothing else
-  vanilla's doesn't, which Fabricated checks in the platform's classes as the mod is translated, the game class gets a
-  method with vanilla's parameters that calls the platform's with the value the platform's own first call passes (here
-  the west side), and the mod's invoker calls that. Any Fabric mod's invoker of such a method is served the same way.
-- **What differs:** a NeoForge or Forge mod's block that overrides the flammability or caught-fire extension is asked
-  for the west side, whatever side the invoking mod meant. Blocks keeping the platform's defaults ignore the side.
+  platform's method only passes such a parameter on to methods of the platform's own code, whose code ignores it, which
+  Fabricated checks in the platform's classes as the mod is translated, the game class gets a method with vanilla's
+  parameters that calls the platform's with the value the platform's own first call passes (here the west side), and the
+  mod's invoker calls that. Any Fabric mod's invoker of such a method of the game's is served the same way.
+- **What differs:** the call runs the platform's fire spread, as the platform's own calls do, not vanilla's: how likely
+  a block is to catch is the platform's flammability, TNT is set off by the TNT block's own caught-fire hook, before the
+  burnt block is replaced (after it on Forge 43, as in vanilla), and Forge 43 and 47 use the fire's chance where vanilla
+  uses its age. A NeoForge or Forge mod's block that overrides the flammability or caught-fire extension is asked for
+  the west side, whatever side the invoking mod meant. Blocks keeping the platform's defaults ignore the side.
 - **Where it can't be served:** where the platform's method uses the parameter otherwise, the invoker is left out as
-  before, and the report says what the method does with it, a known limit.
+  before, and the report says why, a known limit. Where the game class, as it loads, isn't the one the mod was
+  translated against, it gets no such method, and the log and the report name the invokers whose calls fail.
 - **Checks:** `vanilla-fire-invoker`: the test mod's invoker of vanilla's `checkBurnOut` burns oak planks on every
   platform.
 
-Verified with core's unit tests, CI's script tests and the mixin inventory on the three branches. Pre-flight on the
-`FireBlock` classes of NeoForge 21.1, 21.11 and 26.1.2 and Forge 43, 47, 52, 61, 64, 65 and 66 bridges the invoker on
-each. NeoForge 1.21.1, Forge 52 and Forge 47 built, and their servers' runs pass, the test mod's invoker burning the
+Verified with core's unit tests, CI's script tests and the mixin inventory on the three branches; each of the checks
+the proof makes, removed one at a time, fails a test. Pre-flight on the `FireBlock` classes of NeoForge 21.1, 21.11 and
+26.1.2 and Forge 43, 47, 52, 61, 64, 65 and 66 bridges the invoker on each, and the class declares the bridge as it
+loads. NeoForge 1.21.1, Forge 52 and Forge 47 built, and their servers' runs pass, the test mod's invoker burning the
 planks; on NeoForge 1.21.1 without the change it failed pre-flight. In their server corpus runs Supplementaries'
 invoker is the only left-out line that changed, now served.
 
