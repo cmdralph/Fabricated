@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -216,9 +217,8 @@ public final class ModTranslator {
 
 		Optional<TranslationCache.Entry> hit = env.namespace() == Namespace.INTERMEDIARY
 				? cache.lookup(entryName, overlay(neoId), remapped(neoId)) : cache.lookup(entryName, overlay(neoId));
-		if (hit.isPresent() && installedUnchanged(hit.get())) {
-			return fromCache(candidate, neoId, hit.get());
-		}
+		TranslatedMod cached = hit.isPresent() && installedUnchanged(hit.get()) ? fromCache(candidate, neoId, hit.get()) : null;
+		if (cached != null) return cached;
 
 		// Translating holds a mod's files several times over (entries, remapped jar, cache copy); mods are translated in
 		// parallel, so large ones take turns instead of exhausting the heap together.
@@ -268,7 +268,7 @@ public final class ModTranslator {
 				// The game classes its mixins target that have vanilla methods put back as they load (SEAM-1).
 				Set<String> seams = new TreeSet<>();
 				// The bridges game classes declare as they load for its invokers (LEAVE-6).
-				Set<InvokerBridge> invokers = new LinkedHashSet<>();
+				Map<InvokerBridge, List<String>> invokers = new LinkedHashMap<>();
 				// Fields the platform retyped, as the mod's classes and mixins reach them (CORPUS-33); before pre-flight,
 				// which then sees the mod's accessors of them as they will load.
 				if (!retyped.isEmpty()) {
@@ -437,12 +437,13 @@ public final class ModTranslator {
 				meta.put("environmentClasses", List.copyOf(environmentClasses));
 				meta.put("overridableMethods", List.copyOf(overridable));
 				meta.put("restoredSeams", List.copyOf(seams));
-				meta.put("invokerBridges", invokers.stream().map(ModTranslator::invokerBridgeToJson).toList());
+				meta.put("invokerBridges", invokers.entrySet().stream().map(e -> invokerBridgeToJson(e.getKey(), e.getValue())).toList());
 				meta.put("installedClasses", installedClasses);
 				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
 				Path jar = ownJar != null ? entry.file(remapped(neoId)) : candidate.path();
 				return new TranslatedMod(candidate, neoId, jar, entry.file(overlay(neoId)), List.copyOf(findings), atLines,
-						List.copyOf(notes), injections, List.copyOf(bridges), environmentClasses, overridable, Set.copyOf(seams), Set.copyOf(invokers), false, millis);
+						List.copyOf(notes), injections, List.copyOf(bridges), environmentClasses, overridable, Set.copyOf(seams),
+						Collections.unmodifiableMap(invokers), false, millis);
 			} catch (ArchiveException e) {
 				throw new TranslationException("The jar is unsafe or corrupt: " + e.getMessage(), "Re-download the mod from its official page.");
 			} catch (MappingException e) {
@@ -659,7 +660,7 @@ public final class ModTranslator {
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, Set<String> plannedSkips, FileView files,
 			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses,
 			List<EnumExtensions.Entry> enumEntries, Set<String> enumTargets, ClassLookup lookup, Set<DefaultBridge> bridges,
-			List<String> notes, Set<String> widened, Set<String> seams, Set<InvokerBridge> invokers, List<MixinEntry> generatedConfigs)
+			List<String> notes, Set<String> widened, Set<String> seams, Map<InvokerBridge, List<String>> invokers, List<MixinEntry> generatedConfigs)
 			throws ArchiveException, TranslationException {
 		Function<String, ClassNode> classes = lookup::node;
 		FabricModMetadata md = candidate.metadata();
@@ -882,7 +883,7 @@ public final class ModTranslator {
 		// A hook left out after its config's check (SHARE-2, a mixin translation left out whole) applies to nothing put back.
 		preflight.withoutSeamNotesOfLeftOut(findings);
 		seams.addAll(preflight.restoredSeams());
-		invokers.addAll(preflight.invokerBridges());
+		invokers.putAll(preflight.invokerBridges());
 		Set<String> written = new TreeSet<>(override.skipMixins());
 		written.removeAll(plannedSkips);
 		unmatchedSkips(written, matchedSkips, md.compatHints().mixinsOr(md.mixins()), configs.keySet(), findings);
@@ -1953,6 +1954,7 @@ public final class ModTranslator {
 		}
 	}
 
+	/** The translation a cache entry holds; null where it holds what no translation makes, for the mod to be translated again. */
 	private TranslatedMod fromCache(Candidate candidate, String neoId, TranslationCache.Entry entry) {
 		Map<String, Object> meta = entry.metadata();
 		List<String> notes = new ArrayList<>();
@@ -1981,17 +1983,23 @@ public final class ModTranslator {
 		if (meta.get("overridableMethods") instanceof List<?> list) list.forEach(o -> overridable.add(String.valueOf(o)));
 		Set<String> seams = new TreeSet<>();
 		if (meta.get("restoredSeams") instanceof List<?> list) list.forEach(o -> seams.add(String.valueOf(o)));
-		Set<InvokerBridge> invokers = new LinkedHashSet<>();
+		Map<InvokerBridge, List<String>> invokers = new LinkedHashMap<>();
 		if (meta.get("invokerBridges") instanceof List<?> list) {
 			for (Object o : list) {
-				if (o instanceof Map<?, ?> m) invokers.add(invokerBridgeFromJson(m));
+				InvokerBridge bridge = o instanceof Map<?, ?> m ? invokerBridgeFromJson(m) : null;
+				// An entry no translation made (another build's, an edited file) is dropped, and the mod translated again: a
+				// bridge the class then declared could call any of its methods (LEAVE-6).
+				if (bridge == null || bridge.malformed() != null) return null;
+				List<String> users = new ArrayList<>();
+				if (((Map<?, ?>) o).get("invokers") instanceof List<?> names) names.forEach(n -> users.add(String.valueOf(n)));
+				invokers.put(bridge, List.copyOf(users));
 			}
 		}
 		int at = meta.get("accessTransformers") instanceof Number n ? n.intValue() : 0;
 		Path jar = entry.has(remapped(neoId)) ? entry.file(remapped(neoId)) : candidate.path();
 		return new TranslatedMod(candidate, neoId, jar, entry.file(overlay(neoId)), List.copyOf(findings), at, List.copyOf(notes),
 				List.copyOf(injections), List.copyOf(bridges), Set.copyOf(environmentClasses), Set.copyOf(overridable), Set.copyOf(seams),
-				Set.copyOf(invokers), true, 0);
+				Collections.unmodifiableMap(invokers), true, 0);
 	}
 
 	private static Map<String, Object> findingToJson(PreflightFinding f) {
@@ -2157,7 +2165,7 @@ public final class ModTranslator {
 				String.valueOf(m.get("descriptor")));
 	}
 
-	private static Map<String, Object> invokerBridgeToJson(InvokerBridge b) {
+	private static Map<String, Object> invokerBridgeToJson(InvokerBridge b, List<String> invokers) {
 		Map<String, Object> m = new LinkedHashMap<>();
 		m.put("target", b.target());
 		m.put("vanillaName", b.vanillaName());
@@ -2166,6 +2174,7 @@ public final class ModTranslator {
 		m.put("methodDescriptor", b.methodDescriptor());
 		m.put("parameter", b.parameter());
 		m.put("constant", b.constant());
+		m.put("invokers", invokers);
 		return m;
 	}
 

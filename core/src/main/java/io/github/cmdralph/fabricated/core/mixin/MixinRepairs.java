@@ -222,18 +222,11 @@ final class MixinRepairs extends PreflightPart {
 				ChangedMethod bridged = changedMethodBridge(method, Annotations.find(method, MixinNames.INVOKER), targets, ctx);
 				if (bridged == null) continue;
 				changed = true;
-				AddedParameters.Verdict fixed = bridged.fixed();
-				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), fixed == null
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), bridged.fixed().isEmpty()
 						? "@Invoker " + method.name + method.desc + " targets a method " + loader + " gave other parameters in "
 								+ targets.get(0).name.replace('/', '.') + "; it invokes " + bridged.bridge() + ", which Fabricated adds there to call "
 								+ loader + "'s method as vanilla's does (LEAVE-5)"
-						: "@Invoker " + method.name + method.desc + " targets a method " + loader + " gave a " + fixed.typeName() + " vanilla's never had in "
-								+ targets.get(0).name.replace('/', '.') + ", " + fixed.method().name + fixed.method().desc + "; it invokes " + bridged.bridge()
-								+ ", which Fabricated declares there as the class loads, calling that method with " + fixed.typeName() + "."
-								+ fixed.bridge().constant() + ", what " + loader + "'s first call of it passes: " + loader + "'s method passes the "
-								+ fixed.typeName() + " only to " + String.join(" and ", fixed.passedTo()) + ", whose defaults ignore it, and makes nothing"
-								+ " else vanilla's doesn't, so for whatever keeps those defaults it does what it does for " + loader
-								+ "'s own calls (LEAVE-6)", ""));
+						: fixedBridgeNote(method, bridged), ""));
 			}
 		}
 		// The unique fields renamed, keyed name:desc as the mixin had them, for its nested classes' uses (CORPUS-95).
@@ -903,10 +896,28 @@ final class MixinRepairs extends PreflightPart {
 	}
 
 	/**
-	 * An invoker {@link #changedMethodBridge} pointed at a bridge: the bridge's name, and the verdict where Fabricated
-	 * declares it with a fixed value of the parameter the platform added ({@link InvokerBridge}), else null.
+	 * An invoker {@link #changedMethodBridge} pointed at a bridge: the bridge's name, and the verdict on each target where
+	 * Fabricated declares it with a fixed value of the parameter the platform added ({@link InvokerBridge}), else none.
 	 */
-	private record ChangedMethod(String bridge, AddedParameters.Verdict fixed) {
+	private record ChangedMethod(String bridge, Map<ClassNode, AddedParameters.Verdict> fixed) {
+	}
+
+	/** The report's note on an invoker pointed at the bridges Fabricated declares, naming each target bridged (LEAVE-6). */
+	private String fixedBridgeNote(MethodNode invoker, ChangedMethod bridged) {
+		AddedParameters.Verdict any = bridged.fixed().values().iterator().next();
+		List<String> places = new ArrayList<>();
+		for (Map.Entry<ClassNode, AddedParameters.Verdict> e : bridged.fixed().entrySet()) {
+			AddedParameters.Verdict v = e.getValue();
+			List<String> to = v.passedTo();
+			String passes = to.isEmpty() ? "which never reads the " + v.typeName() : "which passes the " + v.typeName() + " only to "
+					+ (to.size() == 1 ? to.get(0) : String.join(", ", to.subList(0, to.size() - 1)) + " and " + to.get(to.size() - 1)) + ", whose code ignores it";
+			places.add("in " + e.getKey().name.replace('/', '.') + " it invokes " + bridged.bridge() + ", which Fabricated declares there as the class"
+					+ " loads, calling " + v.method().name + v.method().desc + " with " + v.typeName() + "." + v.bridge().constant() + ", what " + loader
+					+ "'s first call of it passes, and " + passes);
+		}
+		return "@Invoker " + invoker.name + invoker.desc + " targets a method " + loader + " gave a " + any.typeName() + " vanilla's never had: "
+				+ String.join("; ", places) + ". So the value changes nothing for whatever keeps that code, and the call does what an invoker of a"
+				+ " method " + loader + " patched keeping its parameters does: it runs " + loader + "'s version of vanilla's method (LEAVE-6)";
 	}
 
 	/**
@@ -915,11 +926,12 @@ final class MixinRepairs extends PreflightPart {
 	 * (LEAVE-5). Fabricated's in-game mod adds one to the class where it knows such a call: Forge 61 and 64 give
 	 * {@code LevelRenderer}'s {@code extractVisibleBlockEntities} a frustum it culls the block entities by, which vanilla's
 	 * doesn't, and Iris's shadow pass invokes vanilla's; the bridge passes a frustum every box is visible in. Where it adds
-	 * none, and the platform's method takes one parameter more, which it only passes to its extensions' methods whose
-	 * defaults ignore it ({@link AddedParameters}), Fabricated declares one in the class as it loads, passing what the
-	 * platform's first call of it passes ({@link InvokerBridge}, LEAVE-6): Supplementaries' lumisene invokes vanilla's
-	 * {@code FireBlock.checkBurnOut}, to which the platforms add the side the fire comes from. That one is declared in
-	 * pre-flight's targets too, as the class will have it, and noted for the class to get it. The invoker keeps its own name
+	 * none, and the platform's method takes one parameter more, which it only passes to methods of its own code whose code
+	 * ignores it ({@link AddedParameters}), Fabricated declares one in the class as it loads, calling the platform's method
+	 * with what the platform's first call of it passes ({@link InvokerBridge}, LEAVE-6), so the call runs the platform's
+	 * version of vanilla's method: Supplementaries' lumisene invokes vanilla's {@code FireBlock.checkBurnOut}, to which the
+	 * platforms add the side the fire comes from. An invoker of several targets gets one in each, or none. That one is
+	 * declared in pre-flight's targets too, as the class will have it, and noted for the class to get it. The invoker keeps its own name
 	 * and descriptor, so the mod's calls are served as before. Returns the bridge; or {@code null} and changes nothing when
 	 * a target has the method the invoker names, or has no bridge and can't get one.
 	 */
@@ -949,7 +961,7 @@ final class MixinRepairs extends PreflightPart {
 		}
 		// Not in the mod's refmap: the bridge's name is the same in every namespace.
 		invoker.values = new ArrayList<>(List.of("value", bridge, "remap", Boolean.FALSE));
-		return new ChangedMethod(bridge, fixed.isEmpty() ? null : fixed.values().iterator().next());
+		return new ChangedMethod(bridge, fixed);
 	}
 
 	/**

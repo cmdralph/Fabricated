@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
+
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -16,38 +18,37 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.IincInsnNode;
-import org.objectweb.asm.tree.JumpInsnNode;
-import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 /**
  * Whether a vanilla method the platform gave a parameter vanilla's never had can serve a Fabric mod's {@code @Invoker} of
- * vanilla's with one fixed value of it (LEAVE-6, {@link InvokerBridge}): where the platform's method only passes that
- * parameter on to its extensions' methods, whose defaults ignore it, the method does the same for any value of it, for
- * every block (item, entity) keeping those defaults, as it does for the platform's own calls; one overriding them gets
- * the platform's answer for the value passed. Vanilla's private {@code FireBlock.checkBurnOut(level, pos, chance, random,
- * age)}, through which Supplementaries' lit lumisene sets the blocks around it alight, takes the side the fire comes from
- * too on NeoForge and Forge 52 to 66, and is replaced by {@code tryCatchFire} taking it on Forge 43 and 47 (STRUCT-2):
- * they pass it to the block state's {@code getFlammability} and {@code onCaughtFire}, whose defaults pass it to the
- * block's, which ignore it. Proven from the classes, every part of it, or there is no bridge ({@link Verdict#why}):
+ * vanilla's with one fixed value of that parameter (LEAVE-6, {@link InvokerBridge}). The bridge calls the platform's own
+ * version of vanilla's method, as an invoker of a method the platform patched without changing its parameters already
+ * does; what Fabricated adds is the value, and it proves that the value changes nothing for whatever keeps the platform's
+ * defaults: the platform's method only passes the parameter on to methods of the platform's own code whose code ignores it.
+ * Vanilla's private {@code FireBlock.checkBurnOut(level, pos, chance, random, age)}, through which Supplementaries' lit
+ * lumisene sets the blocks around it alight, takes the side the fire comes from too on NeoForge and Forge 52 to 66, and is
+ * replaced by {@code tryCatchFire} taking it on Forge 43 and 47 (STRUCT-2): they pass it to the block state's
+ * {@code getFlammability} and {@code onCaughtFire}, whose defaults pass it to the block's, which ignore it. A block
+ * overriding those gets the platform's answer for the value passed. Proven from the classes, or there is no bridge
+ * ({@link Verdict#why}):
  * <ol>
- *   <li>the platform's method is an instance method with code, of vanilla's name or the one replacing vanilla's private
- *       method ({@link ReplacedMethods}), taking vanilla's parameters, in order one way only, and one more, returning the
- *       same;</li>
- *   <li>it never stores into that parameter, and each value it loads from it is an argument (not the receiver) of a call,
- *       straight from the load ({@link OverloadRepairs#pushedBy}), of a method the platform's own code declares (an
- *       extension interface's default, a method of a class of its packages: {@link PreflightClasses#declaration}), which
- *       ignores it the same way, to {@link #DEPTH} calls; a method that never loads it ignores it;</li>
- *   <li>without those calls, the loads and constants only they take, and the dropping of what they answer, the platform's
- *       method makes nothing vanilla's doesn't, in vanilla's order (each instruction compared as {@link PatchAlignment}
- *       compares them, by its opcode and what it names or pushes, not its local slots or jump targets): it may leave some
- *       of vanilla's code out, as the platforms' leave out the TNT check their TNT block's caught-fire override makes;</li>
+ *   <li>which method: a game class's, whose vanilla class is read and declares vanilla's method as an instance method
+ *       with code, the target lacking it and having exactly one instance method with code of vanilla's name taking
+ *       vanilla's parameters, in order one way only, and one more, returning the same; or the method replacing vanilla's
+ *       private one ({@link ReplacedMethods}), taking them so;</li>
+ *   <li>the parameter: never stored into, and each value loaded from it is an argument (not the receiver) of a call,
+ *       straight from the load ({@link OverloadRepairs#pushedBy}), of a method the JVM runs from the platform's own code
+ *       ({@link #runs}: the class's or a superclass's, else the one maximally specific default), which ignores it the same
+ *       way, to {@link #DEPTH} methods; a method that never loads it ignores it;</li>
  *   <li>the value, by the rule the bridge follows: what the platform's first call of the method in its class passes, which
  *       must be a constant, a static final field of the parameter's type (the fire's tick passes {@code Direction.WEST} for
  *       the block east of it).</li>
  * </ol>
+ * Overrides of those methods in the game's own classes, which the platform patched (NeoForge's {@code TntBlock} overrides
+ * {@code onCaughtFire}), are a block's own answer, as a mod's block's are: nothing here reads them.
  */
 final class AddedParameters extends PreflightPart {
 	/** How many methods deep the parameter is followed: the platform's method, the methods it passes it to, and theirs. */
@@ -73,57 +74,71 @@ final class AddedParameters extends PreflightPart {
 		}
 	}
 
-	/** A call of the platform's own method the parameter is passed to, and the code it runs. */
+	/** A call of the platform's own method the parameter is passed to, and the code the JVM runs for it. */
 	private record Passed(MethodInsnNode call, PreflightClasses.Code code) {
 	}
 
+	/** The code the JVM runs for a call, or why there is none to follow ({@link #runs}). */
+	private record Runs(PreflightClasses.Code code, String why) {
+	}
+
 	/**
-	 * The verdict on vanilla's method {@code name desc} of {@code target}, decided once per pre-flight run; null where the
-	 * target has it, or has no method in its place taking one parameter more (nothing to bridge).
+	 * The verdict on vanilla's method {@code name desc} of {@code target}, decided once per pre-flight run; null where
+	 * there is nothing for LEAVE-6 to judge, and the line keeps the other reasons it gives, no LEAVE-6 limit: the target
+	 * isn't a game class (an installed mod's has no vanilla code, and its versions' changes are its own), vanilla's class
+	 * can't be read (nothing tells vanilla's method), the target has the method, vanilla has none of that name and
+	 * descriptor, or the target has no method in its place taking one parameter more. Every other case is judged, and a
+	 * verdict without a bridge says why, which the line gives with LEAVE-6's limit.
 	 */
 	Verdict of(ClassNode target, String name, String desc) {
 		return verdicts.computeIfAbsent(target.name + "." + name + desc, k -> Optional.ofNullable(judge(target, name, desc))).orElse(null);
 	}
 
 	private Verdict judge(ClassNode target, String name, String desc) {
-		if ((target.access & Opcodes.ACC_INTERFACE) != 0 || name.startsWith("<") || PreflightAsm.declares(target, name, desc)) return null;
-		MethodNode platform = null;
-		int added = -1;
-		for (MethodNode m : target.methods) {
-			int k = m.name.equals(name) && hasCode(m) ? added(desc, m.desc) : -1;
-			if (k < 0) continue;
-			if (platform != null) return null;
-			platform = m;
-			added = k;
-		}
-		if (platform == null) {
-			ReplacedMethods.Replaced replaced = replacedMethods.replaced(target, name, desc);
-			added = replaced == null || !hasCode(replaced.method()) ? -1 : added(desc, replaced.method().desc);
-			if (added < 0) return null;
-			platform = replaced.method();
-		}
+		// A constructor's or initialiser's name: no invoker reaches here with one (Mixin invokes a constructor with NEW).
+		if (!PreflightAsm.isGameClass(target.name) || name.startsWith("<") || PreflightAsm.declares(target, name, desc)) return null;
 		ClassNode vanillaClass = vanillaClass(target.name);
 		MethodNode vanilla = vanillaClass == null ? null : PreflightAsm.declared(vanillaClass, name, desc);
-		if (vanillaClass != null && (vanilla == null || vanilla.instructions.size() == 0 || (vanilla.access & Opcodes.ACC_STATIC) != 0)) return null;
-		Type type = Type.getArgumentTypes(platform.desc)[added];
-		String own = simpleName(target.name) + "." + platform.name;
-		String why;
-		List<Passed> passed = new ArrayList<>();
-		String constant = null;
-		if (vanilla == null) {
-			why = "vanilla's class, which it is compared with, can't be read";
-		} else {
-			why = passedOn(own, platform, slotOf(platform, added), type, 0, passed);
-			if (why == null) why = madeByVanilla(own, vanilla, platform, passed);
-			if (why == null) {
-				constant = firstConstant(target, platform, added, type);
-				if (constant == null) why = "the first call of it in " + simpleName(target.name) + " passes no constant " + typeName(type);
-			}
+		if (vanilla == null) return null;
+		List<MethodNode> named = new ArrayList<>();
+		for (MethodNode m : target.methods) {
+			if (m.name.equals(name) && added(desc, m.desc) >= 0) named.add(m);
 		}
+		MethodNode platform;
+		if (named.isEmpty()) {
+			ReplacedMethods.Replaced replaced = replacedMethods.replaced(target, name, desc);
+			if (replaced == null || added(desc, replaced.method().desc) < 0) return null;
+			platform = replaced.method();
+		} else {
+			platform = named.get(0);
+		}
+		int added = added(desc, platform.desc);
+		String loaderName = loader + "'s";
+		String why = null;
+		if ((target.access & Opcodes.ACC_INTERFACE) != 0) {
+			why = simpleName(target.name) + " is an interface, and Fabricated declares bridges in classes only";
+		} else if (named.size() > 1) {
+			why = simpleName(target.name) + " has " + named.size() + " methods of that name taking one parameter more than vanilla's, and which one stands"
+					+ " in for it can't be told";
+		} else if ((vanilla.access & Opcodes.ACC_STATIC) != 0) {
+			why = "vanilla's method is static, and Fabricated bridges instance methods only";
+		} else if (!hasCode(vanilla)) {
+			why = "vanilla's method has no code of its own";
+		} else if ((platform.access & Opcodes.ACC_STATIC) != 0) {
+			why = loaderName + " method is static where vanilla's isn't";
+		} else if (!hasCode(platform)) {
+			why = loaderName + " method has no code of its own (it is abstract or native)";
+		}
+		Type type = Type.getArgumentTypes(platform.desc)[added];
+		List<Passed> passed = new ArrayList<>();
+		if (why == null) why = passedOn(simpleName(target.name) + "." + platform.name, platform, slotOf(platform, added), type, 0, passed);
+		String[] constant = {null};
+		if (why == null) why = firstConstant(target, platform, added, type, constant);
 		if (why != null) return new Verdict(platform, added, null, List.of(), why);
 		Set<String> passedTo = new LinkedHashSet<>();
 		for (Passed p : passed) passedTo.add(simpleName(p.code().owner()) + "." + p.call().name);
-		return new Verdict(platform, added, new InvokerBridge(target.name, name, desc, platform.name, platform.desc, added, constant), List.copyOf(passedTo), null);
+		return new Verdict(platform, added, new InvokerBridge(target.name, name, desc, platform.name, platform.desc, added, constant[0]),
+				List.copyOf(passedTo), null);
 	}
 
 	/**
@@ -175,93 +190,152 @@ final class AddedParameters extends PreflightPart {
 				passedLoads.add(pushed[i]);
 			}
 		}
-		return passedLoads.containsAll(loads) ? null : named + " reads " + what + " otherwise than to pass it to a method";
+		return passedLoads.containsAll(loads) ? null : named + " reads " + what + " otherwise than to pass it straight to a method";
 	}
 
 	/** Why the method {@code call} makes doesn't ignore its argument at {@code index}, the parameter; null where it does. */
 	private String ignoredBy(String named, MethodInsnNode call, int index, String what, int depth, List<Passed> passed) {
 		String callee = simpleName(call.owner) + "." + call.name;
-		PreflightClasses.Code code = call.getOpcode() == Opcodes.INVOKESPECIAL ? null : declaration(call.owner, call.name, call.desc);
-		if (code == null || !MixinNames.isPlatformCode(code.owner())) {
-			return named + " passes " + what + " to " + callee + ", which isn't a method of " + loader + "'s own code";
+		if (call.getOpcode() == Opcodes.INVOKESPECIAL) {
+			return named + " passes " + what + " to " + callee + " by invokespecial (a private method's or a superclass's), which Fabricated doesn't follow";
 		}
-		boolean isStatic = (code.method().access & Opcodes.ACC_STATIC) != 0;
-		if (isStatic != (call.getOpcode() == Opcodes.INVOKESTATIC)) return named + " passes " + what + " to " + callee + ", which can't be told";
+		Runs runs = runs(call);
+		if (runs.why() != null) return named + " passes " + what + " to " + callee + ", " + runs.why();
+		PreflightClasses.Code code = runs.code();
+		if (!MixinNames.isPlatformCode(code.owner())) {
+			return named + " passes " + what + " to " + callee + ", which runs " + simpleName(code.owner()) + "'s, not a method of " + loader + "'s own code";
+		}
 		if (depth + 1 >= DEPTH) return named + " passes " + what + " on deeper than Fabricated follows it (" + DEPTH + " methods)";
 		if (depth == 0) passed.add(new Passed(call, code));
 		Type[] args = Type.getArgumentTypes(call.desc);
-		int slot = isStatic ? 0 : 1;
+		int slot = call.getOpcode() == Opcodes.INVOKESTATIC ? 0 : 1;
 		for (int k = 0; k < index; k++) slot += args[k].getSize();
 		return passedOn(simpleName(code.owner()) + "." + call.name, code.method(), slot, args[index], depth + 1, passed);
 	}
 
 	/**
-	 * Why the platform's method ({@code named}), but for the calls it passes the parameter to, the loads and constants only
-	 * they take and the dropping of what they answer where it drops it at once (Forge 61 to 66's {@code onCaughtFire}
-	 * answers whether the block burnt), makes something vanilla's doesn't, in vanilla's order; null where it makes nothing
-	 * else.
+	 * The code the JVM runs for {@code call} on an object of the class it names, as the JVM selects it: the method of that
+	 * class or the nearest superclass declaring it, else the one maximally specific default of their interfaces (JVMS
+	 * 5.4.3.3); for a static call, the class's or a superclass's static method. Why there is none to follow where the
+	 * method found has no code, isn't of the call's kind, can't be read, or more than one interface's default could run.
+	 * Not {@link PreflightClasses#declaration}, which takes the first default it meets: the repairs that ask it (HOOK-2,
+	 * HOOK-3, STRUCT-1's hooks, overloads) find calls through it, and would see others if it changed.
 	 */
-	private static String madeByVanilla(String named, MethodNode vanilla, MethodNode platform, List<Passed> passed) {
-		Set<AbstractInsnNode> theirs = new HashSet<>();
-		Set<LabelNode> entered = PreflightAsm.jumpTargets(platform);
-		for (Passed p : passed) {
-			theirs.add(p.call());
-			for (AbstractInsnNode pushed : OverloadRepairs.pushedBy(platform, p.call())) {
-				int op = pushed.getOpcode();
-				if (op >= Opcodes.ACONST_NULL && op <= Opcodes.LDC || op >= Opcodes.ILOAD && op <= Opcodes.ALOAD) theirs.add(pushed);
+	private Runs runs(MethodInsnNode call) {
+		boolean isStatic = call.getOpcode() == Opcodes.INVOKESTATIC;
+		List<String> superinterfaces = new ArrayList<>();
+		for (String c = call.owner; c != null; ) {
+			ClassNode node = readable(c);
+			if (node == null) return new Runs(null, "whose class " + simpleName(c) + " can't be read");
+			MethodNode m = PreflightAsm.declared(node, call.name, call.desc);
+			// A private method of a superclass isn't selected for a call through a subclass; the call's own class's is.
+			if (m != null && (c.equals(call.owner) || (m.access & Opcodes.ACC_PRIVATE) == 0)) {
+				if (((m.access & Opcodes.ACC_STATIC) != 0) != isStatic) {
+					return new Runs(null, "which " + simpleName(c) + " declares " + (isStatic ? "as an instance method" : "static") + " where the call is "
+							+ (isStatic ? "static" : "not"));
+				}
+				return hasCode(m) ? new Runs(new PreflightClasses.Code(c, m), null) : new Runs(null, "which " + simpleName(c) + " declares without code");
 			}
-			int answer = Type.getReturnType(p.call().desc).getSize();
-			AbstractInsnNode next = p.call().getNext();
-			while (next != null && next.getOpcode() < 0 && !entered.contains(next)) next = next.getNext();
-			if (next != null && answer > 0 && next.getOpcode() == (answer == 2 ? Opcodes.POP2 : Opcodes.POP)) theirs.add(next);
+			if (isStatic && (node.access & Opcodes.ACC_INTERFACE) != 0) break;
+			superinterfaces.addAll(node.interfaces);
+			if ((node.access & Opcodes.ACC_INTERFACE) != 0) break;
+			c = node.superName;
 		}
-		List<String> own = new ArrayList<>();
-		for (AbstractInsnNode insn : vanilla.instructions) {
-			if (insn.getOpcode() >= 0) own.add(PatchAlignment.token(insn));
+		if (isStatic) return new Runs(null, "which no class declares as a static method with code");
+		// Every interface the class has, with the ones each extends.
+		Map<String, ClassNode> all = new java.util.LinkedHashMap<>();
+		for (int i = 0; i < superinterfaces.size(); i++) {
+			String itf = superinterfaces.get(i);
+			if (all.containsKey(itf)) continue;
+			ClassNode node = readable(itf);
+			if (node == null) return new Runs(null, "whose interface " + simpleName(itf) + " can't be read");
+			all.put(itf, node);
+			superinterfaces.addAll(node.interfaces);
 		}
-		int j = 0;
-		for (AbstractInsnNode insn : platform.instructions) {
-			if (insn.getOpcode() < 0 || theirs.contains(insn)) continue;
-			String token = PatchAlignment.token(insn);
-			while (j < own.size() && !own.get(j).equals(token)) j++;
-			if (j == own.size()) return named + " makes what vanilla's doesn't (" + readable(insn) + ")";
-			j++;
+		ClassNode owner = readable(call.owner);
+		if ((owner.access & Opcodes.ACC_INTERFACE) != 0) all.putIfAbsent(call.owner, owner);
+		List<PreflightClasses.Code> candidates = new ArrayList<>();
+		for (Map.Entry<String, ClassNode> e : all.entrySet()) {
+			MethodNode m = PreflightAsm.declared(e.getValue(), call.name, call.desc);
+			if (m != null && (m.access & (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) == 0) candidates.add(new PreflightClasses.Code(e.getKey(), m));
 		}
-		return null;
+		// The maximally specific ones: no other candidate's interface extends theirs.
+		List<PreflightClasses.Code> specific = new ArrayList<>();
+		for (PreflightClasses.Code c : candidates) {
+			boolean less = false;
+			for (PreflightClasses.Code other : candidates) {
+				if (other != c && extendsInterface(other.owner(), c.owner(), all)) less = true;
+			}
+			if (!less) specific.add(c);
+		}
+		if (specific.isEmpty()) return new Runs(null, "which no class or interface there declares");
+		if (specific.size() > 1) {
+			return new Runs(null, "for which " + String.join(" and ", specific.stream().map(c -> simpleName(c.owner())).toList())
+					+ " each have a default, so which one runs can't be told");
+		}
+		PreflightClasses.Code only = specific.get(0);
+		return hasCode(only.method()) ? new Runs(only, null) : new Runs(null, "which " + simpleName(only.owner()) + " declares without code");
+	}
+
+	/** A class of the game, the platform or the JDK ({@code Object}, the interfaces enums have), with its code; or null. */
+	private ClassNode readable(String internalName) {
+		ClassNode node = codeOf(internalName);
+		return node != null ? node : ClassIndex.JDK.readNode(internalName, 0);
+	}
+
+	/** Whether the interface {@code sub} extends {@code sup}, directly or not, among {@code all}. */
+	private static boolean extendsInterface(String sub, String sup, Map<String, ClassNode> all) {
+		List<String> queue = new ArrayList<>(List.of(sub));
+		Set<String> seen = new HashSet<>();
+		for (int i = 0; i < queue.size(); i++) {
+			ClassNode node = all.get(queue.get(i));
+			if (node == null || !seen.add(queue.get(i))) continue;
+			for (String itf : node.interfaces) {
+				if (itf.equals(sup)) return true;
+				queue.add(itf);
+			}
+		}
+		return false;
 	}
 
 	/**
-	 * The constant the platform's first call of its method in the class passes for the parameter: the name of a static
-	 * final field of the parameter's type, read straight before the call; null where that call passes another value, or
-	 * the class makes none.
+	 * Why the platform's first call of its method in the class passes no constant for the parameter, a static final field
+	 * of the parameter's type read straight before the call; null where it does, its name in {@code constant[0]}.
 	 */
-	private String firstConstant(ClassNode target, MethodNode platform, int added, Type type) {
+	private String firstConstant(ClassNode target, MethodNode platform, int added, Type type, String[] constant) {
+		String owner = simpleName(target.name);
 		for (MethodNode m : target.methods) {
 			for (AbstractInsnNode insn : m.instructions) {
 				if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(target.name) || !call.name.equals(platform.name) || !call.desc.equals(platform.desc)) {
 					continue;
 				}
 				AbstractInsnNode[] pushed = OverloadRepairs.pushedBy(m, call);
-				if (pushed == null || !(pushed[added + 1] instanceof FieldInsnNode field) || field.getOpcode() != Opcodes.GETSTATIC || type.getSort() != Type.OBJECT
+				if (pushed == null) return "what the first call of it in " + owner + " passes for the " + typeName(type) + " can't be told (it is worked out across a branch)";
+				if (!(pushed[added + 1] instanceof FieldInsnNode field) || field.getOpcode() != Opcodes.GETSTATIC || type.getSort() != Type.OBJECT
 						|| !field.owner.equals(type.getInternalName()) || !field.desc.equals(type.getDescriptor())) {
-					return null;
+					return "the first call of it in " + owner + " passes no constant " + typeName(type);
 				}
-				ClassNode owner = codeOf(field.owner);
-				FieldNode declared = owner == null ? null : owner.fields.stream().filter(f -> f.name.equals(field.name) && f.desc.equals(field.desc)).findFirst().orElse(null);
-				int constant = Opcodes.ACC_STATIC | Opcodes.ACC_FINAL;
-				return declared != null && (declared.access & constant) == constant ? field.name : null;
+				ClassNode fields = codeOf(field.owner);
+				if (fields == null) return "the class of the constant the first call of it in " + owner + " passes, " + typeName(type) + ", can't be read";
+				FieldNode declared = fields.fields.stream().filter(f -> f.name.equals(field.name) && f.desc.equals(field.desc)).findFirst().orElse(null);
+				int fixed = Opcodes.ACC_STATIC | Opcodes.ACC_FINAL;
+				if (declared == null || (declared.access & fixed) != fixed) {
+					return "the first call of it in " + owner + " passes " + typeName(type) + "." + field.name + ", which isn't a static final field of " + typeName(type);
+				}
+				constant[0] = field.name;
+				return null;
 			}
 		}
-		return null;
+		return owner + " never calls it, so no call of the platform's gives a value";
 	}
 
-	/** Whether the method is an instance method with code, as the platform's method in vanilla's place must be. */
+	/** Whether the method has code: not abstract or native. */
 	private static boolean hasCode(MethodNode method) {
-		return (method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) == 0 && method.instructions.size() > 0;
+		return (method.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) == 0 && method.instructions.size() > 0;
 	}
 
 	/** A type as messages name it: {@code Direction}, {@code int}. */
-	private static String typeName(Type type) {
+	static String typeName(Type type) {
 		String name = type.getClassName();
 		return name.substring(name.lastIndexOf('.') + 1).replace('$', '.');
 	}
@@ -274,17 +348,7 @@ final class AddedParameters extends PreflightPart {
 		return slot;
 	}
 
-	/** An instruction as a message names it: the method it calls, the field it reads or writes, or what kind it is. */
-	private static String readable(AbstractInsnNode insn) {
-		if (insn instanceof MethodInsnNode call) return "a call of " + simpleName(call.owner) + "." + call.name;
-		if (insn instanceof FieldInsnNode field) return "a use of " + simpleName(field.owner) + "." + field.name;
-		if (insn instanceof VarInsnNode local) return (local.getOpcode() >= Opcodes.ISTORE ? "a store into" : "a load of") + " its local " + local.var;
-		if (insn instanceof JumpInsnNode) return "a branch";
-		int op = insn.getOpcode();
-		return op == Opcodes.POP || op == Opcodes.POP2 ? "a value dropped" : "an instruction of opcode " + op;
-	}
-
-	private static String simpleName(String internalName) {
+	static String simpleName(String internalName) {
 		return internalName.substring(internalName.lastIndexOf('/') + 1).replace('$', '.');
 	}
 }
