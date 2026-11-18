@@ -1660,6 +1660,10 @@ What this can't match of Fabric, seen in a reference pack (2026-10-28) and in th
   as a `Screen`, where vanilla's lambdas take a `GuiEventListener`, so a hook replacing that listener with another
   (Architectury's char typed `@ModifyVariable`) can't apply, a known limit the report names (CORPUS-57). Hooks taking
   the listener, and wrappers of its `charTyped` call, apply (LAMBDA-11, LAMBDA-14).
+- **The title screen's version text (1.21.1).** NeoForge 21.1 draws the title screen's version and branding lines
+  itself, one at a time through its `BrandingControl`, where vanilla draws one version string, so a hook of vanilla's
+  drawing of it is left out, a known limit the report names (SCREEN-3): FancyMenu's condition on it doesn't apply, and
+  the title screen shows NeoForge's lines whatever FancyMenu's layout decides for vanilla's.
 - **Sinking in water.** NeoForge moves vanilla's `goDownInWater` speed into the fluid type's `sinkInFluid`, which every
   fluid type uses. A Fabric mod's hook of vanilla's water constant there would also act in other mods' fluids, unlike
   on Fabric, so it is left out: Additional Entity Attributes' water-speed attribute (with Apoli and Origins) doesn't

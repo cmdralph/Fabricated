@@ -17,8 +17,10 @@ What changed, and how it was verified, newest first. What is open and what comes
   hotbar and player health methods (Farmer's Delight Refabricated's comfort and nourishment overlays, Artifacts',
   GlitchCore's, Apoli's, Puzzles Lib's and Do a Barrel Roll's HUD hooks; HUD-8); Forge 52's mouse input, which Forge
   hands the screen inside its own event factory (owo-lib's and Architectury's mouse wrappers); the Controls screen's
-  reset of every key, which resets key modifiers the platforms' way (JEI's); and Forge 61 to 66's item tooltips in
-  container screens (ShulkerBoxTooltip's previews; SCREEN-3).
+  reset of every key, which resets key modifiers the platforms' way (JEI's); Forge 61 to 66's item tooltips in
+  container screens (ShulkerBoxTooltip's previews; SCREEN-3); and NeoForge 21.1's title screen, which draws its own
+  branding lines where vanilla draws its version string (FancyMenu's hook of it; SCREEN-3). A redirect of the typed
+  character's call on Forge 52, which Forge makes inside its own hook, stays out, its line saying why.
 - **Verified:** core's tests; NeoForge 1.21.1's, Forge 52's and Forge 64's server and client parts, with new checks of
   a wrapper of the typed character's call (NeoForge 1.21.1, Forge 52) and of the screen's click and release calls
   (Forge 64 to 66); the corpus clients of NeoForge 1.21.1, Forge 52 and Forge 64 and NeoForge 1.21.1's advanced corpus
