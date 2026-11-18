@@ -74,6 +74,14 @@ public final class KnownLimits {
 					"ScreenEffectRendererMixin"),
 			mixins("porting_lib_tool_actions.mixins.json", "io.github.fabricators_of_create.porting_lib.tool.mixin", "LivingEntityMixin", "PlayerMixin"));
 
+	/** NeoForge's hotbar layers, which vanilla's renderHotbarAndDecorations (extractHotbarAndDecorations) drew in one method. */
+	private static final String HOTBAR_LAYERS = "NeoForge draws the hotbar and what vanilla draws with it (the contextual bar, the experience level,"
+			+ " the selected item's name, the spectator tooltip) as layers of its own, in its own order, so hooks of vanilla's method drawing them"
+			+ " can't apply; use the mod's NeoForge build (HUD-8)";
+	/** NeoForge's health layers, which vanilla's renderPlayerHealth (extractPlayerHealth) drew in one method. */
+	private static final String HEALTH_LAYERS = "NeoForge draws the player's health, armor, food and air as layers of its own, each from its part of"
+			+ " vanilla's renderPlayerHealth, so hooks of vanilla's method there can't apply; use the mod's NeoForge build (HUD-8)";
+
 	/** The hooks of vanilla's plant growth and survival checks the platforms make through their soil extensions (SEAM-12). */
 	private static final Set<String> PLANTS = union(
 			mixins("balm.mixins.json", "net.blay09.mods.balm.mixin", "FabricCropBlockMixin"),
@@ -110,6 +118,72 @@ public final class KnownLimits {
 							+ "extractRenderStateWithTooltipAndSubtitles\\("),
 					"Forge draws screens through its own layer code, so wrappers of a screen's render call can't apply;"
 							+ " use NeoForge or the mod's Forge build (SCREEN-2)"),
+			// owo-lib's and Architectury's wrappers of the screen's mouse click, release or drag in Forge 52's MouseHandler lambdas,
+			// which make it inside Forge's event factory, the screen's answer stored by the factory itself (a drag's returns nothing).
+			Limit.ofMod(Set.of("Forge"), union(mixins("owo.mixins.json", "io.wispforest.owo.mixin.ui.layers", "MouseMixin"),
+							mixins("architectury.mixins.json", "dev.architectury.mixin.fabric.client", "MixinMouseHandler")),
+					Pattern.compile("^@(?:WrapOperation|Redirect|WrapWithCondition) in lambda\\$(?:onPress\\$[01]|handleAccumulatedMovement\\$\\d+) expects"
+							+ " @At\\(\"INVOKE\", target=\"Lnet/minecraft/client/gui/screens/Screen;mouse(?:Clicked|Released|Dragged)\\("),
+					"Forge 52 hands a screen its mouse clicks, releases and drags inside its own event factory, which takes the screen's answer"
+							+ " itself, so wrappers and redirects of those calls can't apply; use NeoForge or the mod's Forge build (LAMBDA-14)"),
+			// owo-lib's hook keeping the key modifiers for its wrappers of those calls on Forge 52, left out with them.
+			Limit.ofMod(Set.of("Forge"), mixins("owo.mixins.json", "io.wispforest.owo.mixin.ui.layers", "MouseMixin"),
+					Pattern.compile("^The injector of captureMods\\(.* goes with that of passModifiersToBraid\\$mouse(?:Clicked|Released)\\(", Pattern.DOTALL),
+					"Forge 52 hands a screen its mouse clicks and releases inside its own event factory, so owo-lib's wrappers passing the key"
+							+ " modifiers to its braid layers can't apply, nor the hook keeping the modifiers for them: a braid layer gets no modifiers"
+							+ " with a click or a release (LAMBDA-14)"),
+			// A hook of vanilla's setKey in the Controls screen's reset of every key binding, which the platforms make with
+			// their own setToDefault (resetting the key's modifier too): Mojang's names, and Forge 47's SRG ones.
+			new Limit(Set.of("NeoForge", "Forge"), null,
+					Pattern.compile("in (?:lambda\\$addFooter\\$0|m_268771_) expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/client/KeyMapping;(?:setKey|m_90848_)\\("),
+					"NeoForge and Forge reset every key binding in the Controls screen with their own setToDefault, which resets its modifier too,"
+							+ " so hooks of vanilla's setKey call there can't apply (LAMBDA-14)"),
+			// Architectury's modifier of the GuiEventListener vanilla's KeyboardHandler.charTyped lambdas take, which the platforms'
+			// take as the screen (Mojang's names, and Forge 47's SRG ones).
+			Limit.ofMod(Set.of("NeoForge", "Forge"), mixins("architectury.mixins.json", "dev.architectury.mixin.fabric.client", "MixinKeyboardHandler"),
+					Pattern.compile("^@ModifyVariable \\S+ modifies argument \\d+ among those of type net\\.minecraft\\.client\\.gui\\.components\\.events\\.GuiEventListener"
+							+ " of (?:lambda\\$charTyped\\$\\d+|m_\\d+_)\\(Lnet/minecraft/client/gui/screens/Screen;"),
+					"the platform's KeyboardHandler hands a typed character to the screen as a Screen where vanilla's hands it on as a"
+							+ " GuiEventListener, so a hook replacing that listener with another can't apply there (CORPUS-57)"),
+			// A wrapper of vanilla's tooltip call in a container screen's renderTooltip (extractTooltip), which Forge 61 to 66
+			// make through their overload taking the item, which works out the tooltip's style from it.
+			new Limit(Set.of("Forge"), null,
+					Pattern.compile("^@(?:WrapOperation|Redirect|WrapWithCondition) in (?:renderTooltip|extractTooltip) expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/client/gui/(?:GuiGraphics|GuiGraphicsExtractor);"
+							+ "setTooltipForNextFrame\\(Lnet/minecraft/client/gui/Font;Ljava/util/List;Ljava/util/Optional;IILnet/minecraft/resources/Identifier;"),
+					"Forge hands a container screen's item tooltip to its own overload taking the item, which works out the tooltip's style from it,"
+							+ " so wrappers and redirects of vanilla's call there can't apply; use NeoForge or the mod's Forge build (SCREEN-3)"),
+			// A hook of vanilla's hotbar method, which NeoForge splits into layers of its own (STRUCT-1's hint names its method
+			// left in vanilla's call's place), and Farmer's Delight's hooks keeping the frame's delta tracker it captures there.
+			new Limit(Set.of("NeoForge"), null,
+					Pattern.compile("targets method (?:render|extract)HotbarAndDecorations\\b.*\\bNeoForge replaced that private method with updateContextualBarRenderer\\(\\)V",
+							Pattern.DOTALL),
+					HOTBAR_LAYERS),
+			Limit.ofMod(Set.of("NeoForge"), mixins("farmersdelight.mixins.json", "vectorwing.farmersdelight.common.mixin.refabricated", "GuiMixin"),
+					Pattern.compile("^The injector of farmersdelightrefabricated\\$render(?:Hearts|Nourishment)\\(.* goes with that of farmersdelightrefabricated\\$captureDeltaTracker\\(",
+							Pattern.DOTALL),
+					HOTBAR_LAYERS),
+			// Apoli's, GlitchCore's and Puzzles Lib's hooks in vanilla's renderPlayerHealth (extractPlayerHealth), whose parts
+			// NeoForge draws as layers of its own, and GlitchCore's hooks keeping state with one there.
+			Limit.ofMod(Set.of("NeoForge"), union(mixins("apoli.mixins.json", "io.github.apace100.apoli.mixin", "InGameHudMixin"),
+							mixins("glitchcore.fabric.mixins.json", "glitchcore.fabric.mixin.client", "MixinGui", "MixinHud"),
+							mixins("puzzleslib.fabric.mixins.json", "fuzs.puzzleslib.fabric.mixin.client", "GuiFabricMixin")),
+					Pattern.compile("^@\\w+ in (?:render|extract)PlayerHealth expects @At\\("), HEALTH_LAYERS),
+			Limit.ofMod(Set.of("NeoForge"), mixins("glitchcore.fabric.mixins.json", "glitchcore.fabric.mixin.client", "MixinGui", "MixinHud"),
+					Pattern.compile("^The injector of .* goes with that of (?:onRenderPlayerHealth|onExtractFoodLevel)\\(", Pattern.DOTALL), HEALTH_LAYERS),
+			// A hook at vanilla's drawing of its HUD stacks in Gui.render, or of the boss overlay among them, which NeoForge 21.1
+			// draws as its own layers (21.11: the boss overlay one).
+			new Limit(Set.of("NeoForge"), null,
+					Pattern.compile("in render expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/client/gui/(?:LayeredDraw;render|Gui;renderBossOverlay)\\("),
+					"NeoForge draws vanilla's HUD as layers of its own, in its own order, so hooks at vanilla's calls drawing it in Gui.render can't"
+							+ " apply; use the mod's NeoForge build (HUD-8)"),
+			// FancyMenu's condition on vanilla's drawing of the version string in TitleScreen.render, which NeoForge 21.1 draws
+			// as its branding lines, each through BrandingControl's callback.
+			Limit.ofMod(Set.of("NeoForge"), mixins("fancymenu.fabric.mixins.json", "de.keksuccino.fancymenu.mixin.mixins.fabric.client", "MixinFabricTitleScreen"),
+					Pattern.compile("^@WrapWithCondition in render expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/client/gui/GuiGraphics;drawString\\("
+							+ "Lnet/minecraft/client/gui/Font;Ljava/lang/String;III\\)I\"\\)"),
+					"NeoForge 21.1 draws the title screen's version and branding lines itself, one at a time through its BrandingControl, where"
+							+ " vanilla draws one version string, so FancyMenu's condition on vanilla's drawing of it can't apply: the title screen"
+							+ " shows NeoForge's lines whatever FancyMenu's layout decides for vanilla's (SCREEN-3)"),
 			// A hook of vanilla's playerWillDestroy call in the server's destroyBlock, which Forge makes from the block state's
 			// onDestroyedByPlayer once the tool is damaged, and Fabricated doesn't put back there: pre-flight's hint names the
 			// server's class (the client's method has the same name on Forge 52 on, and there the call goes back).
