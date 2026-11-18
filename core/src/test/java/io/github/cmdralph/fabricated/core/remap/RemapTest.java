@@ -574,6 +574,25 @@ class RemapTest {
 	}
 
 	@Test
+	void aSelectorByNameAloneTakesTheOneOverloadsNameWhereThePlatformChangedItsDescriptor(@TempDir Path tmp) throws Exception {
+		// One method of the name, whose descriptor a platform's patch changed: no method of the game's class has vanilla's
+		// descriptor, so the class's order picks nothing, and the name's one runtime name is the one Mixin finds there.
+		String tiny = TINY + "CLASS\th\tnet/minecraft/class_9\n";
+		String tsrg2 = TSRG2 + "h net/minecraft/src/C_9_ 9\n\tgetElement (La;)Ljava/lang/Object; m_278667_ 278667\n";
+		MappingTable t = MappingComposer.composeSrg(new StringReader(tiny), new StringReader(tsrg2), null);
+		GameMethods patched = name -> name.equals("net/minecraft/src/C_9_")
+				? List.of("<init>()V", "m_278667_(Lnet/minecraft/src/C_1_;Lnet/minecraftforge/Extra;)Ljava/lang/Object;") : null;
+		Path jar = TestJars.create().bytes("mod/LootMixin.class", injectingMixin("mod/LootMixin", List.of("net/minecraft/class_9"), "getElement"))
+				.write(tmp.resolve("patched.jar"));
+		JarRemapper.Result result;
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			result = new JarRemapper(t, Supertypes.NONE, patched).remap(archive, Set.of());
+		}
+		assertEquals(List.of("m_278667_"), injectSelectors(result.files().get("mod/LootMixin.class")));
+		assertTrue(result.leftOutMembers().stream().noneMatch(n -> n.contains("getElement")), result.leftOutMembers().toString());
+	}
+
+	@Test
 	void aMixinOfSeveralClassesKeepsAMemberTheyNameApart(@TempDir Path tmp) throws Exception {
 		// PLAIN-2: a mixin of GlStateManager's DestFactor and SourceFactor shadowing the value both have, which Forge 43
 		// names f_84646_ in one and f_84751_ in the other. Its shadow took the first target's name, which the second lacks.

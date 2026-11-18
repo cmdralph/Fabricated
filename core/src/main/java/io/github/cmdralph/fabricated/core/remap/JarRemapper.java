@@ -486,8 +486,9 @@ public final class JarRemapper {
 		 * which a selector by the name alone picks on Fabric, where the runtime renames them: the first in the game class's
 		 * method order of those the mapping table knows, which are vanilla's own (the platform's patches add methods,
 		 * which MCPConfig doesn't name, and keep vanilla's in their order). Its runtime name alone, or with its descriptor
-		 * where the game class has another method of that name. Without the class's order, the only runtime name of the
-		 * name's overloads, where they have one. Null where the target has no method of that name that the runtime
+		 * where the game class has another method of that name. Where the order doesn't tell (the class's isn't known, or a
+		 * platform's patch changed the descriptor of each), the only runtime name of the name's overloads, where they have
+		 * one. Null where the target has no method of that name that the runtime
 		 * renames, and {@link #UNKNOWN}, noted, where which is the first isn't known.
 		 */
 		private String firstNamed(String owner, String name) {
@@ -506,7 +507,7 @@ public final class JarRemapper {
 				}
 			}
 			Set<String> names = new HashSet<>(overloads.values());
-			if (order == null && names.size() == 1) return names.iterator().next();
+			if (names.size() == 1) return names.iterator().next();
 			notes.add("Left " + mixin + "'s selector \"" + name + "\" as it is: " + owner.replace('/', '.') + "'s methods of that name have the runtime"
 					+ " names " + new TreeMap<>(overloads) + ", and which of them is the first in vanilla's class, which Mixin picks, isn't known"
 					+ " (PLAIN-2)");
