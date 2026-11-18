@@ -119,6 +119,13 @@ final class PreflightClasses {
 	 */
 	final Map<ClassNode, Set<String>> independent = new IdentityHashMap<>();
 
+	/**
+	 * The groups' sole alternatives ({@link PreflightPart#soleAlternative}) not repaired as injectors alone, each as its
+	 * mixin's internal name and its handler's name and descriptor: their repairs could make more injections than their
+	 * group allows.
+	 */
+	final Set<String> notSole = new HashSet<>();
+
 	/** {@link MixinPreflight#stateGroups} of each mixin as it was read, for the same reason as {@link #independent}. */
 	final Map<ClassNode, Map<String, MixinPreflight.StateGroup>> stateGroups = new IdentityHashMap<>();
 
@@ -335,7 +342,7 @@ final class PreflightClasses {
 	 * for its hook alone. A stateless handler ({@link MixinPreflight#statelessHandlers}) is one.
 	 */
 	Set<String> independentOf(ClassNode mixin) {
-		return independent.computeIfAbsent(mixin, MixinPreflight::independentHandlers);
+		return independent.computeIfAbsent(mixin, m -> MixinPreflight.independentHandlers(m, this::gameTarget));
 	}
 
 	/** The injectors of a mixin keeping state together ({@link MixinPreflight#stateGroups}), as it was read. */

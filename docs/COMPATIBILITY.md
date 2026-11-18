@@ -1643,6 +1643,27 @@ What this can't match of Fabric, seen in a reference pack (2026-10-28) and in th
     how a Carpet client fares on NeoForge is unverified.
   - Debugify's fix for MC-121706 in `RangedBowAttackGoal`, whose mob NeoForge types as any `Mob`, where vanilla's is
     a `Monster` (every version; Forge too).
+- **The HUD's own layers.** NeoForge draws vanilla's HUD as layers of its own, in its own order: it splits vanilla's
+  `renderHotbarAndDecorations` (26.x `extractHotbarAndDecorations`) into a method per layer (hotbar, contextual bar,
+  experience level, selected item name, spectator tooltip) and `renderPlayerHealth` (`extractPlayerHealth`) into
+  `renderHealthLevel`, `renderArmorLevel`, `renderFoodLevel` and `renderAirLevel`, and `Gui.render` draws NeoForge's
+  layer manager where vanilla draws its stacks. A Fabric mod's hook of those vanilla methods is left out, a known limit
+  the report names (HUD-8): Farmer's Delight Refabricated's comfort and nourishment overlays (1.21.11 to 26.3), Artifacts'
+  hotbar hooks (1.21.11, 26.1.2), GlitchCore's vehicle hearts, air and frozen overlay hooks (every version), Apoli's
+  air bubble sprites and Puzzles Lib's HUD events (1.21.1), and Do a Barrel Roll's (1.21.1, 1.21.11). Hooks of the
+  methods that draw each part (`extractHearts`, `extractFood`), which NeoForge's layers call, apply.
+- **The Controls screen's reset.** NeoForge resets every key binding with its own `setToDefault`, which resets the
+  key's modifier too, so a hook of vanilla's `setKey` call in that reset is left out, a known limit the report names
+  (LAMBDA-14): JEI's Fabric build doesn't reset its own key modifiers when the player resets every key. Forge does the
+  same.
+- **A typed character's listener (1.21.1).** NeoForge 21.1's `KeyboardHandler` hands a typed character to the screen
+  as a `Screen`, where vanilla's lambdas take a `GuiEventListener`, so a hook replacing that listener with another
+  (Architectury's char typed `@ModifyVariable`) can't apply, a known limit the report names (CORPUS-57). Hooks taking
+  the listener, and wrappers of its `charTyped` call, apply (LAMBDA-11, LAMBDA-14).
+- **The title screen's version text (1.21.1).** NeoForge 21.1 draws the title screen's version and branding lines
+  itself, one at a time through its `BrandingControl`, where vanilla draws one version string, so a hook of vanilla's
+  drawing of it is left out, a known limit the report names (SCREEN-3): FancyMenu's condition on it doesn't apply, and
+  the title screen shows NeoForge's lines whatever FancyMenu's layout decides for vanilla's.
 - **Sinking in water.** NeoForge moves vanilla's `goDownInWater` speed into the fluid type's `sinkInFluid`, which every
   fluid type uses. A Fabric mod's hook of vanilla's water constant there would also act in other mods' fluids, unlike
   on Fabric, so it is left out: Additional Entity Attributes' water-speed attribute (with Apoli and Origins) doesn't
@@ -2435,7 +2456,20 @@ instead.
 - **Screen render wrappers** (Forge 65 and 66). Forge draws the screen in its own layer code, which reads the screen
   itself, so a Fabric mod's wrapper of the screen's render call is left out: Architectury's screen render events,
   FancyMenu's and SpruceUI's hooks around drawing a screen. An `@Inject` at the call applies, and on Forge 61 and 64
-  Architectury's and FancyMenu's wrappers apply at Forge's hook. Use NeoForge, or the mod's Forge build (SCREEN-2).
+  Architectury's, FancyMenu's and SpruceUI's wrappers apply at Forge's hook (SCREEN-3: SpruceUI's, which names
+  NeoForge's hook too, checked on Forge 64).
+  Use NeoForge, or the mod's Forge build (SCREEN-2).
+- **Screen mouse wrappers** (Forge 52). Forge 52 hands a screen its mouse clicks, releases and drags inside its own
+  event factory, which takes the screen's answer itself, so a Fabric mod's wrapper or redirect of those calls is left
+  out, a known limit the report names (LAMBDA-14): owo-lib's braid layers get no key modifiers with a click or a
+  release, and Architectury's mouse drag event doesn't fire for screens. Forge 61 to 66 hand them through hooks that
+  return the answer, where Architectury's click and release wrappers apply. Use NeoForge, or the mod's Forge build.
+- **The Controls screen's reset** (every Forge version). As on NeoForge, Forge resets every key binding with its own
+  `setToDefault`, so JEI's Fabric build doesn't reset its own key modifiers then (LAMBDA-14).
+- **Item tooltips in container screens** (Forge 61 to 66). Forge hands a container screen's item tooltip to its own
+  overload taking the item, which works out the tooltip's style from it, so a wrapper or redirect of vanilla's call
+  there is left out, a known limit the report names (SCREEN-3): ShulkerBoxTooltip's container previews in tooltips.
+  Use NeoForge, or the mod's Forge build.
 - **Fields and parameters Forge retyped** (every Forge version). Forge types `RangedBowAttackGoal`'s mob as any
   `Mob`, so Debugify's fix for MC-121706, written for vanilla's `Monster`, is left out. The report names what the
   field or the method's parameters are now (PRE-32).
