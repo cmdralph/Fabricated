@@ -29,9 +29,20 @@ What changed, and how it was verified, newest first. What is open and what comes
   in code only: fields, a mixin's shadows of them, its accessors and invokers, its selectors without an owner and
   strings naming `com/mojang/blaze3d`'s members kept the official names. Pre-flight refused Iris 1.6 on Forge 43, and
   let through, its renderer setup hook was left out and the client stopped. All of these take SRG's names now.
+- **SEC-12** (P1), fixed: remapping a Fabric jar's strings took time growing with the square of a run of letters, and a
+  string of a few thousand path segments overflowed the stack: TOKEN-1's pattern for a class Intermediary keeps with
+  nested classes it names, on every platform, and PLAIN-2's member references, before integration. The patterns now
+  start only where no identifier or path character comes before them, and take their parts possessively.
+- **Review fixes to PLAIN-2 before integration:** a mixin's selector by name alone takes the name of the one overload
+  Mixin picks there, the first of that name in the game's class, and stays a name alone (it had become a selector per
+  overload, on Forge 47 too, where a refmap's pin was then lost); a selector the refmap keys is left to the refmap; a
+  member a mixin's targets name apart stays, with a note; an empty accessor target is left out for the inferred one;
+  an accessor takes the one field whose name differs only in case, as Mixin does. PLAT-8's rule holds for a jar of a
+  library's classes with mixin configs too (PLAT-7's check). What PLAIN-2 still leaves is in `roadmap.md`.
 - **1.19.2 in beta:** the support matrix has a Forge 1.19.2 column, with what doesn't work there in its notes and under
   *Unsupported on Forge*; the README, the bug report form and the roadmap name it.
-- Verified (local runs, 2026-11-17): core's tests and CI's script tests; both versions build; Forge 43's and 47's
+- Verified (local runs, 2026-11-17 and 18): core's tests and CI's script tests, Forge 43's and 47's descriptor test
+  (`loaderTest`); both versions build; Forge 43's and 47's
   server and client parts pass; on Forge 43 the mods part's plugin hosts, malilib and Essential runs pass (Modrinth has
   no Flashback for 1.19.2), and Sodium with Indium and Iris with them reach their world, every smoke check passing; the
   mixin inventory matches the sources.
