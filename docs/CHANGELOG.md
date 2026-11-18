@@ -3,6 +3,29 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-18: Supplementaries' lumisene on NeoForge and Forge (LEAVE-6)
+
+- **LEAVE-6** (P0 on NeoForge 21.1 and Forge 47 and 52 with Supplementaries' Fabric build), fixed: lit lumisene sets the
+  blocks around it alight through vanilla's `FireBlock.checkBurnOut`, which NeoForge and Forge 52 to 66 give the side the
+  fire comes from, and Forge 43 and 47 replace with `tryCatchFire`, taking it too. The mod's invoker of vanilla's method
+  was left out, and once lumisene burnt the blocks around it the call failed and the server stopped. Where the
+  platform's method only passes such a parameter on to its extensions, whose defaults ignore it, and does nothing else
+  vanilla's doesn't, which Fabricated checks in the platform's classes as the mod is translated, the game class gets a
+  method with vanilla's parameters that calls the platform's with the value the platform's own first call passes (here
+  the west side), and the mod's invoker calls that. Any Fabric mod's invoker of such a method is served the same way.
+- **What differs:** a NeoForge or Forge mod's block that overrides the flammability or caught-fire extension is asked
+  for the west side, whatever side the invoking mod meant. Blocks keeping the platform's defaults ignore the side.
+- **Where it can't be served:** where the platform's method uses the parameter otherwise, the invoker is left out as
+  before, and the report says what the method does with it, a known limit.
+- **Checks:** `vanilla-fire-invoker`: the test mod's invoker of vanilla's `checkBurnOut` burns oak planks on every
+  platform.
+
+Verified with core's unit tests, CI's script tests and the mixin inventory on the three branches. Pre-flight on the
+`FireBlock` classes of NeoForge 21.1, 21.11 and 26.1.2 and Forge 43, 47, 52, 61, 64, 65 and 66 bridges the invoker on
+each. NeoForge 1.21.1, Forge 52 and Forge 47 built, and their servers' runs pass, the test mod's invoker burning the
+planks; on NeoForge 1.21.1 without the change it failed pre-flight. In their server corpus runs Supplementaries'
+invoker is the only left-out line that changed, now served.
+
 ## 2026-11-18: Fabric's renderer API on Forge 43, Minecraft 1.19.2 in beta, Sodium and Iris for 1.19.2 (PLAT-8, PLAIN-2)
 
 - **Fabric's renderer API on Forge 43:** it is bridged through Fabric API 0.77's Indigo as on Forge 47, with the same

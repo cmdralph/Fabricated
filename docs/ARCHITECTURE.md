@@ -95,7 +95,8 @@ Fabricated/
 ├── loader/                  Platform-facing glue: common/ (every platform), neoforge/ (FabricCandidateLocator,
 │                            FabricDependencyLocator, FabricLanguageLoader, FabricModContainer, and what changes classes as
 │                            they load, FabricClassTransforms in common/: interface injection, default bridges,
-│                            @Environment members, methods the platform made final, vanilla's methods put back),
+│                            @Environment members, methods the platform made final, vanilla's methods put back,
+│                            invokers' bridges),
 │                            in two variants: src/fml for FML 10 to 12
 │                            (1.21.11, 26.x), src/modlauncher for NeoForge 21.1's FML 4 on ModLauncher (1.21.1),
 │                            each behind its own Fml facade; forge-shared/ (both Forge platforms' discovery
