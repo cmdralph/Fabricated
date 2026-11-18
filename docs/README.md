@@ -18,4 +18,4 @@ with every step of the work.
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | How translation, isolation, caching and security work | The design changes |
 | [`API.md`](API.md) | Fabricated's public API for NeoForge and Fabric mods | The API changes |
 | [`RESEARCH.md`](RESEARCH.md) | Verified facts about NeoForge, FML and Fabric that the design relies on, and the platform decisions (§8) | A fact is checked, or a platform decision changes |
-| [`PORTING.md`](PORTING.md) | The Forge and 1.20.1 ports: the branch model, what of the engine carries over, the build, each port's steps and where it stands | A port's design or a step changes |
+| [`PORTING.md`](PORTING.md) | The Forge, 1.20.1 and 1.19.2 ports: the branch model, what of the engine carries over, the build, each port's steps and where it stands | A port's design or a step changes |

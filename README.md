@@ -35,7 +35,8 @@ says what works on each loader and Minecraft version, and
 | [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) | Minecraft Forge 43 and 47 | 1.19.2 (beta), 1.20.1 | `fabricated-forge-<version>+mc<minecraft>.jar` |
 
 Each platform is on its own branch: `main` holds the shared engine and NeoForge, `forge` and `forge-legacy` the shared
-engine and their own platform, which they get from `main` by merge.
+engine and their own platform. The engine changes on `main` only, and reaches them through a sync pull request
+(`scripts/sync-platform-branch.sh`). Each branch's README says how to install its jars.
 
 ---
 
@@ -110,7 +111,10 @@ starts.
 ## Installing
 
 1. Install NeoForge for your Minecraft version with the official installer (client or server).
-2. Download the Fabricated jar for **your exact Minecraft version**: `fabricated-neoforge-<version>+mc<minecraft>.jar`.
+2. Download the Fabricated jar for **your exact Minecraft version**, `fabricated-neoforge-<version>+mc<minecraft>.jar`,
+   from the [releases](https://github.com/cmdralph/Fabricated/releases) or
+   [CurseForge](https://www.curseforge.com/minecraft/mc-mods/fabricated-neoforge), and check it against the release's
+   `SHA256SUMS.txt`.
 3. Put it in the `mods` folder.
 4. Put your Fabric mods in the same `mods` folder. If they need Fabric API, add the **official Fabric API
    jar** for your Minecraft version. Fabricated doesn't include or download it, and only loads the parts
@@ -134,6 +138,10 @@ lists the Fabric mods that didn't load, with why. `/fabricated why <mod>` tells 
 fix, and `/fabricated disable <mod>` (or `enable <mod>`) switches a mod off (or on) in `config/fabricated.json` from
 the next launch, without editing the file by hand (comments in the file aren't kept). On a server, all but the summary work from the console only.
 
+**The game stopped?** When a Fabric mod is involved, `logs/latest.log` and the crash report hold Fabricated's
+[diagnostics block](docs/COMPATIBILITY.md#troubleshooting-the-diagnostics-block): it names the mod, its mixin or class,
+and what Fabricated does about it.
+
 | You see | Meaning | What to do |
 |---|---|---|
 | "requires X, which is not installed" | A dependency is missing | Install X for the same Minecraft version. If X is a Fabric API module, check the "Disabled" section: it may have been disabled itself. |
@@ -141,6 +149,11 @@ the next launch, without editing the file by hand (comments in the file aren't k
 | "references code that does not exist at runtime" | The mod calls a Minecraft method NeoForge changed or removed | Fabric API modules with this problem are disabled, unless Fabricated loads the module without the one the code needs (the code then never runs). Other mods still load, with a warning, and may crash when that code runs (`strictLinkage: true` disables them too). The mod needs an update. |
 | An error screen naming a Fabric entrypoint | A mod's initializer threw an exception | Update or remove the mod, or set `"onEntrypointFailure": "disable"` to keep loading without it. |
 | "packages … clash" | Two mods ship the same Java package (not allowed on NeoForge) | Remove one. Identical duplicate libraries are de-duplicated automatically. |
+| "Known limit: …" | A documented limit of this loader and Minecraft version, which Fabricated can't work around | The line says what doesn't work and, where there is a way, what to do. Every known limit is in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). |
+
+**Still stuck?** Open an issue with the [bug report form](https://github.com/cmdralph/Fabricated/issues/new?template=bug_report.yml):
+it asks for the loader and the versions, the mod list, `logs/fabric-bridge-report.txt` and `logs/latest.log` (or the
+crash report).
 
 ### Configuration: `config/fabricated.json`
 
@@ -198,7 +211,8 @@ warning in the report, so a bad config never crashes the game.
   under [*Unsupported on Forge*](docs/COMPATIBILITY.md#unsupported-on-forge).
 - **Mixin pre-flight is conservative.** It only reports what it can prove from bytecode. A mixin it can't
   evaluate (wildcard selectors, unusual injection points, a target in another Fabric mod) loads normally. If
-  that mixin later fails as Mixin applies it, Fabricated's diagnostics block, in the log and the crash report, names
+  that mixin later fails as Mixin applies it, Fabricated's
+  [diagnostics block](docs/COMPATIBILITY.md#troubleshooting-the-diagnostics-block), in the log and the crash report, names
   the Fabric mod and the mixin, and the next launch leaves the mixin out. Mixins into Minecraft, Fabric API and
   installed NeoForge mods (a Fabric addon of a mod's NeoForge build) are all checked.
 - **No isolation after mod code runs.** Once a mod's code has run, Java can't unload it. Fabricated then
