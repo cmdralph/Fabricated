@@ -37,6 +37,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.MethodRemapper;
+import org.objectweb.asm.commons.Remapper;
 
 /**
  * Produces the remapped contents of a Fabric jar. Pure bytecode processing: no class is ever loaded.
@@ -481,25 +482,45 @@ public final class JarRemapper {
 		}
 
 		/**
-		 * The runtime name of the first of the target's methods of that name in its class file, which a selector by the
-		 * name alone picks, where the runtime names them apart: the only one's, or, of several runtime names, the first in
-		 * the class's method order. Null where the target has no method of that name that the runtime renames, and
-		 * {@link #UNKNOWN}, noted, where the class's order isn't known.
+		 * The selector, in the runtime's names, of the first of the target's methods of that name in vanilla's class file,
+		 * which a selector by the name alone picks on Fabric, where the runtime renames them: the first in the game class's
+		 * method order of those the mapping table knows, which are vanilla's own (the platform's patches add methods,
+		 * which MCPConfig doesn't name, and keep vanilla's in their order). Its runtime name alone, or with its descriptor
+		 * where the game class has another method of that name. Without the class's order, the only runtime name of the
+		 * name's overloads, where they have one. Null where the target has no method of that name that the runtime
+		 * renames, and {@link #UNKNOWN}, noted, where which is the first isn't known.
 		 */
 		private String firstNamed(String owner, String name) {
 			Map<String, String> overloads = table.plainMethodsNamed(owner, name);
 			if (overloads.isEmpty()) return null;
-			Set<String> names = new HashSet<>(overloads.values());
-			if (names.size() == 1) return names.iterator().next();
 			List<String> order = gameMethods.of(table.mapClass(owner));
 			if (order != null) {
+				Map<String, String> vanilla = new HashMap<>();
+				overloads.forEach((desc, runtime) -> vanilla.put(runtime + runtimeDesc(desc), runtime + desc));
 				for (String method : order) {
-					if (names.contains(method)) return method;
+					String selector = vanilla.get(method);
+					if (selector == null) continue;
+					String runtime = selector.substring(0, selector.indexOf('('));
+					long sameName = order.stream().filter(m -> m.startsWith(runtime + "(")).count();
+					return sameName > 1 ? selector : runtime;
 				}
 			}
+			Set<String> names = new HashSet<>(overloads.values());
+			if (order == null && names.size() == 1) return names.iterator().next();
 			notes.add("Left " + mixin + "'s selector \"" + name + "\" as it is: " + owner.replace('/', '.') + "'s methods of that name have the runtime"
-					+ " names " + new TreeMap<>(overloads) + ", and the class's method order, which tells the one Mixin picks, isn't known (PLAIN-2)");
+					+ " names " + new TreeMap<>(overloads) + ", and which of them is the first in vanilla's class, which Mixin picks, isn't known"
+					+ " (PLAIN-2)");
 			return UNKNOWN;
+		}
+
+		/** A method descriptor in intermediary names, in the runtime's. */
+		private String runtimeDesc(String desc) {
+			return new Remapper() {
+				@Override
+				public String map(String internalName) {
+					return table.mapClass(internalName);
+				}
+			}.mapMethodDesc(desc);
 		}
 
 		/**

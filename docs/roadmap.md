@@ -122,7 +122,9 @@ Open with no ID of their own, each left by a fixed finding:
   owner, a selector with a quantifier (`name*`, `name{2}`), a string's field reference naming a class that inherits
   the field, an access widener's line naming such a member, and Fabric Loader's mapping resolver asked for one keep
   the official name, so the hook, the widening or the lookup finds nothing. No mod seen does any of them; the report
-  names a hook left out so.
+  names a hook left out so. On every platform, a nested class of a class Intermediary keeps by name right after a
+  primitive in a descriptor (`(IL…GlStateManager$class_1017;)V`) keeps its intermediary name (TOKEN-1's token starts
+  at the primitive's letter).
 
 - **What PROVIDER-23 leaves of Fabric API's internals on NeoForge 1.21.11 to 26.3.** A hidden pack's enabled state
   doesn't follow its parents, as upstream's predicate says: NeoForge has no such link, so a required hidden pack is

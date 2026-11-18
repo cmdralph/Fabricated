@@ -457,7 +457,8 @@ class RemapTest {
 		Path jar = TestJars.create().bytes("mod/GlAccessor.class", accessors.toByteArray()).bytes("mod/GlMixin.class", shadows.toByteArray())
 				.bytes("mod/GlUser.class", user.toByteArray()).bytes("mod/RenderMixin.class", hooks.toByteArray()).write(tmp.resolve("gl.jar"));
 		// RenderSystem's methods in its class file's order: a selector by a name alone picks the first of that name.
-		GameMethods order = name -> name.equals("com/mojang/blaze3d/systems/RenderSystem") ? List.of("m_69580_", "m_157179_", "m_157176_", "m_157427_") : null;
+		GameMethods order = name -> name.equals("com/mojang/blaze3d/systems/RenderSystem")
+				? List.of("m_69580_(IZ)V", "m_157179_(ILnet/minecraft/src/C_1_;)V", "m_157176_(II)V", "m_157427_(Ljava/util/function/Supplier;)V") : null;
 		Map<String, byte[]> files;
 		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
 			files = new JarRemapper(t, Supertypes.NONE, order).remap(archive, Set.of()).files();
@@ -529,7 +530,8 @@ class RemapTest {
 		assertNull(t.mapPlainField("net/minecraft/class_9", "getElement"));
 		assertEquals(Map.of(), t.plainFieldsOf("net/minecraft/class_9"), "Forge 47's table has no plain fields");
 		String resolver = "net/minecraft/class_9";
-		GameMethods order = name -> name.equals("net/minecraft/src/C_9_") ? List.of("<init>", "m_278789_", "m_278667_") : null;
+		GameMethods order = name -> name.equals("net/minecraft/src/C_9_")
+				? List.of("<init>()V", "m_278789_(Lnet/minecraft/src/C_2_;)Ljava/util/Optional;", "m_278667_(Lnet/minecraft/src/C_1_;)Ljava/lang/Object;") : null;
 
 		String pinned = "L" + resolver + ";getElement(Lnet/minecraft/class_1;)Ljava/lang/Object;";
 		Path keyed = TestJars.create().bytes("mod/LootMixin.class", injectingMixin("mod/LootMixin", List.of(resolver), "getElement"))
@@ -551,6 +553,24 @@ class RemapTest {
 		}
 		assertEquals(List.of("m_278789_"), injectSelectors(files.get("mod/LootMixin.class")), "the first of the name in the class, by name alone");
 		assertEquals(List.of("m_278667_(Lnet/minecraft/src/C_1_;)Ljava/lang/Object;"), injectSelectors(files.get("mod/DescribedMixin.class")));
+
+		// The order is the game class's, which the platform's patches add methods to: one of its own named so (in Mojang's
+		// names) or under an SRG name of vanilla's, placed first, isn't what Fabric picks. The first of vanilla's own, which
+		// the mapping table knows, is; where the class has another method of its runtime name, its descriptor pins it.
+		GameMethods patched = name -> name.equals("net/minecraft/src/C_9_") ? List.of("getElement(Lnet/minecraftforge/Extra;)Ljava/lang/Object;",
+				"m_278667_(Lnet/minecraftforge/Extra;)Ljava/lang/Object;", "m_278789_(Lnet/minecraft/src/C_2_;)Ljava/util/Optional;",
+				"m_278667_(Lnet/minecraft/src/C_1_;)Ljava/lang/Object;") : null;
+		GameMethods shared = name -> name.equals("net/minecraft/src/C_9_") ? List.of("m_278789_(Lnet/minecraftforge/Extra;)Ljava/util/Optional;",
+				"m_278789_(Lnet/minecraft/src/C_2_;)Ljava/util/Optional;", "m_278667_(Lnet/minecraft/src/C_1_;)Ljava/lang/Object;") : null;
+		try (SafeArchive archive = SafeArchive.open(unkeyed, ArchiveLimits.DEFAULTS)) {
+			files = new JarRemapper(t, Supertypes.NONE, patched).remap(archive, Set.of()).files();
+		}
+		assertEquals(List.of("m_278789_"), injectSelectors(files.get("mod/LootMixin.class")), "the platform's methods placed first aren't picked");
+		try (SafeArchive archive = SafeArchive.open(unkeyed, ArchiveLimits.DEFAULTS)) {
+			files = new JarRemapper(t, Supertypes.NONE, shared).remap(archive, Set.of()).files();
+		}
+		assertEquals(List.of("m_278789_(Lnet/minecraft/src/C_2_;)Ljava/util/Optional;"), injectSelectors(files.get("mod/LootMixin.class")),
+				"vanilla's, pinned by its descriptor where the platform's own of that runtime name comes first");
 	}
 
 	@Test
@@ -661,7 +681,8 @@ class RemapTest {
 				+ "com/mojang/blaze3d/platform/GlStateManager net/minecraft/src/C_3112_ 3112\n\tBLEND f_84066_ 84066\n"), null);
 		List<String> hostile = List.of("L".repeat(1_000_000) + ";(:", "La/b;".repeat(200_000) + "x(", "a/".repeat(500_000) + " x$class_1",
 				"a".repeat(1_000_000) + " b/c$class_1", "a.".repeat(500_000) + "b$class_1", "field_1:L" + "a".repeat(1_000_000),
-				"La/b;c(" + "L".repeat(1_000_000));
+				"La/b;c(" + "L".repeat(1_000_000), "./".repeat(400_000) + "a/b$class_1", "/.".repeat(400_000) + "a.b$class_1 x",
+				"/a".repeat(400_000) + " $class_1");
 		assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
 			for (MappingTable table : List.of(forge43, table())) {
 				TokenRemapper tokens = new TokenRemapper(table);
@@ -888,6 +909,20 @@ class RemapTest {
 		assertEquals("(Lnet/minecraft/world/Entity;Lcom/mojang/blaze3d/opengl/GlStateManager$TextureState;)V",
 				r.remap("(Lnet/minecraft/class_2;Lcom/mojang/blaze3d/opengl/GlStateManager$class_1017;)V"));
 		assertEquals("com/example/Thing$class_9", r.remap("com/example/Thing$class_9"), "a class the table doesn't know stays");
+
+		// After a path's lead, as Class.getResource is asked for a class file: SEC-12's start rule had left these alone.
+		String n = "com/mojang/blaze3d/opengl/GlStateManager$class_1017";
+		String mapped = "com/mojang/blaze3d/opengl/GlStateManager$TextureState";
+		assertEquals("/" + mapped + ".class", r.remap("/" + n + ".class"));
+		assertEquals("./" + mapped, r.remap("./" + n));
+		assertEquals("/" + mapped.replace('/', '.'), r.remap("/" + n.replace('/', '.')));
+		assertEquals("." + mapped.replace('/', '.'), r.remap("." + n.replace('/', '.')));
+		assertEquals(mapped + ".class", r.remap(n + ".class"));
+		assertEquals("[L" + mapped + ";", r.remap("[L" + n + ";"));
+		assertEquals("Ljava/util/List<L" + mapped + ";>;", r.remap("Ljava/util/List<L" + n + ";>;"));
+		assertEquals("{\"" + mapped + "\"}", r.remap("{\"" + n + "\"}"));
+		assertEquals("assets/" + n, r.remap("assets/" + n), "a path in another folder isn't the class");
+		assertEquals("(IL" + n + ";)V", r.remap("(IL" + n + ";)V"), "after a primitive in a descriptor: unmapped, as before SEC-12 (PLAIN-2's limits)");
 	}
 
 	@Test
