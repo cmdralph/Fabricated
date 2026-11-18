@@ -31,16 +31,45 @@ public final class IntermediaryRemapper extends Remapper {
 	private final TokenRemapper tokens;
 	private final Supertypes supertypes;
 	/** By owner, its supertypes, transitively, nearest first, for the methods it inherits (CORPUS-86). */
-	private final Map<String, List<String>> ancestors = new ConcurrentHashMap<>();
+	private final Map<String, List<String>> ancestors;
+	/** The mixin whose class this remapper remaps, or null ({@link #forMixin}). */
+	private final String mixin;
+	/** That mixin's targets. */
+	private final List<String> targets;
+	/** Where a member that mixin's targets name apart is noted. */
+	private final Set<String> apart;
 
 	/**
 	 * @param supertypes the classes this remapper's owners may inherit from: a method Intermediary leaves under its official
 	 *                   name, and the runtime renames, is renamed in an owner that inherits it from one of them (CORPUS-86)
 	 */
 	public IntermediaryRemapper(MappingTable table, Supertypes supertypes) {
+		this(table, new TokenRemapper(table), supertypes, new ConcurrentHashMap<>(), null, List.of(), Set.of());
+	}
+
+	private IntermediaryRemapper(MappingTable table, TokenRemapper tokens, Supertypes supertypes, Map<String, List<String>> ancestors, String mixin,
+			List<String> targets, Set<String> apart) {
 		this.table = table;
-		this.tokens = new TokenRemapper(table);
+		this.tokens = tokens;
 		this.supertypes = supertypes;
+		this.ancestors = ancestors;
+		this.mixin = mixin;
+		this.targets = targets;
+		this.apart = apart;
+	}
+
+	/**
+	 * This remapper for a mixin's class: its own members (its {@code @Shadow}s and its uses of them, which name the mixin
+	 * as their owner) that Intermediary leaves under their official names take the runtime's name its targets give them
+	 * (PLAIN-2: Forge 43 names {@code GlStateManager.BLEND} {@code f_84066_}). Mixin merges a mixin's members into each
+	 * target, so a member its targets name apart is left under its name, and noted in {@code apart}: no one name finds it
+	 * in each (a mixin of {@code DestFactor} and {@code SourceFactor} shadowing their {@code value}).
+	 *
+	 * @param mixin   the mixin's intermediary internal name
+	 * @param targets its targets', as its {@code @Mixin} names them ({@link Supertypes#mixinTargets})
+	 */
+	IntermediaryRemapper forMixin(String mixin, List<String> targets, Set<String> apart) {
+		return new IntermediaryRemapper(table, tokens, supertypes, ancestors, mixin, List.copyOf(targets), apart);
 	}
 
 	/** Rewrites intermediary names inside text (refmaps, service files, string constants) with the same table. */
@@ -73,6 +102,8 @@ public final class IntermediaryRemapper extends Remapper {
 	 */
 	private String plainMethod(String owner, String name, String descriptor) {
 		if (owner != null && table.isPlainMethod(name, descriptor) && table.ownPlainMethod(owner, name, descriptor) == null) {
+			String targets = ofTargets(owner, name, descriptor, false);
+			if (targets != null) return targets;
 			for (String ancestor : ancestors(owner)) {
 				String inherited = table.ownPlainMethod(ancestor, name, descriptor);
 				if (inherited != null) return inherited;
@@ -115,19 +146,38 @@ public final class IntermediaryRemapper extends Remapper {
 
 	/**
 	 * The runtime name of a field Intermediary leaves under its official name and SRG renames, or null: the owner's own,
-	 * else the one the nearest of its supertypes that has it gives it. A mixin's targets count among its supertypes
-	 * ({@link Supertypes#withMixinTargets}), so its {@code @Shadow} of one, and its uses of that, take the target's name:
-	 * Forge 43 names {@code GlStateManager.BLEND} {@code f_84066_}.
+	 * for a mixin's own field its targets' ({@link #forMixin}), else the one the nearest of its supertypes that has it
+	 * gives it.
 	 */
 	private String plainField(String owner, String name) {
 		if (owner == null || !table.isPlainField(name)) return null;
 		String own = table.mapPlainField(owner, name);
 		if (own != null) return own;
+		String targets = ofTargets(owner, name, null, true);
+		if (targets != null) return targets;
 		for (String ancestor : ancestors(owner)) {
 			String inherited = table.mapPlainField(ancestor, name);
 			if (inherited != null) return inherited;
 		}
 		return null;
+	}
+
+	/**
+	 * For the mixin's own member, the runtime name its targets give it, its own name where they name it apart (noted), or
+	 * null where none has it or this is no mixin's class.
+	 */
+	private String ofTargets(String owner, String name, String descriptor, boolean field) {
+		if (mixin == null || !mixin.equals(owner)) return null;
+		Map<String, String> named = new java.util.TreeMap<>();
+		for (String target : targets) {
+			String runtime = field ? table.mapPlainField(target, name) : table.ownPlainMethod(target, name, descriptor);
+			if (runtime != null) named.put(target, runtime);
+		}
+		if (named.isEmpty()) return null;
+		if (new HashSet<>(named.values()).size() == 1) return named.values().iterator().next();
+		apart.add("Left " + owner + "." + name + (field ? "" : descriptor) + " under its name: its mixin's targets name it apart on this platform "
+				+ named + ", so no one name finds it in each (PLAIN-2)");
+		return name;
 	}
 
 	private String mapMember(String owner, String name, String descriptor) {

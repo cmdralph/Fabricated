@@ -118,6 +118,25 @@ class CandidateScannerTest {
 				+ " NeoForge already provides, with mixin configs naming its classes; the bundled copy is not loaded (PLAT-7)"), result.notes().toString());
 	}
 
+	/**
+	 * PLAT-8: where the game lacks a library the platform provides (JOML on Forge 43), a jar of its classes with mixin
+	 * configs is the mod's, as the package guard keeps those classes: PLAT-7's rule took it for the platform's copy. Where
+	 * the game has it, the jar is left out as before.
+	 */
+	@Test
+	void aJarOfALibraryTheGameLacksWithMixinConfigsLoads(@TempDir Path game) throws Exception {
+		Path joml = TestJars.create().fabricModJson(TestJars.modJson("org_joml_joml", "1.10.4", "\"mixins\":[\"joml.mixins.json\"]"))
+				.text("joml.mixins.json", "{\"package\":\"org.joml.mixin\",\"mixins\":[]}")
+				.bytes("org/joml/Matrix4f.class", TestJars.emptyClass("org/joml/Matrix4f", "java/lang/Object"))
+				.write(game.resolve("joml.jar"));
+		CandidateScanner.Result lacking = new CandidateScanner(new TranslationCache(game, true, true), ArchiveLimits.DEFAULTS, "Forge", List.of("org/joml/"))
+				.scan(List.of(joml));
+		assertEquals(List.of("org_joml_joml"), lacking.candidates().stream().map(Candidate::id).toList(), lacking.notes().toString());
+		CandidateScanner.Result providing = new CandidateScanner(new TranslationCache(game, true, true), ArchiveLimits.DEFAULTS, "Forge").scan(List.of(joml));
+		assertEquals(List.of(), providing.candidates(), providing.notes().toString());
+		assertTrue(providing.notes().stream().anyMatch(n -> n.endsWith("(PLAT-7)")), providing.notes().toString());
+	}
+
 	/** As Polymer's bundle nests its packet library: bundled, core, networking, common, then the library (LIMIT-2). */
 	@Test
 	void aLibraryNestedFourJarsDeepLoads(@TempDir Path game) throws Exception {

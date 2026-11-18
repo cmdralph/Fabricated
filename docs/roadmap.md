@@ -113,6 +113,13 @@ Open with no ID of their own, each left by a fixed finding:
   hint says what moves. On Forge 47's corpus servers the hooks still out at STRUCT-1's methods are Lithium's, Fabric
   API's transfer hook and Porting Lib's, each with its reason in the report.
 
+- **What PLAIN-2 leaves under official names on Forge 43** (MCPConfig for 1.19.2 renames the members of the classes
+  the official jar keeps unobfuscated, `com/mojang/blaze3d`'s): an `@At` target naming such a method without its
+  owner, a selector with a quantifier (`name*`, `name{2}`), a string's field reference naming a class that inherits
+  the field, an access widener's line naming such a member, and Fabric Loader's mapping resolver asked for one keep
+  the official name, so the hook, the widening or the lookup finds nothing. No mod seen does any of them; the report
+  names a hook left out so.
+
 - **What PROVIDER-23 leaves of Fabric API's internals on NeoForge 1.21.11 to 26.3.** A hidden pack's enabled state
   doesn't follow its parents, as upstream's predicate says: NeoForge has no such link, so a required hidden pack is
   always on and another is off once its world or the game loads again. Traveler's Backpack's mixin of upstream's
@@ -152,6 +159,9 @@ What the corpus runs still show, each with its reason:
 
 Candidates outside the steps above, each waiting for a mod or a report that needs it:
 
+- One check of whether the platform's game has a library, by package, read off the game's classes, in place of the
+  descriptor's list of the provided libraries its game lacks (`absentLibraryPackages`, PLAT-8) and of the families it
+  ships in part (`PlatformLibraries.PARTIAL_FAMILIES`, PLAT-2).
 - Fabric's level-aware `materialFlags` where NeoForge 26.x asks whether a block is translucent (accuracy, not a fault:
   Fabric's contract allows the context-free answer).
 - A `Map` view of NeoForge's `KeyMappingLookup` for accessors to `KeyMapping.MAP` (KEYMAP-1).

@@ -19,6 +19,11 @@ import java.util.regex.Pattern;
  * the runtime names apart, the descriptor a selector gives right after it ({@code name:desc}, {@code name(desc)ret})
  * picks the member when that alone tells them apart (REMAP-5: a record component's field and its accessor method, which
  * SRG names {@code f_} and {@code m_}).
+ *
+ * <p>The strings are the mod's, up to a refmap's 16 MiB, so no pattern here may scan a run of characters again from each
+ * of its positions (SEC-12): a token that starts without a literal prefix starts only where no identifier or path
+ * character comes before it, and its parts are taken possessively, so a scan of any string takes time in proportion to
+ * its length, and no part recurses once per character.
  */
 public final class TokenRemapper {
 	private static final Pattern CLASS_TOKEN = Pattern.compile("net([/.])minecraft\\1class_\\d+(?:\\$class_\\d+)*");
@@ -28,16 +33,19 @@ public final class TokenRemapper {
 	 * ({@code com/mojang/blaze3d/opengl/GlStateManager$class_1017}). Iris's access widener opens such classes on 1.21.11,
 	 * and ImmediatelyFast's a field of such a type on 1.21.1; unmapped, both lines were dropped (TOKEN-1).
 	 */
-	private static final Pattern NESTED_CLASS_TOKEN = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*(?:([/.])[A-Za-z_][A-Za-z0-9_]*)(?:\\1[A-Za-z_][A-Za-z0-9_]*)*(?:\\$class_\\d+)+");
+	private static final Pattern NESTED_CLASS_TOKEN = Pattern.compile(
+			"(?<![A-Za-z0-9_/.$])[A-Za-z_][A-Za-z0-9_]*+(?:([/.])[A-Za-z_][A-Za-z0-9_]*+)(?:\\1[A-Za-z_][A-Za-z0-9_]*+)*+(?:\\$class_\\d++)++");
 	private static final Pattern MEMBER_TOKEN = Pattern.compile("(?<![A-Za-z0-9_$])(?:method|field|comp)_\\d+(?![A-Za-z0-9_])");
 	/** A member's descriptor in a selector, right after its name: a field's after a colon, or a method's. */
-	private static final Pattern FOLLOWING_DESCRIPTOR = Pattern.compile(":(\\[*(?:[ZBCSIJFD]|L[^;()]+;))|(\\((?:\\[*(?:[ZBCSIJFD]|L[^;()]+;))*\\)\\[*(?:[ZBCSIJFDV]|L[^;()]+;))");
+	private static final Pattern FOLLOWING_DESCRIPTOR = Pattern.compile(
+			":(\\[*+(?:[ZBCSIJFD]|L[^;()]++;))|(\\((?:\\[*+(?:[ZBCSIJFD]|L[^;()]++;))*+\\)\\[*+(?:[ZBCSIJFDV]|L[^;()]++;))");
+	/** An owner in a member reference, {@code Lowner;}, starting where no identifier or path character comes before it. */
+	private static final String OWNER = "(?<![A-Za-z0-9_$/])L([A-Za-z_$][A-Za-z0-9_$]*+(?:/[A-Za-z_$][A-Za-z0-9_$]*+)++);";
 	/** {@code Lowner;name(desc)}, as refmaps and {@code @At} targets name a method. */
-	private static final Pattern METHOD_REFERENCE = Pattern.compile("L([A-Za-z_$][A-Za-z0-9_$]*(?:/[A-Za-z_$][A-Za-z0-9_$]*)+);"
-			+ "([A-Za-z_$][A-Za-z0-9_$]*)(\\((?:\\[*(?:[ZBCSIJFD]|L[^;()]+;))*\\)\\[*(?:[ZBCSIJFDV]|L[^;()]+;))");
+	private static final Pattern METHOD_REFERENCE = Pattern.compile(OWNER
+			+ "([A-Za-z_$][A-Za-z0-9_$]*+)(\\((?:\\[*+(?:[ZBCSIJFD]|L[^;()]++;))*+\\)\\[*+(?:[ZBCSIJFDV]|L[^;()]++;))");
 	/** {@code Lowner;name:desc}, as refmaps and {@code @At} targets name a field. */
-	private static final Pattern FIELD_REFERENCE = Pattern.compile("L([A-Za-z_$][A-Za-z0-9_$]*(?:/[A-Za-z_$][A-Za-z0-9_$]*)+);"
-			+ "([A-Za-z_$][A-Za-z0-9_$]*):\\[*(?:[ZBCSIJFD]|L[^;()]+;)");
+	private static final Pattern FIELD_REFERENCE = Pattern.compile(OWNER + "([A-Za-z_$][A-Za-z0-9_$]*+):\\[*+(?:[ZBCSIJFD]|L[^;()]++;)");
 	/** An owner Intermediary names: a method reference naming another is judged by that owner alone. */
 	private static final Pattern MINECRAFT_OWNER = Pattern.compile("net/minecraft/class_\\d+(?:\\$class_\\d+)*");
 
