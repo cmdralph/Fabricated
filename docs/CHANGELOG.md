@@ -32,9 +32,11 @@ What changed, and how it was verified, newest first. What is open and what comes
 - **SEC-12** (P1), fixed: remapping a Fabric jar's strings took time growing with the square of a run of letters, and a
   string of a few thousand path segments overflowed the stack: TOKEN-1's pattern for a class Intermediary keeps with
   nested classes it names, on every platform, and PLAIN-2's member references, before integration. The patterns now
-  start only where no identifier or path character comes before them, and take their parts possessively.
+  start only where no identifier or path character comes before them (a nested class token after a path's lead,
+  `/`, `./` or `.`, keeping it), and take their parts possessively.
 - **Review fixes to PLAIN-2 before integration:** a mixin's selector by name alone takes the name of the one overload
-  Mixin picks there, the first of that name in the game's class, and stays a name alone (it had become a selector per
+  Mixin picks on Fabric, the first of vanilla's of that name in the game's class, and stays a name alone (pinned by its
+  descriptor where the platform's class has another method of that runtime name) (it had become a selector per
   overload, on Forge 47 too, where a refmap's pin was then lost); a selector the refmap keys is left to the refmap; a
   member a mixin's targets name apart stays, with a note; an empty accessor target is left out for the inferred one;
   an accessor takes the one field whose name differs only in case, as Mixin does. PLAT-8's rule holds for a jar of a
