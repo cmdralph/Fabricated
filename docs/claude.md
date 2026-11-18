@@ -27,7 +27,7 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the p
   branch for it: it would bring its platform along, and a second merge base, which GitHub reports as a conflict and on
   which no CI runs. Before a release every platform branch is synced with `main`. 1.20.1 targets Forge 47.4, and modern
   Forge builds with ForgeGradle (`RESEARCH.md` §8).
-- **Shared modules stay Java 17** (the owner's decision D2, 2026-10-21): `core`, `api` and `fabric-loader-api` compile
+- **Shared modules stay Java 17** (`RESEARCH.md` §8, D2): `core`, `api` and `fabric-loader-api` compile
   their main code with `release = 17`, so the build rejects what 1.19.2's and 1.20.1's Java 17 can't load. Not
   available there: a `List`'s `getFirst`/`getLast`/`removeFirst`/`addFirst` (Java 21's sequenced collections: use
   `get(0)`, `get(size() - 1)`, `remove(0)`, `add(0, e)`; a `Deque`'s and ASM's `InsnList`'s own methods are fine),
@@ -44,7 +44,7 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the p
   that can't be checked is marked `UNVERIFIED` in `roadmap.md`.
 - **Behaviour changes only fix a proven defect.** The commit message names the file, the failure and why tests
   missed it.
-- **Commits batch a concern, not a file** (the owner's decision, 2026-10-21): related changes (a fix with its tests
+- **Commits batch a concern, not a file:** related changes (a fix with its tests
   and docs, a round of core bytecode work, the CI changes of a pass) go in one commit, made once they are done and
   checked, not after each edit. The subject is a strict Conventional Commit, `type(scope): summary` (`fix(preflight):`,
   `feat(core):`, `fix(security):`, `ci:`, `docs:`); the body says why, and for a fix, why the tests missed it.
@@ -53,7 +53,7 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the p
 - **Pull requests are merged once CI is green on their final commit:** drive the PR to green, squash-merge it (every
   pull request, sync pull requests included) with a title that is a Conventional Commit summarising the pull request,
   then continue on the working branch. Never force-push or reset a branch without the owner's say.
-- **Local first, one pull request per task** (the owner's decision, 2026-10-27): verify locally (the `coreOnly`
+- **Local first, one pull request per task:** verify locally (the `coreOnly`
   build, the touched version's jars and test mods, a local server smoke where it helps: *Building and verifying*),
   commit in logical steps and push in batches. Each push gets the unit tests and CI's fast job (one touched version on
   a server). The full matrix runs once a task is done, on its pull request into `main`, `forge` or `forge-legacy`, and
