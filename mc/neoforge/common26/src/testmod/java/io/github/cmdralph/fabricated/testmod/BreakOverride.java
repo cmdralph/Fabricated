@@ -4,6 +4,7 @@ import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.TriState;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -23,7 +24,8 @@ import net.neoforged.neoforge.common.ItemAbility;
  * {@link VanillaHarvestTest}, SEAM-4): it overrides NeoForge's {@code onDestroyedByPlayer}, leaving amethyst where a
  * player breaks it, {@code canHarvestBlock}, answering its harvest check itself, {@code getFriction}, answering its
  * friction itself ({@link VanillaFrictionTest}, SEAM-8), and {@code getToolModifiedState}, making the shovel's path amethyst
- * ({@link VanillaShovelTest}, SEAM-13).
+ * ({@link VanillaShovelTest}, SEAM-13), and {@code canSustainPlant} and {@code isFertile}, answering a
+ * crop's soil checks itself ({@link VanillaGrowthTest}, SEAM-12).
  */
 final class BreakOverride extends Block {
 	BreakOverride(Properties properties) {
@@ -52,6 +54,18 @@ final class BreakOverride extends Block {
 	@Override
 	public BlockState getToolModifiedState(BlockState state, UseOnContext context, ItemAbility action, boolean simulate) {
 		return "shovel_flatten".equals(action.name()) ? Blocks.AMETHYST_BLOCK.defaultBlockState() : null;
+	}
+
+	// The platform's soil checks, answered by the block itself, as moist farmland (SEAM-12): vanilla's farmland and moisture
+	// checks in a crop's growth speed aren't put back for it.
+	@Override
+	public TriState canSustainPlant(BlockState state, BlockGetter level, BlockPos soilPosition, Direction facing, BlockState plant) {
+		return TriState.TRUE;
+	}
+
+	@Override
+	public boolean isFertile(BlockState state, BlockGetter level, BlockPos pos) {
+		return true;
 	}
 
 	// Compile-time only: javac sees Fabric's and NeoForge's getAppearance defaults on Block and needs a subclass written

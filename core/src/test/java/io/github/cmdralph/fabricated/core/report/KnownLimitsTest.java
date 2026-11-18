@@ -202,15 +202,18 @@ class KnownLimitsTest {
 	 * LIMIT-3: the documented limits of one mod's hooks, each matched on the release's own lines (Supplementaries' invoker
 	 * on NeoForge 21.1 and Forge 52, LEAVE-5; Additional Entity Attributes' water speed, FLUID-5; Reach Entity Attributes
 	 * and Porting Lib on Forge 47, ATTR-2 and HOOK-5; Ledger's campfire hook, LOCAL-6; OneConfig's key mapping accessor,
-	 * KEYMAP-1; Balm's and Farmer's Delight's plant hooks, SEAM-12; FrozenLib's and Lithium's hopper hooks, SEAM-14; the
-	 * fluid hooks of Lithium, Wilder Wild, FrozenLib, Expandability, Artifacts and Milk Lib, SEAM-9), where the report named none. The lines next to them stay as they were: Supplementaries' invoker on Forge
-	 * 47 (STRUCT-2), Porting Lib's hooks another limit names (SEAM-4, SEAM-6), its GUI utilities' failure (CORPUS-93) and
-	 * Additional Entity Attributes' dig speed hook.
+	 * KEYMAP-1; Farmer's Delight's cactus, mushroom and stem hooks, SEAM-12; FrozenLib's and Lithium's hopper hooks, SEAM-14;
+	 * the fluid hooks of Lithium, Wilder Wild, FrozenLib, Expandability, Milk Lib and, on Forge, Fabric API's content
+	 * registries, SEAM-9), where the report named none. The lines next to them stay as they were: Supplementaries' invoker on
+	 * Forge 47 (STRUCT-2), Porting Lib's hooks another limit names (SEAM-4, SEAM-6), its GUI utilities' failure (CORPUS-93)
+	 * and Additional Entity Attributes' dig speed hook; and the hooks whose vanilla calls go back now, which no limit names
+	 * (Balm's and Farmer's Delight's of a crop's growth speed, SEAM-12; Artifacts' of the mining speed's eye check and
+	 * FrozenLib's of the air bubbles', SEAM-9).
 	 */
 	@Test
 	void theDocumentedLimitsOfOneModsHooksAreNamedOnTheReleasesLines() throws IOException {
 		List<Reported> lines = releaseLines();
-		assertEquals(139, lines.size());
+		assertEquals(144, lines.size());
 		for (Reported r : lines) {
 			String limit = KnownLimits.ofFinding(r.loader(), r.finding());
 			if (r.limit().equals("-")) {

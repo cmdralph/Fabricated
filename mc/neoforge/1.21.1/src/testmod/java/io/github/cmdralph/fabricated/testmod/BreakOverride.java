@@ -17,13 +17,15 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 import net.neoforged.neoforge.common.ItemAbilities;
 import net.neoforged.neoforge.common.ItemAbility;
+import net.neoforged.neoforge.common.util.TriState;
 
 /**
  * A block of the platform's kind for the vanilla block breaking and harvest checks ({@link VanillaBreakTest}, SEAM-3;
  * {@link VanillaHarvestTest}, SEAM-4): it overrides NeoForge's {@code onDestroyedByPlayer} (NeoForge 21.1's, without
  * the tool), leaving amethyst where a player breaks it, {@code canHarvestBlock}, answering its harvest check itself,
  * {@code getFriction}, answering its friction itself ({@link VanillaFrictionTest}, SEAM-8), and {@code getToolModifiedState},
- * making the shovel's path amethyst ({@link VanillaShovelTest}, SEAM-13).
+ * making the shovel's path amethyst ({@link VanillaShovelTest}, SEAM-13), and {@code canSustainPlant} and {@code isFertile},
+ * answering a crop's soil checks itself ({@link VanillaGrowthTest}, SEAM-12).
  */
 final class BreakOverride extends Block {
 	BreakOverride(Properties properties) {
@@ -51,6 +53,18 @@ final class BreakOverride extends Block {
 	@Override
 	public BlockState getToolModifiedState(BlockState state, UseOnContext context, ItemAbility action, boolean simulate) {
 		return action == ItemAbilities.SHOVEL_FLATTEN ? Blocks.AMETHYST_BLOCK.defaultBlockState() : null;
+	}
+
+	// The platform's soil checks, answered by the block itself, as moist farmland (SEAM-12): vanilla's farmland and moisture
+	// checks in a crop's growth speed aren't put back for it.
+	@Override
+	public TriState canSustainPlant(BlockState state, BlockGetter level, BlockPos soilPosition, Direction facing, BlockState plant) {
+		return TriState.TRUE;
+	}
+
+	@Override
+	public boolean isFertile(BlockState state, BlockGetter level, BlockPos pos) {
+		return true;
 	}
 
 	// Compile-time only: javac sees Fabric's and NeoForge's getAppearance defaults on Block and needs a subclass written

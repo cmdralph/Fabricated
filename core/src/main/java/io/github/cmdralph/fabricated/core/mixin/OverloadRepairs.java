@@ -265,6 +265,200 @@ final class OverloadRepairs extends PreflightPart {
 	}
 
 	/**
+	 * Points an injector at vanilla's method whose parameter the platform's class gave another type (SEAM-12): NeoForge's
+	 * {@code CropBlock.getGrowthSpeed} takes the crop's {@code BlockState} where vanilla's takes its {@code Block}, and its
+	 * first statement works the block out of it ({@code Block type = state.getBlock()}), into a local its code reads where
+	 * vanilla's reads the parameter; the class no longer declares vanilla's method, every caller passing the state (read in
+	 * NeoForge 21.1.265, 21.11.45 and the patches of 26.1.2.116 to 26.3.0.95). Balm's hooks name vanilla's method by its
+	 * descriptor, which isn't there; Farmer's Delight Refabricated's by its name alone, which Mixin takes for the platform's,
+	 * its handler then taking a {@code Block} the method doesn't have. Told from the code, against vanilla's class
+	 * (VANILLA-1): the class declares one method of that name, staticness and result with the same parameters but one,
+	 * of another reference type, whose first instructions load that parameter, call a method of it without arguments
+	 * answering vanilla's type and store the answer in a local stored nowhere else, the parameter itself never stored; and
+	 * vanilla's method never stores its parameter. The injector is pointed at the platform's method; a handler taking the
+	 * method's parameters (an {@code @Inject}'s before its callback info, any other's after its own) gets them from a bridge
+	 * taking the platform's, which gives it what the method works out in that parameter's place
+	 * ({@link HandlerBridges#retypedParameterBridge}). A local the handler takes by its type alone or by its ordinal among
+	 * those of the platform's parameter type ({@code @ModifyVariable}'s, a MixinExtras {@code @Local}'s), whose locals are
+	 * vanilla's in the platform's method (the same names, in order, by the local variable tables), counts the parameter
+	 * first, as Mixin does: its ordinal is vanilla's plus one, a lone one's 1. Not for an {@code @Inject} capturing locals,
+	 * nor a local taken by its slot, its name or among the arguments. Returns a description of each move.
+	 */
+	List<String> retypedParameterRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx, List<MethodNode> bridges) {
+		if (!(Annotations.value(injector, "method") instanceof List<?> selectors) || Annotations.value(injector, "locals") != null
+				|| (mixin.access & Opcodes.ACC_INTERFACE) != 0) return List.of();
+		ClassNode vanilla = vanillaClass(target.name);
+		if (vanilla == null) return List.of();
+		List<String> moved = new ArrayList<>();
+		for (int s = 0; s < selectors.size(); s++) {
+			if (!(selectors.get(s) instanceof String raw)) continue;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.name() == null) continue;
+			List<MethodNode> named = vanilla.methods.stream().filter(m -> m.name.equals(ref.name()) && (ref.desc() == null || m.desc.equals(ref.desc()))).toList();
+			if (named.size() != 1) continue;
+			MethodNode before = named.get(0);
+			if (PreflightAsm.declared(target, before.name, before.desc) != null) continue;
+			Retyped retyped = retyped(before, target);
+			if (retyped == null) continue;
+			// The handler's parameter taking vanilla's (an @Inject's among the method's parameters first, any other's after its own).
+			int at = -1;
+			List<Type> args = PreflightAsm.handlerArgs(handler);
+			Type[] params = Type.getArgumentTypes(before.desc);
+			if (args == null) continue;
+			if (injector.desc.equals(MixinNames.INJECT)) {
+				if (args.isEmpty() || !PreflightAsm.isCallbackInfo(args.get(args.size() - 1))) continue;
+				if (args.size() > 1) {
+					if (!args.subList(0, Math.min(params.length, args.size() - 1)).equals(List.of(params)) || args.size() - 1 != params.length) continue;
+					at = retyped.index();
+				}
+			} else {
+				int prefix = capturedPrefix(handler, before);
+				if (prefix > retyped.index()) at = handlerIndex(handler, args.size() - prefix + retyped.index());
+			}
+			List<Runnable> counted = countingTheParameter(handler, injector, retyped, before, ctx);
+			if (counted == null) continue;
+			counted.forEach(Runnable::run);
+			@SuppressWarnings("unchecked")
+			List<Object> values = (List<Object>) selectors;
+			values.set(s, retyped.method().name + retyped.method().desc);
+			if (at >= 0) {
+				bridges.add(HandlerBridges.retypedParameterBridge(mixin.name, handler, injector, at, Type.getArgumentTypes(retyped.method().desc)[retyped.index()],
+						retyped.getter(), HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
+			}
+			String vanillaType = params[retyped.index()].getClassName(), platformType = Type.getArgumentTypes(retyped.method().desc)[retyped.index()].getClassName();
+			moved.add(before.name + before.desc + ", which " + loader + "'s " + target.name.substring(target.name.lastIndexOf('/') + 1) + " declares as "
+					+ retyped.method().name + retyped.method().desc + ", taking a " + platformType.substring(platformType.lastIndexOf('.') + 1) + " for the "
+					+ vanillaType.substring(vanillaType.lastIndexOf('.') + 1) + " it works out of it first (" + retyped.getter().name + "()) and reads in its place;"
+					+ " the injector is pointed there" + (at >= 0 ? ", its handler given that " + vanillaType.substring(vanillaType.lastIndexOf('.') + 1) : "")
+					+ (counted.isEmpty() ? "" : ", and the locals of type " + platformType + " it takes counted past that parameter, as Mixin counts them")
+					+ " (SEAM-12)");
+		}
+		return moved;
+	}
+
+	/** The platform's method in place of vanilla's whose parameter at {@code index} it retyped, and the call working vanilla's out of it. */
+	record Retyped(MethodNode method, int index, MethodInsnNode getter) {
+	}
+
+	/** {@link #retypedParameterRepairs}'s platform method for vanilla's {@code before} in {@code target}, told from both one's code; null where there is none. */
+	static Retyped retyped(MethodNode before, ClassNode target) {
+		Type[] vanillaParams = Type.getArgumentTypes(before.desc);
+		Retyped found = null;
+		for (MethodNode m : target.methods) {
+			if (!m.name.equals(before.name) || (m.access & Opcodes.ACC_STATIC) != (before.access & Opcodes.ACC_STATIC) || m.instructions == null
+					|| !Type.getReturnType(m.desc).equals(Type.getReturnType(before.desc))) continue;
+			Type[] params = Type.getArgumentTypes(m.desc);
+			if (params.length != vanillaParams.length) continue;
+			int index = -1;
+			for (int i = 0; i < params.length; i++) {
+				if (params[i].equals(vanillaParams[i])) continue;
+				if (index >= 0 || params[i].getSort() != Type.OBJECT || vanillaParams[i].getSort() != Type.OBJECT) {
+					index = -2;
+					break;
+				}
+				index = i;
+			}
+			if (index < 0) continue;
+			int slot = parameterSlot(m, index);
+			List<AbstractInsnNode> first = new ArrayList<>();
+			for (AbstractInsnNode insn = m.instructions.getFirst(); insn != null && first.size() < 3; insn = insn.getNext()) {
+				if (insn.getOpcode() >= 0) first.add(insn);
+			}
+			if (first.size() < 3 || !(first.get(0) instanceof VarInsnNode load) || load.getOpcode() != Opcodes.ALOAD || load.var != slot
+					|| !(first.get(1) instanceof MethodInsnNode getter) || getter.getOpcode() == Opcodes.INVOKESTATIC || getter.getOpcode() == Opcodes.INVOKESPECIAL
+					|| !getter.desc.equals("()" + vanillaParams[index].getDescriptor()) || !(first.get(2) instanceof VarInsnNode store)
+					|| store.getOpcode() != Opcodes.ASTORE || store.var < firstLocalSlot(m)) continue;
+			if (stores(m, slot) != 0 || stores(m, store.var) != 1 || stores(before, parameterSlot(before, index)) != 0) continue;
+			if (found != null) return null;
+			found = new Retyped(m, index, getter);
+		}
+		return found;
+	}
+
+	/** How many times {@code method} stores into {@code slot}. */
+	private static int stores(MethodNode method, int slot) {
+		int n = 0;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof VarInsnNode var && var.var == slot && var.getOpcode() >= Opcodes.ISTORE && var.getOpcode() <= Opcodes.ASTORE) n++;
+			if (insn instanceof IincInsnNode inc && inc.var == slot) n++;
+		}
+		return n;
+	}
+
+	/** The slot of {@code method}'s parameter at {@code index}. */
+	private static int parameterSlot(MethodNode method, int index) {
+		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		Type[] params = Type.getArgumentTypes(method.desc);
+		for (int i = 0; i < index; i++) slot += params[i].getSize();
+		return slot;
+	}
+
+	/** The index among the handler's parameters of its {@code nth} that isn't MixinExtras sugar. */
+	private static int handlerIndex(MethodNode handler, int nth) {
+		Type[] own = Type.getArgumentTypes(handler.desc);
+		for (int i = 0, seen = 0; i < own.length; i++) {
+			boolean sugar = Annotations.ofParameter(handler, i).stream().anyMatch(a -> a.desc.startsWith("Lcom/llamalad7/mixinextras/sugar/"));
+			if (!sugar && seen++ == nth) return i;
+		}
+		return -1;
+	}
+
+	/**
+	 * The changes making the locals the handler takes by the platform's parameter type count that parameter first, as Mixin
+	 * counts it ({@link #retypedParameterRepairs}); none where it takes none so; null where one can't be told so. A local
+	 * taken by its type alone, the one of that type vanilla's code had there, is the platform's method's one local of the
+	 * type past its parameters in scope at each of the injector's points (by its local variable table): ordinal 1, the
+	 * parameter's 0. One taken by its ordinal among vanilla's needs vanilla's locals of the type to be the platform's, the
+	 * same names in order in both one's tables, which a game jar without them (1.21.1's, obfuscated) can't show. Not one
+	 * taken by its slot, its name or among the arguments.
+	 */
+	private static List<Runnable> countingTheParameter(MethodNode handler, AnnotationNode injector, Retyped retyped, MethodNode before, Context ctx) {
+		String desc = Type.getArgumentTypes(retyped.method().desc)[retyped.index()].getDescriptor();
+		List<AnnotationNode> discriminators = new ArrayList<>();
+		if (injector.desc.equals(MixinNames.MODIFY_VARIABLE) && Type.getReturnType(handler.desc).getDescriptor().equals(desc)) discriminators.add(injector);
+		Type[] own = Type.getArgumentTypes(handler.desc);
+		for (int p = 0; p < own.length; p++) {
+			if (!own[p].getDescriptor().equals(desc)) continue;
+			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+				if (local.desc.equals(MixinNames.LOCAL)) discriminators.add(local);
+			}
+		}
+		if (discriminators.isEmpty()) return List.of();
+		MethodNode method = retyped.method();
+		List<Runnable> changes = new ArrayList<>();
+		for (AnnotationNode d : discriminators) {
+			if (Annotations.value(d, "index") != null || Annotations.value(d, "name") != null || Boolean.TRUE.equals(Annotations.value(d, "argsOnly"))) return null;
+			Object ordinal = Annotations.value(d, "ordinal");
+			if (ordinal != null && !(ordinal instanceof Integer)) return null;
+			int shifted;
+			if (ordinal instanceof Integer n && n >= 0) {
+				List<String> vanillas = localNames(before, desc, firstLocalSlot(before));
+				if (vanillas == null || !vanillas.equals(localNames(method, desc, firstLocalSlot(method)))) return null;
+				shifted = n + 1;
+			} else {
+				List<Integer> points = LocalRepairs.mixinPoints(injector, method, ctx);
+				if (points == null || points.isEmpty() || method.localVariables == null) return null;
+				for (int point : points) {
+					long inScope = method.localVariables.stream().filter(lv -> lv.index >= firstLocalSlot(method) && lv.desc.equals(desc)
+							&& method.instructions.indexOf(lv.start) <= point && point < method.instructions.indexOf(lv.end)).count();
+					if (inScope != 1) return null;
+				}
+				shifted = 1;
+			}
+			changes.add(() -> Annotations.put(d, "ordinal", shifted));
+		}
+		return changes;
+	}
+
+	/** The names of {@code method}'s locals of type {@code desc} from {@code from} on, by slot then scope, by its local variable table; null without one. */
+	private static List<String> localNames(MethodNode method, String desc, int from) {
+		if (method.localVariables == null || method.localVariables.isEmpty()) return null;
+		return method.localVariables.stream().filter(lv -> lv.index >= from && lv.desc.equals(desc))
+				.sorted(java.util.Comparator.<LocalVariableNode>comparingInt(lv -> lv.index).thenComparingInt(lv -> method.instructions.indexOf(lv.start)))
+				.map(lv -> lv.name).toList();
+	}
+
+	/**
 	 * Points an {@code @Inject} at a method its target class no longer declares, where vanilla's class overrode it, at the
 	 * overload the platform's class overrides in its place (PRE-24). The platform added the overload to the superclass,
 	 * whose method now only passes its parameters, with a value it works out or defaults ({@link #insertedParameter},

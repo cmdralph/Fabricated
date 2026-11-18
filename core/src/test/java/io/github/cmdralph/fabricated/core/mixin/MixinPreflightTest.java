@@ -15074,6 +15074,200 @@ class MixinPreflightTest {
 		assertTrue(installed.holdsPackageOf("com/othermod/api/Gone"));
 	}
 
+	private static final String GROWING = "net/minecraft/world/level/block/CropBlock";
+	private static final String GROWN_BLOCK = "net/minecraft/world/level/block/Block";
+	private static final String GROWN_STATE = "net/minecraft/world/level/block/state/BlockState";
+	private static final String GROWTH_DESC = "(Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)F";
+	private static final String RETYPED_DESC = "(L" + GROWN_STATE + ";Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)F";
+	private static final String SHARE = "Lcom/llamalad7/mixinextras/sugar/Share;";
+
+	/**
+	 * The game's stand-ins and {@code CropBlock.getGrowthSpeed}: vanilla's, taking the crop's block, or (with {@code first},
+	 * the statement its platform form starts with) the platform's, taking its state and working the block out of it first.
+	 * Its body is vanilla's, a soil's farmland check and the neighbours' check of the crop's block.
+	 */
+	private static Map<String, String> growingSources(String first) {
+		String param = first == null ? "Block block" : "BlockState state";
+		return Map.of(
+				"net/minecraft/core/BlockPos.java", "package net.minecraft.core; public record BlockPos(int y) { public BlockPos below() { return new BlockPos(y - 1); } }",
+				"net/minecraft/world/level/BlockGetter.java", "package net.minecraft.world.level; public interface BlockGetter {"
+						+ " net.minecraft.world.level.block.state.BlockState getBlockState(net.minecraft.core.BlockPos pos); }",
+				"net/minecraft/world/level/block/Block.java", "package net.minecraft.world.level.block; public class Block { }",
+				"net/minecraft/world/level/block/Blocks.java", "package net.minecraft.world.level.block; public class Blocks { public static final Block FARMLAND = new Block(),"
+						+ " STONE = new Block(); }",
+				"net/minecraft/world/level/block/state/BlockState.java", "package net.minecraft.world.level.block.state; public class BlockState {"
+						+ " public net.minecraft.world.level.block.Block getBlock() { return null; } public boolean is(net.minecraft.world.level.block.Block block) {"
+						+ " return false; } }",
+				"net/minecraft/world/level/block/CropBlock.java", """
+						package net.minecraft.world.level.block;
+						import net.minecraft.core.BlockPos;
+						import net.minecraft.world.level.BlockGetter;
+						import net.minecraft.world.level.block.state.BlockState;
+						public class CropBlock extends Block {
+							protected static float getGrowthSpeed(%s, BlockGetter level, BlockPos pos) {
+								%s
+								float speed = 1.0F;
+								float soilSpeed = 0.0F;
+								BlockState soil = level.getBlockState(pos.below());
+								if (soil.is(Blocks.FARMLAND)) soilSpeed = 1.0F;
+								soilSpeed /= 4.0F;
+								speed += soilSpeed;
+								if (level.getBlockState(pos).is(block)) speed /= 2.0F;
+								return speed;
+							}
+						}""".formatted(param, first == null ? "" : first));
+	}
+
+	/**
+	 * SEAM-12: NeoForge's {@code CropBlock.getGrowthSpeed} takes the crop's state where vanilla's takes its block, working
+	 * the block out first ({@code Block block = state.getBlock()}); the class has no vanilla method. Balm's hooks name
+	 * vanilla's method by its descriptor (one capturing the soil's state by its type alone, one modifying the soil's speed
+	 * with the method's parameters and a {@code @Share}); Farmer's Delight Refabricated's by its name, its handler taking the
+	 * parameters; a wrapper of the neighbours' check takes them after its operation. Each is pointed at NeoForge's method,
+	 * a handler taking the parameters bridged to be given {@code state.getBlock()}, and the local taken by its type counted
+	 * past the state, as Mixin counts it: nothing is left out. Where the method doesn't work vanilla's parameter out first
+	 * so, or the locals of the type aren't vanilla's, the hooks stay out as before.
+	 */
+	@Test
+	void hooksOfAMethodWhosePlatformFormRetypedAParameterArePointedThereGivenWhatItWorksOut(@TempDir Path dir) throws Exception {
+		Map<String, byte[]> vanilla = TestSources.compileWithLocals(dir.resolve("vanilla"), growingSources(null));
+		Map<String, byte[]> platform = TestSources.compileWithLocals(dir.resolve("platform"), growingSources("Block block = state.getBlock();"));
+		String block = "L" + GROWN_BLOCK + ";", state = "L" + GROWN_STATE + ";", rest = "Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;";
+		String is = "L" + GROWN_STATE + ";is(L" + GROWN_BLOCK + ";)Z";
+		Map<String, byte[]> mixins = new HashMap<>();
+		mixins.put("com/example/mixin/Rich", growthMixin("com/example/mixin/Rich", cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "rich", "(F" + block + rest + ")F", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, false);
+			ann.visit("ordinal", 1);
+			selectorAndPoint(ann, "getGrowthSpeed", "LOAD", null, 1);
+			returning(mv, Opcodes.FLOAD, Opcodes.FRETURN);
+		}));
+		mixins.put("com/example/mixin/Farm", growthMixin("com/example/mixin/Farm", cw -> {
+			MethodVisitor capture = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "capture", "(" + state + LOCAL_REF + ")" + state, null, null);
+			selectorAndPoint(capture.visitAnnotation(MODIFY_VARIABLE, false), "getGrowthSpeed" + GROWTH_DESC, "INVOKE", is, 0);
+			capture.visitParameterAnnotation(1, SHARE, false).visit("value", "farmBlock");
+			returning(capture, Opcodes.ALOAD, Opcodes.ARETURN);
+			MethodVisitor speed = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "speed", "(F" + block + rest + LOCAL_REF + ")F", null, null);
+			AnnotationVisitor ann = speed.visitAnnotation(MODIFY_VARIABLE, false);
+			ann.visit("ordinal", 1);
+			selectorAndPoint(ann, "getGrowthSpeed" + GROWTH_DESC, "INVOKE", is, null);
+			speed.visitParameterAnnotation(4, SHARE, false).visit("value", "farmBlock");
+			returning(speed, Opcodes.FLOAD, Opcodes.FRETURN);
+			MethodVisitor wrap = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "wrap", "(" + state + block + OPERATION + block + rest + ")Z", null, null);
+			selectorAndPoint(wrap.visitAnnotation(WRAP_OPERATION, false), "getGrowthSpeed" + GROWTH_DESC, "INVOKE", is, 1);
+			returning(wrap, Opcodes.ICONST_0, Opcodes.IRETURN);
+		}));
+		String config = config(true, "Rich", "Farm");
+		Map<String, byte[]> repaired = new HashMap<>();
+		List<PreflightFinding> findings = retypedRun(platform, vanilla, mixins, config, repaired);
+		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), findings.toString());
+		assertEquals(4, findings.stream().filter(f -> f.message().contains(" targets getGrowthSpeed" + GROWTH_DESC + ", which NeoForge's CropBlock declares as"
+				+ " getGrowthSpeed" + RETYPED_DESC + ", taking a BlockState for the Block it works out of it first (getBlock()) and reads in its place; the"
+				+ " injector is pointed there")).count(), findings.toString());
+		ClassNode rich = node(repaired.get("com/example/mixin/Rich.class")), farm = node(repaired.get("com/example/mixin/Farm.class"));
+		// Farmer's Delight's: the bridge takes the state and gives the handler its block.
+		MethodNode richBridge = injectorMethod(rich, MODIFY_VARIABLE);
+		assertEquals("(F" + state + rest + ")F", richBridge.desc);
+		assertEquals(List.of("getGrowthSpeed" + RETYPED_DESC), Annotations.value(Annotations.find(richBridge, MODIFY_VARIABLE), "method"));
+		assertTrue(calls(richBridge, GROWN_STATE, "getBlock") == 1 && calls(richBridge, "com/example/mixin/Rich", "rich") == 1, "the bridge gives rich the block");
+		// Balm's: the capture by type takes vanilla's local, ordinal 1 past the state; the speed's bridge keeps its @Share.
+		MethodNode captured = farm.methods.stream().filter(m -> m.name.equals("capture")).findFirst().orElseThrow();
+		assertEquals(1, Annotations.value(Annotations.find(captured, MODIFY_VARIABLE), "ordinal"));
+		assertEquals(List.of("getGrowthSpeed" + RETYPED_DESC), Annotations.value(Annotations.find(captured, MODIFY_VARIABLE), "method"));
+		List<MethodNode> farmBridges = farm.methods.stream().filter(m -> m.name.contains("$fabricated")).toList();
+		assertEquals(2, farmBridges.size(), farm.methods.stream().map(m -> m.name + m.desc).toList().toString());
+		MethodNode speedBridge = farmBridges.stream().filter(m -> m.desc.equals("(F" + state + rest + LOCAL_REF + ")F")).findFirst().orElseThrow();
+		assertEquals(1, Annotations.value(Annotations.find(speedBridge, MODIFY_VARIABLE), "ordinal"), "a float isn't the state's type");
+		assertEquals(SHARE, speedBridge.invisibleParameterAnnotations[4].getFirst().desc);
+		MethodNode wrapBridge = farmBridges.stream().filter(m -> m.desc.equals("(" + state + block + OPERATION + state + rest + ")Z")).findFirst().orElseThrow();
+		assertTrue(calls(wrapBridge, GROWN_STATE, "getBlock") == 1, "the wrapper's bridge gives it the crop's block");
+
+		// The platform's method works the parameter out otherwise, or stores it again: the hooks stay out as before.
+		for (String first : List.of("Block block = net.minecraft.world.level.block.Blocks.STONE;",
+				"Block block = state.getBlock(); if (pos.y() > 3) block = net.minecraft.world.level.block.Blocks.STONE;")) {
+			Map<String, byte[]> other = TestSources.compileWithLocals(dir.resolve("p" + Integer.toHexString(first.hashCode())), growingSources(first));
+			List<PreflightFinding> stays = retypedRun(other, vanilla, mixins, config, new HashMap<>());
+			assertTrue(stays.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.message().contains("does not match the parameters")), first + ": " + stays);
+			assertTrue(stays.stream().noneMatch(f -> f.message().contains("which NeoForge's CropBlock declares as")), first + ": " + stays);
+		}
+		// A local of the state's type of the platform's own: the capture by type can't be told to take vanilla's, and stays as
+		// it was; the other hooks, which take none, are pointed there.
+		Map<String, byte[]> extra = TestSources.compileWithLocals(dir.resolve("extra"), growingSources("Block block = state.getBlock(); BlockState extra ="
+				+ " level.getBlockState(pos); if (extra == null) pos = pos.below();"));
+		List<PreflightFinding> partly = retypedRun(extra, vanilla, mixins, config, new HashMap<>());
+		assertEquals(3, partly.stream().filter(f -> f.message().contains("which NeoForge's CropBlock declares as")).count(), partly.toString());
+		assertTrue(partly.stream().anyMatch(f -> f.message().startsWith("@ModifyVariable targets method getGrowthSpeed" + GROWTH_DESC + ", which does not exist")),
+				partly.toString());
+		// Without vanilla's class nothing tells what the platform's method is: as before.
+		List<PreflightFinding> blind = retypedRun(platform, Map.of(), mixins, config, new HashMap<>());
+		assertTrue(blind.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT), blind.toString());
+	}
+
+	/** Pre-flight's repairs of the mixins against the platform's classes (and vanilla's), then its check of them as repaired: the notes and findings. */
+	private static List<PreflightFinding> retypedRun(Map<String, byte[]> platform, Map<String, byte[]> vanilla, Map<String, byte[]> mixins, String config,
+			Map<String, byte[]> repaired) throws Exception {
+		List<PreflightFinding> notes = new ArrayList<>();
+		repaired.putAll(new MixinPreflight(new ClassIndex(platform::get), InstalledClasses.NONE, mixins::get, ClassBytesSource.EMPTY, false, true,
+				vanilla::get).repairs("test.mixins.json", MixinConfigFile.parse(config), Refmap.EMPTY, Set.of(), notes));
+		Map<String, byte[]> mod = new HashMap<>(mixins);
+		repaired.forEach((file, bytes) -> mod.put(file.substring(0, file.length() - ".class".length()), bytes));
+		notes.addAll(new MixinPreflight(new ClassIndex(platform::get), InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.check("test.mixins.json", MixinConfigFile.parse(config), Refmap.EMPTY, Set.of()));
+		return notes;
+	}
+
+	/** A mixin of {@code CropBlock}; {@code body} adds its handlers. */
+	private static byte[] growthMixin(String name, Consumer<ClassWriter> body) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(GROWING));
+		values.visitEnd();
+		m.visitEnd();
+		body.accept(cw);
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** The injector's method selector and its one {@code @At}, with its target and ordinal where given. */
+	private static void selectorAndPoint(AnnotationVisitor ann, String method, String value, String target, Integer ordinal) {
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, method);
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", value);
+		if (target != null) at.visit("target", target);
+		if (ordinal != null) at.visit("ordinal", ordinal);
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+	}
+
+	/** A static handler returning its first parameter (or, for {@code ICONST_0}, false). */
+	private static void returning(MethodVisitor mv, int load, int ret) {
+		mv.visitCode();
+		if (load == Opcodes.ICONST_0) mv.visitInsn(load);
+		else mv.visitVarInsn(load, 0);
+		mv.visitInsn(ret);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+	}
+
+	/** The class's one method carrying the injector. */
+	private static MethodNode injectorMethod(ClassNode node, String injector) {
+		return node.methods.stream().filter(m -> Annotations.find(m, injector) != null).findFirst().orElseThrow();
+	}
+
+	private static int calls(MethodNode method, String owner, String name) {
+		int n = 0;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof MethodInsnNode call && call.owner.equals(owner) && call.name.equals(name)) n++;
+		}
+		return n;
+	}
+
 	/** A {@code @Pseudo} mixin of the classes {@code targets}, with nothing in it. */
 	private static byte[] pseudoMixin(String name, String... targets) {
 		ClassWriter cw = new ClassWriter(0);
