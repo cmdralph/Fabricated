@@ -357,6 +357,160 @@ class RemapTest {
 		assertNull(t.mapPlainMethod("net/minecraft/class_8", "get", "(F)F"), "an override of the renamed get(F)F isn't joined");
 	}
 
+	@Test
+	void joinsTheFieldsIntermediaryLeavesUnderTheirOfficialNamesToSrgs(@TempDir Path tmp) throws Exception {
+		// PLAIN-2: MCPConfig for 1.19.2 renames the members of the classes the official jar keeps unobfuscated, which
+		// Intermediary lists none of: GlStateManager.BLEND is f_84066_ on Forge 43. Iris's accessor of it, by its official
+		// name, failed pre-flight there, and its redirect of RenderSystem.setShader, named so in its @At, found no call.
+		String gl = "com/mojang/blaze3d/platform/GlStateManager";
+		String tiny = TINY + "CLASS\tc\tnet/minecraft/class_4\nFIELD\tc\tI\tlisted\tfield_40\n";
+		String tsrg2 = TSRG2 + gl + " net/minecraft/src/C_3112_ 3112\n\tBLEND f_84066_ 84066\n\tDEPTH f_84067_ 84067\n"
+				+ "\t_enableBlend ()V m_84525_ 84525\n"
+				+ "com/mojang/blaze3d/systems/RenderSystem net/minecraft/src/C_3_ 3\n\tsetShader (Ljava/util/function/Supplier;)V m_157427_ 157427\n"
+				+ "\tinitRenderer (IZ)V m_69580_ 69580\n\t_setShaderTexture (II)V m_157176_ 157176\n\t_setShaderTexture (ILa;)V m_157179_ 157179\n"
+				+ "c net/minecraft/src/C_4_ 4\n\tlisted f_40_ 40\n\tkept f_41_ 41\n\tsame same 42\n";
+		MappingTable t = MappingComposer.composeSrg(new StringReader(tiny), new StringReader(tsrg2), null);
+		assertEquals("f_84066_", t.mapPlainField(gl, "BLEND"), "a field of a class the official jar keeps");
+		assertEquals("f_41_", t.mapPlainField("net/minecraft/class_4", "kept"), "one the official jar keeps in a class it renames");
+		assertNull(t.mapPlainField("net/minecraft/class_4", "listed"), "one Intermediary renames maps by its intermediary name");
+		assertEquals("f_40_", t.mapMemberFlat("field_40"));
+		assertNull(t.mapPlainField("net/minecraft/class_4", "same"), "one SRG keeps");
+		assertNull(t.mapPlainField("mod/Other", "BLEND"), "another owner's");
+		assertEquals("m_84525_", t.ownPlainMethod(gl, "_enableBlend", "()V"));
+		assertNull(table().mapPlainField(gl, "BLEND"), "Mojang's names keep official ones: NeoForge's table has none");
+		assertEquals("f_84066_", MappingTable.deserialize(t.serialize()).mapPlainField(gl, "BLEND"), "cached with the table");
+
+		TokenRemapper tokens = new TokenRemapper(t);
+		assertEquals("L" + gl + ";f_84066_:L" + gl + "$BlendState;", tokens.remap("L" + gl + ";BLEND:L" + gl + "$BlendState;"), "a field's @At target");
+		assertEquals("Lcom/mojang/blaze3d/systems/RenderSystem;m_157427_(Ljava/util/function/Supplier;)V",
+				tokens.remap("Lcom/mojang/blaze3d/systems/RenderSystem;setShader(Ljava/util/function/Supplier;)V"), "a method's, whose owner Intermediary keeps");
+		assertEquals("Lmod/Other;setShader(Ljava/util/function/Supplier;)V", tokens.remap("Lmod/Other;setShader(Ljava/util/function/Supplier;)V"),
+				"an owner outside Minecraft's is judged by itself");
+		assertEquals("L" + gl + ";BLEND:I", new TokenRemapper(table()).remap("L" + gl + ";BLEND:I"));
+
+		// An accessor interface of Iris's kind, a mixin shadowing the field and the method, and a class using the field.
+		ClassWriter accessors = new ClassWriter(0);
+		accessors.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, "mod/GlAccessor", null, "java/lang/Object", null);
+		AnnotationVisitor mixin = accessors.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor value = mixin.visitArray("value");
+		value.visit(null, Type.getObjectType(gl));
+		value.visitEnd();
+		mixin.visitEnd();
+		accessorMethod(accessors, "getBlend", "()Ljava/lang/Object;", "Lorg/spongepowered/asm/mixin/gen/Accessor;", "BLEND");
+		accessorMethod(accessors, "getDEPTH", "()Ljava/lang/Object;", "Lorg/spongepowered/asm/mixin/gen/Accessor;", null);
+		accessorMethod(accessors, "callEnable", "()V", "Lorg/spongepowered/asm/mixin/gen/Invoker;", "_enableBlend");
+		accessorMethod(accessors, "getCount", "()I", "Lorg/spongepowered/asm/mixin/gen/Accessor;", "count");
+		accessors.visitEnd();
+
+		ClassWriter shadows = new ClassWriter(0);
+		shadows.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "mod/GlMixin", null, "java/lang/Object", null);
+		AnnotationVisitor targets = shadows.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitArray("targets");
+		targets.visit(null, gl.replace('/', '.'));
+		targets.visitEnd();
+		shadows.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "BLEND", "Ljava/lang/Object;", null, null).visitEnd();
+		MethodVisitor enable = shadows.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "_enableBlend", "()V", null, null);
+		enable.visitInsn(Opcodes.RETURN);
+		enable.visitMaxs(0, 0);
+		enable.visitEnd();
+		MethodVisitor use = shadows.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "use", "()Ljava/lang/Object;", null, null);
+		use.visitMethodInsn(Opcodes.INVOKESTATIC, "mod/GlMixin", "_enableBlend", "()V", false);
+		use.visitFieldInsn(Opcodes.GETSTATIC, "mod/GlMixin", "BLEND", "Ljava/lang/Object;");
+		use.visitInsn(Opcodes.ARETURN);
+		use.visitMaxs(1, 0);
+		use.visitEnd();
+		shadows.visitEnd();
+
+		ClassWriter user = new ClassWriter(0);
+		user.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "mod/GlUser", null, "java/lang/Object", null);
+		user.visitField(Opcodes.ACC_STATIC, "BLEND", "Ljava/lang/Object;", null, null).visitEnd();
+		MethodVisitor read = user.visitMethod(Opcodes.ACC_STATIC, "read", "()V", null, null);
+		read.visitFieldInsn(Opcodes.GETSTATIC, gl, "BLEND", "Ljava/lang/Object;");
+		read.visitFieldInsn(Opcodes.GETSTATIC, "mod/GlUser", "BLEND", "Ljava/lang/Object;");
+		read.visitInsn(Opcodes.POP2);
+		read.visitInsn(Opcodes.RETURN);
+		read.visitMaxs(2, 0);
+		read.visitEnd();
+		user.visitEnd();
+
+		// Hooks into RenderSystem's methods by their names alone, or with their descriptors, as Iris's are (remap = false).
+		ClassWriter hooks = new ClassWriter(0);
+		hooks.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "mod/RenderMixin", null, "java/lang/Object", null);
+		AnnotationVisitor render = hooks.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitArray("value");
+		render.visit(null, Type.getObjectType("com/mojang/blaze3d/systems/RenderSystem"));
+		render.visitEnd();
+		String[][] hooked = {{"initRenderer"}, {"_setShaderTexture"}, {"_setShaderTexture(II)V"}, {"setShader", "own"}};
+		for (int i = 0; i < hooked.length; i++) {
+			MethodVisitor handler = hooks.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "hook" + i, "()V", null, null);
+			AnnotationVisitor inject = handler.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Inject;", true);
+			AnnotationVisitor methods = inject.visitArray("method");
+			for (String selector : hooked[i]) methods.visit(null, selector);
+			methods.visitEnd();
+			inject.visitEnd();
+			handler.visitInsn(Opcodes.RETURN);
+			handler.visitMaxs(0, 0);
+			handler.visitEnd();
+		}
+		hooks.visitEnd();
+
+		Path jar = TestJars.create().bytes("mod/GlAccessor.class", accessors.toByteArray()).bytes("mod/GlMixin.class", shadows.toByteArray())
+				.bytes("mod/GlUser.class", user.toByteArray()).bytes("mod/RenderMixin.class", hooks.toByteArray()).write(tmp.resolve("gl.jar"));
+		Map<String, byte[]> files;
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			files = new JarRemapper(t).remap(archive, Set.of()).files();
+		}
+		ClassNode accessor = new ClassNode();
+		new ClassReader(files.get("mod/GlAccessor.class")).accept(accessor, 0);
+		Map<String, Object> written = new java.util.LinkedHashMap<>();
+		for (MethodNode m : accessor.methods) {
+			List<Object> values = m.invisibleAnnotations.get(0).values;
+			written.put(m.name, values == null ? null : values.get(1));
+		}
+		assertEquals(Map.of("getBlend", "f_84066_", "getDEPTH", "f_84067_", "callEnable", "m_84525_", "getCount", "count"), written,
+				"an accessor's or invoker's target, named or inferred, takes SRG's name; another stays");
+
+		ClassNode shadowing = new ClassNode();
+		new ClassReader(files.get("mod/GlMixin.class")).accept(shadowing, 0);
+		assertEquals(List.of("f_84066_"), shadowing.fields.stream().map(f -> f.name).toList(), "a mixin's shadow of its target's field");
+		List<String> uses = new ArrayList<>();
+		for (MethodNode m : shadowing.methods) {
+			if (!m.name.equals("use")) {
+				uses.add("declares " + m.name);
+				continue;
+			}
+			for (AbstractInsnNode insn : m.instructions) {
+				if (insn instanceof MethodInsnNode call) uses.add(call.name);
+				if (insn instanceof FieldInsnNode field) uses.add(field.name);
+			}
+		}
+		assertEquals(List.of("declares m_84525_", "m_84525_", "f_84066_"), uses, "and of its method, and their uses");
+
+		ClassNode using = new ClassNode();
+		new ClassReader(files.get("mod/GlUser.class")).accept(using, 0);
+		List<String> reads = new ArrayList<>();
+		for (AbstractInsnNode insn : using.methods.get(0).instructions) {
+			if (insn instanceof FieldInsnNode field) reads.add(field.owner + "." + field.name);
+		}
+		assertEquals(List.of(gl + ".f_84066_", "mod/GlUser.BLEND"), reads, "a read of the game's field; a class's own keeps its name");
+		assertEquals(List.of("BLEND"), using.fields.stream().map(f -> f.name).toList());
+
+		ClassNode hooking = new ClassNode();
+		new ClassReader(files.get("mod/RenderMixin.class")).accept(hooking, 0);
+		List<Object> selectors = new ArrayList<>();
+		for (MethodNode m : hooking.methods) selectors.add(m.visibleAnnotations.get(0).values.get(1));
+		assertEquals(List.of(List.of("m_69580_"), List.of("m_157176_(II)V", "m_157179_(ILnet/minecraft/src/C_1_;)V"), List.of("m_157176_(II)V"),
+				List.of("m_157427_", "own")), selectors.stream().map(s -> List.copyOf((List<?>) s)).toList(),
+				"an injector's method of its target's, by name (each of the overloads SRG names apart) or with its descriptor; another stays");
+	}
+
+	/** An abstract or static accessor or invoker method with its annotation, its target written out or not. */
+	private static void accessorMethod(ClassWriter cw, String name, String desc, String annotation, String target) {
+		MethodVisitor m = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, desc, null, null);
+		AnnotationVisitor av = m.visitAnnotation(annotation, false);
+		if (target != null) av.visit("value", target);
+		av.visitEnd();
+		m.visitEnd();
+	}
+
 	/**
 	 * Intermediary and SRG names for PLAIN-1: c.open, d.run and e.get(), which Intermediary leaves under their official
 	 * names, f.get(F)F, which it renames, and g's override of that.

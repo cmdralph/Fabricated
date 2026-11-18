@@ -13,8 +13,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import io.github.cmdralph.fabricated.core.archive.ArchiveException;
@@ -117,7 +119,7 @@ public final class JarRemapper {
 			if (table.hasPlainMembers() && name.endsWith(".class")) {
 				try {
 					ClassReader reader = new ClassReader(data);
-					classes.putIfAbsent(reader.getClassName(), Supertypes.of(reader));
+					classes.putIfAbsent(reader.getClassName(), Supertypes.withMixinTargets(reader));
 				} catch (RuntimeException e) {
 					// remapping it reports the problem
 				}
@@ -160,6 +162,7 @@ public final class JarRemapper {
 			ClassReader reader = new ClassReader(data);
 			ClassWriter writer = new ClassWriter(0);
 			ClassVisitor remapping = new InferredTargets(new LambdaAwareRemapper(writer, names));
+			if (table.hasPlainMembers()) remapping = new PlainTargets(remapping, table, Supertypes.mixinTargets(reader));
 			Set<String> twins = otherLoadersTwins(reader, leftOut);
 			if (!twins.isEmpty()) remapping = new LeavingOut(remapping, twins);
 			reader.accept(table.hasOverloadedMethods() ? new SelectorPins(remapping, table) : remapping, 0);
@@ -328,6 +331,127 @@ public final class JarRemapper {
 					};
 				}
 			};
+		}
+	}
+
+	/**
+	 * Writes the runtime's names in a mixin's selectors of members of its targets that Intermediary leaves under their
+	 * official names and the runtime renames, before the class is remapped (PLAIN-2): the target of an {@code @Accessor} or
+	 * {@code @Invoker}, written out or inferred from its method's name, and an injector's method named without its owner,
+	 * by its name alone (each of its target's methods of that name, by its descriptor, where they have more than one runtime
+	 * name) or with its descriptor. Fabric Loom's refmap has no entry for such a name, which it doesn't remap, and no
+	 * remapping of the mod's strings reads a bare name: Iris's {@code GlStateManagerAccessor} names
+	 * {@code GlStateManager.BLEND}, which Forge 43 names {@code f_84066_}, and pre-flight refused Iris there; its hook into
+	 * {@code RenderSystem.initRenderer} ({@code m_69580_}) was left out. Anything else is left as it is, and so is an
+	 * accessor of a mixin of more than one class naming them apart.
+	 */
+	private static final class PlainTargets extends ClassVisitor {
+		/** A method named without its owner: its name, then its descriptor, if any. */
+		private static final Pattern OWNERLESS = Pattern.compile("([A-Za-z_$][A-Za-z0-9_$]*)(\\(.*)?");
+
+		private final MappingTable table;
+		private final List<String> targets;
+
+		PlainTargets(ClassVisitor next, MappingTable table, List<String> targets) {
+			super(Opcodes.ASM9, next);
+			this.table = table;
+			this.targets = targets;
+		}
+
+		@Override
+		public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+			MethodVisitor method = super.visitMethod(access, name, descriptor, signature, exceptions);
+			if (method == null || targets.isEmpty()) return method;
+			return new MethodVisitor(api, method) {
+				@Override
+				public AnnotationVisitor visitAnnotation(String annotation, boolean visible) {
+					AnnotationVisitor values = super.visitAnnotation(annotation, visible);
+					if (values != null && INJECTOR_PACKAGES.stream().anyMatch(annotation::startsWith)) {
+						return new AnnotationVisitor(api, values) {
+							@Override
+							public AnnotationVisitor visitArray(String attribute) {
+								AnnotationVisitor selectors = super.visitArray(attribute);
+								if (selectors == null || !"method".equals(attribute)) return selectors;
+								return new AnnotationVisitor(api, selectors) {
+									@Override
+									public void visit(String unnamed, Object value) {
+										if (!(value instanceof String selector)) {
+											super.visit(unnamed, value);
+											return;
+										}
+										for (String runtime : runtimeSelectors(selector)) super.visit(unnamed, runtime);
+									}
+								};
+							}
+						};
+					}
+					boolean accessor = annotation.equals(ACCESSOR);
+					if (values == null || !accessor && !annotation.equals(INVOKER)) return values;
+					return new AnnotationVisitor(api, values) {
+						private boolean written;
+
+						@Override
+						public void visit(String attribute, Object value) {
+							if ("value".equals(attribute) && value instanceof String target && !target.isEmpty()) {
+								written = true;
+								String runtime = runtimeName(accessor, target, descriptor);
+								if (runtime != null) value = runtime;
+							}
+							super.visit(attribute, value);
+						}
+
+						@Override
+						public void visitEnd() {
+							if (!written) {
+								String inferred = accessor ? MixinPreflight.inferAccessorName(name) : MixinPreflight.inferInvokerName(name);
+								String runtime = inferred == null ? null : runtimeName(accessor, inferred, descriptor);
+								if (runtime != null) super.visit("value", runtime);
+							}
+							super.visitEnd();
+						}
+					};
+				}
+			};
+		}
+
+		/**
+		 * The selectors an injector's selector of a method named without its owner stands for in the runtime's names: the
+		 * one with the runtime's name of the targets' method of that name and descriptor, or of each of the targets' methods
+		 * of that name where it names none; the selector itself where they rename none.
+		 */
+		private List<String> runtimeSelectors(String selector) {
+			Matcher m = OWNERLESS.matcher(selector);
+			if (!m.matches() || JarRemapper.INTERMEDIARY_MEMBER.matcher(m.group(1)).matches()) return List.of(selector);
+			String name = m.group(1);
+			String desc = m.group(2);
+			Map<String, String> renamed = new TreeMap<>();
+			for (String owner : targets) {
+				if (desc != null) {
+					String runtime = table.ownPlainMethod(owner, name, desc);
+					if (runtime != null) renamed.put(desc, runtime);
+				} else {
+					renamed.putAll(table.plainMethodsNamed(owner, name));
+				}
+			}
+			if (renamed.isEmpty()) return List.of(selector);
+			Set<String> names = new HashSet<>(renamed.values());
+			if (desc == null && names.size() == 1) return List.of(names.iterator().next());
+			List<String> runtime = new ArrayList<>();
+			renamed.forEach((d, n) -> runtime.add(n + d));
+			return runtime;
+		}
+
+		/** The runtime's name of the targets' field or method of that name, where they give it one, or null. */
+		private String runtimeName(boolean accessor, String target, String descriptor) {
+			if (JarRemapper.INTERMEDIARY_MEMBER.matcher(target).matches()) return null;
+			String found = null;
+			for (String owner : targets) {
+				String runtime = accessor ? table.mapPlainField(owner, target) : table.ownPlainMethod(owner, target, descriptor);
+				if (runtime == null) continue;
+				if (found != null && !found.equals(runtime)) return null;
+				found = runtime;
+			}
+			return found;
 		}
 	}
 

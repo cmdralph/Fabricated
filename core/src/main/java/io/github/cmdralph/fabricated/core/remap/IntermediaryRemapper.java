@@ -105,7 +105,29 @@ public final class IntermediaryRemapper extends Remapper {
 
 	@Override
 	public String mapFieldName(String owner, String name, String descriptor) {
+		if (!isIntermediaryMember(name)) {
+			// A field Intermediary leaves under its official name, which the runtime renames (SRG for 1.19.2, PLAIN-2).
+			String plain = plainField(owner, name);
+			if (plain != null) return plain;
+		}
 		return mapMember(owner, name, descriptor);
+	}
+
+	/**
+	 * The runtime name of a field Intermediary leaves under its official name and SRG renames, or null: the owner's own,
+	 * else the one the nearest of its supertypes that has it gives it. A mixin's targets count among its supertypes
+	 * ({@link Supertypes#withMixinTargets}), so its {@code @Shadow} of one, and its uses of that, take the target's name:
+	 * Forge 43 names {@code GlStateManager.BLEND} {@code f_84066_}.
+	 */
+	private String plainField(String owner, String name) {
+		if (owner == null || !table.isPlainField(name)) return null;
+		String own = table.mapPlainField(owner, name);
+		if (own != null) return own;
+		for (String ancestor : ancestors(owner)) {
+			String inherited = table.mapPlainField(ancestor, name);
+			if (inherited != null) return inherited;
+		}
+		return null;
 	}
 
 	private String mapMember(String owner, String name, String descriptor) {

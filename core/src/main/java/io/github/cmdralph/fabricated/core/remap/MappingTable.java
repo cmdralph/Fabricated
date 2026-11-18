@@ -22,7 +22,8 @@ import java.util.TreeMap;
  *
  * <p>{@link #plainMembers} holds the methods Intermediary leaves under their official names (unobfuscated there: a
  * functional interface's {@code open}, {@code createMenu}), which SRG renames all the same (PLAIN-1): only Forge
- * 47's table has them, keyed like the qualified members.
+ * 43's and 47's tables have them, keyed like the qualified members. It holds the fields SRG renames so too, keyed by
+ * owner and name alone (PLAIN-2: Forge 43's, the fields of Mojang's {@code com/mojang/blaze3d} classes).
  *
  * <p>{@link #overloadedMethods} holds, by intermediary name, the descriptor (in intermediary) of the methods whose runtime
  * name their class gives another method too: a mixin selector naming one by its intermediary name alone, as Fabric Loom
@@ -44,6 +45,10 @@ public final class MappingTable {
 	private volatile Map<String, String> plainByNameAndDesc;
 	/** {@link #plainMembers}' names and descriptors, whatever their owner. */
 	private volatile Set<String> plainNamesAndDescs;
+	/** The names of {@link #plainMembers}' fields, whatever their owner. */
+	private volatile Set<String> plainFieldNames;
+	/** {@link #plainMembers}' methods by {@code owner.name}, then by descriptor. */
+	private volatile Map<String, Map<String, String>> plainMethodsByName;
 	private volatile Map<String, String> inverseClasses;
 	/** Qualified members by {@code name+desc}, to their runtime name when it is the same for every owner. */
 	private volatile Map<String, String> byNameAndDesc;
@@ -174,7 +179,53 @@ public final class MappingTable {
 		return index;
 	}
 
-	/** Whether this table has methods Intermediary leaves under their official names (Forge 47's, PLAIN-1). */
+	/**
+	 * The runtime name of a field Intermediary leaves under its official name and SRG renames (PLAIN-2), or null: the
+	 * owner's own, as the instruction, declaration or selector names it.
+	 *
+	 * @param owner intermediary internal name of the owner
+	 */
+	public String mapPlainField(String owner, String name) {
+		return owner == null || !isPlainField(name) ? null : plainMembers.get(owner + "." + name);
+	}
+
+	/**
+	 * The runtime names of the owner's own methods of that name that Intermediary leaves under their official names and
+	 * SRG renames, by intermediary descriptor; empty when none (PLAIN-2: a mixin's selector naming one by its name alone).
+	 *
+	 * @param owner intermediary internal name of the owner
+	 */
+	public Map<String, String> plainMethodsNamed(String owner, String name) {
+		if (plainMembers.isEmpty() || owner == null) return Map.of();
+		Map<String, Map<String, String>> index = plainMethodsByName;
+		if (index == null) {
+			Map<String, Map<String, String>> built = new HashMap<>();
+			for (Map.Entry<String, String> e : plainMembers.entrySet()) {
+				int paren = e.getKey().indexOf('(');
+				if (paren > 0) built.computeIfAbsent(e.getKey().substring(0, paren), k -> new TreeMap<>()).put(e.getKey().substring(paren), e.getValue());
+			}
+			index = built;
+			plainMethodsByName = index;
+		}
+		return index.getOrDefault(owner + "." + name, Map.of());
+	}
+
+	/** Whether some owner gives a field of that name a runtime name of its own (PLAIN-2). */
+	public boolean isPlainField(String name) {
+		if (plainMembers.isEmpty()) return false;
+		Set<String> index = plainFieldNames;
+		if (index == null) {
+			Set<String> built = new HashSet<>();
+			for (String key : plainMembers.keySet()) {
+				if (key.indexOf('(') < 0) built.add(key.substring(key.lastIndexOf('.') + 1));
+			}
+			index = built;
+			plainFieldNames = index;
+		}
+		return index.contains(name);
+	}
+
+	/** Whether this table has members Intermediary leaves under their official names (Forge 43's and 47's, PLAIN-1). */
 	public boolean hasPlainMembers() {
 		return !plainMembers.isEmpty();
 	}
