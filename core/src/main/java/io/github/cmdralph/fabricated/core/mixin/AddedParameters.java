@@ -42,8 +42,8 @@ import org.objectweb.asm.tree.VarInsnNode;
  *       ignores it the same way, to {@link #DEPTH} calls; a method that never loads it ignores it;</li>
  *   <li>without those calls, the loads and constants only they take, and the dropping of what they answer, the platform's
  *       method makes nothing vanilla's doesn't, in vanilla's order (each instruction compared as {@link PatchAlignment}
- *       compares them, by its opcode and what it names or pushes, not its local slots): it may leave some of vanilla's code
- *       out, as the platforms' leave out the TNT check their TNT block's caught-fire override makes;</li>
+ *       compares them, by its opcode and what it names or pushes, not its local slots or jump targets): it may leave some
+ *       of vanilla's code out, as the platforms' leave out the TNT check their TNT block's caught-fire override makes;</li>
  *   <li>the value, by the rule the bridge follows: what the platform's first call of the method in its class passes, which
  *       must be a constant, a static final field of the parameter's type (the fire's tick passes {@code Direction.WEST} for
  *       the block east of it).</li>
