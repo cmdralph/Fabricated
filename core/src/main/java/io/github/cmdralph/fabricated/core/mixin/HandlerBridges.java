@@ -8,11 +8,13 @@ import java.util.List;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.FrameNode;
+import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
@@ -70,35 +72,36 @@ final class HandlerBridges {
 
 	/**
 	 * A {@code @Redirect} or {@code @WrapWithCondition} handler for {@code overload}'s call: it calls {@code handler},
-	 * written for {@code desc}'s, without the added argument. Null when {@code handler} takes anything but that call's
-	 * receiver ({@code owner}) and arguments (one {@code @Coerce}d to a supertype too, the bridge's coerced so), then
-	 * the first of {@code method}'s parameters and MixinExtras sugar ({@link #sugarAfter}), or doesn't return {@code result}.
+	 * written for {@code desc}'s, without the {@code count} added arguments from {@code inserted} on. Null when
+	 * {@code handler} takes anything but that call's receiver ({@code owner}) and arguments (one {@code @Coerce}d to a
+	 * supertype too, the bridge's coerced so), then the first of {@code method}'s parameters and MixinExtras sugar
+	 * ({@link #sugarAfter}), or doesn't return {@code result}.
 	 */
-	static MethodNode callBridge(ClassNode mixin, MethodNode handler, Type owner, String desc, String overload, int inserted, boolean staticCall,
+	static MethodNode callBridge(ClassNode mixin, MethodNode handler, Type owner, String desc, String overload, int inserted, int count, boolean staticCall,
 			Type result, List<Type> method, List<MethodNode> added) {
 		List<Type> call = callParameters(owner, desc, staticCall);
 		List<Type> sugar = sugarAfter(handler, call, method);
 		if (sugar == null || !Type.getReturnType(handler.desc).equals(result)) return null;
 		int skip = inserted + (staticCall ? 0 : 1);
-		List<Type> params = withCoerced(handler, call, callParameters(owner, overload, staticCall), skip);
+		List<Type> params = withCoerced(handler, call, callParameters(owner, overload, staticCall), skip, count);
 		int sugarFrom = params.size();
 		params.addAll(sugar);
 		MethodNode bridge = bridgeMethod(handler, freeName(mixin, added, handler.name + "$fabricated"), params, Type.getReturnType(handler.desc));
-		int stack = loadAllBut(bridge, handler, params, skip);
+		int stack = loadAllBut(bridge, handler, params, skip, count);
 		moveSugar(handler, call.size(), bridge, sugarFrom, sugar.size());
-		coerced(handler, call.size(), bridge, skip);
+		coerced(handler, call.size(), bridge, skip, count);
 		callHandler(bridge, mixin.name, handler, stack);
 		return bridge;
 	}
 
 	/**
 	 * A {@code @WrapOperation} handler for {@code overload}'s call: it calls {@code handler}, written for {@code desc}'s,
-	 * without the added argument, and with an {@code Operation} that puts it back before making the call (a lambda the
-	 * bridge adds to {@code extra}). Null when {@code handler} takes anything but that call's receiver ({@code owner})
-	 * and arguments (as {@link #callBridge} takes them), the {@code Operation}, then the first of {@code method}'s
-	 * parameters and MixinExtras sugar.
+	 * without the {@code count} added arguments from {@code inserted} on, and with an {@code Operation} that puts them
+	 * back before making the call (a lambda the bridge adds to {@code extra}). Null when {@code handler} takes anything
+	 * but that call's receiver ({@code owner}) and arguments (as {@link #callBridge} takes them), the {@code Operation},
+	 * then the first of {@code method}'s parameters and MixinExtras sugar.
 	 */
-	static MethodNode wrapperBridge(ClassNode mixin, MethodNode handler, Type owner, String desc, String overload, int inserted, boolean staticCall,
+	static MethodNode wrapperBridge(ClassNode mixin, MethodNode handler, Type owner, String desc, String overload, int inserted, int count, boolean staticCall,
 			List<Type> method, List<MethodNode> extra) {
 		Type operation = Type.getType(MixinNames.OPERATION);
 		List<Type> expected = callParameters(owner, desc, staticCall);
@@ -106,19 +109,25 @@ final class HandlerBridges {
 		List<Type> sugar = sugarAfter(handler, expected, method);
 		if (sugar == null) return null;
 		int skip = inserted + (staticCall ? 0 : 1);
-		List<Type> params = withCoerced(handler, expected.subList(0, expected.size() - 1), callParameters(owner, overload, staticCall), skip);
-		Type added = params.get(skip);
+		List<Type> params = withCoerced(handler, expected.subList(0, expected.size() - 1), callParameters(owner, overload, staticCall), skip, count);
+		List<Type> added = List.copyOf(params.subList(skip, skip + count));
 		int operationAt = params.size();
 		params.add(operation);
 		params.addAll(sugar);
 		MethodNode bridge = bridgeMethod(handler, freeName(mixin, extra, handler.name + "$fabricated"), params, Type.getReturnType(handler.desc));
-		int stack = loadAllBut(bridge, handler, params.subList(0, operationAt), skip);
-		// The Operation the handler gets: the original one, with the added argument put back.
+		int stack = loadAllBut(bridge, handler, params.subList(0, operationAt), skip, count);
+		// The Operation the handler gets: the original one, with the added arguments put back.
 		MethodNode lambda = argumentInserter(freeName(mixin, extra, "lambda$" + handler.name + "$fabricated"), added, skip);
 		bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, slotOf(handler, params, operationAt)));
-		bridge.instructions.add(new VarInsnNode(added.getOpcode(Opcodes.ILOAD), slotOf(handler, params, skip)));
+		int addedSize = 0;
+		for (int k = 0; k < count; k++) {
+			bridge.instructions.add(new VarInsnNode(added.get(k).getOpcode(Opcodes.ILOAD), slotOf(handler, params, skip + k)));
+			addedSize += added.get(k).getSize();
+		}
 		Type objects = Type.getType("([Ljava/lang/Object;)Ljava/lang/Object;");
-		bridge.instructions.add(new InvokeDynamicInsnNode("call", Type.getMethodDescriptor(operation, operation, added),
+		List<Type> captured = new ArrayList<>(List.of(operation));
+		captured.addAll(added);
+		bridge.instructions.add(new InvokeDynamicInsnNode("call", Type.getMethodDescriptor(operation, captured.toArray(Type[]::new)),
 				new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
 						"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
 								+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
@@ -129,8 +138,8 @@ final class HandlerBridges {
 			sugarSize += params.get(i).getSize();
 		}
 		moveSugar(handler, expected.size(), bridge, operationAt + 1, sugar.size());
-		coerced(handler, expected.size() - 1, bridge, skip);
-		callHandler(bridge, mixin.name, handler, stack + 1 + Math.max(added.getSize(), sugarSize));
+		coerced(handler, expected.size() - 1, bridge, skip, count);
+		callHandler(bridge, mixin.name, handler, stack + 1 + Math.max(addedSize, sugarSize));
 		extra.add(lambda);
 		return bridge;
 	}
@@ -182,6 +191,72 @@ final class HandlerBridges {
 		return own.subList(leading.size(), own.size());
 	}
 
+	/**
+	 * Gives a handler's parameter {@code index}, which takes a call's receiver as a supertype of the type the call is made
+	 * on, Mixin's {@code @Coerce}, which Mixin then takes for that type ({@code Injector.checkCoerce}: the handler's type
+	 * a supertype of the call's), as a handler written for a call on the supertype takes it there. Returns whether it
+	 * added one (false where the parameter has one).
+	 */
+	static boolean coerceParameter(MethodNode handler, int index) {
+		if (Annotations.ofParameter(handler, index).stream().anyMatch(a -> a.desc.equals(COERCE))) return false;
+		int count = Type.getArgumentTypes(handler.desc).length;
+		if (handler.invisibleParameterAnnotations == null) handler.invisibleParameterAnnotations = newParameterAnnotations(count);
+		if (handler.invisibleParameterAnnotations[index] == null) handler.invisibleParameterAnnotations[index] = new ArrayList<>();
+		handler.invisibleParameterAnnotations[index].add(new AnnotationNode(COERCE));
+		if (handler.invisibleAnnotableParameterCount != 0) handler.invisibleAnnotableParameterCount = Math.max(handler.invisibleAnnotableParameterCount, index + 1);
+		return true;
+	}
+
+	/** Takes the {@code @Coerce} {@link #coerceParameter} gave a handler's parameter {@code index} off it again. */
+	static void dropCoerce(MethodNode handler, int index) {
+		if (handler.invisibleParameterAnnotations != null && handler.invisibleParameterAnnotations[index] != null) {
+			handler.invisibleParameterAnnotations[index].removeIf(a -> a.desc.equals(COERCE));
+		}
+	}
+
+	/**
+	 * Whether a {@code @WrapOperation} handler makes the original call only with its own receiver parameter (at
+	 * {@code receiver}), unchanged: it never stores into that parameter, and loads its {@code Operation} parameter (at
+	 * {@code operation}) only to call it, each time with an array built in place whose first element is a plain load of
+	 * the receiver ({@code original.call(instance, ...)}, as javac compiles it). The call the platform makes on a subtype
+	 * then gets the object it was made on, as the operation casts it back to that type; passing the operation on, or
+	 * another receiver, isn't judged.
+	 */
+	static boolean passesOwnReceiver(MethodNode handler, int receiver, int operation) {
+		if (handler.instructions == null || handler.instructions.size() == 0) return false;
+		int receiverSlot = slotOf(handler, List.of(Type.getArgumentTypes(handler.desc)), receiver);
+		int operationSlot = slotOf(handler, List.of(Type.getArgumentTypes(handler.desc)), operation);
+		int calls = 0;
+		int loads = 0;
+		for (AbstractInsnNode insn = handler.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn instanceof VarInsnNode v && v.var == receiverSlot && v.getOpcode() >= Opcodes.ISTORE && v.getOpcode() <= Opcodes.ASTORE) return false;
+			if (insn instanceof IincInsnNode inc && (inc.var == receiverSlot || inc.var == operationSlot)) return false;
+			if (insn instanceof MethodInsnNode call && call.owner.equals(Type.getType(MixinNames.OPERATION).getInternalName()) && call.name.equals("call")) calls++;
+			if (!(insn instanceof VarInsnNode v) || v.var != operationSlot) continue;
+			if (v.getOpcode() != Opcodes.ALOAD) return false;
+			loads++;
+			// size, new Object[size], dup, 0, the receiver, store
+			AbstractInsnNode[] next = new AbstractInsnNode[6];
+			AbstractInsnNode at = insn;
+			for (int k = 0; k < next.length; k++) {
+				do {
+					at = at.getNext();
+				} while (at != null && at.getOpcode() < 0);
+				if (at == null) return false;
+				next[k] = at;
+			}
+			if (!isIntConstant(next[0]) || !(next[1] instanceof TypeInsnNode array) || array.getOpcode() != Opcodes.ANEWARRAY || !array.desc.equals("java/lang/Object")
+					|| next[2].getOpcode() != Opcodes.DUP || next[3].getOpcode() != Opcodes.ICONST_0 || !(next[4] instanceof VarInsnNode load)
+					|| load.getOpcode() != Opcodes.ALOAD || load.var != receiverSlot || next[5].getOpcode() != Opcodes.AASTORE) return false;
+		}
+		return loads > 0 && loads == calls;
+	}
+
+	private static boolean isIntConstant(AbstractInsnNode insn) {
+		int op = insn.getOpcode();
+		return op >= Opcodes.ICONST_M1 && op <= Opcodes.ICONST_5 || op == Opcodes.BIPUSH || op == Opcodes.SIPUSH;
+	}
+
 	/** Whether {@code handler}'s parameter at {@code index} is MixinExtras sugar. */
 	private static boolean isSugar(MethodNode handler, int index) {
 		return Annotations.ofParameter(handler, index).stream().anyMatch(a -> a.desc.startsWith(SUGAR));
@@ -192,15 +267,15 @@ final class HandlerBridges {
 	}
 
 	/**
-	 * {@code params}, a bridge's parameters for a call with one more argument than {@code handler}'s at {@code skip},
-	 * with the type {@code handler} {@code @Coerce}s each of its first {@code count} to, and that annotation on the
-	 * bridge's: Mixin then coerces the bridge's as it would the handler's. Call once the bridge exists.
+	 * {@code params}, a bridge's parameters for a call with {@code added} more arguments than {@code handler}'s at
+	 * {@code skip}, with the type {@code handler} {@code @Coerce}s each of its first {@code count} to, and that annotation
+	 * on the bridge's: Mixin then coerces the bridge's as it would the handler's. Call once the bridge exists.
 	 */
-	static void coerced(MethodNode handler, int count, MethodNode bridge, int skip) {
+	static void coerced(MethodNode handler, int count, MethodNode bridge, int skip, int added) {
 		Type[] own = Type.getArgumentTypes(handler.desc);
 		Type[] params = Type.getArgumentTypes(bridge.desc);
 		for (int i = 0; i < count; i++) {
-			int at = i < skip ? i : i + 1;
+			int at = i < skip ? i : i + added;
 			// Where the handler's class file has it: Mixin reads it there.
 			for (boolean visible : new boolean[] {true, false}) {
 				List<AnnotationNode>[] from = visible ? handler.visibleParameterAnnotations : handler.invisibleParameterAnnotations;
@@ -218,14 +293,14 @@ final class HandlerBridges {
 	}
 
 	/**
-	 * {@code params}, a bridge's parameters for the call with one more argument at {@code skip}, with {@code handler}'s
-	 * own types where it {@code @Coerce}s one of {@code leading}.
+	 * {@code params}, a bridge's parameters for the call with {@code added} more arguments at {@code skip}, with
+	 * {@code handler}'s own types where it {@code @Coerce}s one of {@code leading}.
 	 */
-	static List<Type> withCoerced(MethodNode handler, List<Type> leading, List<Type> params, int skip) {
+	static List<Type> withCoerced(MethodNode handler, List<Type> leading, List<Type> params, int skip, int added) {
 		Type[] own = Type.getArgumentTypes(handler.desc);
 		List<Type> out = new ArrayList<>(params);
 		for (int i = 0; i < leading.size(); i++) {
-			if (!own[i].equals(leading.get(i))) out.set(i < skip ? i : i + 1, own[i]);
+			if (!own[i].equals(leading.get(i))) out.set(i < skip ? i : i + added, own[i]);
 		}
 		return out;
 	}
@@ -253,17 +328,24 @@ final class HandlerBridges {
 		return (List<AnnotationNode>[]) new List<?>[count];
 	}
 
-	/** {@code (Operation original, T value, Object[] args) -> original.call(args with value inserted at index)}. */
-	static MethodNode argumentInserter(String name, Type value, int index) {
+	/**
+	 * {@code (Operation original, T... values, Object[] args) -> original.call(args with values inserted at index)}, the
+	 * values in order.
+	 */
+	static MethodNode argumentInserter(String name, List<Type> values, int index) {
 		Type operation = Type.getType(MixinNames.OPERATION);
+		List<Type> params = new ArrayList<>(List.of(operation));
+		params.addAll(values);
+		params.add(Type.getType(Object[].class));
 		MethodNode lambda = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, name,
-				Type.getMethodDescriptor(Type.getType(Object.class), operation, value, Type.getType(Object[].class)), null, null);
-		int args = 1 + value.getSize();
+				Type.getMethodDescriptor(Type.getType(Object.class), params.toArray(Type[]::new)), null, null);
+		int args = slotOf(true, params, params.size() - 1);
 		int all = args + 1;
+		int count = values.size();
 		InsnList code = lambda.instructions;
 		code.add(new VarInsnNode(Opcodes.ALOAD, args));
 		code.add(new InsnNode(Opcodes.ARRAYLENGTH));
-		code.add(new InsnNode(Opcodes.ICONST_1));
+		code.add(new LdcInsnNode(count));
 		code.add(new InsnNode(Opcodes.IADD));
 		code.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Object"));
 		code.add(new VarInsnNode(Opcodes.ASTORE, all));
@@ -274,17 +356,19 @@ final class HandlerBridges {
 		code.add(new InsnNode(Opcodes.ICONST_0));
 		code.add(new LdcInsnNode(index));
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System", "arraycopy", "(Ljava/lang/Object;ILjava/lang/Object;II)V", false));
-		// all[index] = value
-		code.add(new VarInsnNode(Opcodes.ALOAD, all));
-		code.add(new LdcInsnNode(index));
-		code.add(new VarInsnNode(value.getOpcode(Opcodes.ILOAD), 1));
-		box(code, value);
-		code.add(new InsnNode(Opcodes.AASTORE));
-		// System.arraycopy(args, index, all, index + 1, args.length - index)
+		// all[index + k] = values[k]
+		for (int k = 0; k < count; k++) {
+			code.add(new VarInsnNode(Opcodes.ALOAD, all));
+			code.add(new LdcInsnNode(index + k));
+			code.add(new VarInsnNode(values.get(k).getOpcode(Opcodes.ILOAD), slotOf(true, params, 1 + k)));
+			box(code, values.get(k));
+			code.add(new InsnNode(Opcodes.AASTORE));
+		}
+		// System.arraycopy(args, index, all, index + count, args.length - index)
 		code.add(new VarInsnNode(Opcodes.ALOAD, args));
 		code.add(new LdcInsnNode(index));
 		code.add(new VarInsnNode(Opcodes.ALOAD, all));
-		code.add(new LdcInsnNode(index + 1));
+		code.add(new LdcInsnNode(index + count));
 		code.add(new VarInsnNode(Opcodes.ALOAD, args));
 		code.add(new InsnNode(Opcodes.ARRAYLENGTH));
 		code.add(new LdcInsnNode(index));
@@ -357,13 +441,18 @@ final class HandlerBridges {
 
 	/** Loads {@code this} (unless static) and each of {@code params} but the one at {@code skip}; returns the stack size. */
 	static int loadAllBut(MethodNode bridge, MethodNode handler, List<Type> params, int skip) {
+		return loadAllBut(bridge, handler, params, skip, 1);
+	}
+
+	/** {@link #loadAllBut(MethodNode, MethodNode, List, int)}, leaving out the {@code count} from {@code skip} on. */
+	static int loadAllBut(MethodNode bridge, MethodNode handler, List<Type> params, int skip, int count) {
 		int stack = 0;
 		if ((handler.access & Opcodes.ACC_STATIC) == 0) {
 			bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
 			stack++;
 		}
 		for (int i = 0; i < params.size(); i++) {
-			if (i == skip) continue;
+			if (i >= skip && i < skip + count) continue;
 			bridge.instructions.add(new VarInsnNode(params.get(i).getOpcode(Opcodes.ILOAD), slotOf(handler, params, i)));
 			stack += params.get(i).getSize();
 		}
@@ -381,10 +470,11 @@ final class HandlerBridges {
 
 	/**
 	 * Moves the injector annotation from {@code handler} to {@code bridge}, with the MixinExtras expression's
-	 * {@code @Expression} and {@code @Definition}s, which MixinExtras reads from the injector's method; {@code handler}
-	 * stays a plain method of the mixin, private (Mixin takes no other static methods) and {@code @Unique}, so that Mixin
-	 * renames it rather than merging it over a method of the same name another mixin added (as an injector, Mixin gave it
-	 * a name of its own).
+	 * {@code @Expression} and {@code @Definition}s, which MixinExtras reads from the injector's method, and its
+	 * {@code @Group}, which Mixin reads there too (a group's member bridged stays in its group); {@code handler} stays a
+	 * plain method of the mixin, private (Mixin takes no other static methods) and {@code @Unique}, so that Mixin renames
+	 * it rather than merging it over a method of the same name another mixin added (as an injector, Mixin gave it a name
+	 * of its own).
 	 */
 	static void moveInjector(MethodNode handler, AnnotationNode injector, MethodNode bridge) {
 		handler.access = handler.access & ~(Opcodes.ACC_PUBLIC | Opcodes.ACC_PROTECTED) | Opcodes.ACC_PRIVATE;
@@ -397,21 +487,25 @@ final class HandlerBridges {
 		} else if (handler.invisibleAnnotations != null && handler.invisibleAnnotations.remove(injector)) {
 			bridge.invisibleAnnotations = new ArrayList<>(List.of(injector));
 		}
-		bridge.visibleAnnotations = withExpression(handler.visibleAnnotations, bridge.visibleAnnotations);
-		bridge.invisibleAnnotations = withExpression(handler.invisibleAnnotations, bridge.invisibleAnnotations);
+		bridge.visibleAnnotations = withMoved(handler.visibleAnnotations, bridge.visibleAnnotations);
+		bridge.invisibleAnnotations = withMoved(handler.invisibleAnnotations, bridge.invisibleAnnotations);
 	}
 
-	/** {@code to} with the expression annotations taken out of {@code from}. */
-	private static List<AnnotationNode> withExpression(List<AnnotationNode> from, List<AnnotationNode> to) {
-		if (from == null || from.stream().noneMatch(a -> a.desc.startsWith(EXPRESSION_PACKAGE))) return to;
+	/** {@code to} with the expression annotations and the {@code @Group} taken out of {@code from}. */
+	private static List<AnnotationNode> withMoved(List<AnnotationNode> from, List<AnnotationNode> to) {
+		if (from == null || from.stream().noneMatch(HandlerBridges::movesWithInjector)) return to;
 		List<AnnotationNode> moved = to == null ? new ArrayList<>() : to;
 		for (Iterator<AnnotationNode> it = from.iterator(); it.hasNext(); ) {
 			AnnotationNode a = it.next();
-			if (!a.desc.startsWith(EXPRESSION_PACKAGE)) continue;
+			if (!movesWithInjector(a)) continue;
 			it.remove();
 			moved.add(a);
 		}
 		return moved;
+	}
+
+	private static boolean movesWithInjector(AnnotationNode annotation) {
+		return annotation.desc.startsWith(EXPRESSION_PACKAGE) || annotation.desc.equals(MixinNames.GROUP);
 	}
 
 	/**

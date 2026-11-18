@@ -314,9 +314,10 @@ final class LambdaRepairs extends PreflightPart {
 			List<MethodNode> bridges, List<?> declared) {
 		boolean modifyArgs = injector.desc.equals(MixinNames.MODIFY_ARGS);
 		if (!injector.desc.equals(MixinNames.INJECT) && !modifyArgs || Annotations.value(injector, "locals") != null || (mixin.access & Opcodes.ACC_INTERFACE) != 0
-				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
+				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.isEmpty()
 				|| annotatedParameters(handler.visibleParameterAnnotations) || annotatedParameters(handler.invisibleParameterAnnotations)) return List.of();
-		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
+		// Several selectors may name the one method (a lambda by javac's name and vanilla's): Mixin injects into it once.
+		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx).stream().distinct().toList();
 		if (methods.isEmpty()) methods = widenedMethods(injector, target, ctx);
 		if (methods.size() != 1 || methods.get(0).name.startsWith("<")) return List.of();
 		MethodNode lambda = methods.get(0);
@@ -373,7 +374,8 @@ final class LambdaRepairs extends PreflightPart {
 		HandlerBridges.callHandler(bridge, mixin.name, handler, stack);
 		@SuppressWarnings("unchecked")
 		List<Object> values = (List<Object>) selectors;
-		values.set(0, lambda.name + lambda.desc);
+		values.clear();
+		values.add(lambda.name + lambda.desc);
 		HandlerBridges.moveInjector(handler, injector, bridge);
 		bridges.add(bridge);
 		if (upcast && wanted.size() == captured.size()) {
@@ -420,18 +422,32 @@ final class LambdaRepairs extends PreflightPart {
 	}
 
 	/**
-	 * The parameters of vanilla's method an injector's one selector names, as the mod declares it: by the descriptor it
+	 * The parameters of vanilla's method an injector's selectors name, as the mod declares them: by the descriptor one
 	 * gives, as the refmap resolves it (a mod compiled against vanilla names vanilla's), or else as vanilla's only method
-	 * of that name in {@code target} declares them; null where neither tells.
+	 * of that name in {@code target} declares them. Of several selectors (Essential's and Architectury's name a lambda by
+	 * javac's name and vanilla's), each that tells must tell the same, and one must; null otherwise.
 	 */
 	private List<Type> vanillaParameters(List<?> declared, ClassNode target, Context ctx) {
-		if (declared.size() != 1 || !(declared.get(0) instanceof String raw)) return null;
-		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
-		if (ref.fuzzy() || ref.name() == null) return null;
-		if (ref.desc() != null) return ref.desc().startsWith("(") ? List.of(Type.getArgumentTypes(ref.desc())) : null;
+		List<Type> found = null;
 		ClassNode original = vanillaClass(target.name);
-		List<MethodNode> named = original == null ? List.of() : original.methods.stream().filter(m -> m.name.equals(ref.name())).toList();
-		return named.size() == 1 ? List.of(Type.getArgumentTypes(named.get(0).desc)) : null;
+		for (Object selector : declared) {
+			if (!(selector instanceof String raw)) return null;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.name() == null) return null;
+			List<Type> told;
+			if (ref.desc() != null) {
+				if (!ref.desc().startsWith("(")) return null;
+				told = List.of(Type.getArgumentTypes(ref.desc()));
+			} else {
+				List<MethodNode> named = original == null ? List.of() : original.methods.stream().filter(m -> m.name.equals(ref.name())).toList();
+				if (named.size() > 1) return null;
+				told = named.isEmpty() ? null : List.of(Type.getArgumentTypes(named.get(0).desc));
+			}
+			if (told == null) continue;
+			if (found != null && !found.equals(told)) return null;
+			found = told;
+		}
+		return found;
 	}
 
 	/**
