@@ -2449,7 +2449,7 @@ instead.
   Fabricated puts those checks back for a crop keeping `mayPlaceOn` and its plant type and a soil keeping both methods,
   where the default's answer is vanilla's (SEAM-12): Balm's growth speed hooks apply. A stem's and the pitcher crop's
   growth (not a `CropBlock`), a crop overriding those checks and a soil overriding those methods are asked as Forge has
-  it, without the hooks.
+  it, without the hooks; for the stems and the pitcher crop the report names it a known limit.
 - **Forge 47's hopper.** Forge 47 replaced vanilla's private `ejectItems` with one of its own, to which only an
   `@Inject` moves (STRUCT-1): Lithium's other hooks there are left out, a known limit the report names (SEAM-14), and
   hoppers eject items as Forge has it, without Lithium's optimisation of it.

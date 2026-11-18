@@ -105,7 +105,11 @@ Open with no ID of their own, each left by a fixed finding:
   (Forge's asks the plant's type and checks a cactus's soil as vanilla does only for vanilla's cactus; NeoForge's
   answers in three ways), so a put-back isn't provably vanilla's for every plant and soil keeping the defaults: Farmer's
   Delight Refabricated's rich soil doesn't take cactus, mushrooms or stems' fruit through its hooks. The report names
-  them a known limit; `COMPATIBILITY.md` lists it on NeoForge and Forge.
+  them a known limit; `COMPATIBILITY.md` lists it on NeoForge and Forge. On Forge vanilla's farmland check in a crop's
+  growth speed goes back for `CropBlock`s keeping their checks alone: a stem's and the pitcher crop's growth ask the same
+  method as Forge has it, and a hook of that check, which applies, doesn't run for them (the report's note of it names
+  them). Next: read Forge's plant types and `mayPlaceOn` of `StemBlock` and `PitcherCropBlock` (47 to 66) and, where
+  their checks are vanilla's, put the check back for them too.
 - **What SEAM-9 leaves of vanilla's fluid checks** on NeoForge 21.1 to 26.3 and Forge 47 to 66: the platforms ask
   their fluid types where vanilla asks for water or lava (NeoForge 26.x whether a type is water-like, which a mod's
   fluid may be) and push an entity through every fluid type at once in code of their own, so Lithium's fluid pushing
@@ -114,7 +118,8 @@ Open with no ID of their own, each left by a fixed finding:
   Fabric API's content registries' fluid hooks (a living entity's breathing, swimming and fluid jumping, a boat's
   floating) are left out too: Forge keeps vanilla's breathing in `baseTick` in a branch that never runs and breathes
   through `ForgeHooks.onLivingBreathe` and its events, which refill no air in lava, where vanilla does. The report names
-  them a known limit; Additional Entity Attributes' water speed stays FLUID-5.
+  them a known limit; Additional Entity Attributes' water speed stays FLUID-5. Next, for Fabric API's custom fluids on
+  Forge 64 to 66: a bridge of their drowning and swimming into Forge's breathing event and fluid types.
 
 - **Supplementaries' invoker of vanilla's `FireBlock.checkBurnOut`** on Forge 47 (STRUCT-2's known limit) and on
   NeoForge 21.1 and Forge 52 (LEAVE-5's). Forge 47 replaced the method with `tryCatchFire`, and NeoForge 21.1 and Forge
