@@ -52,8 +52,7 @@ def namedToIntermediaryMappings = tasks.register('namedToIntermediaryMappings') 
 // Each source set with mixins gets its refmap, and the mappings of the members its mixins shadow, which the remapping
 // renames in the mixins too. The test mod's hooks of vanilla's methods Forge took out (testmodvanilla, SEAM-1) are mapped
 // from the stand-ins its sources have of them, in a refmap of their own config's.
-def mixinMappings = [testmod: 'fabricated-testmod.refmap.json', testmodbroken: 'fabricated-testmod-badmixin.refmap.json',
-        testmodvanilla: 'fabricated-testmod-vanilla.refmap.json'].collectEntries { name, refmap ->
+def mixinMapping = { String name, String refmap ->
     def dir = layout.buildDirectory.dir("mixin/${name}")
     dependencies {
         add("${name}AnnotationProcessor", "org.spongepowered:mixin:${project.mixin_processor_version}:processor")
@@ -72,8 +71,10 @@ def mixinMappings = [testmod: 'fabricated-testmod.refmap.json', testmodbroken: '
              '-AMSG_INJECTOR_IN_INTERFACE=warning']
         } as CommandLineArgumentProvider)
     }
-    [(name): [refmap: refmap, file: dir.map { it.file(refmap) }, shadows: dir.map { it.file('shadows.tsrg') }]]
+    [refmap: refmap, file: dir.map { it.file(refmap) }, shadows: dir.map { it.file('shadows.tsrg') }]
 }
+def mixinMappings = [testmod: 'fabricated-testmod.refmap.json', testmodbroken: 'fabricated-testmod-badmixin.refmap.json',
+        testmodvanilla: 'fabricated-testmod-vanilla.refmap.json'].collectEntries { name, refmap -> [(name): mixinMapping(name, refmap)] }
 // A mixin config names its source set's refmap.
 def namingRefmap = { String refmap -> { String line -> line.replaceFirst(/^(\s*)"package":/, "\$1\"refmap\": \"${refmap}\",\n\$1\"package\":") } }
 // An access widener's names, in Intermediary's.
@@ -147,14 +148,13 @@ def gameModMixins = [
         'fabricated-forge-item.mixins.json',
         // Fabric API's fuels in vanilla's fuel table, which Forge's burn times read (FUEL-1), and its brewing recipes
         // built with Forge's constructor of a brewing mix (BREW-1).
-        'fabricated-forge-content.mixins.json'] +
+        'fabricated-forge-content.mixins.json',
         // Fabric's renderer API in Forge's chunk section compiler and block renderers (task 4, R5), with FRAPI rule 8's
-        // guard: only with Fabric API's renderer installed (its plugin). Forge 47's only: Fabricated doesn't bridge the
-        // renderer API on Forge 43.
-        (file('src/main/resources/fabricated-forge-frapi.mixins.json').exists() ? ['fabricated-forge-frapi.mixins.json'] : []) +
+        // guard: only with Fabric API's renderer installed (its plugin).
+        'fabricated-forge-frapi.mixins.json',
         // Every Forge version's (mc/forge-shared): the hooks that see the failures the game stops on, the crash report,
         // mod loading's crash report and the worker threads' (APPLY-3).
-        ['fabricated-forge-diagnostics.mixins.json']
+        'fabricated-forge-diagnostics.mixins.json']
 dependencies {
     annotationProcessor "org.spongepowered:mixin:${project.mixin_processor_version}:processor"
     // The in-game mod's own mixins use MixinExtras' injectors, which the nested mixinextras-forge (below) provides. Its
@@ -233,6 +233,29 @@ def langProviderJar = tasks.register('langProviderJar', Jar) {
             'Implementation-Version': project.version)
 }
 
+// The loader's unit tests (loader/forge-shared/src/fml47Test: Forge 43's and 47's descriptors), on its classes as built,
+// with core and ASM, which the game provides at runtime. ci/build.sh runs them.
+sourceSets {
+    loaderTest {
+        java.srcDirs = [rootProject.file('loader/forge-shared/src/fml47Test/java')]
+        compileClasspath += sourceSets.loader.output + configurations.loaderCompileClasspath
+        runtimeClasspath += sourceSets.loader.output + configurations.loaderCompileClasspath
+    }
+}
+dependencies {
+    loaderTestImplementation platform("org.junit:junit-bom:${junit_version}")
+    loaderTestImplementation 'org.junit.jupiter:junit-jupiter'
+    loaderTestRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    loaderTestRuntimeOnly "org.ow2.asm:asm:${asm_version}"
+}
+def loaderTest = tasks.register('loaderTest', Test) {
+    group = 'verification'
+    description = "Runs the loader's unit tests"
+    testClassesDirs = sourceSets.loaderTest.output.classesDirs
+    classpath = sourceSets.loaderTest.runtimeClasspath
+}
+tasks.named('check') { dependsOn loaderTest }
+
 // Which Forge libraries a source set compiles against: the loader's classpath, by jar name (what Forge's own libraries
 // are named decides the language provider's classpath above).
 tasks.register('forgeClasspathReport') {
@@ -288,6 +311,13 @@ afterEvaluate {
     tasks.named('testmodBadmixinJar', Jar) {
         from(mixinMappings.testmodbroken.file)
         filesMatching('*.mixins.json') { filter(namingRefmap(mixinMappings.testmodbroken.refmap)) }
+    }
+    // The renderer test mod's own hooks of vanilla's (1.19.2's model bakery, where it puts its Fabric models): its source
+    // set is made after this script runs (mc/mc.gradle).
+    mixinMappings.testmodfrapi = mixinMapping('testmodfrapi', 'fabricated-testmod-frapi.refmap.json')
+    tasks.named('testmodFrapiJar', Jar) {
+        from(mixinMappings.testmodfrapi.file)
+        filesMatching('*.mixins.json') { filter(namingRefmap(mixinMappings.testmodfrapi.refmap)) }
     }
     [testmodJar: 'testmod', testmodThrowsJar: 'testmodbroken', testmodBadmixinJar: 'testmodbroken', testmodBadpluginJar: 'testmodbroken', testmodFrapiJar: 'testmodfrapi'].each { jar, sourceSet ->
         def built = tasks.named(jar, Jar) { destinationDirectory = layout.buildDirectory.dir('devlibs') }

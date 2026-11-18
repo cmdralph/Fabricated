@@ -3,6 +3,51 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-18: Fabric's renderer API on Forge 43, Minecraft 1.19.2 in beta, Sodium and Iris for 1.19.2 (PLAT-8, PLAIN-2)
+
+- **Fabric's renderer API on Forge 43:** it is bridged through Fabric API 0.77's Indigo as on Forge 47, with the same
+  code: a Fabric block model is drawn in chunk sections, alone and inside a vanilla multipart or weighted model, as a
+  falling block, as a block a piston moves and with the breaking overlay, and a Fabric item model in the hotbar, the
+  hand, an item frame and on the ground; a model that throws fails alone (FRAPI rule 8). The bridge's block renderer
+  calls and its Forge hooks are `mc/forge-legacy/common`'s, its failure list and mixin plugin `mc/forge-shared`'s base
+  group's, and its falling block and multipart hooks `1.19.2-1.21.1`'s. Forge 43's own are its chunk section compiler's
+  and block renderer's calls, which take one more argument than Forge 47's, and what Indigo 0.77 does otherwise: it
+  moves a block by its offset only where upstream's hooks did, and has no transform depth to pop to. The renderer test
+  mod is one for both versions (`mc/forge-legacy/common/src/testmodfrapi`); on 1.19.2 it puts its models in place as
+  the model bakery finishes, as Fabric API 0.77 has no model loading plugins.
+- **Checks:** `client-fapi` runs on 1.19.2 with the renderer test mod, and `frapi-forge-moving-block`,
+  `frapi-forge-breaking`, `frapi-forge-legacy-piston` and the test mod's checks gate there. `frapi-model-plugin`,
+  `frapi-model-plugin-part` and `forge-client-model-bake-events` stay out on 1.19.2: Fabric API 0.77 has no model
+  loading plugins.
+- **Sodium and Iris for 1.19.2:** `client-sodium-indium` and `client-sodium-iris` run Sodium 0.4.4, Indium 1.0.9 and
+  Iris 1.6.11, the last builds for 1.19.2, pinned by Modrinth version id, as informational runs.
+- **PLAT-8** (P0), fixed: Sodium 0.4 nests JOML, which Minecraft 1.19.2 doesn't ship; Fabricated left the copy out for
+  the platform's, and Forge 43's client stopped as Mixin read Sodium's mixins. A platform descriptor now names the
+  provided libraries its game lacks, and a mod's copy of those stays the mod's.
+- **PLAIN-2** (P1), fixed: MCPConfig for 1.19.2 renames the members of the classes the official jar keeps unobfuscated
+  (`RenderSystem`, `GlStateManager`), which Fabric mods name by their official names. Fabricated renamed their methods
+  in code only: fields, a mixin's shadows of them, its accessors and invokers, its selectors without an owner and
+  strings naming `com/mojang/blaze3d`'s members kept the official names. Pre-flight refused Iris 1.6 on Forge 43, and
+  let through, its renderer setup hook was left out and the client stopped. All of these take SRG's names now.
+- **SEC-12** (P1), fixed: remapping a Fabric jar's strings took time growing with the square of a run of letters, and a
+  string of a few thousand path segments overflowed the stack, on every platform: TOKEN-1's pattern for a class
+  Intermediary keeps with nested classes it names. The remapper's patterns now start only where no identifier or path
+  character comes before them (a nested class token after a path's lead, `/`, `./` or `.`, keeping it), and take their
+  parts possessively.
+- **PLAIN-2, as Mixin reads these members:** a mixin's selector by name alone takes the name of the one overload Mixin
+  picks on Fabric, the first of vanilla's of that name in the game's class, and stays a name alone (pinned by its
+  descriptor where the platform's class has another method of that runtime name); a selector the refmap keys is left to
+  the refmap; a member a mixin's targets name apart stays, with a note; an empty accessor target is left out for the
+  inferred one; an accessor takes the one field whose name differs only in case, as Mixin does. PLAT-8's rule holds for
+  a jar of a library's classes with mixin configs too (PLAT-7's check). What PLAIN-2 still leaves is in `roadmap.md`.
+- **1.19.2 in beta:** the support matrix has a Forge 1.19.2 column, with what doesn't work there in its notes and under
+  *Unsupported on Forge*; the README, the bug report form and the roadmap name it.
+- Verified (local runs, 2026-11-17 and 18): core's tests and CI's script tests, Forge 43's and 47's descriptor test
+  (`loaderTest`); both versions build; Forge 43's and 47's
+  server and client parts pass; on Forge 43 the mods part's plugin hosts, malilib and Essential runs pass (Modrinth has
+  no Flashback for 1.19.2), and Sodium with Indium and Iris with them reach their world, every smoke check passing; the
+  mixin inventory matches the sources.
+
 ## 2026-11-17: Screen input hooks on NeoForge 21.1 and Forge, Essential's draw screen event, and the HUD and screen hooks the report now explains
 
 - **LAMBDA-14** (P1), fixed: Fabric mods' hooks of a screen's key, character and mouse input now apply where NeoForge or
