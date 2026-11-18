@@ -1605,11 +1605,16 @@ methods aren't put back either.
 
 What this can't match of Fabric, seen in a reference pack (2026-10-28) and in the corpora:
 
-- **Plant growth and survival.** NeoForge's `CropBlock.getGrowthSpeed` takes the crop's state where vanilla's takes its
-  block, and asks the soil's `canSustainPlant`, which answers in three ways, and `isFertile` where vanilla checks for moist
-  farmland; a stem's fruit asks `canSustainPlant` too. Hooks of vanilla's method and checks are left out, a known limit
-  the report names (SEAM-12): Balm's custom farmland doesn't speed crops up, and Farmer's Delight Refabricated's rich soil
-  doesn't speed them up or take stems' fruit through its hooks (1.21.1, 1.21.11).
+- **Plant survival.** Where vanilla checks a stem's fruit's soil, NeoForge asks the soil's `canSustainPlant`, which
+  answers for every kind of plant at once. Hooks of vanilla's check there are left out, a known limit the report names
+  (SEAM-12): Farmer's Delight Refabricated's rich soil doesn't take stems' fruit through its hooks (1.21.1, 1.21.11). A
+  crop's growth speed is vanilla's where it can be: NeoForge's `CropBlock.getGrowthSpeed` takes the crop's state where
+  vanilla's takes its block, and asks the soil's `canSustainPlant` and `isFertile` where vanilla checks for moist farmland.
+  Fabricated puts vanilla's farmland check back for the soils that are vanilla's farmland or no farm block and its
+  moisture check for vanilla's farmland, each keeping NeoForge's default, and points a hook of vanilla's method at
+  NeoForge's, a handler written for vanilla's block parameter getting the block NeoForge's method works out of the state
+  (SEAM-12): Balm's and Farmer's Delight Refabricated's growth speed hooks apply. Another farm block, or a soil overriding
+  those methods, is asked as NeoForge has it, without the hooks.
 - **Hoppers' containers.** From 1.21.11 NeoForge's hopper looks the container it moves items to and from up through a
   lookup of its own, answering a container or an item handler, where vanilla's `getAttachedContainer` and
   `getSourceContainer` were. FrozenLib's hooks of them are left out, a known limit the report names (SEAM-14): hoppers
@@ -1617,10 +1622,12 @@ What this can't match of Fabric, seen in a reference pack (2026-10-28) and in th
 - **Fluid checks and pushing.** NeoForge asks its fluid types where vanilla asks for water or lava, and pushes an entity
   through every fluid type at once, in code of its own (on 26.x in `EntityFluidInteraction`). Hooks of vanilla's calls
   there are left out, a known limit the report names (SEAM-9): Lithium's fluid pushing caches (entities are pushed as
-  NeoForge has it, without them), Wilder Wild's mesoglea and FrozenLib's water-like fluids in entities' fluid checks,
-  Expandability's swimming and fluid pushing events, Artifacts' underwater mining speed (26.1.2) and FrozenLib's air
-  bubbles in the HUD (26.2, 26.3). The calls aren't put back: NeoForge's answer for a mod's fluid isn't vanilla's, and
-  its pushing isn't vanilla's code.
+  NeoForge has it, without them), Wilder Wild's mesoglea and FrozenLib's water-like fluids in entities' fluid checks, and
+  Expandability's swimming and fluid pushing events. Those calls aren't put back: NeoForge's answer for a mod's fluid
+  isn't vanilla's, and its pushing isn't vanilla's code. Vanilla's eye check, `isEyeInFluid(FluidTags.WATER)`, goes back
+  in the mining speed and the HUD's air bubbles on 26.x for an entity whose eyes are in vanilla's water, lava or no fluid,
+  where it answers what NeoForge's check of its fluid types does (SEAM-9): Artifacts' underwater mining speed and
+  FrozenLib's air bubbles apply; with a mod's fluid at the eyes, NeoForge's check runs, without the hooks.
 
 - **A field NeoForge retyped.** NeoForge makes `KeyMapping.MAP` its own `KeyMappingLookup`, not vanilla's `Map`, so an
   accessor to it as a `Map` is left out, and the mod's call to it throws `NoSuchMethodError`. OneConfig's keybind
@@ -2434,20 +2441,26 @@ instead.
   left out, as on Forge 52: Forge replaced the calls two of its handlers hook, and the other two hand state to them
   (ITEM-2); Forge's own hook answers from Fabric's remainder (*Items* above).
 - **Sound (Forge 47).** A Fabric sound instance's own audio stream (`FabricSoundInstance.getAudioStream`).
-- **Plant growth and survival.** Forge asks the soil's `canSustainPlant` and `isFertile` where vanilla checks for moist
-  farmland in a crop's growth speed, and `canSustainPlant` where vanilla checks a cactus's (Forge 47, 52 and 61), a
+- **Plant survival.** Forge asks the soil's `canSustainPlant` where vanilla checks a cactus's (Forge 47, 52 and 61), a
   mushroom's (Forge 52 and 61) and a stem's fruit's (Forge 61) soil, whose default asks the plant's own checks and plant
-  type. Hooks of vanilla's checks are left out, a known limit the report names (SEAM-12): Balm's custom farmland doesn't
-  speed crops up, and Farmer's Delight Refabricated's rich soil doesn't take cactus, mushrooms or stems' fruit through its
-  hooks.
+  type. Hooks of vanilla's checks there are left out, a known limit the report names (SEAM-12): Farmer's Delight
+  Refabricated's rich soil doesn't take cactus, mushrooms or stems' fruit through its hooks. In a crop's growth speed,
+  where Forge asks the soil's `canSustainPlant` and `isFertile` in place of vanilla's farmland and moisture checks,
+  Fabricated puts those checks back for a crop keeping `mayPlaceOn` and its plant type and a soil keeping both methods,
+  where the default's answer is vanilla's (SEAM-12): Balm's growth speed hooks apply. A stem's and the pitcher crop's
+  growth (not a `CropBlock`), a crop overriding those checks and a soil overriding those methods are asked as Forge has
+  it, without the hooks.
 - **Forge 47's hopper.** Forge 47 replaced vanilla's private `ejectItems` with one of its own, to which only an
   `@Inject` moves (STRUCT-1): Lithium's other hooks there are left out, a known limit the report names (SEAM-14), and
   hoppers eject items as Forge has it, without Lithium's optimisation of it.
 - **Fluid checks and pushing.** Forge asks its fluid types where vanilla asks for water or lava, and pushes an entity
   through every fluid type at once, in code of its own. Hooks of vanilla's calls there are left out, a known limit the
   report names (SEAM-9): Lithium's fluid pushing caches (Forge 52, 61), Wilder Wild's mesoglea and FrozenLib's water-like
-  fluids in entities' fluid checks, Expandability's swimming and fluid pushing events, and Milk Lib's effect clearing in
-  milk (Forge 47).
+  fluids in entities' fluid checks, Expandability's swimming and fluid pushing events, Milk Lib's effect clearing in
+  milk (Forge 47), and on Forge 64 to 66 Fabric API's custom fluids (its content registries' hooks of a living entity's
+  breathing, swimming and fluid jumping and a boat's floating): Forge breathes through its own breathing event, which
+  refills no air in lava where vanilla does, so vanilla's check can't go back there, and a Fabric fluid doesn't drown,
+  carry or lift entities.
 - **Other hooks inside the HUD method.** A Fabric mod's mixin inside vanilla's HUD method (`Gui.render`; on Forge 64
   `Gui.extractRenderState`, on 65 and 66 `Hud.extractRenderState`) that wraps or redirects one of vanilla's calls,
   hooks in at a field, a constant or a jump, or at a call cancels, captures locals or takes arguments the called

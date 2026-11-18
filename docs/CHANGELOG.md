@@ -3,6 +3,36 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-18: a crop's growth speed and the eye-in-water check where the platforms ask their own extensions (SEAM-12, SEAM-9); a `@Pseudo` mixin with nothing to apply to is named (PRE-37)
+
+- **SEAM-12** (P2), fixed: Balm's custom farmland and Farmer's Delight Refabricated's rich soil hook a crop's growth
+  speed, where NeoForge takes the crop's state in place of its block and both platforms ask the soil's `canSustainPlant`
+  and `isFertile` in place of vanilla's farmland and moisture checks; their hooks were left out. Fabricated now puts
+  vanilla's checks back where the platforms' defaults answer as they do: on NeoForge for the soils that are vanilla's
+  farmland or no farm block, on Forge for the crops keeping their own soil checks and plant type, the moisture check
+  for vanilla's farmland; a soil or crop of a NeoForge or Forge mod answering those checks itself works as before. A
+  hook of vanilla's method by its descriptor is pointed at NeoForge's, its handler given the block NeoForge works out
+  of the state. The cactus's, mushrooms' and stems' fruit's soil checks stay a known limit the report names (SEAM-12).
+- **SEAM-9** (P2), fixed: on NeoForge 26.x, vanilla's `isEyeInFluid(FluidTags.WATER)` goes back in the mining speed
+  and the HUD's air bubbles for an entity whose eyes are in vanilla's water, lava or no fluid: Artifacts' underwater
+  mining speed and FrozenLib's air bubbles apply. The check runs in entities' tick and makes nothing. With a mod's
+  fluid at the eyes NeoForge's own check runs. The other fluid checks, the fluid pushing and, on Forge 64 to 66, Fabric
+  API's custom fluids stay a known limit the report names (SEAM-9).
+- **PRE-37** (P3), fixed: the report names a `@Pseudo` mixin whose target is missing, where what the target belongs to
+  is there (Minecraft, Fabric API, a package an installed jar holds), in one INFO line: Mixin skips it. Polymer's
+  mixins of Fabric's registry sync on NeoForge are named so; a mixin of a mod that isn't installed stays silent.
+- **Checks:** `vanilla-growth` (wheat on moist farmland grows at vanilla's speed through hooks of the farmland or
+  moisture check and of the method by vanilla's descriptor, and the platform's block overriding the soil checks answers
+  itself) on every NeoForge and Forge version, and `vanilla-eyes` (a fake player mines slower with its eyes in water,
+  through a hook of Artifacts' shape) on NeoForge and, with Fabric API, Forge 47 to 66.
+- Verified: core's tests; NeoForge 1.21.1's and 26.1.2's server and client parts and Forge 47's server part,
+  `vanilla-growth` and `vanilla-eyes` passing there, in NeoForge 1.21.11's `server` and Forge 52's `server-fapi`
+  (`vanilla-growth` in Forge 43's too); on the corpus servers Balm's growth speed hooks apply (their left-out rows from
+  2 to 0 on NeoForge 1.21.1, Forge 47 and 52, 3 to 1 on NeoForge 1.21.11 and 2 to 1 on 26.1.2), Farmer's Delight
+  Refabricated's on NeoForge 1.21.1 and 1.21.11 and Artifacts' mining speed hook on NeoForge 26.1.2, and Polymer's two
+  registry sync mixins are named on NeoForge 1.21.1 and 26.1.2, each run passing. NeoForge 26.2 and 26.3 don't build
+  locally and are left to CI.
+
 ## 2026-11-18: Fabric's renderer API on Forge 43, Minecraft 1.19.2 in beta, Sodium and Iris for 1.19.2 (PLAT-8, PLAIN-2)
 
 - **Fabric's renderer API on Forge 43:** it is bridged through Fabric API 0.77's Indigo as on Forge 47, with the same
