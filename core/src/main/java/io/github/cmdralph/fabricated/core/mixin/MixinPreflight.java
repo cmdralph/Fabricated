@@ -87,6 +87,8 @@ public final class MixinPreflight extends PreflightPart {
 	final AddedParameters addedParameters;
 	/** The invokers pointed at a bridge Fabricated declares ({@link InvokerBridge}), across the mod's configs. */
 	private final List<BridgedInvoker> bridgedInvokers = new ArrayList<>();
+	/** Every invoker the repairs pointed at a bridge, of either kind ({@code "<mixin> @Invoker <method>"}), and the bridge's name. */
+	private final Map<String, String> pointedInvokers = new LinkedHashMap<>();
 	/** The hooks of seams put back noted so far ({@link #noteRestoredSeams}), across the mod's configs. */
 	private final List<SeamNote> seamNotes = new ArrayList<>();
 	/**
@@ -428,6 +430,20 @@ public final class MixinPreflight extends PreflightPart {
 	void bridgedInvoker(String mixin, String invoker, InvokerBridge bridge) {
 		bridgedInvokers.add(new BridgedInvoker(mixin, invoker, bridge));
 	}
+
+	/** Notes an invoker the repairs pointed at the bridge named {@code bridge}, the in-game mod's (LEAVE-5) or one declared (LEAVE-6). */
+	void pointedInvoker(String mixin, String invoker, String bridge) {
+		pointedInvokers.put(mixin + " @Invoker " + invoker, bridge);
+	}
+
+	/**
+	 * Every invoker the repairs pointed at a bridge ({@code "<mixin> @Invoker <method>"}), with the bridge's name, left out
+	 * or not: what the translated mixins say, which a translation cache entry is checked against.
+	 */
+	public Map<String, String> pointedInvokers() {
+		return Collections.unmodifiableMap(new LinkedHashMap<>(pointedInvokers));
+	}
+
 
 	/**
 	 * The bridges the game classes must declare as they load ({@link InvokerBridge}, LEAVE-6), each with its invokers
@@ -1811,7 +1827,7 @@ public final class MixinPreflight extends PreflightPart {
 				} else if (accessor != null) {
 					checkAccessor(method, accessor, target, ctx);
 				} else {
-					checkInvoker(method, invoker, target, ctx);
+					checkInvoker(mixin, method, invoker, target, ctx);
 				}
 				continue;
 			}
@@ -1974,7 +1990,7 @@ public final class MixinPreflight extends PreflightPart {
 		return null;
 	}
 
-	private void checkInvoker(MethodNode method, AnnotationNode ann, ClassNode target, Context ctx) {
+	private void checkInvoker(ClassNode mixin, MethodNode method, AnnotationNode ann, ClassNode target, Context ctx) {
 		String explicit = Annotations.value(ann, "value") instanceof String s && !s.isEmpty() ? s : null;
 		String name = explicit != null ? explicit : inferInvokerName(method.name);
 		if (name == null || name.equals("<init>")) return;
@@ -1992,11 +2008,40 @@ public final class MixinPreflight extends PreflightPart {
 				: "The method was renamed or removed by " + ctx.changer(false) + ".";
 		// Where the platform's method takes a parameter vanilla's never had, why no fixed value of it serves the invoker.
 		AddedParameters.Verdict verdict = addedParameters.of(target, methodName, desc);
-		if (verdict != null && verdict.why() != null) {
+		if (verdict != null) {
+			String why = verdict.why() != null ? verdict.why() : unbridged(mixin, method, target, methodName, desc, ctx);
 			hint += " Fabricated gives an invoker of it a fixed " + verdict.typeName() + " only where " + loader + "'s method passes it only to"
-					+ " methods of " + loader + "'s own code whose code ignores it; here " + verdict.why() + " (LEAVE-6).";
+					+ " methods of " + loader + "'s own code whose code ignores it, and the invoker can call the bridge in each of its targets; here "
+					+ why + " (LEAVE-6).";
 		}
 		ctx.accessorMember(method, "@Invoker target method " + methodName + desc + " does not exist in " + target.name.replace('/', '.'), hint);
+	}
+
+	/**
+	 * Why an invoker of {@code target}'s method, which a bridge would serve there ({@link AddedParameters}), isn't pointed
+	 * at it: the invoker is static, it doesn't take vanilla's parameters, or another of its targets has the method itself
+	 * or no bridge (each target gets one, or none, MixinRepairs.changedMethodBridge).
+	 */
+	private String unbridged(ClassNode mixin, MethodNode method, ClassNode target, String methodName, String desc, Context ctx) {
+		if ((method.access & Opcodes.ACC_STATIC) != 0) return "the invoker is static, and the bridge is an instance method of the class";
+		if (!method.desc.equals(desc)) return "the invoker takes " + method.desc + " where vanilla's method takes " + desc + ", as the bridge does";
+		List<String> others = new ArrayList<>();
+		String bridge = MixinNames.BRIDGE_INVOKER + methodName;
+		for (String name : targetsOf(mixin, ctx)) {
+			ClassNode other = name.equals(target.name) ? null : codeOf(name);
+			if (other == null) continue;
+			MethodNode inGame = PreflightAsm.declared(other, bridge, method.desc);
+			if (inGame != null && (inGame.access & Opcodes.ACC_PUBLIC) != 0 && (inGame.access & Opcodes.ACC_STATIC) == 0) continue; // LEAVE-5's
+			if (PreflightAsm.declares(other, methodName, desc)) {
+				others.add(other.name.replace('/', '.') + " has the method itself");
+				continue;
+			}
+			AddedParameters.Verdict verdict = addedParameters.of(other, methodName, desc);
+			if (verdict == null) others.add(other.name.replace('/', '.') + " gets no bridge");
+			else if (verdict.why() != null) others.add("in " + other.name.replace('/', '.') + ", " + verdict.why());
+		}
+		return "a bridge would serve it in " + target.name.replace('/', '.') + ", but not the invoker's other "
+				+ (others.size() == 1 ? "target: " : "targets: ") + (others.isEmpty() ? "one of them" : String.join("; ", others));
 	}
 
 	/** The field an {@code @Accessor} without a value names, as Mixin infers it from the method's name; null when none. */

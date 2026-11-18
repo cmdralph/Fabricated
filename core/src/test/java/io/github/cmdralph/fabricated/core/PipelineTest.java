@@ -19,6 +19,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -938,25 +939,44 @@ class PipelineTest {
 		assertEquals(expected, cached.invokerBridges());
 		again.cache().finish(5);
 
-		// The entry edited to a constant no class could declare a field of.
-		List<Path> entries;
+		// The entry edited to records no translation makes: a constant no class could declare a field of, or none; its bridges
+		// gone, though its invokers say a game class declares one, or the invokers' record too, though the overlay's mixin
+		// is pointed at a bridge, or that record missing. Each is dropped and the mod translated again, the new record
+		// written over the edited one, so the next launch takes it from the cache.
+		Path entryFile;
 		try (var files = Files.walk(game.resolve(".fabricated"))) {
-			entries = files.filter(f -> f.getFileName().toString().equals("entry.json")).toList();
+			entryFile = files.filter(f -> f.getFileName().toString().equals("entry.json")).filter(f -> {
+				try {
+					return Files.readString(f).contains("\"invokerBridges\"");
+				} catch (IOException e) {
+					throw new java.io.UncheckedIOException(e);
+				}
+			}).findFirst().orElseThrow();
 		}
-		int edited = 0;
-		for (Path entry : entries) {
-			String json = Files.readString(entry);
-			String bad = json.replaceAll("(\"constant\"\\s*:\\s*)\"WEST\"", "$1\"WEST; ignite\"");
-			if (bad.equals(json)) continue;
-			Files.writeString(entry, bad);
-			edited++;
+		Map<String, java.util.function.Consumer<Map<String, Object>>> edits = new LinkedHashMap<>();
+		edits.put("a constant that is no name", meta -> firstBridge(meta).put("constant", "WEST; ignite"));
+		edits.put("no constant", meta -> firstBridge(meta).put("constant", null));
+		edits.put("no bridges", meta -> meta.put("invokerBridges", List.of()));
+		edits.put("no bridges or invokers", meta -> {
+			meta.put("invokerBridges", List.of());
+			meta.put("pointedInvokers", List.of());
+		});
+		edits.put("no invokers' record", meta -> meta.remove("pointedInvokers"));
+		for (Map.Entry<String, java.util.function.Consumer<Map<String, Object>>> e : edits.entrySet()) {
+			Map<String, Object> meta = new LinkedHashMap<>(Json.parseObject(Files.readString(entryFile)));
+			e.getValue().accept(meta);
+			Files.writeString(entryFile, Json.write(meta, true));
+			Pipeline.Input edit = withVanilla(input(game, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()), vanilla);
+			Pipeline.Result retranslated = Pipeline.run(edit);
+			assertEquals(1, retranslated.mods().size(), e.getKey() + ": " + retranslated.report().render());
+			assertFalse(retranslated.mods().getFirst().translated().cacheHit(), e.getKey() + ": an entry no translation makes is dropped");
+			assertEquals(expected, retranslated.invokerBridges(), e.getKey());
+			assertTrue(retranslated.report().render().contains("held another record of its files than this translation's"), e.getKey());
+			edit.cache().finish(5);
+			Pipeline.Input next = withVanilla(input(game, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()), vanilla);
+			assertTrue(Pipeline.run(next).mods().getFirst().translated().cacheHit(), e.getKey() + ": the record written over the edited one is read");
+			next.cache().finish(5);
 		}
-		assertEquals(1, edited, entries.toString());
-		Pipeline.Input edit = withVanilla(input(game, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()), vanilla);
-		Pipeline.Result retranslated = Pipeline.run(edit);
-		assertFalse(retranslated.mods().getFirst().translated().cacheHit(), "an entry no translation makes is dropped");
-		assertEquals(expected, retranslated.invokerBridges());
-		edit.cache().finish(5);
 
 		Path other = Files.createDirectories(game.resolve("other"));
 		Pipeline.Result unread = Pipeline.run(input(other, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()));
@@ -965,6 +985,16 @@ class PipelineTest {
 				.toList();
 		assertEquals(1, left.size(), unread.report().render());
 		assertFalse(left.getFirst().suggestion().contains("LEAVE-6"), left.getFirst().suggestion());
+	}
+
+	/** The first invoker bridge of a cache entry's record, to edit. */
+	@SuppressWarnings("unchecked")
+	private static Map<String, Object> firstBridge(Map<String, Object> meta) {
+		List<Object> bridges = new ArrayList<>((List<Object>) meta.get("invokerBridges"));
+		Map<String, Object> first = new LinkedHashMap<>((Map<String, Object>) bridges.get(0));
+		bridges.set(0, first);
+		meta.put("invokerBridges", bridges);
+		return first;
 	}
 
 	/** {@code in} with vanilla's classes ({@link Pipeline.VanillaGame}). */

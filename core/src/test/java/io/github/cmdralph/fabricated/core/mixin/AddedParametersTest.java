@@ -24,6 +24,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
@@ -51,6 +52,9 @@ class AddedParametersTest {
 	static final String OTHER_EXT = "net/neoforged/neoforge/common/extensions/IOtherExtension";
 	private static final String BLOCK_EXT = "net/neoforged/neoforge/common/extensions/IBlockExtension";
 	static final String HOOKS = "net/neoforged/neoforge/common/FireHooks";
+	private static final String STATE_BASE = "net/minecraft/world/StateBase";
+	private static final String OTHER_SIDE = "net/minecraft/world/OtherSide";
+	private static final String STATIC_EXT = "net/neoforged/neoforge/common/extensions/IStaticExtension";
 	private static final String VANILLA = "(Ljava/lang/Object;L" + STATE + ";I)V";
 	private static final String PLATFORM = "(Ljava/lang/Object;L" + STATE + ";IL" + SIDE + ";)V";
 	static final String FLAMMABILITY = "(Ljava/lang/Object;L" + SIDE + ";)I";
@@ -61,7 +65,7 @@ class AddedParametersTest {
 	private static final String PLUGIN_CONFIG = "{\"required\":true,\"package\":\"com.example.mixin\",\"plugin\":\"com.example.Plugin\",\"mixins\":[\"BurnerAccessor\"]}";
 	/** What the hint of a left-out invoker says before LEAVE-6's reason. */
 	private static final String HINT = " Fabricated gives an invoker of it a fixed Side only where NeoForge's method passes it only to methods of NeoForge's own"
-			+ " code whose code ignores it; here ";
+			+ " code whose code ignores it, and the invoker can call the bridge in each of its targets; here ";
 
 	/**
 	 * The proof bridges the invoker: the platform's method passes the side only to its extensions' methods, whose defaults
@@ -79,8 +83,9 @@ class AddedParametersTest {
 		assertEquals("@Invoker invokeBurn" + VANILLA + " targets a method NeoForge gave a Side vanilla's never had: in net.minecraft.world.Burner it invokes"
 				+ " fabricated$invoke$burn, which Fabricated declares there as the class loads, calling burn" + PLATFORM + " with Side.WEST, what"
 				+ " NeoForge's first call of it passes, and which passes the Side only to IStateExtension.flammability and IStateExtension.caughtFire,"
-				+ " whose code ignores it. So the value changes nothing for whatever keeps that code, and the call does what an invoker of a"
-				+ " method NeoForge patched keeping its parameters does: it runs NeoForge's version of vanilla's method (LEAVE-6)", note.message());
+				+ " whose code ignores it. So the value changes nothing for whatever keeps that code as NeoForge's classes have it (a coremod or"
+				+ " transformer that changes it before the class loads isn't read again), and the call does what an invoker of a method NeoForge"
+				+ " patched keeping its parameters does: it runs NeoForge's version of vanilla's method (LEAVE-6)", note.message());
 		ClassNode accessor = node(run.repaired.get("com/example/mixin/BurnerAccessor.class"));
 		MethodNode invoker = accessor.methods.get(0);
 		assertEquals("invokeBurn" + VANILLA, invoker.name + invoker.desc, "the mod's calls keep their method");
@@ -95,6 +100,8 @@ class AddedParametersTest {
 	void anInvokerOfAPrivateMethodReplacedWithOneTakingAParameterMoreIsBridgedToTheReplacement() throws Exception {
 		Run run = run("replaced");
 		assertEquals(1, run.notes.size(), run.notes.toString());
+		assertTrue(run.notes.get(0).message().startsWith("@Invoker invokeBurn" + VANILLA + " targets a private method NeoForge replaced with catchFire,"
+				+ " which takes a Side vanilla's never had: "), run.notes.toString());
 		assertTrue(run.notes.get(0).message().contains("in net.minecraft.world.Burner it invokes fabricated$invoke$burn, which Fabricated declares there as"
 				+ " the class loads, calling catchFire" + PLATFORM), run.notes.toString());
 		assertEquals(Set.of(new InvokerBridge(BURNER, "burn", VANILLA, "catchFire", PLATFORM, 3, "WEST")), run.preflight.invokerBridges().keySet());
@@ -117,6 +124,8 @@ class AddedParametersTest {
 		passes.put("dropsAll", "which passes the Side only to IStateExtension.caughtFire, whose code ignores it.");
 		passes.put("inverted", "which passes the Side only to IStateExtension.flammability and IStateExtension.caughtFire, whose code ignores it.");
 		passes.put("ignores", "which never reads the Side.");
+		// An interface's static method of the default's name and descriptor isn't one a call selects.
+		passes.put("staticCandidate", "which passes the Side only to IStateExtension.flammability and IStateExtension.caughtFire, whose code ignores it.");
 		for (Map.Entry<String, String> e : passes.entrySet()) {
 			Run run = run(e.getKey());
 			assertEquals(1, run.notes.size(), e.getKey() + ": " + run.notes);
@@ -161,6 +170,12 @@ class AddedParametersTest {
 		why.put("overloads", "Burner has 2 methods of that name taking one parameter more than vanilla's, and which one stands in for it can't be told");
 		why.put("abstract", "NeoForge's method has no code of its own (it is abstract or native)");
 		why.put("interface", "Burner is an interface, and Fabricated declares bridges in classes only");
+		why.put("wideStore", "Burner.burn stores another value in the Side");
+		why.put("privateSuper", "Burner.burn passes the Side to State.flammability, which StateBase declares private, so the call can't reach it");
+		why.put("otherOwner", "the first call of it in Burner passes no constant Side");
+		why.put("vanillaAbstract", "vanilla's method has no code of its own");
+		why.put("vanillaOverload", "vanilla's class has burn" + PLATFORM + " too, so that is vanilla's own method, not NeoForge's version of the one the"
+				+ " invoker names");
 		for (Map.Entry<String, String> e : why.entrySet()) {
 			Run run = run(e.getKey());
 			assertTrue(run.notes.isEmpty() && run.repaired.isEmpty(), e.getKey() + ": " + run.notes);
@@ -222,7 +237,10 @@ class AddedParametersTest {
 		List<PreflightFinding> installedFindings = preflight.check("test.mixins.json", MixinConfigFile.parse(PLUGIN_CONFIG), Refmap.EMPTY, Set.of()).stream()
 				.filter(f -> f.severity() != Severity.INFO).toList();
 		Run unread = run("novanilla");
-		for (PreflightFinding f : List.of(installedFindings.get(0), unread.check().get(0))) {
+		// Nor where the platform's method answers otherwise than vanilla's: it isn't vanilla's with one parameter more.
+		Run otherReturn = run("otherReturn");
+		assertTrue(otherReturn.notes.isEmpty() && otherReturn.preflight.invokerBridges().isEmpty(), otherReturn.notes.toString());
+		for (PreflightFinding f : List.of(installedFindings.get(0), unread.check().get(0), otherReturn.check().get(0))) {
 			assertEquals(Severity.LEFT_OUT, f.severity(), f.toString());
 			assertFalse(f.suggestion().contains("LEAVE-6"), f.suggestion());
 			assertTrue(f.suggestion().contains("changed its parameters"), f.suggestion());
@@ -270,7 +288,62 @@ class AddedParametersTest {
 		game.put(BURNER2, rename(burner(false, "reads"), BURNER, BURNER2));
 		Run half = run(game, vanilla, both, PLUGIN_CONFIG);
 		assertTrue(half.notes.isEmpty() && half.preflight.invokerBridges().isEmpty(), half.notes.toString());
-		assertFalse(half.check().isEmpty());
+		List<PreflightFinding> lines = half.check();
+		assertEquals(2, lines.size(), lines.toString());
+		// The target a bridge would serve says why it doesn't, a known limit; the other gives its own reason.
+		PreflightFinding served = lines.stream().filter(f -> f.message().endsWith("does not exist in net.minecraft.world.Burner")).findFirst().orElseThrow();
+		assertTrue(served.suggestion().endsWith(HINT + "a bridge would serve it in net.minecraft.world.Burner, but not the invoker's other target: in"
+				+ " net.minecraft.world.Burner2, Burner2.burn reads the Side otherwise than to pass it straight to a method (LEAVE-6)."), served.suggestion());
+		assertTrue(KnownLimits.ofFinding("NeoForge", served).endsWith("(LEAVE-6)"));
+	}
+
+	/**
+	 * An invoker of a target the in-game mod adds the bridge to (LEAVE-5) and one Fabricated declares it in (LEAVE-6): the
+	 * note names both.
+	 */
+	@Test
+	void theNoteOfAnInvokerBridgedBothWaysNamesEachTarget() throws Exception {
+		Map<String, byte[]> game = baseGame();
+		game.put(BURNER, burner(false, ""));
+		ClassNode inGame = node(rename(burner(false, ""), BURNER, BURNER2));
+		MethodNode added = new MethodNode(Opcodes.ACC_PUBLIC, "fabricated$invoke$burn", VANILLA, null, null);
+		added.instructions.add(new org.objectweb.asm.tree.InsnNode(Opcodes.RETURN));
+		inGame.methods.add(added);
+		ClassWriter writer = new ClassWriter(0);
+		inGame.accept(writer);
+		game.put(BURNER2, writer.toByteArray());
+		Map<String, byte[]> vanilla = Map.of(BURNER, burner(true, ""), BURNER2, rename(burner(true, ""), BURNER, BURNER2));
+		Run run = run(game, vanilla, accessor(List.of(BURNER, BURNER2), "invokeBurn", VANILLA, "burn", false), PLUGIN_CONFIG);
+		assertEquals(1, run.notes.size(), run.notes.toString());
+		String note = run.notes.get(0).message();
+		assertTrue(note.contains("in net.minecraft.world.Burner it invokes fabricated$invoke$burn, which Fabricated declares there as the class loads")
+				&& note.contains("; in net.minecraft.world.Burner2 it invokes fabricated$invoke$burn, which Fabricated's in-game mod adds there to call"
+						+ " NeoForge's method as vanilla's does (LEAVE-5)"), note);
+		assertEquals(Set.of(new InvokerBridge(BURNER, "burn", VANILLA, "burn", PLATFORM, 3, "WEST")), run.preflight.invokerBridges().keySet());
+		assertEquals(Map.of("com.example.mixin.BurnerAccessor @Invoker invokeBurn" + VANILLA, "fabricated$invoke$burn"), run.preflight.pointedInvokers());
+	}
+
+	/**
+	 * An invoker a bridge would serve but can't call it: a static one, or one taking other parameters than vanilla's
+	 * method, as its value names it. It stays out, the line saying why, a known limit.
+	 */
+	@Test
+	void anInvokerThatCantCallTheBridgeStaysOutSayingWhy() throws Exception {
+		Map<String, byte[]> game = baseGame();
+		game.put(BURNER, burner(false, ""));
+		Map<String, byte[]> vanilla = Map.of(BURNER, burner(true, ""));
+		Map<String, String> why = new LinkedHashMap<>();
+		why.put("static", "the invoker is static, and the bridge is an instance method of the class");
+		why.put("other", "the invoker takes (Ljava/lang/Object;Ljava/lang/Object;I)V where vanilla's method takes " + VANILLA + ", as the bridge does");
+		for (Map.Entry<String, String> e : why.entrySet()) {
+			byte[] accessor = e.getKey().equals("static") ? accessor(List.of(BURNER), "invokeBurn", VANILLA, "burn", true)
+					: accessor(List.of(BURNER), "invokeBurn", "(Ljava/lang/Object;Ljava/lang/Object;I)V", "burn" + VANILLA, false);
+			Run run = run(game, vanilla, accessor, PLUGIN_CONFIG);
+			assertTrue(run.notes.isEmpty() && run.preflight.invokerBridges().isEmpty(), e.getKey() + ": " + run.notes);
+			PreflightFinding f = run.check().get(0);
+			assertTrue(f.suggestion().endsWith(HINT + e.getValue() + " (LEAVE-6)."), e.getKey() + ": " + f.suggestion());
+			assertTrue(KnownLimits.ofFinding("NeoForge", f).endsWith("(LEAVE-6)"), e.getKey());
+		}
 	}
 
 	/** A bridge whose invoker is left out with its mixin (a mixin Mixin rejects whole) is none the game declares. */
@@ -306,9 +379,9 @@ class AddedParametersTest {
 	 * The bridge a class gets runs as the platform's method with the constant in the added parameter's place: vanilla's
 	 * parameters loaded in their slots, a wide one among them, the parameter added in the middle or last, the private
 	 * method called with {@code invokespecial} and a public one with {@code invokevirtual}, its result returned. It is
-	 * private, so Mixin's invoker calls it as one of a private method ({@code invokespecial}), and a subclass's method of
-	 * its name doesn't stand in for it; and it changes no method the class has. Nothing where the class hasn't the
-	 * platform's method, or declares the bridge already.
+	 * private, so Mixin's invoker calls it as one of a private method ({@code invokespecial}, or {@code invokevirtual} where
+	 * the class has nestmates, as Mixin 0.17 calls it), and a subclass's method of its name doesn't stand in for it; and it
+	 * changes no method the class has. Nothing where the class hasn't the platform's method, or declares the bridge already.
 	 */
 	@Test
 	void theBridgeCallsThePlatformsMethodWithTheConstantAndIsPrivate() throws Exception {
@@ -317,6 +390,7 @@ class AddedParametersTest {
 		String vanilla = "(Ljava/lang/Object;JI)Ljava/lang/String;";
 		for (int added : new int[] {1, 3}) {
 			for (int access : new int[] {Opcodes.ACC_PRIVATE, Opcodes.ACC_PUBLIC}) {
+				for (boolean nestmates : new boolean[] {false, true}) {
 				List<Type> params = new ArrayList<>(List.of(Type.getArgumentTypes(vanilla)));
 				params.add(added, Type.getObjectType(SIDE));
 				String platform = Type.getMethodDescriptor(Type.getType(String.class), params.toArray(Type[]::new));
@@ -331,7 +405,7 @@ class AddedParametersTest {
 				assertNull(bridge.method(node), "declared once");
 				assertEquals(before, node.methods.subList(0, before.size()).stream().map(m -> m.access + " " + m.name + m.desc).toList(),
 						"no method of the class changed");
-				node.methods.add(mixinsInvoker(node.name, method));
+				node.methods.add(mixinsInvoker(node.name, method, nestmates));
 				ClassWriter writer = new ClassWriter(0);
 				node.accept(writer);
 				Map<String, byte[]> classes = Map.of(fire, writer.toByteArray(), SIDE, side(false), sub, fireSubclass(fire, sub, vanilla));
@@ -341,7 +415,8 @@ class AddedParametersTest {
 				// The invoker Mixin generates, on an object of a subclass declaring a method of the bridge's name and descriptor.
 				Method invoke = loaded.getMethod("invokeBurn", Object.class, long.class, int.class);
 				Object subclass = loader.loadClass(sub.replace('/', '.')).getConstructor().newInstance();
-				assertEquals("level 12345678901 7 WEST", invoke.invoke(subclass, "level", 12345678901L, 7), added + " " + access);
+				assertEquals("level 12345678901 7 WEST", invoke.invoke(subclass, "level", 12345678901L, 7), added + " " + access + " " + nestmates);
+				}
 			}
 		}
 		assertNull(new InvokerBridge(fire, "burn", vanilla, "catchFire", "(Ljava/lang/Object;JILnet/minecraft/world/Side;)Ljava/lang/String;", 3, "WEST")
@@ -350,9 +425,10 @@ class AddedParametersTest {
 	}
 
 	/**
-	 * As a class loads, it takes a bridge only where it has the platform's method and its own first call of it passes the
-	 * bridge's constant, as the class pre-flight read did; otherwise it declares nothing and the error names the invokers
-	 * and LEAVE-6. Of two bridges of one name and descriptor, it keeps the one its code backs; where two fit, neither.
+	 * As a class loads, it takes a bridge only where it has the platform's method as an instance method with code, is the
+	 * class the bridge is for, and its own first call of that method passes the bridge's constant, of the parameter's own
+	 * type, as the class pre-flight read did. Of bridges of one name and descriptor, it keeps the one its code backs, and
+	 * the others' invokers call that one, the error naming them; where two fit, or none, the class gets a stub instead.
 	 */
 	@Test
 	void aClassDeclaresABridgeOnlyWhereItsOwnCodeBacksIt() throws Exception {
@@ -366,22 +442,112 @@ class AddedParametersTest {
 		ClassNode node = node(burner(false, ""));
 		List<String> errors = new ArrayList<>();
 		assertEquals(List.of("fabricated$invoke$burn"), InvokerBridge.declare(node, users, errors::add));
-		assertEquals(1, node.methods.stream().filter(m -> m.name.equals("fabricated$invoke$burn")).count());
-		assertEquals(2, errors.size(), errors.toString());
-		assertTrue(errors.get(0).equals("Fabricated couldn't declare fabricated$invoke$burn" + VANILLA + " in net.minecraft.world.Burner for mod-b:"
-				+ " com.b.Mixin @Invoker invokeBurn" + VANILLA + ": the class's first call of burn doesn't pass Side.EAST. Calls of those invokers fail (LEAVE-6)"),
-				errors.get(0));
-		assertTrue(errors.get(1).contains("for mod-c: com.c.Mixin @Invoker invokeBurn" + VANILLA + ": the class has no instance method catchFire" + PLATFORM
-				+ " with code to call"), errors.get(1));
+		List<MethodNode> declared = node.methods.stream().filter(m -> m.name.equals("fabricated$invoke$burn")).toList();
+		assertEquals(1, declared.size());
+		assertEquals(Opcodes.ACC_PRIVATE, declared.get(0).access);
+		assertTrue(declared.get(0).instructions.toArray()[declared.get(0).instructions.size() - 2] instanceof MethodInsnNode call && call.name.equals("burn"),
+				"the bridge the class's code backs, not a stub");
+		assertEquals(List.of("Fabricated couldn't declare fabricated$invoke$burn" + VANILLA + " in net.minecraft.world.Burner for mod-b: com.b.Mixin"
+				+ " @Invoker invokeBurn" + VANILLA + ": the class's first call of burn doesn't pass Side.EAST; they call the one the class's own code"
+				+ " backs, with Side.WEST (LEAVE-6)", "Fabricated couldn't declare fabricated$invoke$burn" + VANILLA + " in net.minecraft.world.Burner for"
+				+ " mod-c: com.c.Mixin @Invoker invokeBurn" + VANILLA + ": the class has no instance method catchFire" + PLATFORM + " with code to call;"
+				+ " they call the one the class's own code backs, with Side.WEST (LEAVE-6)"), errors);
 
-		// Two that fit: the class calls burn and its twin burnTwin first with WEST, and the bridges call one each.
+		// Two that fit: the class calls burn and its twin burnTwin first with WEST, and the bridges call one each. Neither is
+		// declared: every invoker of that name gets the stub.
 		ClassNode twice = node(burner(false, "twin"));
 		List<String> both = new ArrayList<>();
 		Map<InvokerBridge, List<String>> twins = new LinkedHashMap<>();
 		twins.put(west, List.of("mod-a: a"));
 		twins.put(new InvokerBridge(BURNER, "burn", VANILLA, "burnTwin", PLATFORM, 3, "WEST"), List.of("mod-b: b"));
-		assertEquals(List.of(), InvokerBridge.declare(twice, twins, both::add));
-		assertTrue(both.size() == 1 && both.get(0).contains("2 bridges of that name fit the class"), both.toString());
+		assertEquals(List.of("fabricated$invoke$burn"), InvokerBridge.declare(twice, twins, both::add));
+		assertEquals(List.of("Fabricated couldn't declare fabricated$invoke$burn" + VANILLA + " in net.minecraft.world.Burner for mod-a: a, mod-b: b: 2"
+				+ " bridges of that name fit the class, calling burn with WEST, burnTwin with WEST, and which one the invokers' translations meant can't"
+				+ " be told. The class gets a method of that name throwing an AbstractMethodError that says so, so Mixin applies those invokers and only"
+				+ " a call of one fails (LEAVE-6)"), both);
+		assertTrue(isStub(PreflightAsm.declared(twice, "fabricated$invoke$burn", VANILLA)));
+
+		// A class that isn't the bridge's, its platform method static, the constant another class's field of the side's type,
+		// or the name declared already.
+		Map<String, ClassNode> refusing = new LinkedHashMap<>();
+		refusing.put("it is for net.minecraft.world.Burner", node(rename(burner(false, ""), BURNER, BURNER2)));
+		refusing.put("the class has no instance method burn" + PLATFORM + " with code to call", node(staticPlatformBurner()));
+		refusing.put("the class's first call of burn doesn't pass Side.WEST", node(burner(false, "otherOwner")));
+		for (Map.Entry<String, ClassNode> e : refusing.entrySet()) {
+			List<String> refused = new ArrayList<>();
+			assertEquals(List.of("fabricated$invoke$burn"), InvokerBridge.declare(e.getValue(), Map.of(west, List.of("mod-a: a")), refused::add), e.getKey());
+			assertTrue(refused.size() == 1 && refused.get(0).contains(": " + e.getKey() + ". The class gets a method of that name throwing"), refused.toString());
+			assertTrue(isStub(PreflightAsm.declared(e.getValue(), "fabricated$invoke$burn", VANILLA)), e.getKey());
+		}
+		ClassNode own = node(burner(false, ""));
+		own.methods.add(new MethodNode(Opcodes.ACC_PUBLIC, "fabricated$invoke$burn", VANILLA, null, null));
+		List<String> kept = new ArrayList<>();
+		assertEquals(List.of(), InvokerBridge.declare(own, Map.of(west, List.of("mod-a: a")), kept::add));
+		assertTrue(kept.size() == 1 && kept.get(0).endsWith(": the class already declares fabricated$invoke$burn" + VANILLA + ", which those invokers call"
+				+ " instead (LEAVE-6)"), kept.toString());
+		assertEquals(1, own.methods.stream().filter(m -> m.name.equals("fabricated$invoke$burn")).count());
+	}
+
+	/**
+	 * A bridge the class can't take lets Mixin apply its invoker all the same: the class gets a private method of the
+	 * bridge's name that throws, and only a call of the invoker fails, with an AbstractMethodError, as a call of an invoker
+	 * left out does, naming the class, the bridge, the invokers and LEAVE-6.
+	 */
+	@Test
+	void aRefusedBridgeIsAStubSoTheInvokerAppliesAndOnlyItsCallFails() throws Exception {
+		String fire = "net/minecraft/world/Fire";
+		String vanilla = "(Ljava/lang/Object;JI)Ljava/lang/String;";
+		String platform = "(Ljava/lang/Object;JILnet/minecraft/world/Side;)Ljava/lang/String;";
+		ClassNode node = node(fireClass(fire, platform, Opcodes.ACC_PRIVATE));
+		List<String> errors = new ArrayList<>();
+		InvokerBridge bridge = new InvokerBridge(fire, "burn", vanilla, "burn", platform, 3, "NORTH");
+		assertEquals(List.of("fabricated$invoke$burn"), InvokerBridge.declare(node, Map.of(bridge, List.of("mod-a: com.a.FireAccessor @Invoker invokeBurn"
+				+ vanilla)), errors::add));
+		assertEquals(List.of("Fabricated couldn't declare fabricated$invoke$burn" + vanilla + " in net.minecraft.world.Fire for mod-a: com.a.FireAccessor"
+				+ " @Invoker invokeBurn" + vanilla + ": the class never calls burn. The class gets a method of that name throwing an AbstractMethodError"
+				+ " that says so, so Mixin applies those invokers and only a call of one fails (LEAVE-6)"), errors);
+		MethodNode stub = PreflightAsm.declared(node, "fabricated$invoke$burn", vanilla);
+		assertEquals(Opcodes.ACC_PRIVATE, stub.access);
+		node.methods.add(mixinsInvoker(node.name, stub, false));
+		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
+		Class<?> loaded = loader(Map.of(fire, writer.toByteArray(), SIDE, side(false))).loadClass(fire.replace('/', '.'));
+		Object instance = loaded.getConstructor().newInstance();
+		java.lang.reflect.InvocationTargetException thrown = org.junit.jupiter.api.Assertions.assertThrows(java.lang.reflect.InvocationTargetException.class,
+				() -> loaded.getMethod("invokeBurn", Object.class, long.class, int.class).invoke(instance, "level", 1L, 7));
+		assertTrue(thrown.getCause() instanceof AbstractMethodError, thrown.getCause().toString());
+		assertEquals("Fabricated couldn't declare fabricated$invoke$burn" + vanilla + " in net.minecraft.world.Fire for mod-a: com.a.FireAccessor @Invoker"
+				+ " invokeBurn" + vanilla + ": the class never calls burn (LEAVE-6); logged as the class loaded, and in logs/fabric-bridge-report.txt",
+				thrown.getCause().getMessage());
+	}
+
+	/** Whether the method is a refused bridge's stub: it throws an AbstractMethodError. */
+	private static boolean isStub(MethodNode method) {
+		return method != null && InvokerBridge.isBridge(method) && method.instructions.getFirst() instanceof org.objectweb.asm.tree.TypeInsnNode type
+				&& type.desc.equals("java/lang/AbstractMethodError");
+	}
+
+	/** The burner with the platform's burn static, its tick calling it so with WEST. */
+	private static byte[] staticPlatformBurner() {
+		ClassWriter cw = writer();
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, BURNER, null, "java/lang/Object", null);
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "(Ljava/lang/Object;L" + STATE + ";)V", null, null);
+		tick.visitCode();
+		tick.visitVarInsn(Opcodes.ALOAD, 1);
+		tick.visitVarInsn(Opcodes.ALOAD, 2);
+		tick.visitIntInsn(Opcodes.SIPUSH, 300);
+		tick.visitFieldInsn(Opcodes.GETSTATIC, SIDE, "WEST", "L" + SIDE + ";");
+		tick.visitMethodInsn(Opcodes.INVOKESTATIC, BURNER, "burn", PLATFORM, false);
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		MethodVisitor burn = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "burn", PLATFORM, null, null);
+		burn.visitCode();
+		burn.visitInsn(Opcodes.RETURN);
+		burn.visitMaxs(0, 0);
+		burn.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
 	}
 
 	/** What a translation cache entry read back must be, or it is dropped and the mod translated again. */
@@ -393,6 +559,10 @@ class AddedParametersTest {
 		bad.put(new InvokerBridge("com/example/Thing", "burn", VANILLA, "burn", PLATFORM, 3, "WEST"), "isn't a game class");
 		bad.put(new InvokerBridge(BURNER, "burn", VANILLA, "burn", PLATFORM, 3, "WEST;"), "isn't one a class can declare");
 		bad.put(new InvokerBridge(BURNER, "<init>", VANILLA, "burn", PLATFORM, 3, "WEST"), "isn't one a class can declare");
+		// What an empty value of a cache record reads as.
+		bad.put(new InvokerBridge(BURNER, "burn", VANILLA, "burn", PLATFORM, 3, null), "isn't one a class can declare");
+		bad.put(new InvokerBridge(BURNER, "burn", VANILLA, "burn", PLATFORM, 3, "null"), "isn't one a class can declare");
+		bad.put(new InvokerBridge(BURNER, "null", VANILLA, "burn", PLATFORM, 3, "WEST"), "isn't one a class can declare");
 		bad.put(new InvokerBridge(BURNER, "burn", null, "burn", PLATFORM, 3, "WEST"), "it has no descriptor");
 		bad.put(new InvokerBridge(BURNER, "burn", VANILLA, "burn", PLATFORM, 2, "WEST"), "don't differ by one parameter at 2");
 		bad.put(new InvokerBridge(BURNER, "burn", VANILLA, "burn", PLATFORM, 9, "WEST"), "don't differ by one parameter at 9");
@@ -429,7 +599,17 @@ class AddedParametersTest {
 		if (variant.equals("defaultReads")) game.put(BLOCK_EXT, blockExtension(true));
 		if (variant.equals("mutable")) game.put(SIDE, side(true));
 		if (variant.equals("noConstantClass")) game.remove(SIDE);
-		Map<String, byte[]> vanilla = variant.equals("novanilla") ? Map.of() : Map.of(BURNER, burner(true, ""));
+		if (variant.equals("privateSuper")) {
+			game.put(STATE, stateExtending(STATE_BASE, STATE_EXT));
+			game.put(STATE_BASE, stateBase());
+		}
+		if (variant.equals("staticCandidate")) {
+			game.put(STATE, state(STATE_EXT, STATIC_EXT));
+			game.put(STATIC_EXT, staticExtension());
+		}
+		if (variant.equals("otherOwner")) game.put(OTHER_SIDE, otherSide());
+		String vanillaVariant = variant.equals("vanillaAbstract") || variant.equals("vanillaOverload") ? variant : "";
+		Map<String, byte[]> vanilla = variant.equals("novanilla") ? Map.of() : Map.of(BURNER, burner(true, vanillaVariant));
 		return run(game, vanilla, accessor(BURNER), PLUGIN_CONFIG);
 	}
 
@@ -525,15 +705,19 @@ class AddedParametersTest {
 	 * ignores it, through a chain of hooks, to a hook calling itself; {@code interfaceCallee}, the caught-fire extension
 	 * called on the interface; {@code added}, a call vanilla's doesn't make; {@code dropsAll}, only the caught-fire call;
 	 * {@code inverted}, the removal made whatever the flammability; {@code overloads}, a second method of the name taking one
-	 * parameter more; {@code abstract}, the method abstract; {@code interface}, the burner an interface; {@code twin}, a twin method the tick also passes WEST to; {@code ignores}, vanilla's code.
+	 * parameter more; {@code abstract}, the method abstract; {@code interface}, the burner an interface; {@code twin}, a twin
+	 * method the tick also passes WEST to; {@code ignores}, vanilla's code; {@code wideStore}, a long stored into the chance's
+	 * slot and the side's; {@code otherOwner}, the tick passing {@code OtherSide.WEST}, a field of the side's type of another
+	 * class; {@code otherReturn}, the method answering an int. Vanilla's, as {@code variant} makes it: {@code vanillaAbstract},
+	 * the method abstract; {@code vanillaOverload}, an overload taking the side too.
 	 */
 	static byte[] burner(boolean vanilla, String variant) {
 		ClassWriter cw = writer();
-		boolean isAbstract = !vanilla && variant.equals("abstract");
+		boolean isAbstract = !vanilla && variant.equals("abstract") || vanilla && variant.equals("vanillaAbstract");
 		int itf = !vanilla && variant.equals("interface") ? Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT : 0;
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | (isAbstract ? Opcodes.ACC_ABSTRACT : 0) | itf, BURNER, null, "java/lang/Object", null);
 		String burn = vanilla ? "burn" : variant.equals("replaced") ? "catchFire" : "burn";
-		String desc = vanilla ? VANILLA : PLATFORM;
+		String desc = vanilla ? VANILLA : variant.equals("otherReturn") ? PLATFORM.replace(")V", ")I") : PLATFORM;
 		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "(Ljava/lang/Object;L" + STATE + ";)V", null, null);
 		tick.visitCode();
 		if (vanilla || !variant.equals("noCall")) {
@@ -546,7 +730,7 @@ class AddedParametersTest {
 					if (!vanilla && variant.equals("computed")) {
 						tick.visitMethodInsn(Opcodes.INVOKESTATIC, HOOKS, "side", "()L" + SIDE + ";", false);
 					} else if (!vanilla) {
-						tick.visitFieldInsn(Opcodes.GETSTATIC, SIDE, side, "L" + SIDE + ";");
+						tick.visitFieldInsn(Opcodes.GETSTATIC, variant.equals("otherOwner") ? OTHER_SIDE : SIDE, side, "L" + SIDE + ";");
 					}
 					tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, BURNER, method, desc, false);
 				}
@@ -562,6 +746,7 @@ class AddedParametersTest {
 			if (variant.equals("twin")) burnMethod(cw, "burnTwin", desc, false, "");
 		}
 		if (!vanilla && variant.equals("overloads")) burnMethod(cw, burn, "(Ljava/lang/Object;L" + STATE + ";IL" + BLOCK + ";)V", true, "");
+		if (vanilla && variant.equals("vanillaOverload")) burnMethod(cw, burn, PLATFORM, true, "");
 
 		for (String[] own : new String[][] {{"remove", "(Ljava/lang/Object;)Z"}, {"spread", TAKES_SIDE}, {"event", "()V"}}) {
 			MethodVisitor m = cw.visitMethod(Opcodes.ACC_PUBLIC, own[0], own[1], null, null);
@@ -627,6 +812,11 @@ class AddedParametersTest {
 					mv.visitInvokeDynamicInsn("run", "(L" + SIDE + ";)Ljava/lang/Runnable;", metafactory, Type.getType("()V"),
 							new Handle(Opcodes.H_INVOKESTATIC, HOOKS, "ignite", TAKES_SIDE, false), Type.getType("()V"));
 					mv.visitInsn(Opcodes.POP);
+				}
+				case "wideStore" -> {
+					// A long into the chance's slot, which covers the side's too.
+					mv.visitInsn(Opcodes.LCONST_0);
+					mv.visitVarInsn(Opcodes.LSTORE, 3);
 				}
 				case "receiver" -> {
 					mv.visitVarInsn(Opcodes.ALOAD, 4);
@@ -753,8 +943,13 @@ class AddedParametersTest {
 
 	/** The game's block state, with the platform's extension interfaces: its block, and vanilla's {@code flammable()}. */
 	private static byte[] state(String... interfaces) {
+		return stateExtending("java/lang/Object", interfaces);
+	}
+
+	/** The state, of the superclass {@code superName}. */
+	private static byte[] stateExtending(String superName, String... interfaces) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
-		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, STATE, null, "java/lang/Object", interfaces);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, STATE, null, superName, interfaces);
 		MethodVisitor block = cw.visitMethod(Opcodes.ACC_PUBLIC, "block", "()L" + BLOCK + ";", null, null);
 		block.visitCode();
 		block.visitInsn(Opcodes.ACONST_NULL);
@@ -936,9 +1131,10 @@ class AddedParametersTest {
 
 	/**
 	 * The invoker Mixin's {@code AccessorGeneratorMethodProxy} generates in the target for an invoker of {@code target}:
-	 * {@code invokespecial} where the method is private, else {@code invokevirtual}.
+	 * {@code invokespecial} where the method is private, unless the class has {@code nestmates} (Mixin 0.17), else
+	 * {@code invokevirtual}.
 	 */
-	private static MethodNode mixinsInvoker(String owner, MethodNode target) {
+	private static MethodNode mixinsInvoker(String owner, MethodNode target, boolean nestmates) {
 		MethodNode invoker = new MethodNode(Opcodes.ACC_PUBLIC, "invokeBurn", target.desc, null, null);
 		invoker.visitCode();
 		invoker.visitVarInsn(Opcodes.ALOAD, 0);
@@ -948,7 +1144,7 @@ class AddedParametersTest {
 			slot += arg.getSize();
 		}
 		boolean isPrivate = (target.access & Opcodes.ACC_PRIVATE) != 0;
-		invoker.visitMethodInsn(isPrivate ? Opcodes.INVOKESPECIAL : Opcodes.INVOKEVIRTUAL, owner, target.name, target.desc, false);
+		invoker.visitMethodInsn(isPrivate && !nestmates ? Opcodes.INVOKESPECIAL : Opcodes.INVOKEVIRTUAL, owner, target.name, target.desc, false);
 		invoker.visitInsn(Type.getReturnType(target.desc).getOpcode(Opcodes.IRETURN));
 		invoker.visitMaxs(slot + 1, slot);
 		invoker.visitEnd();
@@ -1013,6 +1209,44 @@ class AddedParametersTest {
 		own.visitInsn(Opcodes.ARETURN);
 		own.visitMaxs(0, 0);
 		own.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** A superclass of the state's with a private flammability of the extension's descriptor, reading the side. */
+	private static byte[] stateBase() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, STATE_BASE, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "flammability", FLAMMABILITY, null, null);
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 2);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, SIDE, "hashCode", "()I", false);
+		mv.visitInsn(Opcodes.IRETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** An interface of the platform's with a static flammability of the extension's descriptor, which no call selects. */
+	private static byte[] staticExtension() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, STATIC_EXT, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "flammability", FLAMMABILITY, null, null);
+		mv.visitCode();
+		mv.visitInsn(Opcodes.ICONST_0);
+		mv.visitInsn(Opcodes.IRETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** Another class with static final sides of the side's type, named as the side's own. */
+	private static byte[] otherSide() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, OTHER_SIDE, null, "java/lang/Object", null);
+		for (String name : List.of("WEST", "EAST")) cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, name, "L" + SIDE + ";", null, null).visitEnd();
 		cw.visitEnd();
 		return cw.toByteArray();
 	}
