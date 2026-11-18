@@ -233,6 +233,29 @@ def langProviderJar = tasks.register('langProviderJar', Jar) {
             'Implementation-Version': project.version)
 }
 
+// The loader's unit tests (loader/forge-shared/src/fml47Test: Forge 43's and 47's descriptors), on its classes as built,
+// with core and ASM, which the game provides at runtime. ci/build.sh runs them.
+sourceSets {
+    loaderTest {
+        java.srcDirs = [rootProject.file('loader/forge-shared/src/fml47Test/java')]
+        compileClasspath += sourceSets.loader.output + configurations.loaderCompileClasspath
+        runtimeClasspath += sourceSets.loader.output + configurations.loaderCompileClasspath
+    }
+}
+dependencies {
+    loaderTestImplementation platform("org.junit:junit-bom:${junit_version}")
+    loaderTestImplementation 'org.junit.jupiter:junit-jupiter'
+    loaderTestRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    loaderTestRuntimeOnly "org.ow2.asm:asm:${asm_version}"
+}
+def loaderTest = tasks.register('loaderTest', Test) {
+    group = 'verification'
+    description = "Runs the loader's unit tests"
+    testClassesDirs = sourceSets.loaderTest.output.classesDirs
+    classpath = sourceSets.loaderTest.runtimeClasspath
+}
+tasks.named('check') { dependsOn loaderTest }
+
 // Which Forge libraries a source set compiles against: the loader's classpath, by jar name (what Forge's own libraries
 // are named decides the language provider's classpath above).
 tasks.register('forgeClasspathReport') {

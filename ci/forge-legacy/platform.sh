@@ -10,7 +10,7 @@ testmod_key=key.fabricated-forge-testmod.check
 # the jar's layout for Forge.
 gradle_tasks() {
 	local project=":mc:forge-legacy-$mc"
-	echo "-Pfabricated.platforms=forge-legacy --configure-on-demand $project:fabricatedJar $project:testmods $project:checkForgeJar"
+	echo "-Pfabricated.platforms=forge-legacy --configure-on-demand $project:fabricatedJar $project:testmods $project:checkForgeJar $project:loaderTest"
 }
 
 # shellcheck source=ci/forge-shared/platform.sh
