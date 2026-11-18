@@ -58,6 +58,7 @@ import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
+import io.github.cmdralph.fabricated.core.mixin.InvokerBridge;
 import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingComposer;
@@ -884,6 +885,75 @@ class PipelineTest {
 	}
 
 	/**
+	 * LEAVE-6: a Fabric mod's invoker of a vanilla method the platform gave a parameter vanilla's never had, which the
+	 * platform's method only passes to its extension's method whose default ignores it, gets a bridge the game class
+	 * declares as it loads: the result names it for that class, from a fresh translation and from the cache alike.
+	 * Without vanilla's classes to compare the platform's method with, there is none, and the invoker is left out.
+	 */
+	@Test
+	void anInvokersBridgeReachesTheResultFromATranslationAndFromTheCache(@TempDir Path game, @TempDir Path src) throws Exception {
+		String burner = "net/minecraft/world/level/Burner";
+		String state = "net/minecraft/world/level/State";
+		Map<String, String> common = Map.of(
+				"net/minecraft/world/level/Side.java", "package net.minecraft.world.level; public enum Side { WEST, EAST }",
+				"net/neoforged/neoforge/common/extensions/IStateExtension.java", "package net.neoforged.neoforge.common.extensions;"
+						+ " public interface IStateExtension { default int flammability(Object level, net.minecraft.world.level.Side side) { return 5; } }",
+				state + ".java", "package net.minecraft.world.level; public class State implements net.neoforged.neoforge.common.extensions.IStateExtension {"
+						+ " public int flammable() { return 5; } }");
+		Map<String, String> vanillaSources = new HashMap<>(common);
+		vanillaSources.put(burner + ".java", "package net.minecraft.world.level; public class Burner { public void tick(Object level, State state) {"
+				+ " burn(level, state, 300); burn(level, state, 250); } private void burn(Object level, State state, int chance) {"
+				+ " if (state.flammable() > chance) remove(level); } public boolean remove(Object level) { return true; } }");
+		Map<String, String> platformSources = new HashMap<>(common);
+		platformSources.put(burner + ".java", "package net.minecraft.world.level; public class Burner { public void tick(Object level, State state) {"
+				+ " burn(level, state, 300, Side.WEST); burn(level, state, 250, Side.EAST); } private void burn(Object level, State state, int chance, Side side) {"
+				+ " if (state.flammability(level, side) > chance) remove(level); } public boolean remove(Object level) { return true; } }");
+		Map<String, byte[]> vanilla = TestSources.compile(src.resolve("vanilla"), vanillaSources);
+		Map<String, byte[]> platform = TestSources.compile(src.resolve("platform"), platformSources);
+		Map<String, byte[]> fabric = TestSources.compile(src.resolve("fabric"), TestSources.MIXIN_ANNOTATIONS, platformSources, Map.of(
+				"org/spongepowered/asm/mixin/gen/Invoker.java", "package org.spongepowered.asm.mixin.gen;"
+						+ " @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) public @interface Invoker { String value() default \"\"; }",
+				"com/burn/mixin/BurnerAccessor.java", "package com.burn.mixin; import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.gen.*;"
+						+ " import net.minecraft.world.level.*; @Mixin(Burner.class) public interface BurnerAccessor {"
+						+ " @Invoker(\"burn\") void invokeBurn(Object level, State state, int chance); }"));
+		Path burning = TestJars.create().fabricModJson(TestJars.modJson("burning", "1.0", "\"mixins\":[\"burning.mixins.json\"]"))
+				.text("burning.mixins.json", "{\"required\":true,\"package\":\"com.burn.mixin\",\"plugin\":\"com.burn.Plugin\",\"mixins\":[\"BurnerAccessor\"]}")
+				.bytes("com/burn/mixin/BurnerAccessor.class", fabric.get("com/burn/mixin/BurnerAccessor"))
+				.write(Files.createDirectories(game.resolve("mods")).resolve("burning.jar"));
+		InvokerBridge bridge = new InvokerBridge(burner, "burn", "(Ljava/lang/Object;L" + state + ";I)V", "burn",
+				"(Ljava/lang/Object;L" + state + ";ILnet/minecraft/world/level/Side;)V", 3, "WEST");
+
+		Pipeline.Input fresh = withVanilla(input(game, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()), vanilla);
+		Pipeline.Result translated = Pipeline.run(fresh);
+		assertFalse(translated.mods().getFirst().translated().cacheHit());
+		assertEquals(Map.of(burner, List.of(bridge)), translated.invokerBridges(), translated.report().render());
+		fresh.cache().finish(5);
+		Pipeline.Input again = withVanilla(input(game, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()), vanilla);
+		Pipeline.Result cached = Pipeline.run(again);
+		assertTrue(cached.mods().getFirst().translated().cacheHit());
+		assertEquals(Map.of(burner, List.of(bridge)), cached.invokerBridges());
+		again.cache().finish(5);
+
+		Path other = Files.createDirectories(game.resolve("other"));
+		Pipeline.Result unread = Pipeline.run(input(other, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()));
+		assertEquals(Map.of(), unread.invokerBridges());
+		assertTrue(unread.mods().getFirst().translated().findings().stream().anyMatch(f -> f.severity() == PreflightFinding.Severity.LEFT_OUT
+				&& f.suggestion().contains("vanilla's class, which it is compared with, can't be read (LEAVE-6)")), unread.report().render());
+	}
+
+	/** {@code in} with vanilla's classes ({@link Pipeline.VanillaGame}). */
+	private static Pipeline.Input withVanilla(Pipeline.Input in, Map<String, byte[]> vanilla) throws Exception {
+		java.lang.reflect.RecordComponent[] parts = Pipeline.Input.class.getRecordComponents();
+		Class<?>[] types = new Class<?>[parts.length];
+		Object[] values = new Object[parts.length];
+		for (int i = 0; i < parts.length; i++) {
+			types[i] = parts[i].getType();
+			values[i] = types[i] == Pipeline.VanillaGame.class ? new Pipeline.VanillaGame(vanilla::get, "test") : parts[i].getAccessor().invoke(in);
+		}
+		return Pipeline.Input.class.getDeclaredConstructor(types).newInstance(values);
+	}
+
+	/**
 	 * Code calling a class only an installed NeoForge mod has (Forgified Fabric API's modules, a multi-loader library's
 	 * NeoForge build) links: the linkage check counts the installed mods' classes (PROVIDER-1).
 	 */
@@ -1340,6 +1410,10 @@ class PipelineTest {
 		// SEAM-1: the classes whose vanilla methods are put back, once.
 		assertEquals(Set.of("net/minecraft/world/Thing"), result.restoredSeams());
 		assertTrue(result.without(Set.of("mod-a", "mod-b")).restoredSeams().isEmpty());
+		// LEAVE-6: an invoker bridge two mods' invokers call is declared once.
+		assertEquals(1, result.invokerBridges().get("net/minecraft/world/Thing").size(), result.invokerBridges().toString());
+		assertEquals(1, kept.invokerBridges().get("net/minecraft/world/Thing").size());
+		assertTrue(result.without(Set.of("mod-a", "mod-b")).invokerBridges().isEmpty());
 		// Read from any class-loading thread: never changed after it is published.
 		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().get("net/minecraft/world/Thing").clear());
 		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().clear());
@@ -1369,7 +1443,8 @@ class PipelineTest {
 		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, 1);
 		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
 				List.of(new DefaultBridge("net/minecraft/world/Thing", "net/minecraft/world/Extension", "size", "()I")), Set.of(environmentClass),
-				Set.of("net/minecraft/world/Thing check()Z"), Set.of("net/minecraft/world/Thing"), false, 0);
+				Set.of("net/minecraft/world/Thing check()Z"), Set.of("net/minecraft/world/Thing"),
+				Set.of(new InvokerBridge("net/minecraft/world/Thing", "burn", "(I)V", "burn", "(ILnet/minecraft/core/Direction;)V", 1, "WEST")), false, 0);
 		return new Pipeline.LoadedMod(mod, PackageGuard.Decision.NONE, List.of());
 	}
 

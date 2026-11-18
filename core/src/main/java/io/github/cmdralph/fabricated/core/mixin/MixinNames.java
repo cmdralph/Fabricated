@@ -118,9 +118,10 @@ final class MixinNames {
 
 	/**
 	 * The prefix of a method Fabricated's in-game mod adds to a game class for a method of it the platform gave other
-	 * parameters, followed by the method's name: it takes vanilla's parameters and calls the platform's method so that it
-	 * does what vanilla's does, and an {@code @Invoker} of vanilla's method invokes it instead
-	 * ({@code MixinRepairs.changedMethodBridge}, LEAVE-5).
+	 * parameters, or the class declares as it loads where the platform only gave it one it passes on to its extensions'
+	 * defaults ({@link InvokerBridge}), followed by the method's name: it takes vanilla's parameters and calls the
+	 * platform's method so that it does what vanilla's does, and an {@code @Invoker} of vanilla's method invokes it instead
+	 * ({@code MixinRepairs.changedMethodBridge}, LEAVE-5, LEAVE-6).
 	 */
 	static final String BRIDGE_INVOKER = "fabricated$invoke$";
 
