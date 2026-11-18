@@ -41,22 +41,22 @@ import io.github.cmdralph.fabricated.core.report.KnownLimits;
  * whose default does nothing; the platform's tick passes {@code Side.WEST}, then {@code Side.EAST}.
  */
 class AddedParametersTest {
-	private static final String BURNER = "net/minecraft/world/Burner";
+	static final String BURNER = "net/minecraft/world/Burner";
 	private static final String BURNER2 = "net/minecraft/world/Burner2";
-	private static final String STATE = "net/minecraft/world/State";
-	private static final String BLOCK = "net/minecraft/world/Block";
-	private static final String SIDE = "net/minecraft/world/Side";
+	static final String STATE = "net/minecraft/world/State";
+	static final String BLOCK = "net/minecraft/world/Block";
+	static final String SIDE = "net/minecraft/world/Side";
 	private static final String STATE_EXT = "net/neoforged/neoforge/common/extensions/IStateExtension";
-	private static final String SUB_EXT = "net/neoforged/neoforge/common/extensions/ISubStateExtension";
-	private static final String OTHER_EXT = "net/neoforged/neoforge/common/extensions/IOtherExtension";
+	static final String SUB_EXT = "net/neoforged/neoforge/common/extensions/ISubStateExtension";
+	static final String OTHER_EXT = "net/neoforged/neoforge/common/extensions/IOtherExtension";
 	private static final String BLOCK_EXT = "net/neoforged/neoforge/common/extensions/IBlockExtension";
-	private static final String HOOKS = "net/neoforged/neoforge/common/FireHooks";
+	static final String HOOKS = "net/neoforged/neoforge/common/FireHooks";
 	private static final String VANILLA = "(Ljava/lang/Object;L" + STATE + ";I)V";
 	private static final String PLATFORM = "(Ljava/lang/Object;L" + STATE + ";IL" + SIDE + ";)V";
-	private static final String FLAMMABILITY = "(Ljava/lang/Object;L" + SIDE + ";)I";
-	private static final String BLOCK_FLAMMABILITY = "(L" + STATE + ";Ljava/lang/Object;L" + SIDE + ";)I";
+	static final String FLAMMABILITY = "(Ljava/lang/Object;L" + SIDE + ";)I";
+	static final String BLOCK_FLAMMABILITY = "(L" + STATE + ";Ljava/lang/Object;L" + SIDE + ";)I";
 	private static final String CAUGHT_FIRE = "(Ljava/lang/Object;L" + SIDE + ";)V";
-	private static final String TAKES_SIDE = "(L" + SIDE + ";)V";
+	static final String TAKES_SIDE = "(L" + SIDE + ";)V";
 	private static final String INVOKER = "Lorg/spongepowered/asm/mixin/gen/Invoker;";
 	private static final String PLUGIN_CONFIG = "{\"required\":true,\"package\":\"com.example.mixin\",\"plugin\":\"com.example.Plugin\",\"mixins\":[\"BurnerAccessor\"]}";
 	/** What the hint of a left-out invoker says before LEAVE-6's reason. */
@@ -446,7 +446,7 @@ class AddedParametersTest {
 	}
 
 	/** The game but the burner: the state, the block, the side, the platform's extensions and hooks. */
-	private static Map<String, byte[]> baseGame() {
+	static Map<String, byte[]> baseGame() {
 		return new HashMap<>(Map.of(STATE, state(STATE_EXT), BLOCK, block(), SIDE, side(false), STATE_EXT, stateExtension(), BLOCK_EXT, blockExtension(false),
 				SUB_EXT, subExtension(), OTHER_EXT, otherExtension(), HOOKS, hooks()));
 	}
@@ -527,7 +527,7 @@ class AddedParametersTest {
 	 * {@code inverted}, the removal made whatever the flammability; {@code overloads}, a second method of the name taking one
 	 * parameter more; {@code abstract}, the method abstract; {@code interface}, the burner an interface; {@code twin}, a twin method the tick also passes WEST to; {@code ignores}, vanilla's code.
 	 */
-	private static byte[] burner(boolean vanilla, String variant) {
+	static byte[] burner(boolean vanilla, String variant) {
 		ClassWriter cw = writer();
 		boolean isAbstract = !vanilla && variant.equals("abstract");
 		int itf = !vanilla && variant.equals("interface") ? Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT : 0;

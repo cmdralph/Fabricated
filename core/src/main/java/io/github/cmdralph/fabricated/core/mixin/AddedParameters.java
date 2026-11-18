@@ -48,7 +48,8 @@ import org.objectweb.asm.tree.VarInsnNode;
  *       the block east of it).</li>
  * </ol>
  * Overrides of those methods in the game's own classes, which the platform patched (NeoForge's {@code TntBlock} overrides
- * {@code onCaughtFire}), are a block's own answer, as a mod's block's are: nothing here reads them.
+ * {@code onCaughtFire}), are a block's own answer, as a mod's block's are: nothing here reads them as the game starts.
+ * CI reads them on each pinned platform build ({@link InvokerBridgeGuard}), each judged as the code it overrides.
  */
 final class AddedParameters extends PreflightPart {
 	/** How many methods deep the parameter is followed: the platform's method, the methods it passes it to, and theirs. */
@@ -65,17 +66,21 @@ final class AddedParameters extends PreflightPart {
 	/**
 	 * The platform's method in vanilla's place ({@code method}, its added parameter at {@code parameter}), and either the
 	 * bridge, with the platform's methods the method passes the parameter to ({@code passedTo}, as messages name them:
-	 * {@code IBlockStateExtension.getFlammability}), or why there is none ({@code why}, a clause for the report).
+	 * {@code IBlockStateExtension.getFlammability}) and every call the parameter reaches, at any depth ({@code reached}),
+	 * or why there is none ({@code why}, a clause for the report).
 	 */
-	record Verdict(MethodNode method, int parameter, InvokerBridge bridge, List<String> passedTo, String why) {
+	record Verdict(MethodNode method, int parameter, InvokerBridge bridge, List<String> passedTo, List<Reached> reached, String why) {
 		/** The added parameter's type, as messages name it: {@code Direction}. */
 		String typeName() {
 			return AddedParameters.typeName(Type.getArgumentTypes(method.desc)[parameter]);
 		}
 	}
 
-	/** A call of the platform's own method the parameter is passed to, and the code the JVM runs for it. */
-	private record Passed(MethodInsnNode call, PreflightClasses.Code code) {
+	/**
+	 * A call of the platform's own method the parameter is passed to, as the argument at {@code index}, the code the JVM
+	 * runs for it, and the depth of the method making it (0: the platform's method in vanilla's place).
+	 */
+	record Reached(MethodInsnNode call, PreflightClasses.Code code, int index, int depth) {
 	}
 
 	/** The code the JVM runs for a call, or why there is none to follow ({@link #runs}). */
@@ -130,15 +135,17 @@ final class AddedParameters extends PreflightPart {
 			why = loaderName + " method has no code of its own (it is abstract or native)";
 		}
 		Type type = Type.getArgumentTypes(platform.desc)[added];
-		List<Passed> passed = new ArrayList<>();
-		if (why == null) why = passedOn(simpleName(target.name) + "." + platform.name, platform, slotOf(platform, added), type, 0, passed);
+		List<Reached> reached = new ArrayList<>();
+		if (why == null) why = passedOn(simpleName(target.name) + "." + platform.name, platform, slotOf(platform, added), type, 0, reached);
 		String[] constant = {null};
 		if (why == null) why = firstConstant(target, platform, added, type, constant);
-		if (why != null) return new Verdict(platform, added, null, List.of(), why);
+		if (why != null) return new Verdict(platform, added, null, List.of(), List.of(), why);
 		Set<String> passedTo = new LinkedHashSet<>();
-		for (Passed p : passed) passedTo.add(simpleName(p.code().owner()) + "." + p.call().name);
+		for (Reached r : reached) {
+			if (r.depth() == 0) passedTo.add(simpleName(r.code().owner()) + "." + r.call().name);
+		}
 		return new Verdict(platform, added, new InvokerBridge(target.name, name, desc, platform.name, platform.desc, added, constant[0]),
-				List.copyOf(passedTo), null);
+				List.copyOf(passedTo), List.copyOf(reached), null);
 	}
 
 	/**
@@ -160,10 +167,10 @@ final class AddedParameters extends PreflightPart {
 
 	/**
 	 * Why {@code method} ({@code named}) doesn't pass its parameter in {@code slot} on to the platform's methods only, each
-	 * ignoring it in turn ({@link #ignoredBy}); null where it does, or never loads it. The calls it passes it to are added to
-	 * {@code passed} at depth 0.
+	 * ignoring it in turn ({@link #ignoredBy}); null where it does, or never loads it. The calls it passes it to, and theirs,
+	 * are added to {@code reached}.
 	 */
-	private String passedOn(String named, MethodNode method, int slot, Type type, int depth, List<Passed> passed) {
+	private String passedOn(String named, MethodNode method, int slot, Type type, int depth, List<Reached> reached) {
 		String what = "the " + typeName(type);
 		Set<AbstractInsnNode> loads = new HashSet<>();
 		for (AbstractInsnNode insn : method.instructions) {
@@ -185,7 +192,7 @@ final class AddedParameters extends PreflightPart {
 			for (int i = 0; i < pushed.length; i++) {
 				if (!loads.contains(pushed[i])) continue;
 				if (i < first) return named + " calls " + simpleName(call.owner) + "." + call.name + " on " + what;
-				String why = ignoredBy(named, call, i - first, what, depth, passed);
+				String why = ignoredBy(named, call, i - first, what, depth, reached);
 				if (why != null) return why;
 				passedLoads.add(pushed[i]);
 			}
@@ -194,7 +201,7 @@ final class AddedParameters extends PreflightPart {
 	}
 
 	/** Why the method {@code call} makes doesn't ignore its argument at {@code index}, the parameter; null where it does. */
-	private String ignoredBy(String named, MethodInsnNode call, int index, String what, int depth, List<Passed> passed) {
+	private String ignoredBy(String named, MethodInsnNode call, int index, String what, int depth, List<Reached> reached) {
 		String callee = simpleName(call.owner) + "." + call.name;
 		if (call.getOpcode() == Opcodes.INVOKESPECIAL) {
 			return named + " passes " + what + " to " + callee + " by invokespecial (a private method's or a superclass's), which Fabricated doesn't follow";
@@ -206,11 +213,36 @@ final class AddedParameters extends PreflightPart {
 			return named + " passes " + what + " to " + callee + ", which runs " + simpleName(code.owner()) + "'s, not a method of " + loader + "'s own code";
 		}
 		if (depth + 1 >= DEPTH) return named + " passes " + what + " on deeper than Fabricated follows it (" + DEPTH + " methods)";
-		if (depth == 0) passed.add(new Passed(call, code));
-		Type[] args = Type.getArgumentTypes(call.desc);
-		int slot = call.getOpcode() == Opcodes.INVOKESTATIC ? 0 : 1;
-		for (int k = 0; k < index; k++) slot += args[k].getSize();
-		return passedOn(simpleName(code.owner()) + "." + call.name, code.method(), slot, args[index], depth + 1, passed);
+		reached.add(new Reached(call, code, index, depth));
+		return passedOn(simpleName(code.owner()) + "." + call.name, code.method(), slotOf(call, index), Type.getArgumentTypes(call.desc)[index], depth + 1,
+				reached);
+	}
+
+	/**
+	 * Why {@code override}, {@code owner}'s method standing in for the code {@code reached} runs where the receiver is of
+	 * {@code owner}'s class, doesn't ignore the parameter by the rule that code was judged by, from the same depth; null
+	 * where it does. The calls it passes the parameter to, and theirs, are added to {@code more}. CI's guard asks it of the
+	 * game's and the platform's overrides ({@link InvokerBridgeGuard}).
+	 */
+	String overrideReads(String owner, MethodNode override, Reached reached, List<Reached> more) {
+		return passedOn(simpleName(owner) + "." + override.name, override, slotOf(reached.call(), reached.index()),
+				Type.getArgumentTypes(reached.call().desc)[reached.index()], reached.depth() + 1, more);
+	}
+
+	/** Whether {@code type} is {@code root} or extends or implements it, as far as the classes read tell. */
+	boolean isSubtype(String type, String root) {
+		List<String> queue = new ArrayList<>(List.of(type));
+		Set<String> seen = new HashSet<>();
+		for (int i = 0; i < queue.size(); i++) {
+			String c = queue.get(i);
+			if (c.equals(root)) return true;
+			if (!seen.add(c)) continue;
+			ClassNode node = readable(c);
+			if (node == null) continue;
+			if (node.superName != null) queue.add(node.superName);
+			queue.addAll(node.interfaces);
+		}
+		return false;
 	}
 
 	/**
@@ -338,6 +370,14 @@ final class AddedParameters extends PreflightPart {
 	static String typeName(Type type) {
 		String name = type.getClassName();
 		return name.substring(name.lastIndexOf('.') + 1).replace('$', '.');
+	}
+
+	/** The local slot, in the method {@code call} calls, of its parameter at {@code index}. */
+	private static int slotOf(MethodInsnNode call, int index) {
+		Type[] args = Type.getArgumentTypes(call.desc);
+		int slot = call.getOpcode() == Opcodes.INVOKESTATIC ? 0 : 1;
+		for (int k = 0; k < index; k++) slot += args[k].getSize();
+		return slot;
 	}
 
 	/** The local slot of an instance method's parameter at {@code index}. */
