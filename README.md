@@ -6,12 +6,13 @@
 > and version is the [support matrix](/docs/COMPATIBILITY.md#support-matrix), what Forge lacks its
 > [*Unsupported on Forge*](/docs/COMPATIBILITY.md#unsupported-on-forge), and what this release changed its
 > [release notes](https://github.com/cmdralph/Fabricated/blob/main/docs/releases/v0.6.0-beta.3.md). For NeoForge, see
-> [`main`](https://github.com/cmdralph/Fabricated/tree/main); for Forge 47 (Minecraft 1.20.1), see
-> [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy).
+> [`main`](https://github.com/cmdralph/Fabricated/tree/main); for Forge 43 and 47 (Minecraft 1.19.2 and
+> 1.20.1), see [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy).
 
 Fabricated loads Fabric mods and libraries next to Forge mods. This branch holds the shared engine and the Forge 52
-and 61 to 66 platform (`main` holds NeoForge's, `forge-legacy` Forge 47's), with the engine merged in from `main`.
-It builds and tests those targets, and the releases' `fabricated-forge-*` jars for them come from it.
+and 61 to 66 platform (`main` holds NeoForge's, `forge-legacy` Forge 43's and 47's), with the engine coming from `main`
+through a sync pull request (`scripts/sync-platform-branch.sh`). It builds and tests those targets, and the releases'
+`fabricated-forge-*` jars for them come from it.
 
 | Minecraft | Forge | Java | Fabric mods use |
 |---|---|---|---|
