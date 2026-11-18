@@ -48,6 +48,7 @@ import io.github.cmdralph.fabricated.core.mixin.PlatformCoremods;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.RestoredFields;
+import io.github.cmdralph.fabricated.core.remap.GameMethods;
 import io.github.cmdralph.fabricated.core.remap.JarRemapper;
 import io.github.cmdralph.fabricated.core.remap.LazyMappingTable;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
@@ -484,7 +485,7 @@ public final class Pipeline {
 				.environment("Fabric Loader API", FABRIC_LOADER_COMPAT_VERSION);
 		config.warnings().forEach(w -> report.line("Configuration warnings", w));
 
-		CandidateScanner scanner = new CandidateScanner(in.cache(), config.limits(), in.descriptor().loaderName());
+		CandidateScanner scanner = new CandidateScanner(in.cache(), config.limits(), in.descriptor().loaderName(), in.descriptor().absentLibraryPackages());
 		CandidateScanner.Result scan = scanner.scan(in.fabricJars());
 		// The jars the loaders among them downloaded in an earlier launch join the scan, as jars of the mods folder do.
 		List<DownloadedMods.Download> downloads = DownloadedMods.of(scan.candidates().stream().map(Candidate::id).filter(this::mayLoad).toList(),
@@ -578,7 +579,7 @@ public final class Pipeline {
 		LazyMappingTable table = mappingTable;
 		InstalledClasses installed = in.installedClasses().with(fabricJars(eligible, opened, table == null ? null : () -> {
 			MappingTable loaded = table.table();
-			return new JarRemapper(loaded, Supertypes.ofRuntime(game::supertypes, loaded));
+			return new JarRemapper(loaded, Supertypes.ofRuntime(game::supertypes, loaded), GameMethods.ofClasses(game::readNode));
 		}));
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 				in.runtimeMixinVersion(), in.mixinExtrasVersion(), in.lowestMixinBehavior(), in.fabricatedVersion() + " " + in.fabricatedBuild(), mappingTable, mappingsHash, game, in.untransformableClasses(),
@@ -945,7 +946,7 @@ public final class Pipeline {
 			Map<String, List<String>> aliases = new HashMap<>();
 			config.overrides().forEach((id, o) -> aliases.put(id, o.aliases()));
 			Map<String, String> hints = missingHints();
-			PackageGuard packageGuard = new PackageGuard(config.limits(), in.descriptor().providedPackages());
+			PackageGuard packageGuard = new PackageGuard(config.limits(), in.descriptor().providedPackages(), in.descriptor().absentLibraryPackages());
 			// Every round either removes at least one mod or finishes, so this bound is never the limiting factor.
 			for (int round = 0; round <= eligible.size() + 1; round++) {
 				List<Candidate> active = eligible.stream().filter(c -> !dropped.containsKey(c.id())).toList();
