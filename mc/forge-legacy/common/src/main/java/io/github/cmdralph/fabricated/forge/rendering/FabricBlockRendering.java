@@ -33,26 +33,24 @@ import net.minecraftforge.client.RenderTypeHelper;
 import net.minecraftforge.client.model.data.ModelData;
 
 /**
- * Lets Forge 47's renderers draw the block models only Fabric's renderer API can draw, through Fabric API's own renderer
- * (Indigo), as upstream draws them on 1.20.1 (task 4, R5; as FRAPI-5 does on NeoForge 21.1).
+ * Lets Forge 43's and 47's renderers draw the block models only Fabric's renderer API can draw, through Fabric API's
+ * own renderer (Indigo), as upstream draws them on Fabric (task 4, R5; as FRAPI-5 does on NeoForge 21.1). What Indigo
+ * 0.77 (Forge 43's) leaves to its caller, and 0.92 (Forge 47's) does itself, is {@link IndigoVersion}'s.
  *
  * <p>A Fabric model (one that says it is no vanilla adapter) has the quads it emits, and Forge's block renderer asks it
  * for vanilla's, which such a model usually leaves empty: it was invisible. Indigo's own hooks miss Forge's code: its
- * chunk section hook redirects vanilla's {@code renderBatched} call, which Forge replaced with one taking model data and
- * a render type (pre-flight leaves that redirect out, and keeps the hook that prepares Indigo's terrain context for each
- * compile), and its block renderer hook is on vanilla's {@code tesselateBlock}, which Forge's renderers no longer call.
- * So:
- * <ul>
- * <li>in the chunk sections Forge compiles, a block whose model is a Fabric model, or a vanilla multipart or weighted
- * model with one among its parts, is drawn once (at its first render type) by the terrain context Indigo's hook
- * prepared for the compile, into the section's buffer for each quad's layer, as upstream's redirect draws it; every
- * other block keeps Forge's path;</li>
- * <li>where Forge's renderers draw one block into the buffer they give (moving blocks, falling or pushed by a piston,
- * the breaking overlay, and blocks drawn through the block renderer's {@code renderBatched}), Indigo's block context
- * draws it once (at its first render type), into that buffer, as upstream draws it into the one buffer it is given.</li>
- * </ul>
- * Blocks drawn as entities (a minecart's, an enderman's) and items are as upstream draws them on 1.20.1: items through
- * Indigo's own item hook, which applies on Forge 47, blocks drawn as entities from their vanilla quads.
+ * chunk section hook redirects vanilla's {@code renderBatched} call, which Forge replaced with one taking model data
+ * and a render type (pre-flight leaves that redirect out, and keeps the hook that prepares Indigo's terrain context for
+ * each compile), and its block renderer hook is on vanilla's {@code tesselateBlock}, which Forge's renderers no longer
+ * call. So: <ul> <li>in the chunk sections Forge compiles, a block whose model is a Fabric model, or a vanilla
+ * multipart or weighted model with one among its parts, is drawn once (at its first render type) by the terrain context
+ * Indigo's hook prepared for the compile, into the section's buffer for each quad's layer, as upstream's redirect draws
+ * it; every other block keeps Forge's path;</li> <li>where Forge's renderers draw one block into the buffer they give
+ * (moving blocks, falling or pushed by a piston, the breaking overlay, and blocks drawn through the block renderer's
+ * {@code renderBatched}), Indigo's block context draws it once (at its first render type), into that buffer, as
+ * upstream draws it into the one buffer it is given.</li> </ul> Blocks drawn as entities (a minecart's, an enderman's)
+ * and items are as upstream draws them on Fabric: items through Indigo's own item hook, which applies on Forge 43 and
+ * 47, blocks drawn as entities from their vanilla quads.
  *
  * <p>A Fabric model that throws there fails alone (FRAPI rule 8, {@link FrapiFailures}): the block is drawn by Forge
  * instead, at each of its render types, from the quads the model gives Forge, as is every model of the class that threw
@@ -268,6 +266,7 @@ public final class FabricBlockRendering {
 				return false;
 			}
 			try {
+				IndigoVersion.beforeTerrain(poseStack, state, region, pos);
 				context.tessellateBlock(state, pos, model, poseStack);
 				return true;
 			} catch (VirtualMachineError e) {
@@ -312,7 +311,7 @@ public final class FabricBlockRendering {
 				single.context = new BlockRenderContext(); // it may hold a transform the model pushed
 				single.fellBack = state;
 				single.fellBackPos = pos.asLong();
-				untranslate(poseStack, state, level, pos);
+				if (IndigoVersion.BLOCK_CONTEXT_OFFSETS) untranslate(poseStack, state, level, pos);
 				Frapi.markBroken(model, t, where + " at " + pos, state);
 				return false;
 			}
@@ -330,15 +329,17 @@ public final class FabricBlockRendering {
 		/** Pops the transforms a model that threw left pushed on the compile's context (none are between two blocks). */
 		private static void popTransforms(RenderContext context) {
 			try {
-				for (int i = 0; i < 64 && context.hasTransform(); i++) context.popTransform();
+				IndigoVersion.popTransforms(context);
 			} catch (RuntimeException e) {
 				LOGGER.warn("Could not reset Indigo's terrain context after a block model threw: later blocks of the section may be transformed wrongly", e);
 			}
 		}
 
 		/**
-		 * Takes back the block's offset, which Indigo applies to the pose first, so Forge's renderer, applying it again,
-		 * draws the block where it is. If working the offset out throws, so did Indigo's, before applying it. Failure path.
+		 * Takes back the block's offset, applied to the pose before Indigo drew (by Indigo, or for its terrain context
+		 * on Forge 43 by {@link IndigoVersion#beforeTerrain}), so Forge's renderer, applying it again, draws the block
+		 * where it is. If working the offset out throws, so did the code that applies it, before applying it. Failure
+		 * path.
 		 */
 		private static void untranslate(PoseStack poseStack, BlockState state, BlockAndTintGetter level, BlockPos pos) {
 			Vec3 offset;

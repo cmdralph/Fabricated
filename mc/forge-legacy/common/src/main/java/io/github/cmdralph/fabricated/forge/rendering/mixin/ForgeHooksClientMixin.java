@@ -21,9 +21,9 @@ import net.minecraftforge.client.model.data.ModelData;
 
 /**
  * Sends blocks a piston moves, whose model is a Fabric model, through Fabric's renderer (see
- * {@link FabricBlockRendering}): Forge 47's piston renderer draws them here, once per render type (as its moving block
- * type), with its own {@code tesselateBlock}, which upstream's hook isn't on. The method and the call are Forge's,
- * which keep their names in SRG's: neither is remapped.
+ * {@link FabricBlockRendering}): Forge 43's and 47's piston renderer draws them here, once per render type (as its
+ * moving block type), with its own {@code tesselateBlock}, which upstream's hook isn't on. The method and the call are
+ * Forge's, which keep their names in SRG's: neither is remapped.
  */
 @Mixin(value = ForgeHooksClient.class, remap = false)
 abstract class ForgeHooksClientMixin {

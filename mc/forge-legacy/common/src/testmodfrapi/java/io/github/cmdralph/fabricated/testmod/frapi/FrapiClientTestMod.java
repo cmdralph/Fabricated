@@ -11,8 +11,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
 
 import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin;
-import net.fabricmc.fabric.api.client.model.loading.v1.ModelModifier;
 import net.fabricmc.fabric.api.renderer.v1.model.FabricBakedModel;
 import net.fabricmc.fabric.api.renderer.v1.render.RenderContext;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -23,21 +21,21 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.client.resources.model.MultiPartBakedModel;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * fabric-renderer-api-v1 on Forge 47 (task 4, R5; as FRAPI-5 on NeoForge 21.1): Fabric models (no vanilla adapter:
- * only the quads they emit, none for Forge's renderer), put in place of the test blocks' models after they are baked
- * (fabric-model-loading-api-v1), one alone, one as the part of a vanilla multipart model. Each emits the quads of the
+ * fabric-renderer-api-v1 on Forge 43 and 47 (task 4, R5; as FRAPI-5 on NeoForge 21.1): Fabric models (no vanilla
+ * adapter: only the quads they emit, none for Forge's renderer), put in place of the test blocks' models after they are
+ * baked ({@link FrapiCompat#replaceBakedModels}), one alone, one as the part of a vanilla multipart model. Each emits the quads of the
  * vanilla model it wraps, and logs once when a chunk section draws it, once when it is drawn as a falling block, once as
  * a block a piston moves, and once with the breaking overlay, naming the seam that sent it to Fabric's renderer: on
- * Forge 47 Fabricated's, as upstream's hooks miss Forge's code there.
+ * Forge 43 and 47 Fabricated's, as upstream's hooks miss Forge's code there.
  *
  * <p>Two more Fabric models throw once a chunk section draws them through Fabricated's seam, after emitting their quads
  * and pushing a transform they never pop (FRAPI rule 8): one the broken test block's model, the other a part of the
@@ -48,10 +46,10 @@ import net.minecraft.world.level.block.state.BlockState;
  *
  * <p>The test item's model is a Fabric model too ({@link ItemCheckModel}): it emits the vanilla item model's quads, and
  * logs once when it is drawn in the hotbar (a screen), in hand, as a dropped item and in an item frame
- * ({@link FrapiTestMod} puts it in each), which Indigo's own item hook draws on Forge 47.
+ * ({@link FrapiTestMod} puts it in each), which Indigo's own item hook draws on Forge 43 and 47.
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
-	/** The class through which Fabricated sends a block to Fabric's renderer on Forge 47. */
+	/** The class through which Fabricated sends a block to Fabric's renderer on Forge 43 and 47. */
 	private static final String FABRICATED_SEAM = "io.github.cmdralph.fabricated.forge.rendering.FabricBlockRendering";
 	/** Half a minute of client ticks, which a slow integrated server's first seconds in the world fit in. */
 	private static final int MAX_HOLD = 600;
@@ -60,7 +58,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
-		ModelLoadingPlugin.register(context -> context.modifyModelAfterBake().register(FrapiClientTestMod::fabricModels));
+		FrapiCompat.replaceBakedModels(FrapiClientTestMod::fabricModels);
 	}
 
 	/**
@@ -80,13 +78,13 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	 * Puts the Fabric models in place of the test blocks' baked models (their block states', a top-level model each, with
 	 * a {@code ModelResourceLocation} as their id) and of the test item's (its inventory model, top-level too).
 	 */
-	private static @Nullable BakedModel fabricModels(@Nullable BakedModel model, ModelModifier.AfterBake.Context context) {
-		if (model == null || !(context.id() instanceof ModelResourceLocation id) || !id.getNamespace().equals(FrapiTestMod.NAMESPACE)) return model;
+	private static @Nullable BakedModel fabricModels(@Nullable BakedModel model, ResourceLocation modelId) {
+		if (model == null || !(modelId instanceof ModelResourceLocation id) || !id.getNamespace().equals(FrapiTestMod.NAMESPACE)) return model;
 		if (id.getVariant().equals("inventory")) return id.getPath().equals("fabric_item") ? new ItemCheckModel(model) : model;
 		if (!id.getVariant().isEmpty()) return model;
 		return switch (id.getPath()) {
 			case "terrain_block" -> {
-				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi model plugin OK ({} after it was baked)", id);
+				if (FrapiCompat.MODEL_LOADING_PLUGIN) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi model plugin OK ({} after it was baked)", id);
 				yield new CheckModel(model, "frapi terrain OK");
 			}
 			case "nested_block" -> new MultiPartBakedModel(List.<Pair<Predicate<BlockState>, BakedModel>>of(Pair.of(state -> true,
@@ -130,7 +128,10 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 				.filter(Objects::nonNull).findFirst().orElse(null));
 	}
 
-	/** A model as Fabric mods write one for Fabric's renderer API on 1.20.1, around the vanilla model whose quads it emits. */
+	/**
+	 * A model as Fabric mods write one for Fabric's renderer API, around the vanilla model whose quads it emits: by default
+	 * the wrapped model's block and item quads (Fabric API 0.77, Forge 43's, has no default emitters).
+	 */
 	private abstract static class FabricModel implements BakedModel, FabricBakedModel {
 		final BakedModel wrapped;
 
@@ -181,6 +182,16 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		/** Emits the wrapped vanilla model's quads (its default emitter, Fabric's renderer API's). */
 		void emitWrapped(BlockAndTintGetter level, BlockState state, BlockPos pos, Supplier<RandomSource> randomSupplier, RenderContext context) {
 			((FabricBakedModel) wrapped).emitBlockQuads(level, state, pos, randomSupplier, context);
+		}
+
+		@Override
+		public void emitBlockQuads(BlockAndTintGetter level, BlockState state, BlockPos pos, Supplier<RandomSource> randomSupplier, RenderContext context) {
+			emitWrapped(level, state, pos, randomSupplier, context);
+		}
+
+		@Override
+		public void emitItemQuads(ItemStack stack, Supplier<RandomSource> randomSupplier, RenderContext context) {
+			((FabricBakedModel) wrapped).emitItemQuads(stack, randomSupplier, context);
 		}
 	}
 
@@ -233,8 +244,6 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	 * renderer. Logs once for each place it is drawn in: a screen (the hotbar), a hand, the ground, an item frame.
 	 */
 	private static final class ItemCheckModel extends FabricModel {
-		private static final Map<ItemDisplayContext, String> WHERE = Map.of(ItemDisplayContext.GUI, "screen", ItemDisplayContext.FIRST_PERSON_RIGHT_HAND, "hand",
-				ItemDisplayContext.FIRST_PERSON_LEFT_HAND, "hand", ItemDisplayContext.GROUND, "dropped", ItemDisplayContext.FIXED, "frame");
 		private static final Map<String, AtomicBoolean> LOGGED = Map.of("screen", new AtomicBoolean(), "hand", new AtomicBoolean(), "dropped", new AtomicBoolean(),
 				"frame", new AtomicBoolean());
 
@@ -256,10 +265,9 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		public void emitItemQuads(ItemStack stack, Supplier<RandomSource> randomSupplier, RenderContext context) {
 			// The wrapped vanilla model's default emitter: Fabric's renderer API's.
 			((FabricBakedModel) wrapped).emitItemQuads(stack, randomSupplier, context);
-			ItemDisplayContext displayContext = context.itemTransformationMode();
-			String where = WHERE.get(displayContext);
+			String where = FrapiCompat.itemPlace(context);
 			if (where != null && !LOGGED.get(where).getAndSet(true)) {
-				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi item {} OK ({} drawn {})", where, stack, displayContext);
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi item {} OK ({} drawn as {})", where, stack, FrapiCompat.itemPlaceDetail(context));
 			}
 		}
 	}

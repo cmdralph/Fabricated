@@ -24,11 +24,10 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 /**
- * Fabric's renderer API on Forge 47 (task 4, R5), as the renderer test mod checks it on NeoForge 21.1: registers the
+ * Fabric's renderer API on Forge 43 and 47 (task 4, R5), as the renderer test mod checks it on NeoForge 21.1: registers the
  * test blocks, whose models {@link FrapiClientTestMod} makes Fabric models, and the test item. Only the Fabric API jar
  * provides the renderer API: it joins CI's client run with Fabric API. Written in Mojang's names and installed in
  * Intermediary's, as the test mods are (mc/platform-forge-legacy.gradle).
@@ -118,7 +117,7 @@ public final class FrapiTestMod implements ModInitializer {
 		Direction facing = player.getDirection();
 		BlockPos front = player.blockPosition().relative(facing, 2).above();
 		BlockPos nested = front.relative(facing.getClockWise());
-		ServerLevel world = player.serverLevel();
+		ServerLevel world = FrapiCompat.level(player);
 		world.setBlockAndUpdate(front, terrainBlock.defaultBlockState());
 		world.setBlockAndUpdate(nested, nestedBlock.defaultBlockState());
 		world.setBlockAndUpdate(front.above(), brokenBlock.defaultBlockState());
@@ -166,6 +165,6 @@ public final class FrapiTestMod implements ModInitializer {
 	}
 
 	private static Block register(String path) {
-		return Registry.register(BuiltInRegistries.BLOCK, new ResourceLocation(NAMESPACE, path), new Block(BlockBehaviour.Properties.of()));
+		return Registry.register(BuiltInRegistries.BLOCK, new ResourceLocation(NAMESPACE, path), new Block(FrapiCompat.blockProperties()));
 	}
 }
