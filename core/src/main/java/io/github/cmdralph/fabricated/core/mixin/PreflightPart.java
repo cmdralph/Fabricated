@@ -1,14 +1,18 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.ConstructorInjects;
+import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
 
+import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -126,5 +130,68 @@ abstract class PreflightPart {
 	/** {@link PreflightClasses#isUntransformable} */
 	boolean isUntransformable(String target) {
 		return classes.isUntransformable(target);
+	}
+
+	/**
+	 * Whether an injector is the one alternative of its group that can apply, on vanilla's classes (VANILLA-1) as on this
+	 * build's: its points are in a method it selects in vanilla's version of each target, so it applies on Fabric, and each
+	 * other member of its group selects no method in vanilla's classes or this build's, or none with its points. The
+	 * group is then that alternative alone, on Fabric as here, and repairing it is repairing an injector alone (LAMBDA-14).
+	 * ReplayMod's jGui hooks a screen's char typed lambdas with two alternatives each, vanilla's lambda and OptiFine's
+	 * ({@code lambda$onCharEvent$6}, by its own name), which no build here has. A member that can't be told (a pattern,
+	 * a slice or an expression pre-flight doesn't read) makes it not judged. Nor is one whose repairs could make more
+	 * injections than its group allows ({@link PreflightClasses#notSole}).
+	 */
+	boolean soleAlternative(ClassNode mixin, MethodNode handler, AnnotationNode own, List<ClassNode> targets, Context ctx) {
+		String group = PreflightAsm.group(handler);
+		if (group == null || classes.notSole.contains(mixin.name + " " + handler.name + handler.desc)) return false;
+		List<ClassNode> originals = new ArrayList<>();
+		for (ClassNode target : targets) {
+			ClassNode original = vanillaClass(target.name);
+			if (original == null) return false;
+			originals.add(original);
+		}
+		for (ClassNode original : originals) {
+			if (appliesNowhere(own, original, ctx) || !appliesIn(own, original, ctx)) return false;
+		}
+		for (MethodNode other : mixin.methods) {
+			if (other == handler || !group.equals(PreflightAsm.group(other))) continue;
+			AnnotationNode injector = Annotations.all(other).stream().filter(a -> PreflightAsm.isInjector(a.desc)).findFirst().orElse(null);
+			if (injector == null) return false;
+			for (ClassNode original : originals) {
+				if (!appliesNowhere(injector, original, ctx)) return false;
+			}
+			for (ClassNode target : targets) {
+				if (!appliesNowhere(injector, target, ctx)) return false;
+			}
+		}
+		return true;
+	}
+
+	/** Whether an injector's points are in each method it selects in {@code owner}, and it selects one there. */
+	static boolean appliesIn(AnnotationNode injector, ClassNode owner, Context ctx) {
+		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, owner, ctx);
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
+		return !methods.isEmpty() && methods.stream().allMatch(m -> InjectionPoints.pointsIn(ats, slices, m, ctx) == InjectionPoints.Verdict.FOUND);
+	}
+
+	/**
+	 * Whether an injector applies to nothing of {@code owner}: each of its selectors, a method's name (with or without its
+	 * descriptor), names no method there, or only methods its points are missing from. False where that can't be told.
+	 */
+	static boolean appliesNowhere(AnnotationNode injector, ClassNode owner, Context ctx) {
+		if (Annotations.value(injector, "target") != null || !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.isEmpty()) return false;
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
+		for (Object selector : selectors) {
+			if (!(selector instanceof String raw)) return false;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.name() == null) return false;
+			for (MethodNode m : owner.methods) {
+				if (ref.matchesMethod(m.name, m.desc) && (ats.isEmpty() || InjectionPoints.pointsIn(ats, slices, m, ctx) != InjectionPoints.Verdict.MISSING)) return false;
+			}
+		}
+		return true;
 	}
 }
