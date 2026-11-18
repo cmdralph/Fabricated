@@ -577,10 +577,14 @@ public final class Pipeline {
 		// remapped from intermediary names, as translating each mod remaps it.
 		List<SafeArchive> opened = new ArrayList<>();
 		LazyMappingTable table = mappingTable;
+		// The packages the installed jars hold, the platform's, the game's, the libraries' and the mods' (a jar's own lookup
+		// tells only class by class): pre-flight names a @Pseudo mixin whose target is missing from one of them (PRE-37).
+		Set<String> heldPackages = new HashSet<>(in.platformPackages());
+		eligible.forEach(c -> heldPackages.addAll(c.packages()));
 		InstalledClasses installed = in.installedClasses().with(fabricJars(eligible, opened, table == null ? null : () -> {
 			MappingTable loaded = table.table();
 			return new JarRemapper(loaded, Supertypes.ofRuntime(game::supertypes, loaded), GameMethods.ofClasses(game::readNode));
-		}));
+		})).withPackages(heldPackages);
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 				in.runtimeMixinVersion(), in.mixinExtrasVersion(), in.lowestMixinBehavior(), in.fabricatedVersion() + " " + in.fabricatedBuild(), mappingTable, mappingsHash, game, in.untransformableClasses(),
 				// In the game's names: on 1.21.11 the loader reads the obfuscated jar through Mojang's mappings.

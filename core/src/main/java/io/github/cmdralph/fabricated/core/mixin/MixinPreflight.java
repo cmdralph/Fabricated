@@ -25,6 +25,7 @@ import java.util.function.Supplier;
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
+import io.github.cmdralph.fabricated.core.bytecode.GamePackages;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.bytecode.SeamConflicts;
 import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
@@ -1435,15 +1436,22 @@ public final class MixinPreflight extends PreflightPart {
 			return;
 		}
 		boolean pseudo = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, MixinNames.PSEUDO) != null;
+		// The @Pseudo mixin's targets that aren't there though what they belong to is (PRE-37), named once for the mixin.
+		List<String> skipped = new ArrayList<>();
 
 		for (String target : targetsOf(mixin, ctx)) {
 			boolean isGame = PreflightAsm.isGameClass(target);
 			String owner = isGame ? null : installed.owner(target);
 			ClassNode targetNode = isGame ? gameTarget(target) : owner != null ? installedTarget(target) : null;
 			if (targetNode == null) {
-				// Absent now, it may be installed later: the result holds only while no installed jar has it.
-				if (!isGame && owner == null) installedRead.putIfAbsent(target, "");
-				if (pseudo) continue;
+				// Absent now, it may be installed later: the result holds only while no installed jar has it (nor, where one holds
+				// its package, while that stays so: the @Pseudo note below depends on it).
+				if (!isGame && owner == null) installedRead.putIfAbsent(target, absentFingerprint(target));
+				if (pseudo) {
+					String absent = pseudoTargetOf(target, isGame);
+					if (absent != null) skipped.add(target.replace('/', '.') + absent);
+					continue;
+				}
 				if (isGame && missingTargetsFatal) {
 					ctx.classLevel("Target class " + target.replace('/', '.') + " does not exist in this Minecraft/" + loader + " version",
 							"The mod was likely built for a different Minecraft version, or " + loader + " removed this class.");
@@ -1481,6 +1489,38 @@ public final class MixinPreflight extends PreflightPart {
 			}
 			checkMembers(mixin, targetNode, targetCtx);
 			if (isGame) noteRestoredSeams(mixin, targetNode, targetCtx);
+		}
+		if (!skipped.isEmpty()) {
+			ctx.info("@Pseudo target" + (skipped.size() == 1 ? " " : "s ") + String.join("; ", skipped) + ": Mixin skips the mixin, as it skips any @Pseudo"
+					+ " mixin whose target is missing, so none of it applies (PRE-37)");
+		}
+	}
+
+	/** Fabric API's packages, all its modules': a {@code @Pseudo} mixin's missing target there is named (PRE-37). */
+	private static final String FABRIC_API_PACKAGES = "net/fabricmc/fabric/";
+
+	/**
+	 * Why a {@code @Pseudo} mixin's missing target is named (PRE-37), as the note says it after the class's name, or null
+	 * where its absence is the one {@code @Pseudo} is there for, as on Fabric: a class of a mod that isn't installed (a mod
+	 * the mixin's mod works with where it is, which the report doesn't name, as it doesn't name a mod one only suggests), or
+	 * of the client on a dedicated server, which a Fabric server lacks too. Named: a class of the game's packages on a side
+	 * that has them, which this platform's build lacks; one of Fabric API's packages, which Fabricated provides on every
+	 * platform, its own modules without upstream's internal classes (Polymer's mixins of Fabric's registry sync, which
+	 * NeoForge's replaces); and one in a package an installed jar holds, which then lacks it.
+	 */
+	private String pseudoTargetOf(String target, boolean isGame) {
+		if (isGame) return clientSide || !GamePackages.isClient(target) ? ", a class of Minecraft's, isn't in this Minecraft/" + loader + " version" : null;
+		if (target.startsWith(FABRIC_API_PACKAGES)) return ", a class of Fabric API's, isn't in this game's Fabric API (Fabricated's own modules and those it"
+				+ " passes through)";
+		return installed.holdsPackageOf(target) ? ", in a package an installed jar holds, isn't in that jar" : null;
+	}
+
+	/** {@link InstalledClasses#fingerprint} of a class no installed jar has: what a cached result reading it absent depends on. */
+	private String absentFingerprint(String target) {
+		try {
+			return installed.fingerprint(target);
+		} catch (IOException e) {
+			return "";
 		}
 	}
 

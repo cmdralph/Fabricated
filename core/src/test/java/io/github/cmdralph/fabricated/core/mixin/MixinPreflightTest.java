@@ -15004,8 +15004,11 @@ class MixinPreflightTest {
 		MixinPreflight lenient = preflight(new ClassIndex(Map.of(TARGET, targetClass())::get), Map.of("com/example/mixin/Missing", missing)::get,
 				ClassBytesSource.EMPTY, false, false);
 		assertEquals(Severity.WARN, lenient.check("test.mixins.json", MixinConfigFile.parse(config(true, "Missing")), Refmap.EMPTY, Set.of()).getFirst().severity());
+		// A @Pseudo mixin's missing game class: Mixin skips the mixin, which the report names (PRE-37).
 		byte[] pseudo = mixin("com/example/mixin/PseudoMissing", true, cw -> { });
-		assertTrue(run(config(true, "PseudoMissing"), null, Map.of("com/example/mixin/PseudoMissing", pseudo), false).isEmpty());
+		List<PreflightFinding> skipped = run(config(true, "PseudoMissing"), null, Map.of("com/example/mixin/PseudoMissing", pseudo), false);
+		assertEquals(1, skipped.size(), skipped.toString());
+		assertEquals(Severity.INFO, skipped.getFirst().severity());
 		// The messages name the platform's loader (PLAT-3).
 		PreflightFinding onNeoForge = run(config(true, "Missing"), null, Map.of("com/example/mixin/Missing", missing), false).getFirst();
 		assertTrue(onNeoForge.message().contains("this Minecraft/NeoForge version"), onNeoForge.message());
@@ -15014,6 +15017,75 @@ class MixinPreflightTest {
 				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Missing")), Refmap.EMPTY, Set.of()).getFirst();
 		assertTrue(onForge.message().contains("this Minecraft/Forge version"), onForge.message());
 		assertTrue(onForge.suggestion().contains("or Forge removed this class"), onForge.suggestion());
+	}
+
+	/**
+	 * PRE-37: a {@code @Pseudo} mixin whose target is missing is named, once for the mixin, as an INFO line, where what the
+	 * target belongs to is there (Polymer's mixins of Fabric API's registry sync, which NeoForge's replaces): the game on a
+	 * side that has the class, Fabric API, a package an installed jar holds. A class of a mod that isn't installed, and a
+	 * client class on a dedicated server, which a Fabric server lacks too, stay as quiet as before: that absence is what
+	 * {@code @Pseudo} is there for. Mixin skips the mixin either way, so nothing is left out or disabled.
+	 */
+	@Test
+	void aPseudoMixinWhoseTargetIsMissingIsNamedWhereWhatItBelongsToIsInstalled() throws Exception {
+		String registrySync = "net/fabricmc/fabric/impl/registry/sync/RegistrySyncManager";
+		String tracker = "net/fabricmc/fabric/impl/registry/sync/trackers/StateIdTracker";
+		String heldButAbsent = "com/othermod/api/Gone";
+		String notInstalled = "org/polymc/impl/CustomBlockBreakingCheck";
+		String clientClass = "net/minecraft/client/gui/Gone";
+		Map<String, byte[]> mixins = new HashMap<>();
+		mixins.put("com/example/mixin/Sync", pseudoMixin("com/example/mixin/Sync", registrySync));
+		mixins.put("com/example/mixin/Both", pseudoMixin("com/example/mixin/Both", registrySync, tracker));
+		mixins.put("com/example/mixin/Held", pseudoMixin("com/example/mixin/Held", heldButAbsent));
+		mixins.put("com/example/mixin/Optional", pseudoMixin("com/example/mixin/Optional", notInstalled));
+		mixins.put("com/example/mixin/ClientOnly", pseudoMixin("com/example/mixin/ClientOnly", clientClass));
+		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("Other Mod", "com/othermod/api/Present"::equals,
+				name -> null))).withPackages(Set.of("com/othermod/api"));
+		for (boolean client : new boolean[] {false, true}) {
+			MixinPreflight preflight = new MixinPreflight(new ClassIndex(Map.of(TARGET, targetClass())::get), installed, mixins::get, ClassBytesSource.EMPTY,
+					client, true, ClassBytesSource.EMPTY, "NeoForge");
+			List<PreflightFinding> findings = preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "Sync", "Both", "Held", "Optional",
+					"ClientOnly")), Refmap.EMPTY, Set.of());
+			assertTrue(findings.stream().allMatch(f -> f.severity() == Severity.INFO), findings.toString());
+			Map<String, List<String>> byMixin = new java.util.TreeMap<>();
+			findings.forEach(f -> byMixin.computeIfAbsent(f.mixin(), k -> new ArrayList<>()).add(f.message()));
+			assertEquals(client ? Set.of("com.example.mixin.Sync", "com.example.mixin.Both", "com.example.mixin.Held", "com.example.mixin.ClientOnly")
+					: Set.of("com.example.mixin.Sync", "com.example.mixin.Both", "com.example.mixin.Held"), byMixin.keySet());
+			byMixin.values().forEach(lines -> assertEquals(1, lines.size(), lines.toString()));
+			assertEquals("@Pseudo target net.fabricmc.fabric.impl.registry.sync.RegistrySyncManager, a class of Fabric API's, isn't in this game's Fabric API"
+					+ " (Fabricated's own modules and those it passes through): Mixin skips the mixin, as it skips any @Pseudo mixin whose target is missing,"
+					+ " so none of it applies (PRE-37)", byMixin.get("com.example.mixin.Sync").getFirst());
+			String both = byMixin.get("com.example.mixin.Both").getFirst();
+			assertTrue(both.startsWith("@Pseudo targets net.fabricmc.fabric.impl.registry.sync.RegistrySyncManager, ") && both.contains("; "
+					+ "net.fabricmc.fabric.impl.registry.sync.trackers.StateIdTracker, a class of Fabric API's"), both);
+			assertTrue(byMixin.get("com.example.mixin.Held").getFirst().startsWith("@Pseudo target com.othermod.api.Gone, in a package an installed jar holds,"
+					+ " isn't in that jar: "), byMixin.get("com.example.mixin.Held").toString());
+			if (client) {
+				assertTrue(byMixin.get("com.example.mixin.ClientOnly").getFirst().startsWith("@Pseudo target net.minecraft.client.gui.Gone, a class of"
+						+ " Minecraft's, isn't in this Minecraft/NeoForge version: "), byMixin.get("com.example.mixin.ClientOnly").toString());
+			}
+			// What a cached result reading the targets absent depends on: whether the package is held too.
+			assertEquals(Map.of(registrySync, "", tracker, "", heldButAbsent, InstalledClasses.ABSENT_FROM_HELD_PACKAGE, notInstalled, ""),
+					preflight.installedClasses());
+		}
+		// A jar's own lookup tells class by class: only the packages it is given are held.
+		assertFalse(new InstalledClasses(List.of(new InstalledClasses.Jar("Other Mod", "com/othermod/api/Present"::equals, name -> null)))
+				.holdsPackageOf("com/othermod/api/Gone"));
+		assertTrue(installed.holdsPackageOf("com/othermod/api/Gone"));
+	}
+
+	/** A {@code @Pseudo} mixin of the classes {@code targets}, with nothing in it. */
+	private static byte[] pseudoMixin(String name, String... targets) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		for (String target : targets) values.visit(null, Type.getObjectType(target));
+		values.visitEnd();
+		m.visitEnd();
+		cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Pseudo;", false).visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
 	}
 
 	@Test
