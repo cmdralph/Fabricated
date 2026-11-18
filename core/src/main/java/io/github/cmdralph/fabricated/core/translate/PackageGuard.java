@@ -102,10 +102,26 @@ public final class PackageGuard {
 	private final ArchiveLimits limits;
 	/** The platform loader's own package prefixes ({@link PlatformDescriptor#providedPackages}). */
 	private final List<String> providedPackages;
+	/** The platform libraries' package prefixes the platform's game lacks ({@link PlatformDescriptor#absentLibraryPackages}). */
+	private final List<String> absentLibraryPackages;
 
 	public PackageGuard(ArchiveLimits limits, List<String> providedPackages) {
+		this(limits, providedPackages, List.of());
+	}
+
+	public PackageGuard(ArchiveLimits limits, List<String> providedPackages, List<String> absentLibraryPackages) {
 		this.limits = limits;
 		this.providedPackages = List.copyOf(providedPackages);
+		this.absentLibraryPackages = List.copyOf(absentLibraryPackages);
+	}
+
+	/** Whether a package (internal form) is a platform library's that the platform's game lacks ({@link #absentLibraryPackages}). */
+	private boolean absentLibrary(String name) {
+		String path = name + "/";
+		for (String prefix : absentLibraryPackages) {
+			if (path.startsWith(prefix)) return true;
+		}
+		return false;
 	}
 
 	/** Whether a package (internal form) is among the platform loader's own ({@link #providedPackages}). */
@@ -156,7 +172,8 @@ public final class PackageGuard {
 			for (Map.Entry<String, Map<String, Path>> pkg : contents.packages().entrySet()) {
 				String name = pkg.getKey();
 				String dotted = name.replace('/', '.');
-				if (platformPackages.contains(name) || PlatformLibraries.isProvided(name, pkg.getValue().keySet(), platformClasses) || ownedByLoader(name)) {
+				if (platformPackages.contains(name) || !absentLibrary(name) && PlatformLibraries.isProvided(name, pkg.getValue().keySet(), platformClasses)
+						|| ownedByLoader(name)) {
 					excluded.add(name);
 					notes.add("bundles package " + dotted + ", which the platform already provides; using the platform's copy");
 					continue;

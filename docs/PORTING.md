@@ -14,7 +14,7 @@ Facts about other projects cite their repository, ref and file; what could not b
 |---|---|---|---|
 | `main` | NeoForge 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | active, the primary platform | `ci.yml`, the same workflow on every branch, with `ci/neoforge`; the root `README.md` |
 | `forge` | Minecraft Forge 52 for 1.21.1, 61 for 1.21.11 and 64 to 66 for 26.1.2 to 26.3 | F4: native modules on Forge's events (§7) | `ci.yml`, with `ci/forge`; `COMPATIBILITY.md`'s *Forge* section |
-| `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1) and 1.19.2 (Forge 43.5, §3.3) | L4: native modules on Forge 47's events (§7); 1.19.2 builds and runs CI's parts, unreleased | `ci.yml`, with `ci/forge-legacy`; `COMPATIBILITY.md`'s *Forge* section |
+| `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1) and 1.19.2 (Forge 43.5, §3.3) | L4: native modules on Forge 47's events (§7); 1.19.2 in beta | `ci.yml`, with `ci/forge-legacy`; `COMPATIBILITY.md`'s *Forge* section |
 
 NeoForge needs no legacy branch: its 1.20.1 build is a 2024 fork of Forge 47.1 (§3.1), so the legacy line is Forge's
 (the owner's decision, 2026-10-25).
@@ -161,8 +161,14 @@ Forge 43 differs from Forge 47 where the in-game mod has a version of its own:
   point-of-interest helper adds to; vanilla's own pack is named `Default`, which Fabric's loot table sources read;
   Forge removed the trade factory's check that every villager type has a trade.
 
-Fabric's renderer API isn't bridged on Forge 43: `fabric-renderer-indigo` passes through, its chunk build hook left
-out, and the renderer API test mod (`src/testmodfrapi`) is 1.20.1's alone.
+Fabric's renderer API is bridged on Forge 43 as on Forge 47, through Fabric API 0.77's Indigo, which passes through:
+the bridge (`FabricBlockRendering`, the piston, weighted and multipart models' mixins) is `mc/forge-legacy/common`'s,
+the falling block's and the multipart model's `mc/forge-shared/1.19.2-1.21.1`'s, and Forge 43's own are the chunk
+section compiler's and the block renderer's mixins, whose `renderBatched` and `tesselateBlock` take whether to ask
+the model for its data too, and `IndigoVersion`: Indigo 0.77 leaves a block's offset to its caller and has no way to
+ask a render context for its transforms. The renderer API test mod is shared too (`common/src/testmodfrapi`, each
+version's `FrapiCompat`); on 1.19.2, which has no model loading plugins, it puts its models in place as the model
+bakery finishes, and places an item from the game's frames on the stack.
 
 ## 4. Minecraft Forge (modern)
 

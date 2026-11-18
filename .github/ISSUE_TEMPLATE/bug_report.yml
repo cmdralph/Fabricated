@@ -20,7 +20,7 @@ body:
     attributes:
       label: Loader version
       description: The NeoForge or Forge version, as the launcher or the first lines of `logs/latest.log` show it.
-      placeholder: "NeoForge 21.1.265, Forge 47.4.28, ..."
+      placeholder: "NeoForge 21.1.265, Forge 47.4.28, Forge 43.5.2, ..."
     validations:
       required: true
   - type: dropdown
@@ -28,6 +28,7 @@ body:
     attributes:
       label: Minecraft version
       options:
+        - "1.19.2"
         - "1.20.1"
         - "1.21.1"
         - "1.21.11"

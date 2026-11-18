@@ -80,6 +80,7 @@ import io.github.cmdralph.fabricated.core.mixin.MixinPreflight;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.Refmap;
+import io.github.cmdralph.fabricated.core.remap.GameMethods;
 import io.github.cmdralph.fabricated.core.remap.JarRemapper;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
@@ -235,7 +236,9 @@ public final class ModTranslator {
 					Set<String> refmaps = collectRefmapPaths(candidate.metadata(), archive);
 					// The game's classes, which the mod's may inherit from (CORPUS-86).
 					Supertypes game = env.game() == null ? Supertypes.NONE : Supertypes.ofRuntime(env.game()::supertypes, table);
-					JarRemapper.Result result = new JarRemapper(table, game).remap(archive, refmaps);
+					// And their methods' order, which a mixin's selector by a name alone picks from (PLAIN-2).
+					GameMethods methods = env.game() == null ? GameMethods.NONE : GameMethods.ofClasses(env.game()::readNode);
+					JarRemapper.Result result = new JarRemapper(table, game, methods).remap(archive, refmaps);
 					remapped = result.files();
 					if (!result.strippedSignatureFiles().isEmpty()) {
 						notes.add("Removed jar signature files (signatures cannot survive remapping): " + result.strippedSignatureFiles());
