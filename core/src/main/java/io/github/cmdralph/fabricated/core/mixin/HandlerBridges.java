@@ -509,6 +509,39 @@ final class HandlerBridges {
 	}
 
 	/**
+	 * A handler for {@code injector} at the method the platform gave another type of one of vanilla's parameters (SEAM-12:
+	 * NeoForge's {@code CropBlock.getGrowthSpeed} takes the crop's {@code BlockState} for its {@code Block}): it takes what
+	 * {@code handler} takes, the parameter at {@code at} of the platform's type {@code platform}, and calls {@code handler}
+	 * with what the platform's method works out from it first, {@code getter} called on it ({@code state.getBlock()}), in its
+	 * place. The injector annotation and the parameters' annotations (MixinExtras sugar) move to it; {@code handler} stays a
+	 * plain method of the mixin.
+	 */
+	static MethodNode retypedParameterBridge(String mixin, MethodNode handler, AnnotationNode injector, int at, Type platform, MethodInsnNode getter,
+			String name) {
+		List<Type> params = new ArrayList<>(List.of(Type.getArgumentTypes(handler.desc)));
+		params.set(at, platform);
+		MethodNode bridge = bridgeMethod(handler, name, params, Type.getReturnType(handler.desc));
+		int stack = (handler.access & Opcodes.ACC_STATIC) == 0 ? 1 : 0;
+		if (stack == 1) bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		for (int i = 0; i < params.size(); i++) {
+			bridge.instructions.add(new VarInsnNode(params.get(i).getOpcode(Opcodes.ILOAD), slotOf(handler, params, i)));
+			if (i == at) bridge.instructions.add(new MethodInsnNode(getter.getOpcode(), getter.owner, getter.name, getter.desc, getter.itf));
+			stack += params.get(i).getSize();
+		}
+		bridge.visibleParameterAnnotations = handler.visibleParameterAnnotations;
+		bridge.visibleAnnotableParameterCount = handler.visibleAnnotableParameterCount;
+		bridge.invisibleParameterAnnotations = handler.invisibleParameterAnnotations;
+		bridge.invisibleAnnotableParameterCount = handler.invisibleAnnotableParameterCount;
+		handler.visibleParameterAnnotations = null;
+		handler.invisibleParameterAnnotations = null;
+		handler.visibleAnnotableParameterCount = 0;
+		handler.invisibleAnnotableParameterCount = 0;
+		callHandler(bridge, mixin, handler, stack);
+		moveInjector(handler, injector, bridge);
+		return bridge;
+	}
+
+	/**
 	 * A handler taking {@code this} for the static {@code handler}: it takes what {@code handler} takes and calls it with
 	 * that, as Fabric's Mixin calls a static handler on a method that takes {@code this}. The injector annotation and the
 	 * parameters' annotations (MixinExtras sugar) move to it; {@code handler} stays a plain method of the mixin.

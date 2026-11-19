@@ -17,8 +17,9 @@ versions, and !<version> to leave one out of *. Its why_not column gives the rea
 
 Usage:
   plan.py ci                                  the workflow's plan from its environment (EVENT, REF, BEFORE,
-                                              EXTENDED, COVERED: an open pull request runs the full matrix, CALLED_REF:
-                                              called by another workflow), to $GITHUB_OUTPUT
+                                              EXTENDED, PULL_REQUESTS: the branch's open pull requests with their
+                                              files, as gh lists them, CALLED_REF: called by another workflow), to
+                                              $GITHUB_OUTPUT
   plan.py target <platform> <minecraft>       a version's pins, as shell assignments
   plan.py runs <platform> <minecraft> <part> [--extended] [<run>...]
                                               the part's runs (all, or the named ones), one per line: run, side,
@@ -234,6 +235,25 @@ def changed_paths(root, event, ref, before):
     return diff.stdout.split() if diff.returncode == 0 else None
 
 
+# The pull_request trigger's paths-ignore in ci.yml, which test_plan checks this agrees with: a pull request changing
+# only these runs no matrix.
+PULL_REQUEST_IGNORES = ("docs/**", "**.md")
+
+
+def ignored_by_pull_requests(path):
+    """Whether the pull_request trigger ignores a change of path: one under docs/, or a .md file anywhere."""
+    return path.startswith("docs/") or path.endswith(".md")
+
+
+def covers(pull_requests):
+    """Whether one of the branch's open pull requests (gh's JSON: baseRefName, files) runs the full matrix on this push:
+    one into a base branch changing a file its trigger doesn't ignore. One changing documentation alone runs nothing, so
+    the push's own jobs must; a list gh cut short errs the same way, toward running them."""
+    return any(pr.get("baseRefName") in BASE.values()
+               and any(not ignored_by_pull_requests(f.get("path", "")) for f in pr.get("files") or [])
+               for pr in pull_requests or [])
+
+
 def plan(root, event, ref, paths, extended=False, covered=False, called=False):
     """The jobs' inputs: fast (the fast job, booting boot's version), core, targets (each built in a job of its own),
     tests (each target's parts, a job each, game when there are any) and save (caches written: a push to a base
@@ -266,7 +286,11 @@ def main(args):
         event, ref = env["EVENT"], env["REF"]
         extended, called = env.get("EXTENDED") == "true", bool(env.get("CALLED_REF"))
         paths = None if called else changed_paths(root, event, ref, env.get("BEFORE", ""))
-        result = plan(root, event, ref, paths, extended, env.get("COVERED") == "true", called)
+        try:
+            pull_requests = json.loads(env.get("PULL_REQUESTS") or "[]")
+        except json.JSONDecodeError:
+            pull_requests = []
+        result = plan(root, event, ref, paths, extended, covers(pull_requests), called)
         boot = result["boot"]
         result["boot_key"] = f"{boot['platform']}-{boot['minecraft']}" if boot else "core"
         result["extended"] = extended
