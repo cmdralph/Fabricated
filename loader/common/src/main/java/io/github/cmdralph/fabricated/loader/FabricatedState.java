@@ -20,6 +20,7 @@ import io.github.cmdralph.fabricated.core.Pipeline;
 import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
+import io.github.cmdralph.fabricated.core.mixin.InvokerBridge;
 import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
 import io.github.cmdralph.fabricated.core.report.DiagnosticsBlock;
 import io.github.cmdralph.fabricated.core.report.Report;
@@ -164,6 +165,14 @@ public final class FabricatedState {
 	 */
 	public Set<String> restoredSeams() {
 		return result.restoredSeams();
+	}
+
+	/**
+	 * The methods game classes declare as they load for Fabric mods' invokers of vanilla methods the platform gave a
+	 * parameter vanilla's never had, by class, each with its invokers (LEAVE-6, {@link InvokerBridge}).
+	 */
+	public Map<String, Map<InvokerBridge, List<String>>> invokerBridges() {
+		return result.invokerBridges();
 	}
 
 	/**
