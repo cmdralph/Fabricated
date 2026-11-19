@@ -26,6 +26,7 @@ custom-entrypoint	server	*	yes	*	*	*	out	FABRICATED-TEST custom entrypoint OK			
 added-entrypoint	server	*	yes	*	*	*	out	FABRICATED-TEST added entrypoint OK			an entrypoint a mixin plugin added to Fabric Loader's internal storage resolves, as FrozenLib's do (LOADER-4)	
 classpath-scan	server	*	yes	*	*	*	out	FABRICATED-TEST classpath scan OK			classpath scan finds a Fabric mod's package directory (SCAN-1)	
 class-resources	server	*	yes	*	*	*	out	FABRICATED-TEST class resources OK			a mod's class finds another jar's file, as on Fabric (RES-1)	
+nested-service	server	*	yes	*	*	*	out	FABRICATED-TEST nested service OK			a service the test mod's jar declares with a provider the jar it nests has loads through ServiceLoader: the nested jar's module declares it (PKG-6)	
 vanilla-stats	server	*	yes	*	*	*	out	FABRICATED-TEST vanilla stats read OK			vanilla reads a player's stats with Gson's internal parser, a package Gson's module doesn't export, beside a Fabric jar shading part of Gson (GSON-1, GSON-2)	
 shade-left-out	server	*	yes	*	*	*	report	fabricated-testmod-shade bundles package com\.google\.gson\.internal, which the platform already provides			a Fabric jar's copy of a launcher library's package is left out for the platform's (GSON-1)	
 registry	server	*	yes	*	*	*	out	FABRICATED-TEST registry OK			direct registry registration works	

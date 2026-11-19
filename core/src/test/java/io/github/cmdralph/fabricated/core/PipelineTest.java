@@ -603,7 +603,7 @@ class PipelineTest {
 		Pipeline.LoadedMod svc = result.mods().stream().filter(m -> m.translated().candidate().id().equals("svc-missing")).findFirst().orElseThrow();
 		assertTrue(svc.packages().hides("META-INF/services/java.lang.Runnable"), "a provider the module lacks: the service file is left out");
 		assertFalse(svc.packages().hides("META-INF/services/java.lang.AutoCloseable"), "one whose provider it has stays");
-		assertTrue(result.report().render().contains("with com.svc.Dropped, which its module doesn't have"), result.report().render());
+		assertTrue(result.report().render().contains("with com.svc.Dropped, which no Fabric mod's module has"), result.report().render());
 		Pipeline.LoadedMod resB = result.mods().stream().filter(m -> m.translated().candidate().id().equals("res-b")).findFirst().orElseThrow();
 		assertEquals(Set.of("licenses"), resB.packages().excludedPackages(), "clashing resource-only directory is hidden, not fatal");
 		assertEquals(Report.Status.DISABLED, status.get("needs-missing"));

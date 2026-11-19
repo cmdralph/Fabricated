@@ -3,6 +3,20 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-19: OneConfig 1.8.0's UI works again: a service a Fabric jar declares with another jar's classes (PKG-6)
+
+- **PKG-6** (P0 for clients with OneConfig 1.8.0), fixed: OneConfig 1.8.0's jar declares its UI bridges as services whose
+  classes are in a jar it nests. A Java module can only declare the service providers it has, and those declarations were
+  left out, so OneConfig found none of its bridges, and its screens, PolyPlus's main menu and world creation screen among
+  them, failed every frame. The module holding a service's classes now declares it, whichever of the jars comes first. A
+  service file naming a class no Fabric mod has, or classes of several mods, is still left out, and the report says why.
+- **The test mod** nests a jar with the provider of a service its own jar declares, which ServiceLoader must find in the
+  game (`nested-service`, on every platform).
+- **Verified:** core's tests, CI's script tests and the mixin inventory; NeoForge 1.21.1's and Forge 47's server parts and
+  NeoForge 1.21.11's server run pass, `nested-service` among their checks, which failed on NeoForge 1.21.1 without the fix;
+  OneConfig 1.8.0 on NeoForge 1.21.1 and 1.21.11 finds every bridge and no screen of its fails. CI's `client-polyfrost` run
+  still stops short of its world: PolyPlus 2.1.6 shows world creation in a screen of its own, which the run can't drive.
+
 ## 2026-11-19: The v0.6.0-beta.4 release notes and version
 
 - **Fabricated 0.6.0-beta.4** adds Minecraft 1.19.2 on Forge 43, in beta, with Fabric's renderer API and the Fabric

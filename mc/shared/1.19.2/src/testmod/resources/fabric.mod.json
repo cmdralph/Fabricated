@@ -34,7 +34,8 @@
       "io.github.cmdralph.fabricated.testmod.ArgumentTypeTest",
       "io.github.cmdralph.fabricated.testmod.CommandsTest",
       "io.github.cmdralph.fabricated.testmod.BlockEntityEventsTest",
-      "io.github.cmdralph.fabricated.testmod.BiomeTest"
+      "io.github.cmdralph.fabricated.testmod.BiomeTest",
+      "io.github.cmdralph.fabricated.testmod.NestedServiceTest"
     ],
     "server": ["io.github.cmdralph.fabricated.testmod.TestMod"],
     "client": ["io.github.cmdralph.fabricated.testmod.ClientTestMod", "io.github.cmdralph.fabricated.testmod.BlockEntityEventsClientTest",
@@ -56,6 +57,7 @@
     "fabricated-test-early": "io.github.cmdralph.fabricated.testmod.EarlyAdapter"
   },
   "accessWidener": "fabricated-testmod.accesswidener",
+  "jars": [{"file": "META-INF/jars/fabricated-testmod-service.jar"}],
   "depends": {
     "fabricloader": ">=0.15.0",
     "minecraft": "${minecraft_version}",

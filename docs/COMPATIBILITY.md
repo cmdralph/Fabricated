@@ -1291,6 +1291,12 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   entrypoints, among them the listeners of its events). `ModContainerImpl`'s own internal methods are not provided.
   Other internal classes are not provided. A mod's code that reaches for another one, or for a member of Fabric
   Loader's API that Fabricated lacks, is listed among the report's linkage warnings before the game starts.
+- A service file in a Fabric jar naming providers the jar doesn't have, which Fabric's class path finds in any jar, is
+  declared by the Fabric mod's module that has them all (PKG-6): OneConfig 1.8.0 declares UI bridges whose classes its
+  nested jar holds. A module declares only providers it has, so where no Fabric mod's module has one (a shaded
+  library's file naming a class it dropped, or a class of the platform's or of a NeoForge mod), where they are in
+  several modules, or where the module that has them declares that service with other providers, the file is left
+  out, the report saying so under *Package guard*, and the service has fewer providers than on Fabric.
 - A registry a mod creates through vanilla's own code (`BuiltInRegistries`) before NeoForge's registration has ended
   joins the root registry, which NeoForge froze after its new-registry event, as Fabric API's `FabricRegistryBuilder`
   registries do; an entry a mod registers in a vanilla registry before NeoForge's registration events is accepted, as
@@ -2630,6 +2636,8 @@ Modrinth in CI (never redistributed):
   plugins declared the Fabric way: gated. Each creates and calls its plugin on every version (WTHIT has no 26.3 build).
 - **OneConfig and PolyPlus** (Fabric only), gated where Modrinth has builds for the version (every version since
   v0.6.0-beta): the client reaches its world with no Fabric mod disabled. Their nested
-  Kotlin, Compose and MixinSquared jars split packages between jars, which Fabricated now serves from one module.
+  Kotlin, Compose and MixinSquared jars split packages between jars, which Fabricated now serves from one module, and
+  the UI bridges OneConfig 1.8.0's jar declares, whose classes its nested jar holds, are declared by the module that
+  has them (PKG-6).
 
 To report a result for another mod, see [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-a-compatibility-result).

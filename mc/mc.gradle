@@ -411,6 +411,22 @@ def testmodJar = tasks.register('testmodJar', Jar) {
     from sourceSets.testmod.output
 }
 
+// A Fabric mod the test mod nests, with the provider of a service the test mod's own jar declares, as OneConfig 1.8.0's
+// jar declares the UI bridges its nested jar holds: the nested jar's module declares it (PKG-6, NestedServiceTest).
+sourceSets {
+    testmodservice {
+        java.srcDir rootProject.file('mc/shared/src/testmodservice/java')
+        resources.srcDir rootProject.file('mc/shared/src/testmodservice/resources')
+        compileClasspath = sourceSets.testmod.output
+    }
+}
+def serviceTestmodJar = tasks.register('serviceTestmodJar', Jar) {
+    archiveFileName = 'fabricated-testmod-service.jar'
+    destinationDirectory = layout.buildDirectory.dir('testmodservice')
+    from sourceSets.testmodservice.output
+}
+testmodJar.configure { from(serviceTestmodJar) { into 'META-INF/jars' } }
+
 // Forge: a Fabric mod the test mod nests twice over, as a jar built for Fabric and NeoForge at once nests its libraries
 // (LambDynamicLights): in META-INF/jars, listed by fabric.mod.json and by a NeoForge jar-in-jar list. Forge's jar-in-jar
 // locator must leave it to Fabricated, which translates it (JIJ-1); the nested mod checks it loaded once.

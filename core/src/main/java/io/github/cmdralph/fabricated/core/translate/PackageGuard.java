@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,7 +46,10 @@ import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
  * <p>A module may only declare service providers it has, so a service file of the later mod whose providers are in
  * packages it gave up goes with them: hidden when the module that has them declares the same service with the same
  * providers, served by that module when it doesn't declare it. Any other case (providers in more than one module,
- * or the same service with other providers there) disables the later mod.
+ * or the same service with other providers there) disables the later mod. Another service file naming providers the
+ * jar doesn't have, which Fabric's class path finds in any jar, stays where its module serves them from another jar's
+ * part of a package split with it, goes the same way to the one other module that has them all (a nested jar's, holding
+ * the classes its parent's file names), and is left out otherwise.
  *
  * <p>A nested jar without classes (native libraries, as Skiko's runtime jars hold) lends its root files to the modules
  * of its parent and of the jars nested beside it, whose classes look them up.
@@ -54,10 +59,11 @@ public final class PackageGuard {
 	 * Decision for one mod.
 	 *
 	 * @param excludedPackages packages filtered out of its jar and overlay
-	 * @param hiddenFiles      other files filtered out of them: service files whose providers another module has
+	 * @param hiddenFiles      other files filtered out of them: service files whose providers its module doesn't have,
+	 *                         and its module descriptors
 	 * @param borrowed         files of other mods its module serves too, by the jar they are read from: their part of a
-	 *                         package split with this mod, the service files that go with it, and the root files of a
-	 *                         jar without classes nested beside it
+	 *                         package split with this mod, the service files whose providers it has, and the root files
+	 *                         of a jar without classes nested beside it
 	 */
 	public record Decision(Set<String> excludedPackages, Set<String> hiddenFiles, Map<Path, Set<String>> borrowed, List<String> notes) {
 		public static final Decision NONE = new Decision(Set.of(), Set.of(), Map.of(), List.of());
@@ -78,6 +84,18 @@ public final class PackageGuard {
 
 	/** A service file: the providers it lists, and the jar it is read from. */
 	private record Service(Set<String> providers, Path jar) {
+	}
+
+	/** A service file of the mod {@code id} (NeoForge's) whose providers its module doesn't have. */
+	private record Unserved(String id, String file, Service service) {
+	}
+
+	/** Where a service file's providers are: by module, each with those it has, and those no Fabric mod's module has. */
+	private record Holders(Map<String, List<String>> modules, List<String> nowhere) {
+		/** The one module that has them all, or null. */
+		String only() {
+			return nowhere.isEmpty() && modules.size() == 1 ? modules.keySet().iterator().next() : null;
+		}
 	}
 
 	/**
@@ -153,6 +171,9 @@ public final class PackageGuard {
 		// The mods that load, by Fabric id, with what they have.
 		Map<String, TranslatedMod> loading = new LinkedHashMap<>();
 		Map<String, Contents> contentsById = new HashMap<>();
+		// Their service files whose providers their module doesn't have, in load order: which module has them is known
+		// once every mod's packages are, as the jar holding them may come before or after the jar declaring them.
+		List<Unserved> unserved = new ArrayList<>();
 
 		for (TranslatedMod mod : mods) {
 			Contents contents;
@@ -239,15 +260,13 @@ public final class PackageGuard {
 			}
 			// A module declares only providers it has, or the game doesn't start. Fabric's class path finds a provider in
 			// any jar, or fails when the service is loaded: a shaded library's service file naming a class the jar
-			// dropped, or one the platform's copy of the package has, costs nothing there.
+			// dropped, or one the platform's copy of the package has, costs nothing there. Such a file is left out until
+			// every mod's packages are known (servedElsewhere).
 			for (Map.Entry<String, Service> service : contents.services().entrySet()) {
 				if (hidden.contains(service.getKey())) continue;
-				List<String> missing = service.getValue().providers().stream().filter(p -> !serves(contents, excluded, p)).toList();
-				if (missing.isEmpty()) continue;
+				if (service.getValue().providers().stream().allMatch(p -> serves(contents, excluded, p))) continue;
 				hidden.add(service.getKey());
-				notes.add("declares the service " + service.getKey().substring(SERVICES.length()) + " with " + missing.get(0)
-						+ (missing.size() > 1 ? " and " + (missing.size() - 1) + " more provider(s)" : "")
-						+ ", which its module doesn't have; the service file is left out, as a module can only declare its own providers");
+				unserved.add(new Unserved(mod.neoForgeId(), service.getKey(), service.getValue()));
 			}
 			// Fabric's class path ignores a module descriptor; the platform would make the jar that module, whose
 			// requirements must all be there or no mod loads (SEC-10).
@@ -263,11 +282,7 @@ public final class PackageGuard {
 				notesById.get(lender).add("also serves the " + files.size() + " file(s) " + mod.neoForgeId() + " has in package " + pkg.replace('/', '.')
 						+ " (a package split between them)");
 			});
-			moved.forEach((module, files) -> files.forEach((file, service) -> {
-				borrowedById.computeIfAbsent(module, k -> new LinkedHashMap<>()).computeIfAbsent(service.jar(), k -> new TreeSet<>()).add(file);
-				declared.computeIfAbsent(module, k -> new HashMap<>()).put(file, service.providers());
-				notesById.get(module).add("also declares " + mod.neoForgeId() + "'s service " + file.substring(SERVICES.length()) + ", whose providers it has");
-			}));
+			moved.forEach((module, files) -> files.forEach((file, service) -> declareFor(module, mod.neoForgeId(), file, service, declared, borrowedById, notesById)));
 			for (Map.Entry<String, Map<String, Path>> pkg : contents.packages().entrySet()) {
 				if (excluded.contains(pkg.getKey())) continue;
 				owner.putIfAbsent(pkg.getKey(), mod.neoForgeId());
@@ -282,6 +297,7 @@ public final class PackageGuard {
 			loading.put(mod.candidate().id(), mod);
 			contentsById.put(mod.candidate().id(), contents);
 		}
+		servedElsewhere(unserved, owner, served, declared, hiddenById, borrowedById, notesById);
 		shareRootFiles(loading, contentsById, borrowedById, notesById);
 		Map<String, Decision> decisions = new LinkedHashMap<>();
 		excludedById.forEach((id, excluded) -> {
@@ -291,6 +307,89 @@ public final class PackageGuard {
 					List.copyOf(notesById.get(id))));
 		});
 		return new Result(decisions, conflicts);
+	}
+
+	/**
+	 * Places the service files whose providers their module doesn't have, once every package's module and the files it
+	 * serves are known: a provider is had by the module serving its package, where that module serves the class, its own
+	 * or another jar's part of a package split with it.
+	 * <ul>
+	 *   <li>A file whose providers its own module has after all (a later jar's part of a package it keeps) stays.</li>
+	 *   <li>A file whose providers one other module has goes to that module, as one whose providers went with packages
+	 *       given up does: a jar's file naming classes its nested jar holds is served by the nested jar's module. Not
+	 *       where that module declares the service itself: with the same providers it is served once, and with others it
+	 *       keeps its own, a module having one file of a path.</li>
+	 *   <li>Any other stays left out. A provider no Fabric mod's module has (none does, or the platform's or a NeoForge
+	 *       mod's) can't be declared by a module Fabricated builds. Providers in several modules, the declaring jar's
+	 *       among them or not, could each be declared only by a file in each module listing its own, which no jar has:
+	 *       the guard leaves out and lends the files jars have, and writes none. Split so, ServiceLoader would also find
+	 *       them module by module, not in the file's order, which a caller taking the first provider depends on.</li>
+	 * </ul>
+	 * Of these files, those a module keeps are placed first, so another of them never takes their place in it.
+	 */
+	private static void servedElsewhere(List<Unserved> unserved, Map<String, String> owner, Map<String, Map<String, Path>> served,
+			Map<String, Map<String, Set<String>>> declared, Map<String, Set<String>> hiddenById, Map<String, Map<Path, Set<String>>> borrowedById,
+			Map<String, List<String>> notesById) {
+		Map<Unserved, Holders> holders = new LinkedHashMap<>();
+		for (Unserved u : unserved) holders.put(u, holders(u.service(), owner, served));
+		List<Unserved> ordered = new ArrayList<>(unserved);
+		ordered.sort(Comparator.comparing(u -> !u.id().equals(holders.get(u).only())));
+		for (Unserved u : ordered) {
+			Holders where = holders.get(u);
+			String module = where.only();
+			Set<String> providers = u.service().providers();
+			String declares = "declares the service " + u.file().substring(SERVICES.length()) + " with ";
+			String leftOut = "; the service file is left out, as a module can only declare its own providers";
+			List<String> notes = notesById.get(u.id());
+			if (module == null) {
+				notes.add(declares + (where.nowhere().isEmpty() ? "providers in the modules of " + String.join(" and ", where.modules().keySet())
+						: some(where.nowhere()) + ", which no Fabric mod's module has") + leftOut);
+				continue;
+			}
+			boolean own = module.equals(u.id());
+			Set<String> theirs = declared.getOrDefault(module, Map.of()).get(u.file());
+			String has = ", which " + (own ? "its" : module + "'s") + " module has";
+			if (theirs == null && own) {
+				hiddenById.get(u.id()).remove(u.file());
+				declared.computeIfAbsent(module, k -> new HashMap<>()).put(u.file(), providers);
+			} else if (theirs == null) {
+				declareFor(module, u.id(), u.file(), u.service(), declared, borrowedById, notesById);
+				notes.add(declares + some(providers) + has + ": the service file goes there, as a module can only declare its own providers");
+			} else if (theirs.equals(providers)) {
+				notes.add(declares + some(providers) + has + " and declares already; the service file is left out, as that module serves it");
+			} else {
+				notes.add(declares + some(providers) + has + " but declares with other providers" + leftOut);
+			}
+		}
+	}
+
+	/** Where a service file's providers are: each in the module serving its package, where that module serves the class. */
+	private static Holders holders(Service service, Map<String, String> owner, Map<String, Map<String, Path>> served) {
+		Map<String, List<String>> modules = new TreeMap<>();
+		List<String> nowhere = new ArrayList<>();
+		for (String provider : service.providers()) {
+			String pkg = packageOf(provider);
+			Map<String, Path> files = served.get(pkg);
+			if (files != null && files.containsKey(provider.replace('.', '/') + ".class")) {
+				modules.computeIfAbsent(owner.get(pkg), k -> new ArrayList<>()).add(provider);
+			} else {
+				nowhere.add(provider);
+			}
+		}
+		return new Holders(modules, nowhere);
+	}
+
+	/** {@code module} declares the mod {@code id}'s service file too, served from the jar it is read from. */
+	private static void declareFor(String module, String id, String file, Service service, Map<String, Map<String, Set<String>>> declared,
+			Map<String, Map<Path, Set<String>>> borrowedById, Map<String, List<String>> notesById) {
+		borrowedById.computeIfAbsent(module, k -> new LinkedHashMap<>()).computeIfAbsent(service.jar(), k -> new TreeSet<>()).add(file);
+		declared.computeIfAbsent(module, k -> new HashMap<>()).put(file, service.providers());
+		notesById.get(module).add("also declares " + id + "'s service " + file.substring(SERVICES.length()) + ", whose providers it has");
+	}
+
+	/** The first of {@code providers}, and how many more there are. */
+	private static String some(Collection<String> providers) {
+		return providers.iterator().next() + (providers.size() > 1 ? " and " + (providers.size() - 1) + " more provider(s)" : "");
 	}
 
 	/**
