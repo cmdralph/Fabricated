@@ -7,7 +7,7 @@ same change as the work, and stays forward-looking.
 
 ## Goals
 
-Fabricated runs Fabric mods on NeoForge and Forge, for Minecraft 1.20.1 to 26.3. Every change serves four goals:
+Fabricated runs Fabric mods on NeoForge and Forge, for Minecraft 1.19.2 to 26.3. Every change serves four goals:
 
 - **Lightweight:** no dependency beyond what the platform ships, translation cached between launches, a small jar and
   little RAM and CPU.
@@ -33,11 +33,13 @@ of the support matrix that isn't supported says why.
 
 - Work happens on `claude/dev` (pull requests into `main`), and for Forge-only changes on `claude/dev-forge` and
   `claude/dev-forge-legacy`, cut from `forge` and `forge-legacy` with pull requests back into them.
-- Shared changes land on `main` first and reach the Forge branches by merge (`scripts/sync-platform-branch.sh`, from a
-  working branch cut from the platform branch). A platform branch is never merged into `main`.
+- Shared changes land on `main` first and reach the Forge branches through a sync pull request
+  (`scripts/sync-platform-branch.sh`, run in a working branch cut from the platform branch). A platform branch is never
+  merged into `main`.
 - Logic that could be shared belongs on `main`; the platform branches stay as thin as possible. Code is never copied
   between branches.
-- Nobody pushes to `main`, `forge` or `forge-legacy` directly. A pull request is merged once its full matrix is green.
+- Nobody pushes to `main`, `forge` or `forge-legacy` directly. A pull request is squash-merged once its full matrix is
+  green.
 - Commit messages, pull requests, release notes and documents carry no session links or tooling attribution.
 
 ## What comes next
@@ -57,10 +59,11 @@ In this order:
    parity gap between loaders or versions counts as a bug; every fix gets a regression test. The pass ends when the set
    loads and runs everywhere, and every failure that remains is documented and says so in the game, with a clear
    message.
-4. **Finishing touches**, alongside the pass:
-   - a smoke-boot CI job for every loader and Minecraft version;
-   - GitHub issue forms;
-   - a final check of the documents.
+4. **Finishing touches**, alongside the pass, in place:
+   - a smoke boot on every loader and Minecraft version: CI's fast job boots one touched version on a server on every
+     push, and the full matrix boots every version;
+   - the bug report form, which CI's script tests parse with the workflows;
+   - the documents checked against the branch layout and Minecraft 1.19.2.
 
 What a beta release must hold, and how a release is cut, is in
 [`CONTRIBUTING.md`](../CONTRIBUTING.md#releasing).
