@@ -1295,8 +1295,12 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   declared by the Fabric mod's module that has them all (PKG-6): OneConfig 1.8.0 declares UI bridges whose classes its
   nested jar holds. A module declares only providers it has, so where no Fabric mod's module has one (a shaded
   library's file naming a class it dropped, or a class of the platform's or of a NeoForge mod), where they are in
-  several modules, or where the module that has them declares that service with other providers, the file is left
-  out, the report saying so under *Package guard*, and the service has fewer providers than on Fabric.
+  several modules, where the module that has them declares that service with other providers, where another jar's
+  file of the service naming other providers would go to that module too, where none of the mod's own jars (it, its
+  parent and the jars nested in them) has the classes, or where the file has more than class names, blanks and
+  whole-line comments or isn't UTF-8 (the platforms' module readers refuse it), the file is left out, the report saying
+  so under *Package guard*, and the service has fewer providers than on Fabric. A service file never disables its mod
+  (PKG-7).
 - A registry a mod creates through vanilla's own code (`BuiltInRegistries`) before NeoForge's registration has ended
   joins the root registry, which NeoForge froze after its new-registry event, as Fabric API's `FabricRegistryBuilder`
   registries do; an entry a mod registers in a vanilla registry before NeoForge's registration events is accepted, as
