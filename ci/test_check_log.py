@@ -219,7 +219,15 @@ class ManifestTest(unittest.TestCase):
             self.assertIn(gates, ("all", "own", "none"), r)
             for token in r["mods"].split():
                 self.assertRegex(token, r"^(-testmods|fabric-api|testmod:\w+|modrinth:(fabric|neoforge|forge):[\w@.,{}-]+|corpus(:advanced)?"
-                                        r"|drop:\S+|standins(:own-loader)?|connector|fabricated-copy|energy|unreadable-pack|seed:\S+|reuse:\S+)$", r["run"])
+                                        r"|drop:\S+|standins(:own-loader)?|connector|fabricated-copy|energy|unreadable-pack|seed:\S+"
+                                        r"|config:\S+|reuse:\S+)$", r["run"])
+                if token.startswith("config:"):
+                    # Only the client harness copies a seed into the game directory; the file is the repository's.
+                    self.assertEqual(r["side"], "client", r["run"])
+                    path = token[len("config:"):]
+                    self.assertFalse(Path(path).is_absolute(), r["run"])
+                    root = HERE.parent.resolve()
+                    self.assertTrue((root / path).is_file() and (root / path).resolve().is_relative_to(root), r["run"])
         for platform in PLATFORMS:
             for version in MATRIX[platform]:
                 names = [r["run"] for r in self.runs if plan.applies(r, platform, version)]

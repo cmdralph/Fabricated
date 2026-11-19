@@ -12,10 +12,14 @@ What changed, and how it was verified, newest first. What is open and what comes
   service file naming a class no Fabric mod has, or classes of several mods, is still left out, and the report says why.
 - **The test mod** nests a jar with the provider of a service its own jar declares, which ServiceLoader must find in the
   game (`nested-service`, on every platform).
+- **CI's `client-polyfrost` run** gives PolyPlus vanilla's world and connecting screens (its `customWorlds` and
+  `customConnecting` off), as mc-runtime-test creates its world through vanilla's and PolyPlus 2.1.6 shows world creation
+  in a screen of its own. A run of `ci/runs.tsv` can put a config file the repository holds in the client's config folder
+  (`config:<file>`, a path from the repository's root; one leading out of it stops the run).
 - **Verified:** core's tests, CI's script tests and the mixin inventory; NeoForge 1.21.1's and Forge 47's server parts and
   NeoForge 1.21.11's server run pass, `nested-service` among their checks, which failed on NeoForge 1.21.1 without the fix;
-  OneConfig 1.8.0 on NeoForge 1.21.1 and 1.21.11 finds every bridge and no screen of its fails. CI's `client-polyfrost` run
-  still stops short of its world: PolyPlus 2.1.6 shows world creation in a screen of its own, which the run can't drive.
+  OneConfig 1.8.0 on NeoForge 1.21.1 and 1.21.11 finds every bridge and no screen of its fails, and `client-polyfrost`
+  passes on both (46 and 43 checks).
 
 ## 2026-11-19: The v0.6.0-beta.4 release notes and version
 

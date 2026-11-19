@@ -2639,5 +2639,7 @@ Modrinth in CI (never redistributed):
   Kotlin, Compose and MixinSquared jars split packages between jars, which Fabricated now serves from one module, and
   the UI bridges OneConfig 1.8.0's jar declares, whose classes its nested jar holds, are declared by the module that
   has them (PKG-6).
+  CI uses vanilla's world screens with PolyPlus (its config's `customWorlds` and `customConnecting` off), because
+  mc-runtime-test drives vanilla's world creation: PolyPlus's own world and connecting screens aren't exercised.
 
 To report a result for another mod, see [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-a-compatibility-result).

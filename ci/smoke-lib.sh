@@ -91,6 +91,29 @@ fabricated_jar() {
 	return 1
 }
 
+# repo_file <path>: the real path of a file the repository holds, named relative to its root. An absolute path, or one
+# that leads out of the repository (through .. or a symbolic link), fails.
+repo_file() {
+	local top real
+	case "$1" in
+		'' | /*) echo "$1: not a path relative to the repository" >&2; return 1 ;;
+	esac
+	top=$(realpath -e -- "$root") || return 1
+	if ! real=$(realpath -e -- "$top/$1" 2>/dev/null); then
+		echo "$1: no such file in the repository" >&2
+		return 1
+	fi
+	case "$real" in
+		"$top"/*) ;;
+		*) echo "$1: outside the repository" >&2; return 1 ;;
+	esac
+	if [ ! -f "$real" ]; then
+		echo "$1: not a file" >&2
+		return 1
+	fi
+	echo "$real"
+}
+
 # add_mods <mods dir>: Fabricated, the side's test mods (SMOKE_TESTMODS=none leaves them out) and the extra mods; the
 # folder's listing goes to mods.txt, and what the run had to flags.txt, which a run in the same folder reads again.
 add_mods() {
