@@ -1,11 +1,11 @@
 # Fabricated for Minecraft Forge
 
 > **This is the `forge` branch:** Fabricated for **Minecraft Forge 52 and 61 to 66** (Minecraft 1.21.1, 1.21.11,
-> 26.1.2, 26.2 and 26.3), on dedicated servers and clients. **Status: beta (v0.6.0-beta.3)**, held to the same bar as
+> 26.1.2, 26.2 and 26.3), on dedicated servers and clients. **Status: beta (v0.6.0-beta.4)**, held to the same bar as
 > NeoForge in CI; the open findings are in the [roadmap](/docs/roadmap.md#open-findings). What works on every loader
 > and version is the [support matrix](/docs/COMPATIBILITY.md#support-matrix), what Forge lacks its
 > [*Unsupported on Forge*](/docs/COMPATIBILITY.md#unsupported-on-forge), and what this release changed its
-> [release notes](https://github.com/cmdralph/Fabricated/blob/main/docs/releases/v0.6.0-beta.3.md). For NeoForge, see
+> [release notes](https://github.com/cmdralph/Fabricated/blob/main/docs/releases/v0.6.0-beta.4.md). For NeoForge, see
 > [`main`](https://github.com/cmdralph/Fabricated/tree/main); for Forge 43 and 47 (Minecraft 1.19.2 and
 > 1.20.1), see [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy).
 
@@ -26,7 +26,7 @@ through a sync pull request (`scripts/sync-platform-branch.sh`). It builds and t
 
 1. Install Minecraft Forge for your exact Minecraft version, with the official installer.
 2. Download `fabricated-forge-<version>+mc<minecraft>.jar` for that version (for this release, such as
-   `fabricated-forge-0.6.0-beta.3+mc26.3.jar`) from the [releases](https://github.com/cmdralph/Fabricated/releases) or
+   `fabricated-forge-0.6.0-beta.4+mc26.3.jar`) from the [releases](https://github.com/cmdralph/Fabricated/releases) or
    CurseForge.
 3. Check the jar against the release's `SHA256SUMS.txt`.
 4. Put the jar in the `mods` folder with your Fabric mods. If they need Fabric API, add the official Fabric API jar
