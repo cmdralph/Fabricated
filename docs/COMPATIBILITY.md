@@ -1486,13 +1486,50 @@ together with the mod's other hooks into the method: Moonlight's hooks around th
 consume event, used by Supplementaries and Amendments) work on Forge 47. A hook at vanilla's calls stays out. Forge 52
 to 66 and NeoForge (21.1 to 26.1.2, the versions whose classes were read) keep the name, `checkBurnOut` taking the side,
 where hooks are bridged as for any method given more parameters (SIG-1). An invoker of vanilla's method (Supplementaries'
-lumisene setting blocks alight) has nothing to call, the side being a parameter vanilla's never had: it stays out, a
-known limit the report names (LEAVE-5; STRUCT-2 on Forge 47), and a call of it fails (*Supplementaries' lumisene* in
-the tables below). Where the platform's method takes a parameter vanilla's never had and its code is vanilla's
-otherwise, given one value of it, the in-game mod adds a method with vanilla's parameters that calls the platform's
-with that value, and pre-flight points an invoker of vanilla's method there (LEAVE-5): Forge 61 and 64 give
-`LevelRenderer.extractVisibleBlockEntities` a frustum, by which they cull block entities, and the bridge passes one
-every box is visible in, so Iris's shadow pass extracts what it does on Fabric.
+lumisene setting the blocks around it alight) calls the platform's through a bridge with a fixed side, below. Where the
+platform's method takes a parameter vanilla's never had and its code is vanilla's otherwise, given one value of it, the
+in-game mod adds a method with vanilla's parameters that calls the platform's with that value, and pre-flight points an
+invoker of vanilla's method there (LEAVE-5): Forge 61 and 64 give `LevelRenderer.extractVisibleBlockEntities` a frustum,
+by which they cull block entities, and the bridge passes one every box is visible in, so Iris's shadow pass extracts
+what it does on Fabric.
+
+Where the in-game mod has no such method and the platform's method only passes the parameter on, Fabricated makes the
+bridge itself (LEAVE-6). The call then runs the platform's version of vanilla's method, as an invoker of a method the
+platform patched without changing its parameters does: what the platform changed in the method, it changes for the
+invoking mod too. What Fabricated proves, from the platform's classes, is that the value it passes changes nothing for
+whatever keeps the platform's own code as those classes have it (a coremod or transformer that changes that code before
+the class loads isn't read again): the method never stores into the parameter and passes each value it reads of it
+straight to a method of the platform's own code (the one that runs: an extension's default, a method of its packages),
+as an argument, which ignores it the same way, three methods deep. The game class then declares, as it loads, a private
+method with vanilla's parameters that calls the platform's with the value the platform's own first call of it passes, a
+constant of the parameter's type, and the invoker is pointed there. Where the class, as it loads, isn't the one the mod
+was translated against (its method gone, or its first call passing another value), it gets a method of that name that
+throws instead: the game starts, and only a call of the invoker fails, with an error saying why, which the log gives as
+the class loads and the report once loading completes. `FireBlock.checkBurnOut` qualifies on NeoForge
+21.1, 21.11 and 26.1.2 and Forge 43 and 47 (as `tryCatchFire`), 52, 61, 64, 65 and 66 (their classes read; NeoForge
+26.2's and 26.3's patches make the same change): the side goes only to the block state's `getFlammability` and
+`onCaughtFire`, whose defaults pass it to the block's, which ignore it, and the bridge passes `Direction.WEST`, which
+the fire's tick passes for the block east of it. Supplementaries' lit lumisene sets the blocks around it alight, as the
+platform's own fire spread does, which differs from vanilla's (read in their classes):
+
+- How likely a block is to catch is the platform's `getFlammability`, whose default is `Blocks.FIRE`'s burn odds,
+  where vanilla's method asks the burning fire's own; they differ only for a mod's fire block with odds of its own.
+- TNT is set off by `TntBlock`'s caught-fire override, where vanilla's method checks for TNT itself. On NeoForge and on
+  Forge 47 and 52 to 66 it runs before the burnt block is replaced with fire or air, where vanilla's check runs after;
+  Forge 43's runs after, as vanilla's.
+- Forge 43's and 47's `tryCatchFire` ask the fire's `chance` where vanilla's method asks its `age`: in the odds that
+  fire takes the burnt block's place, and in the new fire's age.
+- On NeoForge 21.11 and 26.1 and Forge 61 to 66, `onCaughtFire` answers a boolean, which the method drops.
+
+A block that overrides those extensions answers for the west side, whatever side the invoking mod meant: a NeoForge or
+Forge mod's, or the game's own. Fabricated doesn't check the game's own as the game starts; CI checks them on each pinned
+platform build (the `invoker-bridge-overrides` check: on each, every override of what the parameter reaches, in the
+game's and the platform's classes, ignores it as the code it overrides does; `TntBlock.onCaughtFire` is the only one,
+and it ignores the side). A newer platform build of the same Minecraft version isn't checked: a game class there
+overriding those extensions and reading the side would be asked for the west side. Where the proof fails the invoker
+stays out, as before, the report saying what the platform's method does with the parameter, a known limit, and a call
+of it fails. An invoker of an installed mod's
+class, or of a game class whose vanilla class pre-flight can't read, is checked as before, without LEAVE-6.
 
 A mod's own call of a game constructor NeoForge replaced with one taking a name too, `LootPool`'s on every version
 (BCLib's loot pool mixin makes its pools so), calls NeoForge's with no name, and its widener's line for vanilla's
@@ -1714,7 +1751,7 @@ tracked:
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
 | A NeoForge model naming its loader in NeoForge's object form (`"loader": {"id": ...}`), with Moonlight's Fabric build installed | 1.21.1 | Moonlight's hook into vanilla's model deserializer, which NeoForge's runs first, reads `loader` as a string only and fails the model; not seen in the corpus | CORPUS-62 |
 | What Forgified Fabric API's modules do differently from upstream, where it provides them | read on 1.21.1, 26.1.2 and 26.2 | a provider's module is used as it is; on 1.21.1 its trapdoor tag, attack block result, sculk frequencies and default-enabled packs don't take effect (on 26.1.2 and 26.2 the first three too, and a biome modification doesn't reach clients, PROVIDER-10; there its packet context holds nothing for codecs, and its HUD elements attached to vanilla ones ignore vanilla's layer checks, PROVIDER-17), and it makes fewer bridges to NeoForge (enchanting, creator mod, transfer), as listed in *Mods that bring Fabric API or Fabric Loader* above; the test mods skip those checks with it | PROVIDER-8, PROVIDER-10, PROVIDER-17 |
-| Supplementaries' lumisene setting the blocks around it alight (its Fabric build) | 1.21.1 | NeoForge's `FireBlock.checkBurnOut` also takes the side the fire comes from, so the mod's invoker of vanilla's method is left out and its call fails (`NoSuchMethodError`): made in lit lumisene's block tick, it stops the server once lumisene burns the blocks around it. The report names it. Use Supplementaries' NeoForge build | LEAVE-5 |
+| The side a NeoForge mod's block is asked for when a Fabric mod's invoker of vanilla's `FireBlock.checkBurnOut` sets it alight (Supplementaries' lit lumisene) | all | NeoForge's method also takes the side the fire comes from, which vanilla's never had; the invoker's bridge passes the west side, which NeoForge's first call passes, so a block overriding the state's flammability or caught-fire extension answers for that side, whatever side the mod meant. Blocks keeping the defaults ignore the side. The call runs NeoForge's fire spread, not vanilla's: TNT is set off before the burnt block is replaced, and how likely a block is to catch is `Blocks.FIRE`'s odds | LEAVE-6 |
 | Fabric mods' hooks of vanilla's spawn checks (Architectury's spawn check event for spawners and world generation, Friends and Foes' world generation spawn hook) | all | NeoForge makes `Mob.checkSpawnRules` and `checkSpawnObstruction` inside its own spawn position event's hook, so the hooks are left out, and spawners and world generation skip them; the report says so. Use the mod's NeoForge build | SPAWN-1 |
 | Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 
@@ -2499,12 +2536,13 @@ instead.
   the call and the constant its container checks hook (interface mixins, which Fabricated applies there itself where
   their points are, INTERFACE-2), so its reach attributes don't change reach. A Fabric mod that gives reach through it
   gives none there (ATTR-2).
-- **Supplementaries' lumisene** (Forge 47 and 52). Its fire spread calls an invoker of vanilla's
-  `FireBlock.checkBurnOut`, which Forge 47 replaced with `tryCatchFire`, taking the side the fire comes from too
-  (STRUCT-2), and which Forge 52 gives that side (LEAVE-5): the invoker is left out, so the call fails
-  (`NoSuchMethodError`), and as it is made in lit lumisene's block tick, the server would stop with a crash report once
-  lumisene burns the blocks around it. The report names it a known limit. On Forge 47 use Supplementaries' Forge
-  build; for 1.21.1 it has none, and its NeoForge build is the way.
+- **The side a Forge mod's block is asked for when a Fabric mod's invoker of vanilla's fire spread sets it alight**
+  (Forge 43 to 66). Forge 43 and 47 replaced `FireBlock.checkBurnOut` with `tryCatchFire`, and Forge 52 to 66 give it
+  the side the fire comes from, which vanilla's never had; the invoker's bridge passes the west side, which Forge's
+  first call passes, so Supplementaries' lit lumisene sets the blocks around it alight, and a block overriding Forge's
+  flammability or caught-fire extension answers for that side, whatever side the mod meant. The call runs Forge's fire
+  spread, not vanilla's: Forge 43 and 47 ask the fire's chance where vanilla asks its age, and Forge 47 and 52 to 66 set
+  TNT off before the burnt block is replaced (LEAVE-6).
 - **Ledger's campfire logging** (Forge 52 to 66). As on NeoForge, Forge's `CampfireBlock.useItemOn` doesn't keep the
   block entity in a local where the player's stat is awarded, so Ledger's hook taking it there is left out, and an
   item put on a campfire isn't logged (LOCAL-6). Its logging of the fire an explosion starts works (PRE-36).

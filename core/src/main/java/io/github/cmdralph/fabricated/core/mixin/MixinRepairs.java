@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -218,12 +219,14 @@ final class MixinRepairs extends PreflightPart {
 						+ bridge + ", which Fabricated adds there to " + (bridge.startsWith(MixinNames.BRIDGE_SETTER) ? "set" : "get")
 						+ " what vanilla's field holds, as vanilla's type (CORPUS-37, CORPUS-94)", ""));
 			} else {
-				String bridge = changedMethodBridge(method, Annotations.find(method, MixinNames.INVOKER), targets, ctx);
-				if (bridge == null) continue;
+				ChangedMethod bridged = changedMethodBridge(method, Annotations.find(method, MixinNames.INVOKER), targets, ctx);
+				if (bridged == null) continue;
 				changed = true;
-				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Invoker " + method.name + method.desc
-						+ " targets a method " + loader + " gave other parameters in " + targets.get(0).name.replace('/', '.') + "; it invokes "
-						+ bridge + ", which Fabricated adds there to call " + loader + "'s method as vanilla's does (LEAVE-5)", ""));
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), bridged.fixed().isEmpty()
+						? "@Invoker " + method.name + method.desc + " targets a method " + loader + " gave other parameters in "
+								+ targets.get(0).name.replace('/', '.') + "; it invokes " + bridged.bridge() + ", which Fabricated adds there to call "
+								+ loader + "'s method as vanilla's does (LEAVE-5)"
+						: fixedBridgeNote(method, bridged), ""));
 			}
 		}
 		// The unique fields renamed, keyed name:desc as the mixin had them, for its nested classes' uses (CORPUS-95).
@@ -893,15 +896,57 @@ final class MixinRepairs extends PreflightPart {
 	}
 
 	/**
-	 * Points an {@code @Invoker} of a vanilla method the platform gave other parameters at the method Fabricated's in-game
-	 * mod adds to the class for it ({@link MixinNames#BRIDGE_INVOKER}), which takes vanilla's parameters and calls the
-	 * platform's method so that it does what vanilla's does: Forge 61 and 64 give {@code LevelRenderer}'s
-	 * {@code extractVisibleBlockEntities} a frustum it culls the block entities by, which vanilla's doesn't, and Iris's
-	 * shadow pass invokes vanilla's (LEAVE-5). The invoker keeps its own name and descriptor, so the mod's calls are served
-	 * as before. Returns the bridge's name; or {@code null} and changes nothing when a target has the method the invoker
-	 * names, or hasn't the bridge with the invoker's descriptor.
+	 * An invoker {@link #changedMethodBridge} pointed at a bridge: the bridge's name, vanilla's method's, the verdict on
+	 * each target where Fabricated declares it with a fixed value of the parameter the platform added
+	 * ({@link InvokerBridge}), and the targets where the in-game mod adds it (LEAVE-5).
 	 */
-	private static String changedMethodBridge(MethodNode method, AnnotationNode invoker, List<ClassNode> targets, Context ctx) {
+	private record ChangedMethod(String bridge, String vanillaName, Map<ClassNode, AddedParameters.Verdict> fixed, List<ClassNode> inGame) {
+	}
+
+	/**
+	 * The report's note on an invoker pointed at the bridges Fabricated declares, naming each target bridged (LEAVE-6)
+	 * and each where the in-game mod adds the bridge (LEAVE-5).
+	 */
+	private String fixedBridgeNote(MethodNode invoker, ChangedMethod bridged) {
+		AddedParameters.Verdict any = bridged.fixed().values().iterator().next();
+		List<String> places = new ArrayList<>();
+		for (Map.Entry<ClassNode, AddedParameters.Verdict> e : bridged.fixed().entrySet()) {
+			AddedParameters.Verdict v = e.getValue();
+			List<String> to = v.passedTo();
+			String passes = to.isEmpty() ? "which never reads the " + v.typeName() : "which passes the " + v.typeName() + " only to "
+					+ (to.size() == 1 ? to.get(0) : String.join(", ", to.subList(0, to.size() - 1)) + " and " + to.get(to.size() - 1)) + ", whose code ignores it";
+			places.add("in " + e.getKey().name.replace('/', '.') + " it invokes " + bridged.bridge() + ", which Fabricated declares there as the class"
+					+ " loads, calling " + v.method().name + v.method().desc + " with " + v.typeName() + "." + v.bridge().constant() + ", what " + loader
+					+ "'s first call of it passes, and " + passes);
+		}
+		for (ClassNode target : bridged.inGame()) {
+			places.add("in " + target.name.replace('/', '.') + " it invokes " + bridged.bridge() + ", which Fabricated's in-game mod adds there to call "
+					+ loader + "'s method as vanilla's does (LEAVE-5)");
+		}
+		String what = any.method().name.equals(bridged.vanillaName()) ? "a method " + loader + " gave a " + any.typeName() + " vanilla's never had"
+				: "a private method " + loader + " replaced with " + any.method().name + ", which takes a " + any.typeName() + " vanilla's never had";
+		return "@Invoker " + invoker.name + invoker.desc + " targets " + what + ": " + String.join("; ", places) + ". So the value changes nothing for"
+				+ " whatever keeps that code as " + loader + "'s classes have it (a coremod or transformer that changes it before the class loads isn't"
+				+ " read again), and the call does what an invoker of a method " + loader + " patched keeping its parameters does: it runs " + loader
+				+ "'s version of vanilla's method (LEAVE-6)";
+	}
+
+	/**
+	 * Points an {@code @Invoker} of a vanilla method the platform gave other parameters at a method taking vanilla's
+	 * parameters ({@link MixinNames#BRIDGE_INVOKER}) that calls the platform's method so that it does what vanilla's does
+	 * (LEAVE-5). Fabricated's in-game mod adds one to the class where it knows such a call: Forge 61 and 64 give
+	 * {@code LevelRenderer}'s {@code extractVisibleBlockEntities} a frustum it culls the block entities by, which vanilla's
+	 * doesn't, and Iris's shadow pass invokes vanilla's; the bridge passes a frustum every box is visible in. Where it adds
+	 * none, and the platform's method takes one parameter more, which it only passes to methods of its own code whose code
+	 * ignores it ({@link AddedParameters}), Fabricated declares one in the class as it loads, calling the platform's method
+	 * with what the platform's first call of it passes ({@link InvokerBridge}, LEAVE-6), so the call runs the platform's
+	 * version of vanilla's method: Supplementaries' lumisene invokes vanilla's {@code FireBlock.checkBurnOut}, to which the
+	 * platforms add the side the fire comes from. An invoker of several targets gets one in each, or none. That one is
+	 * declared in pre-flight's targets too, as the class will have it, and noted for the class to get it. The invoker keeps its own name
+	 * and descriptor, so the mod's calls are served as before. Returns the bridge; or {@code null} and changes nothing when
+	 * a target has the method the invoker names, or has no bridge and can't get one.
+	 */
+	private ChangedMethod changedMethodBridge(MethodNode method, AnnotationNode invoker, List<ClassNode> targets, Context ctx) {
 		String explicit = Annotations.value(invoker, "value") instanceof String s && !s.isEmpty() ? s : null;
 		String name = explicit != null ? explicit : MixinPreflight.inferInvokerName(method.name);
 		if (name == null || name.equals("<init>")) return null;
@@ -909,13 +954,29 @@ final class MixinRepairs extends PreflightPart {
 		String methodName = ref.nameOr(name);
 		String desc = ref.methodDescOr(method.desc);
 		String bridge = MixinNames.BRIDGE_INVOKER + methodName;
+		Map<ClassNode, AddedParameters.Verdict> fixed = new LinkedHashMap<>();
+		List<ClassNode> inGame = new ArrayList<>();
 		for (ClassNode target : targets) {
 			if (PreflightAsm.declares(target, methodName, desc)) return null; // the invoker's own method: nothing to repair
-			if (!declaresPublicInstance(target, bridge, method.desc)) return null;
+			MethodNode added = PreflightAsm.declared(target, bridge, method.desc);
+			if (declaresPublicInstance(target, bridge, method.desc) && !InvokerBridge.isBridge(added)) {
+				inGame.add(target); // the in-game mod's
+				continue;
+			}
+			// An invoker taking vanilla's parameters, as the bridge Fabricated declares does (a static one isn't repaired at all).
+			AddedParameters.Verdict verdict = method.desc.equals(desc) ? checker.addedParameters.of(target, methodName, desc) : null;
+			if (verdict == null || verdict.bridge() == null) return null;
+			fixed.put(target, verdict);
+		}
+		for (Map.Entry<ClassNode, AddedParameters.Verdict> e : fixed.entrySet()) {
+			MethodNode declared = e.getValue().bridge().method(e.getKey());
+			if (declared != null) e.getKey().methods.add(declared);
+			checker.bridgedInvoker(ctx.mixinDotted(), method.name + method.desc, e.getValue().bridge());
 		}
 		// Not in the mod's refmap: the bridge's name is the same in every namespace.
 		invoker.values = new ArrayList<>(List.of("value", bridge, "remap", Boolean.FALSE));
-		return bridge;
+		checker.pointedInvoker(ctx.mixinDotted(), method.name + method.desc, bridge);
+		return new ChangedMethod(bridge, methodName, fixed, inGame);
 	}
 
 	/**

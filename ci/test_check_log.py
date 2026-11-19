@@ -229,7 +229,7 @@ class ManifestTest(unittest.TestCase):
         self.cells(self.checks)
         ids = [r["id"] for r in self.checks]
         self.assertEqual(len(ids), len(set(ids)))
-        files = {"out", "log", "report", "debug", "crash", "status", "failures", "warm", "warm-report", "mods", "linkage"}
+        files = {"out", "log", "report", "debug", "crash", "status", "failures", "warm", "warm-report", "mods", "linkage", "bridges"}
         same = {}
         for r in self.checks:
             self.assertIn(r["side"], ("server", "client"), r["id"])

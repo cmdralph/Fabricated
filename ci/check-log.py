@@ -47,7 +47,7 @@ class Run:
                 "status": [self.work / "status.txt"], "failures": [game / ".fabricated" / "mixin-failures.json"],
                 "warm": [self.work / "server-warm.out"], "warm-report": [self.work / "fabric-bridge-report-warm.txt"],
                 "mods": [self.work / "mods.txt"],
-                "linkage": [self.work / "standin-linkage.txt"]}[name]
+                "linkage": [self.work / "standin-linkage.txt"], "bridges": [self.work / "invoker-bridges.txt"]}[name]
 
     def lines(self, spec):
         """The lines of the files a spec names ("log,out", "report#Summary")."""

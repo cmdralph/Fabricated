@@ -169,6 +169,48 @@ diagnose() {
 	echo "::endgroup::"
 }
 
+# bridge_guard: core's InvokerBridgeGuard on the installed server's game (LEAVE-6): the overrides, in the game's and the
+# platform's classes, of what an invoker bridge's fixed parameter reaches ignore it, as the game doesn't check them. Read
+# from the libraries as the game runs them: the patched game first (one jar of the whole game on NeoForge 21.11 and
+# later, of the patched classes on NeoForge 21.1 and Forge), the platform's own classes, then vanilla's in the names the
+# game runs with (as Forge's installer leaves it, -official.jar, or -srg.jar on NeoForge 21.1 and Forge 43 and 47, or
+# -unpacked.jar on 26.x; on NeoForge 21.11 and later Mojang's bundler, read through the mappings beside it where they
+# are). Its line, and how long the whole run took, go to invoker-bridges.txt (the checks' "bridges").
+bridge_guard() {
+	local lib=libraries loader_name=Forge jar module patched='' platform_jar='' vanilla='' mappings=() game=() asm=() started
+	[ "$platform" = neoforge ] && loader_name=NeoForge
+	for jar in "$lib"/net/neoforged/minecraft-server-patched/*/minecraft-server-patched-*.jar "$lib"/net/neoforged/neoforge/*/neoforge-*-server.jar \
+		"$lib"/net/minecraftforge/forge/*/forge-*-server.jar; do
+		if [ -f "$jar" ]; then patched="$jar"; break; fi
+	done
+	for jar in "$lib"/net/neoforged/neoforge/*/neoforge-*-universal.jar "$lib"/net/minecraftforge/forge/*/forge-*-universal.jar; do
+		if [ -f "$jar" ]; then platform_jar="$jar"; break; fi
+	done
+	for jar in "$lib/net/minecraft/server/$mc/server-$mc-official.jar" "$lib"/net/minecraft/server/"$mc"-*/server-"$mc"-*-srg.jar \
+		"$lib/net/minecraft/server/$mc/server-$mc-unpacked.jar" "$lib/net/minecraft/server/$mc/server-$mc.jar"; do
+		if [ -f "$jar" ]; then vanilla="$jar"; break; fi
+	done
+	if [ -z "$patched" ] || [ -z "$platform_jar" ] || [ -z "$vanilla" ]; then
+		echo "FABRICATED-GUARD invoker bridge overrides ERROR: no game jars among the libraries (patched: ${patched:-none}, platform: ${platform_jar:-none}, vanilla: ${vanilla:-none})" | tee invoker-bridges.txt
+		return
+	fi
+	game=("$patched" "$platform_jar")
+	if [ "$vanilla" = "$lib/net/minecraft/server/$mc/server-$mc.jar" ]; then
+		[ -f "$lib/net/minecraft/server/$mc/server-$mc-mappings.txt" ] && mappings=(--mappings "$lib/net/minecraft/server/$mc/server-$mc-mappings.txt")
+	else
+		game+=("$vanilla")
+	fi
+	for module in asm asm-tree asm-commons; do
+		# shellcheck disable=SC2012 # the installer's names, newest version last
+		asm+=("$(ls "$lib"/org/ow2/asm/$module/*/$module-[0-9]*.jar 2>/dev/null | sort -V | tail -n 1)")
+	done
+	started=$(date +%s%N)
+	java -cp "$(fabricated_jar):$(IFS=:; echo "${asm[*]}")" io.github.cmdralph.fabricated.core.mixin.InvokerBridgeGuard "$loader_name" "$vanilla" \
+		"${mappings[@]}" "${game[@]}" > invoker-bridges.txt 2>&1 || true
+	echo "Invoker bridge guard, the whole run: $(( ($(date +%s%N) - started) / 1000000 )) ms" >> invoker-bridges.txt
+	cat invoker-bridges.txt
+}
+
 # evaluate: the run's checks (ci/check-log.py), whose exit status is the harness's.
 evaluate() {
 	local args=("$platform" "$mc" "${SMOKE_RUN:-$side}" "$work" --loader "$loader")

@@ -147,5 +147,11 @@ if [ "$status" = started ] && [ -n "${SMOKE_WARM_LAUNCH:-}" ]; then
 	done
 fi
 
+# LEAVE-6: what the game doesn't check of an invoker bridge, read once per install (ci/smoke-lib.sh).
+if [ "${SMOKE_RUN:-$side}" = server ]; then
+	echo "::group::Invoker bridge guard"
+	bridge_guard
+	echo "::endgroup::"
+fi
 if declare -F after_run > /dev/null; then after_run; fi
 evaluate

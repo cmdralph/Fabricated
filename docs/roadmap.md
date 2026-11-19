@@ -101,15 +101,6 @@ that fixes or closes it.
 
 Open with no ID of their own, each left by a fixed finding:
 
-- **Supplementaries' invoker of vanilla's `FireBlock.checkBurnOut`** on Forge 47 (STRUCT-2's known limit) and on
-  NeoForge 21.1 and Forge 52 (LEAVE-5's). Forge 47 replaced the method with `tryCatchFire`, and NeoForge 21.1 and Forge
-  52 keep `checkBurnOut`, each taking the side the fire comes from too, which they pass on to the block state's
-  flammability and caught-fire extensions; nothing of theirs takes vanilla's parameters and the invoker is left out.
-  A call of it fails (`NoSuchMethodError`), and Supplementaries makes it in lit lumisene's block tick, which would stop
-  the server once lumisene burns the blocks around it. No one side does what vanilla's call does for a block whose
-  extensions read it, and only Supplementaries' own caller has the side it means (its `tryBurningByFire` takes it), so
-  LEAVE-5's bridge doesn't serve it. The report names it; `COMPATIBILITY.md` lists it among the known limits of
-  NeoForge and Forge.
 - **What STRUCT-2 doesn't move** into a private method the platform replaced at each of its calls: a hook at vanilla's
   calls of the method; the hooks inside it where another injector may be into the method without pre-flight telling (a
   selector by pattern, by a name vanilla has several methods of, or by `@Desc`) or one is a `@Group`'s alternative; a
