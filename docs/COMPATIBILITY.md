@@ -148,15 +148,15 @@ gates and, where it doesn't apply, why. On NeoForge these three runs are the bas
    `mc/neoforge`). This is a pass/fail gate.
 2. **With the official Fabric API jar** added: the server must start (a gate), and the energy bridge check must
    pass where CI finds Team Reborn's energy library for the version; the other checks are informational. The
-   resulting `fabric-bridge-report.txt` is kept as a CI artifact
-   (`smoke-fabric-api-<version>`), and the tables below are taken from it.
+   resulting `fabric-bridge-report.txt` is kept in the CI artifact `logs-<platform>-<minecraft>-server`, under
+   `server-fapi/logs/`, and the tables below are taken from it.
 3. **Client**: a real NeoForge client, started headlessly, joins a singleplayer world with Fabricated and the test
    mod (client entrypoint, client lifecycle, a client resource listener, a networking round trip with the
    integrated server). This is a pass/fail gate.
 
 The module tables were first taken from CI run [38491176425](https://github.com/cmdralph/Fabricated/actions/runs/38491176425)
-(Fabricated 0.1.0 development build) and have been edited since; a newer run's `smoke-fabric-api-<version>` report
-is the measured state. Forge's tables are in [*Forge*](#forge), below.
+(Fabricated 0.1.0 development build) and have been edited since; a newer run's report there (`logs-<platform>-<minecraft>-server`,
+`server-fapi/logs/fabric-bridge-report.txt`) is the measured state. Forge's tables are in [*Forge*](#forge), below.
 
 ## NeoForge: Minecraft versions
 
