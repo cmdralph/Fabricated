@@ -47,12 +47,25 @@ public final class OfficialClasses implements ClassBytesSource {
 
 	@Override
 	public byte[] read(String mojangName) throws IOException {
+		return read(mojangName, 0);
+	}
+
+	/**
+	 * The class in Mojang's names, as {@link #read}, without its methods' code: what a caller comparing only members
+	 * reads, many times faster, as only the members' own names are mapped (CI's {@code InvokerBridgeGuard} reads every
+	 * class of the game so).
+	 */
+	public byte[] readMembers(String mojangName) throws IOException {
+		return read(mojangName, ClassReader.SKIP_CODE);
+	}
+
+	private byte[] read(String mojangName, int flags) throws IOException {
 		MappingComposer.Proguard pg = proguard();
 		if (pg == null) return null;
 		byte[] data = official.read(pg.mojangToOfficial.getOrDefault(mojangName, mojangName));
 		if (data == null) return null;
 		ClassWriter writer = new ClassWriter(0);
-		new ClassReader(data).accept(new ClassRemapper(writer, new ToMojang(pg)), 0);
+		new ClassReader(data).accept(new ClassRemapper(writer, new ToMojang(pg)), flags);
 		return writer.toByteArray();
 	}
 

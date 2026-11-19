@@ -42,6 +42,39 @@ What changed, and how it was verified, newest first. What is open and what comes
   named on NeoForge 1.21.1 and 26.1.2, each run passing. NeoForge 26.2 and 26.3 don't build locally: their classes, from
   their installers, take the growth speed's and the eye check's rows as 26.1.2's do.
 
+## 2026-11-18: Supplementaries' lumisene on NeoForge and Forge (LEAVE-6)
+
+- **LEAVE-6** (P0 on NeoForge 21.1 and Forge 47 and 52 with Supplementaries' Fabric build), fixed: lit lumisene sets the
+  blocks around it alight through vanilla's `FireBlock.checkBurnOut`, which NeoForge and Forge 52 to 66 give the side the
+  fire comes from, and Forge 43 and 47 replace with `tryCatchFire`, taking it too. The mod's invoker of vanilla's method
+  was left out, and once lumisene burnt the blocks around it the call failed and the server stopped. Where the
+  platform's method only passes such a parameter on to methods of the platform's own code, whose code ignores it, which
+  Fabricated checks in the platform's classes as the mod is translated, the game class gets a method with vanilla's
+  parameters that calls the platform's with the value the platform's own first call passes (here the west side), and the
+  mod's invoker calls that. Any Fabric mod's invoker of such a method of the game's is served the same way.
+- **What differs:** the call runs the platform's fire spread, as the platform's own calls do, not vanilla's: how likely
+  a block is to catch is the platform's flammability, TNT is set off by the TNT block's own caught-fire hook, before the
+  burnt block is replaced (after it on Forge 43, as in vanilla), and Forge 43 and 47 use the fire's chance where vanilla
+  uses its age. A NeoForge or Forge mod's block that overrides the flammability or caught-fire extension is asked for
+  the west side, whatever side the invoking mod meant. Blocks keeping the platform's defaults ignore the side.
+- **Where it can't be served:** where the platform's method uses the parameter otherwise, the invoker is left out as
+  before, and the report says why, a known limit. Where the game class, as it loads, isn't the one the mod was
+  translated against, it gets a method of that name that throws instead: the game starts, and only a call of the
+  invoker fails, with an error saying why, which the log gives as the class loads and the report once loading
+  completes.
+- **Checks:** `vanilla-fire-invoker`: the test mod's invoker of vanilla's `checkBurnOut` burns oak planks on every
+  platform. `invoker-bridge-overrides`: on each pinned platform build, every override in the game's and the platform's
+  classes of what such a parameter reaches ignores it (`TntBlock.onCaughtFire` does), which Fabricated doesn't check as
+  the game starts; a newer platform build isn't checked.
+
+Verified with core's unit tests, CI's script tests and the mixin inventory on the three branches; each of the checks
+the proof, the class-load step, the cache and the guard make, changed one at a time, fails a test. Pre-flight on the
+`FireBlock` classes of NeoForge 21.1, 21.11 and 26.1.2 and Forge 43, 47, 52, 61, 64, 65 and 66 bridges the invoker on
+each, and the class declares the bridge as it loads, or a stub where its code doesn't back it. The guard is OK on the
+ten builds, in about a second (2.4 s on NeoForge 1.21.11, read through Mojang's mappings). NeoForge 1.21.1, Forge 52 and Forge 47 built, and their servers' runs pass, the test mod's invoker burning the
+planks; on NeoForge 1.21.1 without the change it failed pre-flight. In their server corpus runs Supplementaries'
+invoker is the only left-out line that changed, now served.
+
 ## 2026-11-18: Fabric's renderer API on Forge 43, Minecraft 1.19.2 in beta, Sodium and Iris for 1.19.2 (PLAT-8, PLAIN-2)
 
 - **Fabric's renderer API on Forge 43:** it is bridged through Fabric API 0.77's Indigo as on Forge 47, with the same

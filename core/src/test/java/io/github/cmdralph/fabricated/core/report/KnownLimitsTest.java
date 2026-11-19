@@ -231,16 +231,17 @@ class KnownLimitsTest {
 	}
 
 	/**
-	 * LIMIT-3: the documented limits of one mod's hooks, each matched on the release's own lines (Supplementaries' invoker
-	 * on NeoForge 21.1 and Forge 52, LEAVE-5; Additional Entity Attributes' water speed, FLUID-5; Reach Entity Attributes
-	 * and Porting Lib on Forge 47, ATTR-2 and HOOK-5; Ledger's campfire hook, LOCAL-6; OneConfig's key mapping accessor,
-	 * KEYMAP-1; Farmer's Delight's cactus, mushroom and stem hooks, SEAM-12; FrozenLib's and Lithium's hopper hooks, SEAM-14;
-	 * the fluid hooks of Lithium, Wilder Wild, FrozenLib, Expandability, Milk Lib and, on Forge, Fabric API's content
-	 * registries, SEAM-9), where the report named none. The lines next to them stay as they were: Supplementaries' invoker on
-	 * Forge 47 (STRUCT-2), Porting Lib's hooks another limit names (SEAM-4, SEAM-6), its GUI utilities' failure (CORPUS-93)
-	 * and Additional Entity Attributes' dig speed hook; and the hooks whose vanilla calls go back now, which no limit names
-	 * (Balm's and Farmer's Delight's of a crop's growth speed, SEAM-12; Artifacts' of the mining speed's eye check and
-	 * FrozenLib's of the air bubbles', SEAM-9).
+	 * LIMIT-3: the documented limits of one mod's hooks, each matched on the release's own lines (Additional Entity
+	 * Attributes' water speed, FLUID-5; Reach Entity Attributes and Porting Lib on Forge 47, ATTR-2 and HOOK-5; Ledger's
+	 * campfire hook, LOCAL-6; OneConfig's key mapping accessor, KEYMAP-1; Farmer's Delight's cactus, mushroom and stem
+	 * hooks, SEAM-12; FrozenLib's and Lithium's hopper hooks, SEAM-14; the fluid hooks of Lithium, Wilder Wild, FrozenLib,
+	 * Expandability, Milk Lib and, on Forge, Fabric API's content registries, SEAM-9), where the report named none. The
+	 * lines next to them stay as they were: Supplementaries' invoker on Forge 47 (STRUCT-2), Porting Lib's hooks another
+	 * limit names (SEAM-4, SEAM-6), its GUI utilities' failure (CORPUS-93) and Additional Entity Attributes' dig speed
+	 * hook. No limit names the hooks whose vanilla calls go back now (Balm's and Farmer's Delight's of a crop's growth
+	 * speed, SEAM-12; Artifacts' of the mining speed's eye check and FrozenLib's of the air bubbles', SEAM-9), nor
+	 * Supplementaries' invoker on NeoForge 21.1 and Forge 52, which a bridge now serves (LEAVE-6): its line has no reason
+	 * the bridge can't serve it.
 	 */
 	@Test
 	void theDocumentedLimitsOfOneModsHooksAreNamedOnTheReleasesLines() throws IOException {

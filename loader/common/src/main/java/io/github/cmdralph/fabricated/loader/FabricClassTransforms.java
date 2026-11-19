@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.loader;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.BiConsumer;
@@ -14,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.bytecode.EnvironmentStripper;
 import io.github.cmdralph.fabricated.core.bytecode.VanillaSeams;
+import io.github.cmdralph.fabricated.core.mixin.InvokerBridge;
 import io.github.cmdralph.fabricated.core.mixin.NativeModMixins;
 import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
 
@@ -32,6 +34,9 @@ import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
  *       calls them where vanilla does, so the mods' hooks of them apply ({@link VanillaSeams}, SEAM-1); and vanilla's
  *       calls the platform makes through its block state's extension or its hooks, where its code then does what vanilla's
  *       does (SEAM-3's block breaking, SEAM-4's harvest checks, SEAM-6's item checks).</li>
+ *   <li>the bridges Fabric mods' invokers of vanilla methods the platform gave a parameter vanilla's never had are
+ *       pointed at are declared, each calling the platform's method with a fixed value of that parameter
+ *       ({@link InvokerBridge}, LEAVE-6): Mixin generates the invokers, calling them, as it applies the mods' mixins.</li>
  * </ul>
  * After Mixin, {@link DefaultBridge}s are declared ({@link #declareDefaultBridges}). A platform where nothing of
  * Fabricated's runs after Mixin on every class (NeoForge 21.1's ModLauncher) declares them before Mixin too, for the
@@ -41,6 +46,8 @@ import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
  */
 public final class FabricClassTransforms {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
+	/** The report's section for an invoker bridge a class couldn't take (LEAVE-6). */
+	private static final String INVOKER_BRIDGES = "Invoker bridges";
 
 	private FabricClassTransforms() {
 	}
@@ -49,7 +56,7 @@ public final class FabricClassTransforms {
 	public static boolean transformsBeforeMixin(FabricatedState state, String internalName) {
 		return state.environmentClasses().contains(internalName) || state.injectedInterfaces().containsKey(internalName)
 				|| state.overridableMethods().containsKey(internalName) || state.instanceHandlers().containsKey(internalName)
-				|| state.restoredSeams().contains(internalName);
+				|| state.restoredSeams().contains(internalName) || state.invokerBridges().containsKey(internalName);
 	}
 
 	/** Every class {@link #beforeMixin} may change, for a platform that names its targets up front. */
@@ -59,6 +66,7 @@ public final class FabricClassTransforms {
 		classes.addAll(state.overridableMethods().keySet());
 		classes.addAll(state.instanceHandlers().keySet());
 		classes.addAll(state.restoredSeams());
+		classes.addAll(state.invokerBridges().keySet());
 		return classes;
 	}
 
@@ -71,7 +79,8 @@ public final class FabricClassTransforms {
 	 * Strips the other side's members, adds injected interfaces, removes {@code final} from the methods Fabric mods
 	 * override where only the platform's build declares it (FINAL-2; the platform's own access transformers have run by
 	 * then), makes instance handlers of another mod's mixin's static handlers (CORPUS-87) and puts back vanilla's methods
-	 * the platform took out (SEAM-1) and its calls (SEAM-3, SEAM-4, SEAM-6, SEAM-8); whether the class changed.
+	 * the platform took out (SEAM-1) and its calls (SEAM-3, SEAM-4, SEAM-6, SEAM-8), and declares the invokers' bridges
+	 * (LEAVE-6); whether the class changed.
 	 */
 	public static boolean beforeMixin(FabricatedState state, ClassNode node, BiConsumer<String, String> audit) {
 		boolean changed = false;
@@ -113,6 +122,19 @@ public final class FabricClassTransforms {
 						VanillaSeams.findings(node.name), seams.failure());
 			} else if (!seams.restored().isEmpty()) {
 				audit.accept("fabricated:vanilla_seam", String.join(", ", seams.restored()));
+				changed = true;
+			}
+		}
+		Map<InvokerBridge, List<String>> invokers = state.invokerBridges().getOrDefault(node.name, Map.of());
+		if (!invokers.isEmpty()) {
+			// Not silent: a bridge the class can't take becomes a method that throws, so Mixin still applies its invokers and
+			// only a call fails; the log says so as the class loads, and the report once loading completes.
+			List<String> declared = InvokerBridge.declare(node, invokers, error -> {
+				LOGGER.error("{} (listed in logs/fabric-bridge-report.txt, under \"{}\", once loading completes)", error, INVOKER_BRIDGES);
+				state.report().line(INVOKER_BRIDGES, error);
+			});
+			if (!declared.isEmpty()) {
+				audit.accept("fabricated:invoker_bridge", String.join(", ", declared));
 				changed = true;
 			}
 		}

@@ -27,6 +27,7 @@
       "io.github.cmdralph.fabricated.testmod.VanillaFrictionTest",
       "io.github.cmdralph.fabricated.testmod.VanillaShovelTest",
       "io.github.cmdralph.fabricated.testmod.VanillaGrowthTest",
+      "io.github.cmdralph.fabricated.testmod.VanillaFireInvokerTest",
       "io.github.cmdralph.fabricated.testmod.ContentRegistriesTest",
       "io.github.cmdralph.fabricated.testmod.HiddenDefaultTest",
       "io.github.cmdralph.fabricated.testmod.DefaultBridgeTest",

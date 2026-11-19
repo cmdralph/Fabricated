@@ -19,6 +19,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -58,6 +59,7 @@ import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
+import io.github.cmdralph.fabricated.core.mixin.InvokerBridge;
 import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingComposer;
@@ -884,6 +886,130 @@ class PipelineTest {
 	}
 
 	/**
+	 * LEAVE-6: a Fabric mod's invoker of a vanilla method the platform gave a parameter vanilla's never had, which the
+	 * platform's method only passes to its extension's method whose default ignores it, gets a bridge the game class
+	 * declares as it loads: the result names it for that class, with the invokers calling it, from a fresh translation
+	 * and from the cache alike. A cache entry holding a bridge no translation makes (an edited file) is dropped, and the
+	 * mod translated again. Without vanilla's classes to compare the platform's method with, there is none, and the
+	 * invoker is left out as before, the line naming no LEAVE-6 reason.
+	 */
+	@Test
+	void anInvokersBridgeReachesTheResultFromATranslationAndFromTheCache(@TempDir Path game, @TempDir Path src) throws Exception {
+		String burner = "net/minecraft/world/level/Burner";
+		String state = "net/minecraft/world/level/State";
+		Map<String, String> common = Map.of(
+				"net/minecraft/world/level/Side.java", "package net.minecraft.world.level; public enum Side { WEST, EAST }",
+				"net/neoforged/neoforge/common/extensions/IStateExtension.java", "package net.neoforged.neoforge.common.extensions;"
+						+ " public interface IStateExtension { default int flammability(Object level, net.minecraft.world.level.Side side) { return 5; } }",
+				state + ".java", "package net.minecraft.world.level; public class State implements net.neoforged.neoforge.common.extensions.IStateExtension {"
+						+ " public int flammable() { return 5; } }");
+		Map<String, String> vanillaSources = new HashMap<>(common);
+		vanillaSources.put(burner + ".java", "package net.minecraft.world.level; public class Burner { public void tick(Object level, State state) {"
+				+ " burn(level, state, 300); burn(level, state, 250); } private void burn(Object level, State state, int chance) {"
+				+ " if (state.flammable() > chance) remove(level); } public boolean remove(Object level) { return true; } }");
+		Map<String, String> platformSources = new HashMap<>(common);
+		platformSources.put(burner + ".java", "package net.minecraft.world.level; public class Burner { public void tick(Object level, State state) {"
+				+ " burn(level, state, 300, Side.WEST); burn(level, state, 250, Side.EAST); } private void burn(Object level, State state, int chance, Side side) {"
+				+ " if (state.flammability(level, side) > chance) remove(level); } public boolean remove(Object level) { return true; } }");
+		Map<String, byte[]> vanilla = TestSources.compile(src.resolve("vanilla"), vanillaSources);
+		Map<String, byte[]> platform = TestSources.compile(src.resolve("platform"), platformSources);
+		Map<String, byte[]> fabric = TestSources.compile(src.resolve("fabric"), TestSources.MIXIN_ANNOTATIONS, platformSources, Map.of(
+				"org/spongepowered/asm/mixin/gen/Invoker.java", "package org.spongepowered.asm.mixin.gen;"
+						+ " @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) public @interface Invoker { String value() default \"\"; }",
+				"com/burn/mixin/BurnerAccessor.java", "package com.burn.mixin; import org.spongepowered.asm.mixin.*; import org.spongepowered.asm.mixin.gen.*;"
+						+ " import net.minecraft.world.level.*; @Mixin(Burner.class) public interface BurnerAccessor {"
+						+ " @Invoker(\"burn\") void invokeBurn(Object level, State state, int chance); }"));
+		Path burning = TestJars.create().fabricModJson(TestJars.modJson("burning", "1.0", "\"mixins\":[\"burning.mixins.json\"]"))
+				.text("burning.mixins.json", "{\"required\":true,\"package\":\"com.burn.mixin\",\"plugin\":\"com.burn.Plugin\",\"mixins\":[\"BurnerAccessor\"]}")
+				.bytes("com/burn/mixin/BurnerAccessor.class", fabric.get("com/burn/mixin/BurnerAccessor"))
+				.write(Files.createDirectories(game.resolve("mods")).resolve("burning.jar"));
+		InvokerBridge bridge = new InvokerBridge(burner, "burn", "(Ljava/lang/Object;L" + state + ";I)V", "burn",
+				"(Ljava/lang/Object;L" + state + ";ILnet/minecraft/world/level/Side;)V", 3, "WEST");
+
+		Pipeline.Input fresh = withVanilla(input(game, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()), vanilla);
+		Map<String, Map<InvokerBridge, List<String>>> expected = Map.of(burner, Map.of(bridge, List.of("burning: com.burn.mixin.BurnerAccessor @Invoker"
+				+ " invokeBurn(Ljava/lang/Object;L" + state + ";I)V")));
+		Pipeline.Result translated = Pipeline.run(fresh);
+		assertFalse(translated.mods().getFirst().translated().cacheHit());
+		assertEquals(expected, translated.invokerBridges(), translated.report().render());
+		fresh.cache().finish(5);
+		Pipeline.Input again = withVanilla(input(game, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()), vanilla);
+		Pipeline.Result cached = Pipeline.run(again);
+		assertTrue(cached.mods().getFirst().translated().cacheHit());
+		assertEquals(expected, cached.invokerBridges());
+		again.cache().finish(5);
+
+		// The entry edited to records no translation makes: a constant no class could declare a field of, or none; its bridges
+		// gone, though its invokers say a game class declares one, or the invokers' record too, though the overlay's mixin
+		// is pointed at a bridge, or that record missing. Each is dropped and the mod translated again, the new record
+		// written over the edited one, so the next launch takes it from the cache.
+		Path entryFile;
+		try (var files = Files.walk(game.resolve(".fabricated"))) {
+			entryFile = files.filter(f -> f.getFileName().toString().equals("entry.json")).filter(f -> {
+				try {
+					return Files.readString(f).contains("\"invokerBridges\"");
+				} catch (IOException e) {
+					throw new java.io.UncheckedIOException(e);
+				}
+			}).findFirst().orElseThrow();
+		}
+		Map<String, java.util.function.Consumer<Map<String, Object>>> edits = new LinkedHashMap<>();
+		edits.put("a constant that is no name", meta -> firstBridge(meta).put("constant", "WEST; ignite"));
+		edits.put("no constant", meta -> firstBridge(meta).put("constant", null));
+		edits.put("no bridges", meta -> meta.put("invokerBridges", List.of()));
+		edits.put("no bridges or invokers", meta -> {
+			meta.put("invokerBridges", List.of());
+			meta.put("pointedInvokers", List.of());
+		});
+		edits.put("no invokers' record", meta -> meta.remove("pointedInvokers"));
+		for (Map.Entry<String, java.util.function.Consumer<Map<String, Object>>> e : edits.entrySet()) {
+			Map<String, Object> meta = new LinkedHashMap<>(Json.parseObject(Files.readString(entryFile)));
+			e.getValue().accept(meta);
+			Files.writeString(entryFile, Json.write(meta, true));
+			Pipeline.Input edit = withVanilla(input(game, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()), vanilla);
+			Pipeline.Result retranslated = Pipeline.run(edit);
+			assertEquals(1, retranslated.mods().size(), e.getKey() + ": " + retranslated.report().render());
+			assertFalse(retranslated.mods().getFirst().translated().cacheHit(), e.getKey() + ": an entry no translation makes is dropped");
+			assertEquals(expected, retranslated.invokerBridges(), e.getKey());
+			assertTrue(retranslated.report().render().contains("held another record of its files than this translation's"), e.getKey());
+			edit.cache().finish(5);
+			Pipeline.Input next = withVanilla(input(game, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()), vanilla);
+			assertTrue(Pipeline.run(next).mods().getFirst().translated().cacheHit(), e.getKey() + ": the record written over the edited one is read");
+			next.cache().finish(5);
+		}
+
+		Path other = Files.createDirectories(game.resolve("other"));
+		Pipeline.Result unread = Pipeline.run(input(other, List.of(burning), Namespace.OFFICIAL, platform, null, List.of()));
+		assertEquals(Map.of(), unread.invokerBridges());
+		List<PreflightFinding> left = unread.mods().getFirst().translated().findings().stream().filter(f -> f.severity() == PreflightFinding.Severity.LEFT_OUT)
+				.toList();
+		assertEquals(1, left.size(), unread.report().render());
+		assertFalse(left.getFirst().suggestion().contains("LEAVE-6"), left.getFirst().suggestion());
+	}
+
+	/** The first invoker bridge of a cache entry's record, to edit. */
+	@SuppressWarnings("unchecked")
+	private static Map<String, Object> firstBridge(Map<String, Object> meta) {
+		List<Object> bridges = new ArrayList<>((List<Object>) meta.get("invokerBridges"));
+		Map<String, Object> first = new LinkedHashMap<>((Map<String, Object>) bridges.get(0));
+		bridges.set(0, first);
+		meta.put("invokerBridges", bridges);
+		return first;
+	}
+
+	/** {@code in} with vanilla's classes ({@link Pipeline.VanillaGame}). */
+	private static Pipeline.Input withVanilla(Pipeline.Input in, Map<String, byte[]> vanilla) throws Exception {
+		java.lang.reflect.RecordComponent[] parts = Pipeline.Input.class.getRecordComponents();
+		Class<?>[] types = new Class<?>[parts.length];
+		Object[] values = new Object[parts.length];
+		for (int i = 0; i < parts.length; i++) {
+			types[i] = parts[i].getType();
+			values[i] = types[i] == Pipeline.VanillaGame.class ? new Pipeline.VanillaGame(vanilla::get, "test") : parts[i].getAccessor().invoke(in);
+		}
+		return Pipeline.Input.class.getDeclaredConstructor(types).newInstance(values);
+	}
+
+	/**
 	 * Code calling a class only an installed NeoForge mod has (Forgified Fabric API's modules, a multi-loader library's
 	 * NeoForge build) links: the linkage check counts the installed mods' classes (PROVIDER-1).
 	 */
@@ -1340,6 +1466,13 @@ class PipelineTest {
 		// SEAM-1: the classes whose vanilla methods are put back, once.
 		assertEquals(Set.of("net/minecraft/world/Thing"), result.restoredSeams());
 		assertTrue(result.without(Set.of("mod-a", "mod-b")).restoredSeams().isEmpty());
+		// LEAVE-6: an invoker bridge two mods' invokers call is declared once, naming both mods' invokers.
+		InvokerBridge thing = new InvokerBridge("net/minecraft/world/Thing", "burn", "(I)V", "burn", "(ILnet/minecraft/core/Direction;)V", 1, "WEST");
+		assertEquals(Map.of("net/minecraft/world/Thing", Map.of(thing, List.of("mod-a: com.example.ThingAccessor @Invoker invokeBurn(I)V",
+				"mod-b: com.example.ThingAccessor @Invoker invokeBurn(I)V"))), result.invokerBridges());
+		assertEquals(Map.of("net/minecraft/world/Thing", Map.of(thing, List.of("mod-a: com.example.ThingAccessor @Invoker invokeBurn(I)V"))),
+				kept.invokerBridges());
+		assertTrue(result.without(Set.of("mod-a", "mod-b")).invokerBridges().isEmpty());
 		// Read from any class-loading thread: never changed after it is published.
 		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().get("net/minecraft/world/Thing").clear());
 		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().clear());
@@ -1369,7 +1502,9 @@ class PipelineTest {
 		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, 1);
 		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
 				List.of(new DefaultBridge("net/minecraft/world/Thing", "net/minecraft/world/Extension", "size", "()I")), Set.of(environmentClass),
-				Set.of("net/minecraft/world/Thing check()Z"), Set.of("net/minecraft/world/Thing"), false, 0);
+				Set.of("net/minecraft/world/Thing check()Z"), Set.of("net/minecraft/world/Thing"),
+				Map.of(new InvokerBridge("net/minecraft/world/Thing", "burn", "(I)V", "burn", "(ILnet/minecraft/core/Direction;)V", 1, "WEST"),
+						List.of("com.example.ThingAccessor @Invoker invokeBurn(I)V")), false, 0);
 		return new Pipeline.LoadedMod(mod, PackageGuard.Decision.NONE, List.of());
 	}
 
