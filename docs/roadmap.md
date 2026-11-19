@@ -64,6 +64,8 @@ In this order:
      push, and the full matrix boots every version;
    - the bug report form, which CI's script tests parse with the workflows;
    - the documents checked against the branch layout and Minecraft 1.19.2.
+5. **v0.6.0-beta.4**, the release of 2 to 4, with Minecraft 1.19.2's first jar. What it contains is in its
+   [release notes](releases/v0.6.0-beta.4.md) and in [`CHANGELOG.md`](CHANGELOG.md).
 
 What a beta release must hold, and how a release is cut, is in
 [`CONTRIBUTING.md`](../CONTRIBUTING.md#releasing).
