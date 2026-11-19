@@ -1,0 +1,9 @@
+{
+  "required": true,
+  "package": "io.github.cmdralph.fabricated.testmod.growth",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": ["GrowthSpeedMixin", "SoilCheckMixin"],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
