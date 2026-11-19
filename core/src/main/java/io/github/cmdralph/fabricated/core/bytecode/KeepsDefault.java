@@ -4,7 +4,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Whether a block keeps the platform's default of an extension method, for the calls SEAM-3, SEAM-4, SEAM-6 and SEAM-8
+ * Whether a block keeps the platform's default of an extension method, for the calls SEAM-3, SEAM-4, SEAM-6, SEAM-8 and SEAM-12
  * put back ({@link VanillaCalls}), and whether an object's class keeps a vanilla class's method (SEAM-4: Forge's
  * {@code Player.hasCorrectToolForDrops}). Its methods are copied into the game class put back in, as private helpers, so
  * they name only the JDK's classes. Each class of the object, its superclasses below the one whose method it asks of and
@@ -112,6 +112,30 @@ final class KeepsDefault {
 	static boolean keepsMethod(ClassValue<Object[]> known, Object object, Class<?> base, String name, Class<?>[] params) {
 		try {
 			return !overrides(known, object.getClass(), base, name, params);
+		} catch (RuntimeException | LinkageError e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Whether the object's class keeps each of several methods, {@code names[i]} with {@code params[i]} of {@code bases[i]}:
+	 * no class between them declares it again (SEAM-12: a crop's {@code mayPlaceOn}, {@code getPlant} and
+	 * {@code getPlantType}, which Forge's {@code canSustainPlant} asks of it). The class keeps one answer for them all.
+	 */
+	static boolean keepsMethods(ClassValue<Object[]> known, Object object, Class<?>[] bases, String[] names, Class<?>[][] params) {
+		try {
+			Class<?> type = object.getClass();
+			Boolean overrides = answer(known, type);
+			if (overrides == null) {
+				try {
+					overrides = false;
+					for (int i = 0; i < names.length && !overrides; i++) overrides = declaresOver(type, bases[i], names[i], params[i]);
+				} catch (RuntimeException | LinkageError e) {
+					overrides = true;
+				}
+				keep(known, type, overrides);
+			}
+			return !overrides;
 		} catch (RuntimeException | LinkageError e) {
 			return false;
 		}

@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.testmod;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.BlockGetter;
@@ -10,13 +11,16 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraftforge.common.IPlantable;
 
 /**
  * A block of the platform's kind for the vanilla block breaking and harvest checks ({@link VanillaBreakTest}, SEAM-3;
  * {@link VanillaHarvestTest}, SEAM-4): it overrides Forge's {@code onDestroyedByPlayer}, leaving amethyst where a
  * player breaks it, {@code canHarvestBlock}, answering its harvest check itself, and {@code getFriction}, answering its
  * friction itself ({@link VanillaFrictionTest}, SEAM-8). Forge 66 has no {@code getToolModifiedState}: 26.3's shovels
- * flatten through their item's data, and {@link VanillaShovelTest} checks nothing there.
+ * flatten through their item's data, and {@link VanillaShovelTest} checks nothing there. It overrides
+ * {@code canSustainPlant} and {@code isFertile} too, answering a crop's soil checks itself ({@link VanillaGrowthTest},
+ * SEAM-12).
  */
 final class BreakOverride extends Block {
 	BreakOverride(Properties properties) {
@@ -38,5 +42,17 @@ final class BreakOverride extends Block {
 	@Override
 	public float getFriction(BlockState state, LevelReader level, BlockPos pos, Entity entity) {
 		return VanillaFrictionTest.overridingFriction();
+	}
+
+	// The platform's soil checks, answered by the block itself, as moist farmland (SEAM-12): vanilla's farmland and moisture
+	// checks in a crop's growth speed aren't put back for it.
+	@Override
+	public boolean canSustainPlant(BlockState state, BlockGetter level, BlockPos pos, Direction facing, IPlantable plantable) {
+		return true;
+	}
+
+	@Override
+	public boolean isFertile(BlockState state, BlockGetter level, BlockPos pos) {
+		return true;
 	}
 }

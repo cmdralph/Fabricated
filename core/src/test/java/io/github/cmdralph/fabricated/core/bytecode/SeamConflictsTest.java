@@ -73,7 +73,12 @@ class SeamConflictsTest {
 	private static SeamConflicts.Conflict conflict(Path dir, String nativeMembers, String nativeTarget) throws Exception {
 		Map<String, byte[]> classes = new HashMap<>(classes(dir, nativeMembers, nativeTarget));
 		ClassBytesSource game = classes::get;
-		return SeamConflicts.find(game.readNode(RESOLVER, 0), nativeJar(classes, List.of("com/moon/NativeSticky")));
+		return stripped(SeamConflicts.find(game.readNode(RESOLVER, 0), nativeJar(classes, List.of("com/moon/NativeSticky"))));
+	}
+
+	/** The conflict without what the mixin hooks, which the report names and the tests of that check apart. */
+	static SeamConflicts.Conflict stripped(SeamConflicts.Conflict conflict) {
+		return conflict == null ? null : new SeamConflicts.Conflict(conflict.owner(), conflict.mixin(), conflict.readable());
 	}
 
 	private static String wrap(String methods, String target) {
@@ -169,6 +174,12 @@ class SeamConflictsTest {
 	/** As {@link #conflict(Path, Map, String, String, String)}, the mixin's config naming {@code refmap} (null for none). */
 	private static SeamConflicts.Conflict conflict(Path dir, Map<String, String> gameSources, String nativeMembers, String nativeTarget, String gameClass,
 			InstalledClasses.RefmapFile refmap) throws Exception {
+		return stripped(found(dir, gameSources, nativeMembers, nativeTarget, gameClass, refmap));
+	}
+
+	/** As {@link #conflict(Path, Map, String, String, String, InstalledClasses.RefmapFile)}, with what the mixin hooks. */
+	private static SeamConflicts.Conflict found(Path dir, Map<String, String> gameSources, String nativeMembers, String nativeTarget, String gameClass,
+			InstalledClasses.RefmapFile refmap) throws Exception {
 		Map<String, String> sources = new HashMap<>(gameSources);
 		sources.put("org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value();"
 				+ " String target() default \"\"; }");
@@ -184,6 +195,8 @@ class SeamConflictsTest {
 		sources.put("org/spongepowered/asm/mixin/Mixin.java", "package org.spongepowered.asm.mixin; public @interface Mixin { Class<?>[] value() default { };"
 				+ " String[] targets() default { }; boolean remap() default true; }");
 		Map<String, byte[]> classes = new HashMap<>(TestSources.compile(dir, TestSources.MIXIN_ANNOTATIONS, sources));
+		// A 26.x game's class, read as Java 25's, as the game's are: the rows take 26.x's forms then.
+		if (gameSources.values().stream().anyMatch(text -> text.contains(JAVA_25))) classes.get(gameClass)[7] = 69;
 		ClassBytesSource game = classes::get;
 		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("breaker", classes::containsKey, classes::get,
 				() -> new InstalledClasses.Listing(List.of("com/moon/NativeBreak"), List.of(), refmap == null ? Map.of() : Map.of("com/moon/NativeBreak", refmap)),
@@ -226,6 +239,126 @@ class SeamConflictsTest {
 				behaviour));
 		assertEquals(expected, conflict(dir.resolve("progress-forge-player"), VanillaCallsTest.forgeSources(), head.formatted("hasCorrectToolForDrops"),
 				"net.minecraft.world.entity.player.Player", behaviour));
+	}
+
+	/** Marks a test's game sources as a 26.x game's, whose class the conflict helper reads as Java 25's. */
+	private static final String JAVA_25 = "a 26.x game, its classes Java 25's";
+
+	/**
+	 * SEAM-12: a native mod's mixin of what putting vanilla's checks back in a crop's growth speed bypasses on Forge keeps
+	 * the class as the platform has it: the crop's {@code mayPlaceOn}, its plant ({@code BushBlock}'s, {@code IPlantable}'s)
+	 * and its plant type, which Block's {@code canSustainPlant} asks and the crops keeping them no longer reach, as the
+	 * extensions' defaults. One of another of Block's methods doesn't. And what the rows name besides: vanilla's checks the defaults
+	 * don't make, {@code BlockStateBase.is} and 26.x's {@code StateHolder.getValueOrElse}.
+	 */
+	@Test
+	void aNativeMixinOfWhatPuttingTheGrowthChecksBackBypassesKeepsTheClass(@TempDir Path dir) throws Exception {
+		String crop = "net/minecraft/world/level/block/CropBlock";
+		SeamConflicts.Conflict expected = new SeamConflicts.Conflict("breaker", "com/moon/NativeBreak", true);
+		String head = " @Inject(method = \"%s\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		Map<String, String> forge = CropGrowthTest.sources(CropGrowthTest.Form.FORGE_52);
+		Map<String, String> forge64 = new HashMap<>(CropGrowthTest.sources(CropGrowthTest.Form.FORGE_64));
+		forge64.put("java25/Marker.java", "package java25; /** " + JAVA_25 + " */ class Marker { }");
+		Map<String, String> neoForge26 = new HashMap<>(CropGrowthTest.sources(CropGrowthTest.Form.NEOFORGE_26));
+		neoForge26.put("java25/Marker.java", "package java25; /** " + JAVA_25 + " */ class Marker { }");
+		assertEquals(expected, conflict(dir.resolve("may-place-on"), forge, head.formatted("mayPlaceOn"), crop.replace('/', '.'), crop));
+		assertEquals(expected, conflict(dir.resolve("plant"), forge, head.formatted("getPlant"), "net.minecraft.world.level.block.BushBlock", crop));
+		assertEquals(expected, conflict(dir.resolve("plant-type"), forge, head.formatted("getPlantType"), "net.minecraftforge.common.IPlantable", crop));
+		assertEquals(expected, conflict(dir.resolve("sustain"), forge, head.formatted("canSustainPlant"), "net.minecraft.world.level.block.Block", crop));
+		assertNull(conflict(dir.resolve("block-other"), forge, head.formatted("defaultBlockState"), "net.minecraft.world.level.block.Block", crop));
+		// The report's line names the native mod, its mixin and the method it hooks.
+		SeamConflicts.Conflict placing = found(dir.resolve("may-place-on-named"), forge, head.formatted("mayPlaceOn"), crop.replace('/', '.'), crop, null);
+		assertEquals("CropBlock.mayPlaceOn", placing.hooked());
+		assertEquals("Forge mod breaker's mixin NativeBreak hooks the platform's code that putting vanilla's calls back would move, CropBlock.mayPlaceOn",
+				placing.describe("Forge", "vanilla's calls"));
+		assertEquals("IPlantable.getPlantType", found(dir.resolve("plant-type-named"), forge, head.formatted("getPlantType"), "net.minecraftforge.common.IPlantable",
+				crop, null).hooked());
+		Map<String, Set<String>> others = VanillaSeams.mayChange(crop);
+		assertTrue(others.getOrDefault("net/minecraft/world/level/block/state/BlockBehaviour$BlockStateBase", Set.of()).containsAll(Set.of("is", "m_60713_")), others.toString());
+		assertTrue(others.getOrDefault("net/minecraft/world/level/block/state/StateHolder", Set.of()).contains("getValueOrElse"), others.toString());
+		assertTrue(others.getOrDefault("net/minecraft/world/level/block/VegetationBlock", Set.of()).contains("getPlant"), others.toString());
+		// 26.x: Forge 64 to 66's tag check, TypedInstance.is, and the moisture's getValue, which the defaults read and the
+		// put-back's getValueOrElse stands in for.
+		assertEquals(expected, conflict(dir.resolve("typed-instance"), forge64, head.formatted("is"),
+				"targets = \"net.minecraft.core.TypedInstance\"", crop));
+		assertEquals(expected, conflict(dir.resolve("get-value"), neoForge26, head.formatted("getValue"),
+				"targets = \"net.minecraft.world.level.block.state.StateHolder\"", crop));
+		// Forge 43 to 52's moisture check alone: its default's state.is(Blocks.FARMLAND), which the put-back's helper tells by the block.
+		Map<String, String> moistureOnly = new HashMap<>(CropGrowthTest.sources(CropGrowthTest.Form.FORGE_47));
+		moistureOnly.replaceAll((file, text) -> file.equals(crop + ".java") ? text.replaceFirst("soil\\.canSustainPlant\\([^;{]*?\\(net\\.minecraftforge\\.common\\.IPlantable\\) type\\)",
+				"true") : text);
+		ClassBytesSource moistureGame = TestSources.compileWithLocals(dir.resolve("moisture-only"), moistureOnly)::get;
+		org.objectweb.asm.tree.ClassNode moisture = moistureGame.readNode(crop, 0);
+		VanillaSeams.Rewrite alone = VanillaSeams.rewriteOf(moisture);
+		assertTrue(alone.others().getOrDefault("net/minecraft/world/level/block/state/BlockBehaviour$BlockStateBase", Set.of()).contains("m_60713_"),
+				alone.others().toString());
+		assertTrue(alone.movedCalls().stream().noneMatch(c -> c.contains("canSustainPlant")), alone.movedCalls().toString());
+	}
+
+	/**
+	 * SEAM-9: a native mod's mixin of what putting vanilla's eye check back makes or bypasses keeps the class as the platform
+	 * has it: Entity's {@code isEyeInFluid}, which vanilla's call makes (26.1.2's of a tag calling the fluid type's), and the
+	 * fluid interaction's {@code isEyeInFluid}, {@code isEyeInFluidMatching} and {@code getFluidTypeByTag}. One of another
+	 * of Entity's methods doesn't.
+	 */
+	@Test
+	void aNativeMixinOfWhatPuttingTheEyeCheckBackChangesKeepsTheClass(@TempDir Path dir) throws Exception {
+		String player = "net/minecraft/world/entity/player/Player";
+		SeamConflicts.Conflict expected = new SeamConflicts.Conflict("breaker", "com/moon/NativeBreak", true);
+		String head = " @Inject(method = \"%s\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		Map<String, String> neoForge = EyesInWaterTest.sources(EyesInWaterTest.Form.BY_TYPE);
+		String interaction = "net.minecraft.world.entity.EntityFluidInteraction";
+		assertEquals(expected, conflict(dir.resolve("entity"), neoForge, head.formatted("isEyeInFluid"), "net.minecraft.world.entity.Entity", player));
+		for (String method : List.of("isEyeInFluid", "isEyeInFluidMatching", "getFluidTypeByTag")) {
+			assertEquals(expected, conflict(dir.resolve(method), neoForge, head.formatted(method), interaction, player), method);
+		}
+		assertNull(conflict(dir.resolve("entity-other"), neoForge, head.formatted("getFluidInteraction"), "net.minecraft.world.entity.Entity", player));
+		assertEquals("EntityFluidInteraction.isEyeInFluidMatching", found(dir.resolve("matching-named"), neoForge, head.formatted("isEyeInFluidMatching"),
+				interaction, player, null).hooked());
+		// The class's own method, where a native mixin hooks the platform's call vanilla's goes back in place of.
+		assertEquals("Player.getDestroySpeed", found(dir.resolve("own-named"), neoForge, " @Inject(method = \"getDestroySpeed\", at = @At(value = \"INVOKE\","
+				+ " target = \"Lnet/minecraft/world/entity/EntityFluidInteraction;isEyeInFluidMatching(Lnet/minecraft/world/entity/Entity;"
+				+ "Lnet/neoforged/neoforge/fluids/InFluidPredicate;)Z\")) private void call(CallbackInfo ci) { }", "net.minecraft.world.entity.player.Player",
+				player, null).hooked());
+	}
+
+	/**
+	 * The report's line names the method of the class a native mixin hooks: of an injector's selectors, those picking a
+	 * method holding the calls the put-back changes, never MixinExtras' {@code @Definition} (whose {@code method} names
+	 * the call it matches) or {@code @Expression}; and the class's own method before another class's it hooks too.
+	 */
+	@Test
+	void theConflictsLineNamesTheMethodHoldingTheCallsThatChange(@TempDir Path dir) throws Exception {
+		Map<String, String> sources = new HashMap<>(VanillaCallsTest.neoForgeSources());
+		sources.put("com/llamalad7/mixinextras/expression/Definition.java", "package com.llamalad7.mixinextras.expression; public @interface Definition {"
+				+ " String id(); String[] method() default { }; }");
+		sources.put("com/llamalad7/mixinextras/expression/Expression.java", "package com.llamalad7.mixinextras.expression; public @interface Expression { String[] value(); }");
+		sources.put("com/llamalad7/mixinextras/injector/ModifyExpressionValue.java", "package com.llamalad7.mixinextras.injector; public @interface"
+				+ " ModifyExpressionValue { String[] method(); org.spongepowered.asm.mixin.injection.At[] at(); }");
+		String harvest = "Lnet/minecraft/world/level/block/state/BlockState;canHarvestBlock(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;"
+				+ "Lnet/minecraft/world/entity/player/Player;)Z";
+		String gameMode = "net.minecraft.server.level.ServerPlayerGameMode";
+		String expression = " @com.llamalad7.mixinextras.expression.Definition(id = \"harvest\", method = \"" + harvest + "\")"
+				+ " @com.llamalad7.mixinextras.expression.Expression(\"?.harvest(?, ?, ?)\")"
+				+ " @com.llamalad7.mixinextras.injector.ModifyExpressionValue(method = \"destroyBlock\", at = @At(\"MIXINEXTRAS:EXPRESSION\"))"
+				+ " private boolean harvested(boolean original) { return original; }";
+		assertEquals("ServerPlayerGameMode.destroyBlock", found(dir.resolve("expression"), sources, expression, gameMode, "net/minecraft/server/level/ServerPlayerGameMode",
+				null).hooked());
+		String both = " @Inject(method = {\"<init>\", \"destroyBlock\"}, at = @At(value = \"INVOKE\", target = \"" + harvest + "\"))"
+				+ " private void call(CallbackInfo ci) { }";
+		assertEquals("ServerPlayerGameMode.destroyBlock", found(dir.resolve("two"), sources, both, gameMode, "net/minecraft/server/level/ServerPlayerGameMode",
+				null).hooked());
+		// An injector naming a call that moves in a method holding none of those calls: its selector, as it is.
+		String elsewhere = " @Inject(method = \"<init>\", at = @At(value = \"INVOKE\", target = \"" + harvest + "\")) private void call(CallbackInfo ci) { }";
+		assertEquals("ServerPlayerGameMode.<init>", found(dir.resolve("elsewhere"), sources, elsewhere, gameMode, "net/minecraft/server/level/ServerPlayerGameMode",
+				null).hooked());
+		// A mixin of CropBlock hooking a jump in its growth speed, which the put-back shifts, and the crop's mayPlaceOn,
+		// which it bypasses: the class's own method.
+		String crop = "net/minecraft/world/level/block/CropBlock";
+		String growthAndPlacing = " @Inject(method = \"getGrowthSpeed\", at = @At(\"JUMP\")) private static void jump(CallbackInfo ci) { }"
+				+ " @Inject(method = \"mayPlaceOn\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		assertEquals("CropBlock.getGrowthSpeed", found(dir.resolve("own-first"), CropGrowthTest.sources(CropGrowthTest.Form.FORGE_52), growthAndPlacing,
+				crop.replace('/', '.'), crop, null).hooked());
 	}
 
 	/**
@@ -390,7 +523,8 @@ class SeamConflictsTest {
 				classes::containsKey, counted, () -> new InstalledClasses.Listing(List.of("com/moon/NativeSticky"), List.of()), false, fingerprint)));
 		Supplier<InstalledClasses> current = () -> installed.apply(InstalledClasses.fingerprint(file, ""));
 		TranslationCache cache = new TranslationCache(game, true, true);
-		Map<String, SeamConflicts.Conflict> decided = Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "com/moon/NativeSticky", true));
+		Map<String, SeamConflicts.Conflict> decided = Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "com/moon/NativeSticky", true,
+				"PistonStructureResolver.resolve"));
 
 		// A miss: decided, and stored.
 		assertEquals(decided, SeamConflicts.of(gameClasses, current.get(), cache, "env"));
@@ -465,7 +599,8 @@ class SeamConflictsTest {
 				() -> listFails[0] ? new InstalledClasses.Listing(List.of(), List.of("moonlight.mixins.json"))
 						: new InstalledClasses.Listing(List.of("com/moon/NativeSticky"), List.of()), false, InstalledClasses.fingerprint(file, ""))));
 		TranslationCache cache = new TranslationCache(game, true, true);
-		Map<String, SeamConflicts.Conflict> decided = Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "com/moon/NativeSticky", true));
+		Map<String, SeamConflicts.Conflict> decided = Map.of(RESOLVER, new SeamConflicts.Conflict("moonlight", "com/moon/NativeSticky", true,
+				"PistonStructureResolver.resolve"));
 
 		// The jar's mixin config fails to read: it lists none that read, so without it the seams would be put back, and
 		// cached so, Moonlight's mixin then failing at every launch. The class is kept, by the list that failed.
