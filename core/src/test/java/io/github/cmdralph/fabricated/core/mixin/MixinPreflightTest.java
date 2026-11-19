@@ -15101,7 +15101,11 @@ class MixinPreflightTest {
 	/** {@link #growingSources(String)} with the method's parameters before the level and the position given, and its first statement. */
 	private static Map<String, String> growingSources(String param, String first) {
 		return Map.of(
-				"net/minecraft/core/BlockPos.java", "package net.minecraft.core; public record BlockPos(int y) { public BlockPos below() { return new BlockPos(y - 1); } }",
+				"net/minecraft/core/BlockPos.java", "package net.minecraft.core; public record BlockPos(int y) { public BlockPos below() { return new BlockPos(y - 1); }"
+						+ " public BlockPos offset(int x, int y, int z) { return new BlockPos(this.y + y); } }",
+				"net/minecraft/world/level/block/Counter.java", "package net.minecraft.world.level.block; public class Counter {"
+						+ " public static final Counter LAST = new Counter(); public float last;"
+						+ " public void touch(net.minecraft.world.level.block.state.BlockState soil) { } public static boolean is(Block block) { return block != null; } }",
 				"net/minecraft/world/level/BlockGetter.java", "package net.minecraft.world.level; public interface BlockGetter {"
 						+ " net.minecraft.world.level.block.state.BlockState getBlockState(net.minecraft.core.BlockPos pos); }",
 				"net/minecraft/world/level/block/Block.java", "package net.minecraft.world.level.block; public class Block { }",
@@ -15125,6 +15129,11 @@ class MixinPreflightTest {
 								soilSpeed /= 4.0F;
 								speed += soilSpeed;
 								if (level.getBlockState(pos).is(block)) speed /= 2.0F;
+								if (Counter.is(block)) speed += 0.0F;
+								Counter.LAST.last = speed;
+								Counter.LAST.touch(soil);
+								if (soil.getBlock() instanceof CropBlock) speed *= 1.0F;
+								level.getBlockState(pos.offset(1, 0, 1));
 								return speed;
 							}
 						}""".formatted(param, first == null ? "" : first));
@@ -15383,6 +15392,161 @@ class MixinPreflightTest {
 		assertTrue(before.stream().noneMatch(f -> f.message().contains(pointed)), before.toString());
 	}
 
+	/** A static handler of {@code desc} answering its result's default. */
+	private static MethodVisitor defaulting(ClassWriter cw, String name, String desc) {
+		return cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, name, desc, null, null);
+	}
+
+	private static void answerDefault(MethodVisitor mv, String desc) {
+		mv.visitCode();
+		Type result = Type.getReturnType(desc);
+		switch (result.getSort()) {
+			case Type.VOID -> mv.visitInsn(Opcodes.RETURN);
+			case Type.BOOLEAN, Type.INT -> {
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitInsn(Opcodes.IRETURN);
+			}
+			case Type.FLOAT -> {
+				mv.visitInsn(Opcodes.FCONST_0);
+				mv.visitInsn(Opcodes.FRETURN);
+			}
+			default -> {
+				mv.visitInsn(Opcodes.ACONST_NULL);
+				mv.visitInsn(Opcodes.ARETURN);
+			}
+		}
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+	}
+
+	/**
+	 * SEAM-12's repair counts each injector's own arguments from its kind and its point, so that what it takes past them,
+	 * the method's parameters, is bridged: a {@code @Redirect} of a static call (no receiver) and of a field read
+	 * ({@code GETSTATIC}: none) or write ({@code PUTFIELD}: the object and the value), a {@code @WrapOperation} of a field
+	 * read, a {@code @ModifyConstant} of an {@code instanceof} (the object and the class), {@code @ModifyArgs},
+	 * {@code @ModifyReturnValue}, {@code @WrapWithCondition} and {@code @Inject} taking the parameters, each named by
+	 * vanilla's descriptor, are pointed at NeoForge's method and bridged to be given the block; a {@code @ModifyArg} taking
+	 * all of a call's arguments, its own, is pointed there as it is. Not repaired: a point whose instructions take operands
+	 * differently (a target without its owner, naming a static and an instance call), a {@code @Local} of a reference type,
+	 * whose local's type its descriptor doesn't tell, a {@code @ModifyVariable} by its slot, and an {@code @Inject} taking
+	 * some of the parameters only, or more than them without capturing locals.
+	 */
+	@Test
+	void retypedRepairsCountEachInjectorsOwnArguments(@TempDir Path dir) throws Exception {
+		Map<String, byte[]> vanilla = TestSources.compileWithLocals(dir.resolve("vanilla"), growingSources(null));
+		Map<String, byte[]> platform = TestSources.compileWithLocals(dir.resolve("platform"), growingSources("Block block = state.getBlock();"));
+		String block = "L" + GROWN_BLOCK + ";", state = "L" + GROWN_STATE + ";", rest = "Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;";
+		String counter = "Lnet/minecraft/world/level/block/Counter;", pos = "Lnet/minecraft/core/BlockPos;";
+		String is = "L" + GROWN_STATE + ";is(L" + GROWN_BLOCK + ";)Z", counted = "Lnet/minecraft/world/level/block/Counter;is(" + block + ")Z";
+		String farmland = "Lnet/minecraft/world/level/block/Blocks;FARMLAND:" + block, last = "Lnet/minecraft/world/level/block/Counter;last:F";
+		String touch = "Lnet/minecraft/world/level/block/Counter;touch(" + state + ")V", offset = "Lnet/minecraft/core/BlockPos;offset(III)" + pos;
+		String pointed = "which NeoForge's CropBlock declares as", selector = "getGrowthSpeed" + GROWTH_DESC;
+		record Shape(String injector, String desc, String value, String target, String bridged, java.util.function.Consumer<AnnotationVisitor> extra) {
+		}
+		Map<String, Shape> bridged = new java.util.LinkedHashMap<>();
+		bridged.put("Static", new Shape(REDIRECT, "(" + block + block + rest + ")Z", "INVOKE", counted, "(" + block + state + rest + ")Z", null));
+		bridged.put("Read", new Shape(REDIRECT, "(" + block + rest + ")" + block, "FIELD", farmland, "(" + state + rest + ")" + block, null));
+		bridged.put("WrappedRead", new Shape(WRAP_OPERATION, "(" + OPERATION + block + rest + ")" + block, "FIELD", farmland,
+				"(" + OPERATION + state + rest + ")" + block, null));
+		bridged.put("Write", new Shape(REDIRECT, "(" + counter + "F" + block + rest + ")V", "FIELD", last, "(" + counter + "F" + state + rest + ")V",
+				at -> at.visit("opcode", Opcodes.PUTFIELD)));
+		bridged.put("Arguments", new Shape("Lorg/spongepowered/asm/mixin/injection/ModifyArgs;", "(Lorg/spongepowered/asm/mixin/injection/invoke/arg/Args;"
+				+ block + rest + ")V", "INVOKE", offset, "(Lorg/spongepowered/asm/mixin/injection/invoke/arg/Args;" + state + rest + ")V", null));
+		bridged.put("Returned", new Shape("Lcom/llamalad7/mixinextras/injector/ModifyReturnValue;", "(F" + block + rest + ")F", "RETURN", null,
+				"(F" + state + rest + ")F", null));
+		bridged.put("Condition", new Shape("Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;", "(" + counter + state + block + rest + ")Z", "INVOKE",
+				touch, "(" + counter + state + state + rest + ")Z", null));
+		bridged.put("Injected", new Shape(INJECT, "(" + block + rest + "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V", "RETURN",
+				null, "(" + state + rest + "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V", null));
+		bridged.put("AllArguments", new Shape(MODIFY_ARG, "(III)I", "INVOKE", offset, null, null));
+		for (Map.Entry<String, Shape> e : bridged.entrySet()) {
+			Shape shape = e.getValue();
+			String name = "com/example/mixin/" + e.getKey();
+			Map<String, byte[]> mixins = Map.of(name, growthMixin(name, cw -> {
+				MethodVisitor mv = defaulting(cw, "handler", shape.desc());
+				AnnotationVisitor ann = mv.visitAnnotation(shape.injector(), false);
+				if (shape.injector().equals(MODIFY_ARG)) ann.visit("index", 0);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, selector);
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", shape.value());
+				if (shape.target() != null) at.visit("target", shape.target());
+				if (shape.extra() != null) shape.extra().accept(at);
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visitEnd();
+				answerDefault(mv, shape.desc());
+			}));
+			Map<String, byte[]> repaired = new HashMap<>();
+			List<PreflightFinding> findings = retypedRun(platform, vanilla, mixins, config(true, e.getKey()), repaired);
+			assertTrue(findings.stream().anyMatch(f -> f.message().contains(pointed)), e.getKey() + ": " + findings);
+			ClassNode node = node(repaired.get(name + ".class"));
+			List<String> bridges = node.methods.stream().filter(m -> m.name.contains("$fabricated")).map(m -> m.desc).toList();
+			assertEquals(shape.bridged() == null ? List.of() : List.of(shape.bridged()), bridges, e.getKey());
+		}
+		// The instanceof's @ModifyConstant, its constant a class.
+		Map<String, byte[]> constant = Map.of("com/example/mixin/Constant", growthMixin("com/example/mixin/Constant", cw -> {
+			String desc = "(Ljava/lang/Object;Ljava/lang/Class;" + block + rest + ")Z";
+			MethodVisitor mv = defaulting(cw, "handler", desc);
+			AnnotationVisitor ann = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/ModifyConstant;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, selector);
+			methods.visitEnd();
+			AnnotationVisitor constants = ann.visitArray("constant");
+			AnnotationVisitor c = constants.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/Constant;");
+			c.visit("classValue", Type.getObjectType(GROWING));
+			c.visitEnd();
+			constants.visitEnd();
+			ann.visitEnd();
+			answerDefault(mv, desc);
+		}));
+		Map<String, byte[]> repairedConstant = new HashMap<>();
+		List<PreflightFinding> constantFindings = retypedRun(platform, vanilla, constant, config(true, "Constant"), repairedConstant);
+		assertTrue(constantFindings.stream().anyMatch(f -> f.message().contains(pointed)), constantFindings.toString());
+		assertEquals(List.of("(Ljava/lang/Object;Ljava/lang/Class;" + state + rest + ")Z"), node(repairedConstant.get("com/example/mixin/Constant.class")).methods
+				.stream().filter(m -> m.name.contains("$fabricated")).map(m -> m.desc).toList());
+		// Not repaired: operands told otherwise at each instruction, a reference type's @Local, a @ModifyVariable by its
+		// slot, an @Inject taking some of the parameters.
+		Map<String, Consumer<ClassWriter>> refused = new java.util.LinkedHashMap<>();
+		refused.put("Ownerless", cw -> {
+			MethodVisitor mv = defaulting(cw, "handler", "(" + block + block + rest + ")Z");
+			selectorAndPoint(mv.visitAnnotation(REDIRECT, false), selector, "INVOKE", "is(" + block + ")Z", null);
+			answerDefault(mv, "(" + block + block + rest + ")Z");
+		});
+		refused.put("Ref", cw -> {
+			MethodVisitor mv = defaulting(cw, "handler", "(Z" + LOCAL_REF + ")Z");
+			selectorAndPoint(mv.visitAnnotation(MODIFY_EXPRESSION_VALUE, false), selector, "INVOKE", is, 0);
+			mv.visitParameterAnnotation(1, LOCAL, false).visitEnd();
+			answerDefault(mv, "(Z" + LOCAL_REF + ")Z");
+		});
+		refused.put("Slot", cw -> {
+			MethodVisitor mv = defaulting(cw, "handler", "(F)F");
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, false);
+			ann.visit("index", 3);
+			selectorAndPoint(ann, selector, "INVOKE", is, 0);
+			answerDefault(mv, "(F)F");
+		});
+		refused.put("Partial", cw -> {
+			String desc = "(" + block + "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V";
+			MethodVisitor mv = defaulting(cw, "handler", desc);
+			selectorAndPoint(mv.visitAnnotation(INJECT, false), selector, "RETURN", null, null);
+			answerDefault(mv, desc);
+		});
+		refused.put("Overfull", cw -> {
+			String desc = "(" + block + rest + "FLorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V";
+			MethodVisitor mv = defaulting(cw, "handler", desc);
+			selectorAndPoint(mv.visitAnnotation(INJECT, false), selector, "RETURN", null, null);
+			answerDefault(mv, desc);
+		});
+		for (Map.Entry<String, Consumer<ClassWriter>> e : refused.entrySet()) {
+			String name = "com/example/mixin/" + e.getKey();
+			List<PreflightFinding> findings = retypedRun(platform, vanilla, Map.of(name, growthMixin(name, e.getValue())), config(true, e.getKey()), new HashMap<>());
+			assertTrue(findings.stream().noneMatch(f -> f.message().contains(pointed)), e.getKey() + ": " + findings);
+		}
+	}
+
 	private static final String WORKER = "net/minecraft/world/level/Worker";
 
 	/**
@@ -15415,8 +15579,8 @@ class MixinPreflightTest {
 	 * own arguments from the method's parameters it takes after them, as the retyped one does: a {@code @Redirect} and a
 	 * {@code @WrapWithCondition} of a call whose arguments end with the method's parameter's type take them as their own,
 	 * and are pointed at the overload as they are, without a bridge, which would hand them the overload's parameters in
-	 * their own arguments' place and be refused as Mixin applies it; a {@code @ModifyArg} taking all the call's arguments,
-	 * which can't be told from one taking the method's parameter after its own, isn't repaired. A value modifier, a
+	 * their own arguments' place and be refused as Mixin applies it, and so is a {@code @ModifyArg} taking all the call's
+	 * arguments, which Mixin passes it, never the method's parameters. A value modifier, a
 	 * {@code @WrapOperation} and a {@code @Redirect} that does take the method's parameter after its own are moved as before,
 	 * the last bridged to get the overload's.
 	 */
@@ -15431,7 +15595,7 @@ class MixinPreflightTest {
 		Map<String, Shape> shapes = new java.util.LinkedHashMap<>();
 		shapes.put("Redirect", new Shape(REDIRECT, "(" + thing + level + pos + ")Z", check, null, false, true));
 		shapes.put("Condition", new Shape("Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;", "(" + thing + level + pos + ")Z", touch, null, false, true));
-		shapes.put("Argument", new Shape(MODIFY_ARG, "(" + level + pos + ")" + pos, check, 1, false, false));
+		shapes.put("Argument", new Shape(MODIFY_ARG, "(" + level + pos + ")" + pos, check, 1, false, true));
 		shapes.put("Value", new Shape(MODIFY_EXPRESSION_VALUE, "(Z)Z", check, null, false, true));
 		shapes.put("Wrap", new Shape(WRAP_OPERATION, "(" + thing + level + pos + OPERATION + ")Z", check, null, false, true));
 		shapes.put("Captures", new Shape(REDIRECT, "(" + thing + level + pos + pos + ")Z", check, null, true, true));

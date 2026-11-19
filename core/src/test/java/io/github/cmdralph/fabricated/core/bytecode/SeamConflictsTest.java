@@ -195,6 +195,8 @@ class SeamConflictsTest {
 		sources.put("org/spongepowered/asm/mixin/Mixin.java", "package org.spongepowered.asm.mixin; public @interface Mixin { Class<?>[] value() default { };"
 				+ " String[] targets() default { }; boolean remap() default true; }");
 		Map<String, byte[]> classes = new HashMap<>(TestSources.compile(dir, TestSources.MIXIN_ANNOTATIONS, sources));
+		// A 26.x game's class, read as Java 25's, as the game's are: the rows take 26.x's forms then.
+		if (gameSources.values().stream().anyMatch(text -> text.contains(JAVA_25))) classes.get(gameClass)[7] = 69;
 		ClassBytesSource game = classes::get;
 		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("breaker", classes::containsKey, classes::get,
 				() -> new InstalledClasses.Listing(List.of("com/moon/NativeBreak"), List.of(), refmap == null ? Map.of() : Map.of("com/moon/NativeBreak", refmap)),
@@ -239,6 +241,9 @@ class SeamConflictsTest {
 				"net.minecraft.world.entity.player.Player", behaviour));
 	}
 
+	/** Marks a test's game sources as a 26.x game's, whose class the conflict helper reads as Java 25's. */
+	private static final String JAVA_25 = "a 26.x game, its classes Java 25's";
+
 	/**
 	 * SEAM-12: a native mod's mixin of what putting vanilla's checks back in a crop's growth speed bypasses on Forge keeps
 	 * the class as the platform has it: the crop's {@code mayPlaceOn}, its plant ({@code BushBlock}'s, {@code IPlantable}'s)
@@ -252,6 +257,10 @@ class SeamConflictsTest {
 		SeamConflicts.Conflict expected = new SeamConflicts.Conflict("breaker", "com/moon/NativeBreak", true);
 		String head = " @Inject(method = \"%s\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
 		Map<String, String> forge = CropGrowthTest.sources(CropGrowthTest.Form.FORGE_52);
+		Map<String, String> forge64 = new HashMap<>(CropGrowthTest.sources(CropGrowthTest.Form.FORGE_64));
+		forge64.put("java25/Marker.java", "package java25; /** " + JAVA_25 + " */ class Marker { }");
+		Map<String, String> neoForge26 = new HashMap<>(CropGrowthTest.sources(CropGrowthTest.Form.NEOFORGE_26));
+		neoForge26.put("java25/Marker.java", "package java25; /** " + JAVA_25 + " */ class Marker { }");
 		assertEquals(expected, conflict(dir.resolve("may-place-on"), forge, head.formatted("mayPlaceOn"), crop.replace('/', '.'), crop));
 		assertEquals(expected, conflict(dir.resolve("plant"), forge, head.formatted("getPlant"), "net.minecraft.world.level.block.BushBlock", crop));
 		assertEquals(expected, conflict(dir.resolve("plant-type"), forge, head.formatted("getPlantType"), "net.minecraftforge.common.IPlantable", crop));
@@ -268,6 +277,22 @@ class SeamConflictsTest {
 		assertTrue(others.getOrDefault("net/minecraft/world/level/block/state/BlockBehaviour$BlockStateBase", Set.of()).containsAll(Set.of("is", "m_60713_")), others.toString());
 		assertTrue(others.getOrDefault("net/minecraft/world/level/block/state/StateHolder", Set.of()).contains("getValueOrElse"), others.toString());
 		assertTrue(others.getOrDefault("net/minecraft/world/level/block/VegetationBlock", Set.of()).contains("getPlant"), others.toString());
+		// 26.x: Forge 64 to 66's tag check, TypedInstance.is, and the moisture's getValue, which the defaults read and the
+		// put-back's getValueOrElse stands in for.
+		assertEquals(expected, conflict(dir.resolve("typed-instance"), forge64, head.formatted("is"),
+				"targets = \"net.minecraft.core.TypedInstance\"", crop));
+		assertEquals(expected, conflict(dir.resolve("get-value"), neoForge26, head.formatted("getValue"),
+				"targets = \"net.minecraft.world.level.block.state.StateHolder\"", crop));
+		// Forge 43 to 52's moisture check alone: its default's state.is(Blocks.FARMLAND), which the put-back's helper tells by the block.
+		Map<String, String> moistureOnly = new HashMap<>(CropGrowthTest.sources(CropGrowthTest.Form.FORGE_47));
+		moistureOnly.replaceAll((file, text) -> file.equals(crop + ".java") ? text.replaceFirst("soil\\.canSustainPlant\\([^;{]*?\\(net\\.minecraftforge\\.common\\.IPlantable\\) type\\)",
+				"true") : text);
+		ClassBytesSource moistureGame = TestSources.compileWithLocals(dir.resolve("moisture-only"), moistureOnly)::get;
+		org.objectweb.asm.tree.ClassNode moisture = moistureGame.readNode(crop, 0);
+		VanillaSeams.Rewrite alone = VanillaSeams.rewriteOf(moisture);
+		assertTrue(alone.others().getOrDefault("net/minecraft/world/level/block/state/BlockBehaviour$BlockStateBase", Set.of()).contains("m_60713_"),
+				alone.others().toString());
+		assertTrue(alone.movedCalls().stream().noneMatch(c -> c.contains("canSustainPlant")), alone.movedCalls().toString());
 	}
 
 	/**

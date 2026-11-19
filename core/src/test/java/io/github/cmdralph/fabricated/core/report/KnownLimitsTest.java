@@ -98,7 +98,7 @@ class KnownLimitsTest {
 	 * SEAM-12: on Forge, pre-flight's note of a hook of vanilla's farmland check in a crop's growth speed, which goes back for
 	 * the CropBlocks keeping their checks, names the stems and the pitcher crop it doesn't run for; by Mojang's names and
 	 * Forge 47's. Not NeoForge's note (its condition is the soil's, every plant's), nor the moisture check's (any plant's on
-	 * farmland), nor a hook left out with that message.
+	 * farmland), nor the note of a class a native mixin keeps, nor a hook left out with that message.
 	 */
 	@Test
 	void aHookOfVanillasFarmlandCheckOnForgeNamesTheStemsAndThePitcherCrop() {
@@ -108,8 +108,16 @@ class KnownLimitsTest {
 		for (String message : List.of(forge, forge.replace("BlockState.is(", "BlockState.m_60713_(").replace("in getGrowthSpeed,", "in m_52272_,"))) {
 			String limit = KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
 					message, "", "capture()V"));
-			assertTrue(limit != null && limit.contains("a stem's and the pitcher crop's growth") && limit.endsWith("(SEAM-12)"), message + ": " + limit);
+			assertTrue(limit != null && limit.contains("a stem's growth and, from Minecraft 1.20, the pitcher crop's") && limit.endsWith("(SEAM-12)"),
+					message + ": " + limit);
 		}
+		// Not the note of a class a native mod's mixin keeps as Forge has it, where the hook runs for no crop.
+		String kept = "@ModifyVariable capture hooks BlockState.is(Lnet/minecraft/world/level/block/Block;)Z in getGrowthSpeed, vanilla's call Forge's CropBlock"
+				+ " makes through the soil state's canSustainPlant(level, pos, facing, plantable) instead, which Fabricated doesn't put back there, so it finds"
+				+ " nothing to hook, as before SEAM-12: Forge mod breaker's mixin NativeBreak hooks the platform's code that putting vanilla's calls back would"
+				+ " move, CropBlock.mayPlaceOn (SEAM-12)";
+		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+				kept, "", "capture()V")));
 		assertNull(KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
 				forge.replace("Forge's", "NeoForge's"), "", "capture()V")));
 		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",

@@ -3249,14 +3249,19 @@ final class VanillaCalls {
 				case FARMLAND -> others.computeIfAbsent(STATE_BASE, k -> new TreeSet<>()).addAll(List.of(IS_BLOCK.name(), IS_BLOCK.srgName()));
 				case FORGE_FARMLAND, GROWS_CROPS -> {
 					others.computeIfAbsent(STATE_BASE, k -> new TreeSet<>()).addAll(List.of(IS_BLOCK.name(), IS_BLOCK.srgName()));
+					// 26.x's tag check, TypedInstance.is(TagKey) (BlockStateBase declares only is(TagKey, Predicate) there).
+					if (row.form() == OnReceiver.GROWS_CROPS) others.computeIfAbsent(TYPED_INSTANCE, k -> new TreeSet<>()).add(IS_BLOCK_TAG.name());
 					others.computeIfAbsent(CROP, k -> new TreeSet<>()).addAll(List.of(MAY_PLACE_ON.name(), MAY_PLACE_ON.srgName()));
 					for (String plant : List.of(BLOCKS + "BushBlock", BLOCKS + "VegetationBlock", PLANTABLE)) {
 						others.computeIfAbsent(plant, k -> new TreeSet<>()).add(PLANT.name());
 					}
 					others.computeIfAbsent(PLANTABLE, k -> new TreeSet<>()).add(PLANT_TYPE.name());
 				}
-				// 26.x's moisture check, StateHolder.getValueOrElse, where the defaults read getValue.
-				case MOISTURE_OR_ELSE -> others.computeIfAbsent(STATE_HOLDER, k -> new TreeSet<>()).add(STATE_VALUE_OR_ELSE.name());
+				// Vanilla's farmland's moisture: the defaults of Forge 43 to 52 ask state.is(Blocks.FARMLAND) for it, which the
+				// put-back's helper tells by its block; 26.x's vanilla reads StateHolder.getValueOrElse, where the defaults read
+				// getValue, which it no longer reaches.
+				case MOISTURE -> others.computeIfAbsent(STATE_BASE, k -> new TreeSet<>()).addAll(List.of(IS_BLOCK.name(), IS_BLOCK.srgName()));
+				case MOISTURE_OR_ELSE -> others.computeIfAbsent(STATE_HOLDER, k -> new TreeSet<>()).addAll(List.of(STATE_VALUE_OR_ELSE.name(), STATE_VALUE.name()));
 				// The stack's getTagEnchantments, no longer called, either era's stack extension.
 				case ENCHANTMENT -> {
 					others.computeIfAbsent(STACK_CLASS, k -> new TreeSet<>()).addAll(List.of("getTagEnchantments", "getEnchantments"));

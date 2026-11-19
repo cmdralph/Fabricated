@@ -306,13 +306,16 @@ public final class KnownLimits {
 							+ " answering for every kind of plant at once, so hooks of vanilla's checks there can't apply: Farmer's Delight's rich soil"
 							+ " doesn't take cactus, mushrooms or stems' fruit through them (SEAM-12)"),
 			// A hook of vanilla's farmland check in a crop's growth speed on Forge, which Fabricated puts back for the CropBlocks
-			// keeping the checks Forge's canSustainPlant asks: a stem's and the pitcher crop's growth, which make the method's
-			// checks too, are asked as Forge has it. The hook applies, and doesn't run for them.
+			// keeping the checks Forge's canSustainPlant asks: a stem's and the pitcher crop's growth (1.20 on), which make the
+			// method's checks too, are asked as Forge has it. The hook applies, and doesn't run for them. Pre-flight's note that
+			// it puts the call back alone, as the other applied notes' limits match any mod's: not its note of a class a native
+			// mod's mixin keeps as Forge has it, where the hook runs for no crop.
 			new Limit(Set.of("Forge"), null,
-					Pattern.compile("in (?:getGrowthSpeed|m_52272_), vanilla's call Forge's CropBlock makes through the soil state's canSustainPlant\\("),
+					Pattern.compile("^@\\w+ \\S+ hooks \\S+ in (?:getGrowthSpeed|m_52272_), vanilla's call Forge's CropBlock makes through the soil state's"
+							+ " canSustainPlant\\([^)]*\\) instead; Fabricated puts it back there"),
 					"Forge asks the soil's canSustainPlant in a crop's growth speed, which Fabricated answers with vanilla's farmland check for the crops"
-							+ " that are CropBlocks keeping their checks: a stem's and the pitcher crop's growth, which ask the same method, are asked as"
-							+ " Forge has it, so hooks of vanilla's farmland check there don't run for them (SEAM-12)", true),
+							+ " that are CropBlocks keeping their checks: a stem's growth and, from Minecraft 1.20, the pitcher crop's, which ask the same"
+							+ " method, are asked as Forge has it, so hooks of vanilla's farmland check there don't run for them (SEAM-12)", true),
 			// FrozenLib's hooks of vanilla's container lookups in the hopper's ejectItems and suckInItems, which NeoForge 21.11 on
 			// makes through a lookup of its own answering a container or an item handler.
 			Limit.ofMod(Set.of("NeoForge"), mixins("mixin/frozenlib.block.mixins.json", "net.frozenblock.lib.block.mixin.storage.hopper", "HopperBlockEntityMixin"),

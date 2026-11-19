@@ -438,7 +438,10 @@ public final class SeamConflicts {
 	/**
 	 * The method of one of the {@code names} the mixin hooks, which targets a class whose method of that name is called
 	 * otherwise (an extension's default, bypassed; Forge's {@code Level.removeBlock}, newly called), or null where it hooks
-	 * none of them; a selector it can't read, {@code "?"}.
+	 * none of them; a selector it can't read, {@code "?"}. By name alone, every overload of it: the rows name methods so
+	 * ({@link VanillaCalls#others}), and a name matching an overload that doesn't change only keeps the class as the
+	 * platform has it, its Fabric hooks left out with their lines as without the put-back, never puts back what a native
+	 * mixin hooks.
 	 */
 	private static String hooksMethod(ClassNode mixin, Set<String> names, Map<String, String> mapped) {
 		for (MethodNode method : mixin.methods) {

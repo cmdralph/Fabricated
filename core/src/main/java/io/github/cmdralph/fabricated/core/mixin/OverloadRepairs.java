@@ -386,11 +386,12 @@ final class OverloadRepairs extends PreflightPart {
 	 * vanilla's method {@code before} has it ({@link #retypedParameterRepairs}); -1 where that can't be told. A value
 	 * modifier ({@code @ModifyVariable}, {@code @ModifyExpressionValue}, {@code @ModifyReturnValue}, {@code @ModifyConstant})
 	 * takes the value, a {@code @ModifyConstant} of an {@code instanceof} the object and the class; {@code @ModifyArgs} its
-	 * {@code Args}; {@code @ModifyArg} the argument it takes alone (one taking the call's arguments can't be told from one
-	 * taking the method's parameters after it); {@code @Redirect}, {@code @WrapWithCondition} and {@code @WrapOperation} at an {@code INVOKE} or a
-	 * {@code FIELD} point the call's or the field access's operands, the receiver where each of vanilla's instructions the
-	 * point names takes one (all alike, or it can't be told), the call's arguments or the written value, and a
-	 * {@code @WrapOperation} its {@code Operation} after them. Any other injector, or point, can't be told.
+	 * {@code Args}; {@code @ModifyArg} all it takes, the argument or every argument of the call, which Mixin's
+	 * {@code ModifyArgInjector} passes it (one, or exactly the call's), never the method's parameters; {@code @Redirect},
+	 * {@code @WrapWithCondition} and {@code @WrapOperation} at an {@code INVOKE} or a {@code FIELD} point the call's or the
+	 * field access's operands, the receiver where each of vanilla's instructions the point names takes one (all alike, or it
+	 * can't be told), the call's arguments or the written value, and a {@code @WrapOperation} its {@code Operation} after
+	 * them. Any other injector, or point, can't be told.
 	 */
 	static int ownArguments(AnnotationNode injector, MethodNode handler, MethodNode before, Context ctx) {
 		List<Type> args = PreflightAsm.handlerArgs(handler);
@@ -402,7 +403,7 @@ final class OverloadRepairs extends PreflightPart {
 			return instanceOf ? 2 : 1;
 		}
 		if (MixinNames.VALUE_MODIFIERS.contains(kind) || kind.equals(MixinNames.MODIFY_ARGS)) return 1;
-		if (kind.equals(MODIFY_ARG)) return args.size() == 1 ? 1 : -1;
+		if (kind.equals(MODIFY_ARG)) return args.size();
 		boolean wrapper = kind.equals(MixinNames.WRAP_OPERATION);
 		if (!wrapper && !kind.equals(MixinNames.REDIRECT) && !MixinNames.WRAP_WITH_CONDITION.contains(kind)) return -1;
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
@@ -544,9 +545,9 @@ final class OverloadRepairs extends PreflightPart {
 		if (discriminators.isEmpty()) return List.of();
 		MethodNode method = retyped.method();
 		// Mixin counts the parameters first, by slot: the platform's parameter of that type counts first, and vanilla's
-		// ordinals one on, only where vanilla's method has no parameter of that type and the platform's this one alone.
-		if (List.of(Type.getArgumentTypes(before.desc)).stream().anyMatch(t -> t.getDescriptor().equals(desc))
-				|| List.of(Type.getArgumentTypes(method.desc)).stream().filter(t -> t.getDescriptor().equals(desc)).count() != 1) return null;
+		// ordinals one on, only where the platform's method has this one parameter of that type (and so vanilla's none: the
+		// two methods' other parameters are the same).
+		if (List.of(Type.getArgumentTypes(method.desc)).stream().filter(t -> t.getDescriptor().equals(desc)).count() != 1) return null;
 		List<Runnable> changes = new ArrayList<>();
 		for (AnnotationNode d : discriminators) {
 			if (Annotations.value(d, "index") != null || Annotations.value(d, "name") != null || Boolean.TRUE.equals(Annotations.value(d, "argsOnly"))) return null;
