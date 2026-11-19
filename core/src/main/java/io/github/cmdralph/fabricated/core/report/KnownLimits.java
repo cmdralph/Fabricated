@@ -82,16 +82,20 @@ public final class KnownLimits {
 	private static final String HEALTH_LAYERS = "NeoForge draws the player's health, armor, food and air as layers of its own, each from its part of"
 			+ " vanilla's renderPlayerHealth, so hooks of vanilla's method there can't apply; use the mod's NeoForge build (HUD-8)";
 
-	/** The hooks of vanilla's plant growth and survival checks the platforms make through their soil extensions (SEAM-12). */
+	/**
+	 * The hooks of vanilla's soil checks of a cactus, a mushroom and a stem's fruit, which the platforms make through the soil's
+	 * {@code canSustainPlant} (SEAM-12). A crop's growth speed, Balm's and Farmer's Delight's {@code CropBlockMixin}, goes
+	 * back where vanilla's checks answer the platforms' ({@code VanillaCalls}).
+	 */
 	private static final Set<String> PLANTS = union(
-			mixins("balm.mixins.json", "net.blay09.mods.balm.mixin", "FabricCropBlockMixin"),
-			mixins("balm.fabric.mixins.json", "net.blay09.mods.balm.mixin", "FabricCropBlockMixin"),
-			mixins("balm.fabric.mixins.json", "net.blay09.mods.balm.fabric.internal.mixin", "FabricCropBlockMixin"),
-			mixins("farmersdelight.mixins.json", "vectorwing.farmersdelight.common.mixin.refabricated", "CropBlockMixin", "StemBlockMixin", "CactusBlockMixin",
-					"MushroomBlockMixin"),
+			mixins("farmersdelight.mixins.json", "vectorwing.farmersdelight.common.mixin.refabricated", "StemBlockMixin", "CactusBlockMixin", "MushroomBlockMixin"),
 			mixins("farmersdelight.mixins.json", "vectorwing.farmersdelight.common.mixin", "CactusBlockMixin"));
 
-	/** The hooks of vanilla's water and lava checks and fluid pushing the platforms make through their fluid types (SEAM-9). */
+	/**
+	 * The hooks of vanilla's water and lava checks and fluid pushing the platforms make through their fluid types (SEAM-9).
+	 * The eye check of the mining speed and the HUD's air bubbles, Artifacts' and FrozenLib's, goes back for the eyes in
+	 * vanilla's fluids ({@code VanillaCalls}).
+	 */
 	private static final Set<String> FLUIDS = union(
 			mixins("lithium-fabric.mixins.json", "net.caffeinemc.mods.lithium.fabric.mixin", "entity.collisions.fluid.EntityMixin",
 					"experimental.entity.block_caching.fluid_pushing.EntityMixin"),
@@ -103,8 +107,9 @@ public final class KnownLimits {
 			mixins("mixin/frozenlib.entity.fabric.mixins.json", "net.frozenblock.lib.entity.mixin.client.suffocation", "HudMixin"),
 			mixins("expandability.mixins.json", "be.florens.expandability.mixin.fabric.swimming", "EntityMixin"),
 			mixins("expandability-common.mixins.json", "be.florens.expandability.mixin.swimming", "EntityMixin"),
-			mixins("artifacts.fabric.mixins.json", "artifacts.fabric.mixin.ability.sinking", "PlayerMixin"),
-			mixins("milk.mixins.json", "io.github.tropheusj.milk.mixin", "EntityMixin"));
+			mixins("milk.mixins.json", "io.github.tropheusj.milk.mixin", "EntityMixin"),
+			// Fabric API's custom fluids on Forge 64 to 66, where the module passes through: their drowning, swimming and boats.
+			mixins("fabric-content-registries-v0.mixins.json", "net.fabricmc.fabric.mixin.content.registry.fluid", "LivingEntityMixin", "AbstractBoatMixin"));
 
 	private static final List<Limit> LIMITS = List.of(
 			// A hook of vanilla's spawn checks, which the platforms make inside their spawn event's hook (Mojang's and SRG's names).
@@ -297,11 +302,21 @@ public final class KnownLimits {
 			// stem's fruit's survival, which the platforms make through the soil's canSustainPlant and isFertile (NeoForge's growth
 			// speed taking the crop's state): those methods, and the hooks left out with them.
 			Limit.ofMod(Set.of("NeoForge", "Forge"), PLANTS,
-					Pattern.compile("^(?:The injector of .* goes with that of |@\\w+ .*\\b(?:getGrowthSpeed|m_52272_|randomTick|canSurvive|m_7898_)\\b)", Pattern.DOTALL),
-					"NeoForge and Forge ask the soil's canSustainPlant and isFertile where vanilla checks for farmland in a crop's growth speed"
-							+ " (NeoForge passing the crop's state, not its block), and canSustainPlant where vanilla checks the soil of a cactus, a"
-							+ " mushroom or a stem's fruit, so hooks of vanilla's checks there can't apply: Balm's custom farmland doesn't speed crops up,"
-							+ " and Farmer's Delight's rich soil doesn't, nor take cactus, mushrooms or stems' fruit, through them (SEAM-12)"),
+					Pattern.compile("^(?:The injector of .* goes with that of |@\\w+ .*\\b(?:randomTick|canSurvive|m_7898_)\\b)", Pattern.DOTALL),
+					"NeoForge and Forge ask the soil's canSustainPlant where vanilla checks the soil of a cactus, a mushroom or a stem's fruit,"
+							+ " answering for every kind of plant at once, so hooks of vanilla's checks there can't apply: Farmer's Delight's rich soil"
+							+ " doesn't take cactus, mushrooms or stems' fruit through them (SEAM-12)"),
+			// A hook of vanilla's farmland check in a crop's growth speed on Forge, which Fabricated puts back for the CropBlocks
+			// keeping the checks Forge's canSustainPlant asks: a stem's and the pitcher crop's growth (1.20 on), which make the
+			// method's checks too, are asked as Forge has it. The hook applies, and doesn't run for them. Pre-flight's note that
+			// it puts the call back alone, as the other applied notes' limits match any mod's: not its note of a class a native
+			// mod's mixin keeps as Forge has it, where the hook runs for no crop.
+			new Limit(Set.of("Forge"), null,
+					Pattern.compile("^@\\w+ \\S+ hooks \\S+ in (?:getGrowthSpeed|m_52272_), vanilla's call Forge's CropBlock makes through the soil state's"
+							+ " canSustainPlant\\([^)]*\\) instead; Fabricated puts it back there"),
+					"Forge asks the soil's canSustainPlant in a crop's growth speed, which Fabricated answers with vanilla's farmland check for the crops"
+							+ " that are CropBlocks keeping their checks: a stem's growth and, from Minecraft 1.20, the pitcher crop's, which ask the same"
+							+ " method, are asked as Forge has it, so hooks of vanilla's farmland check there don't run for them (SEAM-12)", true),
 			// FrozenLib's hooks of vanilla's container lookups in the hopper's ejectItems and suckInItems, which NeoForge 21.11 on
 			// makes through a lookup of its own answering a container or an item handler.
 			Limit.ofMod(Set.of("NeoForge"), mixins("mixin/frozenlib.block.mixins.json", "net.frozenblock.lib.block.mixin.storage.hopper", "HopperBlockEntityMixin"),
@@ -317,13 +332,16 @@ public final class KnownLimits {
 							+ " there are left out: hoppers eject items as Forge has it, without Lithium's optimisation of it (SEAM-14)"),
 			// Hooks of vanilla's water and lava checks and fluid pushing, which the platforms make through their fluid types, every
 			// fluid at once: those methods, and the hooks left out with them.
+			// Not vanilla's eye check of the HUD's air bubbles, which goes back for the eyes in vanilla's fluids (VanillaCalls).
 			Limit.ofMod(Set.of("NeoForge", "Forge"), FLUIDS,
-					Pattern.compile("^(?:The injector of .* goes with that of |@\\w+ .*\\b(?:updateFluidHeightAndDoFluidPushing|updateFluidOnEyes|updateSwimming"
-							+ "|updateFluidInteraction|update|baseTick|getDestroySpeed|extractAirBubbles|setInWater|m_204031_|m_5844_|m_6075_)\\b)", Pattern.DOTALL),
+					Pattern.compile("^(?!@\\w+ in extractAirBubbles expects @At\\(\"INVOKE\", target=\"Lnet/minecraft/world/entity/player/Player;isEyeInFluid\\()"
+							+ "(?:The injector of .* goes with that of |@\\w+ .*\\b(?:updateFluidHeightAndDoFluidPushing|updateFluidOnEyes|updateSwimming"
+							+ "|updateFluidInteraction|update|baseTick|aiStep|checkInWater|extractAirBubbles|setInWater|m_204031_|m_5844_|m_6075_)\\b)", Pattern.DOTALL),
 					"NeoForge and Forge make vanilla's water and lava checks and its fluid pushing through their fluid types, every fluid at once,"
-							+ " so hooks of vanilla's fluid calls there can't apply: entities are pushed without Lithium's fluid caches, Wilder Wild's"
-							+ " mesoglea and FrozenLib's water-like fluids aren't seen by entities' fluid checks, and Expandability's swimming events,"
-							+ " Artifacts' underwater mining speed and Milk Lib's effect clearing don't run there (SEAM-9)"));
+							+ " and their breathing through their own breathing and drowning events, so hooks of vanilla's fluid calls there can't apply:"
+							+ " entities are pushed without Lithium's fluid caches, Wilder Wild's mesoglea and FrozenLib's water-like fluids aren't seen by"
+							+ " entities' fluid checks, Expandability's swimming events and Milk Lib's effect clearing don't run there, and on Forge Fabric"
+							+ " API's custom fluids don't drown, carry or lift entities (SEAM-9)"));
 
 	private KnownLimits() {
 	}

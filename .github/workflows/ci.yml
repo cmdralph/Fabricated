@@ -69,6 +69,8 @@ jobs:
           # A pull request's merge commit and its first parent, the base it merges into.
           fetch-depth: 2
       # The token reads contents only: where GitHub doesn't answer, there is no pull request, and the fast job runs.
+      # plan.py tells from their files whether one runs the full matrix on this push: one changing documentation alone
+      # runs none.
       - name: Whether an open pull request runs the full matrix on this push
         id: covered
         if: github.event_name == 'push' && !inputs.ref
@@ -76,17 +78,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.ref_name }}
         run: |
-          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json baseRefName \
-            --jq '[.[] | select(.baseRefName == "main" or .baseRefName == "forge" or .baseRefName == "forge-legacy")] | length' \
-            2>/dev/null || echo 0)
-          echo "covered=$([ "${open:-0}" != 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          # One line, as $GITHUB_OUTPUT's name=value takes it (the step's shell has pipefail: a failing gh gives none).
+          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json baseRefName,files 2>/dev/null \
+            | jq -c '[.[] | {baseRefName, files: [.files[] | {path}]}]') || prs='[]'
+          echo "pull_requests=${prs:-[]}" >> "$GITHUB_OUTPUT"
       - id: plan
         env:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
           BEFORE: ${{ github.event.before }}
           EXTENDED: ${{ inputs.extended == true }}
-          COVERED: ${{ steps.covered.outputs.covered }}
+          PULL_REQUESTS: ${{ steps.covered.outputs.pull_requests }}
           CALLED_REF: ${{ inputs.ref }}
         run: python3 -I ci/plan.py ci | tee -a "$GITHUB_STEP_SUMMARY"
 
