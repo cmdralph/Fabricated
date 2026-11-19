@@ -94,6 +94,43 @@ class KnownLimitsTest {
 				"", "handler()V")));
 	}
 
+	/**
+	 * SEAM-12: on Forge, pre-flight's note of a hook of vanilla's farmland check in a crop's growth speed, which goes back for
+	 * the CropBlocks keeping their checks, names the stems and the pitcher crop it doesn't run for; by Mojang's names and
+	 * Forge 47's. Not NeoForge's note (its condition is the soil's, every plant's), nor the moisture check's (any plant's on
+	 * farmland), nor the note of a class a native mixin keeps, nor a hook left out with that message.
+	 */
+	@Test
+	void aHookOfVanillasFarmlandCheckOnForgeNamesTheStemsAndThePitcherCrop() {
+		String forge = "@ModifyVariable capture hooks BlockState.is(Lnet/minecraft/world/level/block/Block;)Z in getGrowthSpeed, vanilla's call Forge's CropBlock"
+				+ " makes through the soil state's canSustainPlant(level, pos, facing, plantable) instead; Fabricated puts it back there for the soils"
+				+ " keeping that method's default (SEAM-12)";
+		for (String message : List.of(forge, forge.replace("BlockState.is(", "BlockState.m_60713_(").replace("in getGrowthSpeed,", "in m_52272_,"))) {
+			String limit = KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+					message, "", "capture()V"));
+			assertTrue(limit != null && limit.contains("a stem's growth and, from Minecraft 1.20, the pitcher crop's") && limit.endsWith("(SEAM-12)"),
+					message + ": " + limit);
+		}
+		// Not the note of a class a native mod's mixin keeps as Forge has it, where the hook runs for no crop.
+		String kept = "@ModifyVariable capture hooks BlockState.is(Lnet/minecraft/world/level/block/Block;)Z in getGrowthSpeed, vanilla's call Forge's CropBlock"
+				+ " makes through the soil state's canSustainPlant(level, pos, facing, plantable) instead, which Fabricated doesn't put back there, so it finds"
+				+ " nothing to hook, as before SEAM-12: Forge mod breaker's mixin NativeBreak hooks the platform's code that putting vanilla's calls back would"
+				+ " move, CropBlock.mayPlaceOn (SEAM-12)";
+		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+				kept, "", "capture()V")));
+		assertNull(KnownLimits.ofFinding("NeoForge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+				forge.replace("Forge's", "NeoForge's"), "", "capture()V")));
+		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+				forge.replace("canSustainPlant(level, pos, facing, plantable)", "isFertile(level, pos)"), "", "capture()V")));
+		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.LEFT_OUT, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+				forge, "", "capture()V")));
+		// The note alone, from its start: not another note whose line or hint quotes it after its own words.
+		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+				"The injector of capture goes with that of other: " + forge, "", "capture()V")));
+		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+				"@ModifyVariable capture targets getGrowthSpeed, where Forge's CropBlock's code moved", forge, "capture()V")));
+	}
+
 	@Test
 	void aHookOfTheServersPlayerWillDestroyCallIsSeam3OnForgeOnly() {
 		String message = "@ModifyExpressionValue in m_9280_ expects @At(\"INVOKE\", target=\"Lnet/minecraft/world/level/block/Block;"
@@ -200,18 +237,21 @@ class KnownLimitsTest {
 
 	/**
 	 * LIMIT-3: the documented limits of one mod's hooks, each matched on the release's own lines (Additional Entity
-	 * Attributes' water speed, FLUID-5; Reach Entity Attributes
-	 * and Porting Lib on Forge 47, ATTR-2 and HOOK-5; Ledger's campfire hook, LOCAL-6; OneConfig's key mapping accessor,
-	 * KEYMAP-1; Balm's and Farmer's Delight's plant hooks, SEAM-12; FrozenLib's and Lithium's hopper hooks, SEAM-14; the
-	 * fluid hooks of Lithium, Wilder Wild, FrozenLib, Expandability, Artifacts and Milk Lib, SEAM-9), where the report named none. The lines next to them stay as they were: Supplementaries' invoker on Forge
-	 * 47 (STRUCT-2), Porting Lib's hooks another limit names (SEAM-4, SEAM-6), its GUI utilities' failure (CORPUS-93) and
-	 * Additional Entity Attributes' dig speed hook. Supplementaries' invoker on NeoForge 21.1 and Forge 52, which a bridge
-	 * now serves (LEAVE-6), is no known limit: its line has no reason the bridge can't serve it.
+	 * Attributes' water speed, FLUID-5; Reach Entity Attributes and Porting Lib on Forge 47, ATTR-2 and HOOK-5; Ledger's
+	 * campfire hook, LOCAL-6; OneConfig's key mapping accessor, KEYMAP-1; Farmer's Delight's cactus, mushroom and stem
+	 * hooks, SEAM-12; FrozenLib's and Lithium's hopper hooks, SEAM-14; the fluid hooks of Lithium, Wilder Wild, FrozenLib,
+	 * Expandability, Milk Lib and, on Forge, Fabric API's content registries, SEAM-9), where the report named none. The
+	 * lines next to them stay as they were: Supplementaries' invoker on Forge 47 (STRUCT-2), Porting Lib's hooks another
+	 * limit names (SEAM-4, SEAM-6), its GUI utilities' failure (CORPUS-93) and Additional Entity Attributes' dig speed
+	 * hook. No limit names the hooks whose vanilla calls go back now (Balm's and Farmer's Delight's of a crop's growth
+	 * speed, SEAM-12; Artifacts' of the mining speed's eye check and FrozenLib's of the air bubbles', SEAM-9), nor
+	 * Supplementaries' invoker on NeoForge 21.1 and Forge 52, which a bridge now serves (LEAVE-6): its line has no reason
+	 * the bridge can't serve it.
 	 */
 	@Test
 	void theDocumentedLimitsOfOneModsHooksAreNamedOnTheReleasesLines() throws IOException {
 		List<Reported> lines = releaseLines();
-		assertEquals(139, lines.size());
+		assertEquals(144, lines.size());
 		for (Reported r : lines) {
 			String limit = KnownLimits.ofFinding(r.loader(), r.finding());
 			if (r.limit().equals("-")) {
