@@ -42,7 +42,7 @@ body:
     id: fabricated-version
     attributes:
       label: Fabricated version
-      description: From the jar's name, `fabricated-<loader>-<version>+mc<minecraft>.jar`, or `/fabricated` in game.
+      description: From the jar's name, `fabricated-<loader>-<version>+mc<minecraft>.jar`, or the first line of `logs/fabric-bridge-report.txt`.
       placeholder: "0.6.0-beta.3"
     validations:
       required: true
@@ -76,7 +76,7 @@ body:
     id: report
     attributes:
       label: logs/fabric-bridge-report.txt
-      description: Attach the file (drag it in) or paste it. It lists your mods and file paths, which can include your user name: edit that out if you prefer.
+      description: "Attach the file (drag it in) or paste it. It lists your mods and file paths, which can include your user name: edit that out if you prefer."
     validations:
       required: true
   - type: textarea

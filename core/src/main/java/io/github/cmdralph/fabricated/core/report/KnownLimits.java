@@ -227,29 +227,30 @@ public final class KnownLimits {
 					Pattern.compile("applies in doSweepAttack\\([^)]*\\)\\S*, vanilla's method, which NeoForge's Player never calls"),
 					"NeoForge makes the sweep attack's box in attack, for an overload of doSweepAttack of its own, so hooks in vanilla's doSweepAttack"
 							+ " apply there but never run (SEAM-8)", true),
-			// An invoker of a private method of vanilla's the platform replaced with one of its own taking other parameters
-			// (Forge 47's FireBlock.tryCatchFire, taking the side the fire comes from): pre-flight's hint names that method.
+			// An invoker of a vanilla method of the game's the platform gave a parameter vanilla's never had, or replaced with a
+			// method taking one (Forge 43's and 47's FireBlock.tryCatchFire), where Fabricated gives it no fixed value of it (the
+			// platform's method or one it passes it to reads it, which method stands in for vanilla's or runs can't be told,
+			// vanilla's is static, or the invoker can't call the bridge): pre-flight's hint says why. Before STRUCT-2's, which
+			// a replaced method's line matches too. A line with no such hint (the target an installed mod's class, or vanilla's
+			// class unread) is no LEAVE-6 limit: nothing there was judged.
+			new Limit(Set.of("NeoForge", "Forge"), null,
+					Pattern.compile("^@Invoker target method .*\\n.* Fabricated gives an invoker of it a fixed .* only where", Pattern.DOTALL),
+					"NeoForge and Forge give that method, or the one replacing it, a parameter vanilla's never had, and Fabricated gives the invoker no"
+							+ " fixed value of it to call their method with (the hint says why), so the mod's invoker of vanilla's method has nothing to"
+							+ " call, and the feature calling it fails when it does (LEAVE-6)"),
+			// An invoker of a private method of vanilla's the platform replaced with one of its own taking other parameters, which
+			// no bridge serves and LEAVE-6's verdict didn't judge: pre-flight's hint names that method.
 			new Limit(Set.of("NeoForge", "Forge"), null,
 					Pattern.compile("^@Invoker target method .* replaced that private method with .*, and has no method taking vanilla's parameters"
 							+ " for the invoker to call", Pattern.DOTALL),
-					"NeoForge and Forge replaced that private method with one of their own taking other parameters, so the mod's invoker of"
-							+ " vanilla's method has nothing to call, and the feature calling it fails when it does (STRUCT-2)"),
+					"NeoForge and Forge replaced that private method with one of their own taking other parameters, which no bridge of Fabricated's"
+							+ " serves, so the mod's invoker of vanilla's method has nothing to call, and the feature calling it fails when it does (STRUCT-2)"),
 			// ForgeRegistry.add, whose maps key a value by its equality: two objects, by their identity hashes, not one object
 			// under two names.
 			new Limit(Set.of(), IllegalArgumentException.class.getName(),
 					Pattern.compile("\\{(\\p{XDigit}+)} has been registered twice, using the names .*\\{(\\p{XDigit}+)}\\)$", Pattern.DOTALL),
 					"Forge's registries take two equal entries for one, so the mod's second one can't be registered;"
 							+ " use NeoForge or the mod's Forge build (REG-13)"),
-			// Supplementaries' invoker of vanilla's FireBlock.checkBurnOut, which NeoForge 21.1 and Forge 52 give the side the
-			// fire comes from too: pre-flight's hint names the platform's parameters.
-			Limit.ofMod(Set.of("NeoForge", "Forge"), mixins("supplementaries.mixins.json", "net.mehvahdjukaar.supplementaries.mixins.fabric", "FireBlockAccessor"),
-					Pattern.compile("^@Invoker target method checkBurnOut\\(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;ILnet/minecraft/util/RandomSource;I\\)V"
-							+ " does not exist in net\\.minecraft\\.world\\.level\\.block\\.FireBlock\\n.*FireBlock\\.checkBurnOut takes"
-							+ " \\(Level, BlockPos, int, RandomSource, int, Direction\\)", Pattern.DOTALL),
-					"the platform's FireBlock.checkBurnOut also takes the side the fire comes from, which vanilla's never had, so Supplementaries'"
-							+ " invoker of vanilla's method has nothing to call: lit lumisene's call of it fails (NoSuchMethodError), and as the call is"
-							+ " made in its block tick, the server stops once lumisene burns the blocks around it; use Supplementaries' NeoForge build,"
-							+ " on NeoForge (LEAVE-5)"),
 			// Additional Entity Attributes' hooks of vanilla's water sinking constant in goDownInWater (Forge 47's m_21208_),
 			// which the platforms replace with the fluid type's sinkInFluid.
 			Limit.ofMod(Set.of("NeoForge", "Forge"), union(mixins("additionalentityattributes.mixins.json", "de.dafuqs.additionalentityattributes.mixin.common",
