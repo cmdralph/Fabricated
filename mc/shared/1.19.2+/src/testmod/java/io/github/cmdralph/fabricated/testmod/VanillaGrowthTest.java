@@ -33,13 +33,19 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
  * wheat is given a random tick on nine blocks of moist farmland: the hook must see the nine checks, the speed be vanilla's
  * (1 + 3 + 8 * 3 / 4) and the block wheat; then with the platform's block overriding both soil checks in the middle
  * ({@code fabricated_testmod:break_override}, moist by its own answer), which is asked as the platform has it, without the
- * hook: eight checks, the same speed. Where a native mod's mixin hooks the platform's code there, Fabricated keeps the
- * class as the platform has it, as its report says and the class shows (no helper of Fabricated's in it): the check is then
- * SKIPPED, naming the mixin.
+ * hook: eight checks, the same speed. The checks are counted for each time the growth speed is asked, and the tick given
+ * again where it didn't ask it: a Fabric mod's hook of the crop's random tick may skip or repeat it (Fabric Seasons' does,
+ * by the season). Where a native mod's mixin hooks the platform's code there, Fabricated keeps the class as the platform
+ * has it, as its report says and the class shows (no helper of Fabricated's in it): the check is then SKIPPED, naming the
+ * mixin.
  */
 public final class VanillaGrowthTest implements ModInitializer {
 	private static final Logger LOGGER = LoggerFactory.getLogger("fabricated_testmod");
 	private static final AtomicInteger CHECKS = new AtomicInteger();
+	/** The times the growth speed was asked, which a mod's hook of the crop's random tick may skip or repeat. */
+	private static final AtomicInteger GROWN = new AtomicInteger();
+	/** The random ticks given before the growth speed must have been asked. */
+	private static final int TICKS = 64;
 	/** The report's line where a native mod's mixin keeps the class as the platform has it (SeamConflicts). */
 	private static final Pattern KEPT = Pattern.compile("Vanilla's calls not put back in CropBlock:\\s*((?:NeoForge|Forge) mod [^\\n]*)");
 	/** Vanilla's speed of a crop on nine moist farmland blocks, none of its kind beside it. */
@@ -56,6 +62,7 @@ public final class VanillaGrowthTest implements ModInitializer {
 	public static void grown(Block block, float growthSpeed) {
 		crop = block;
 		speed = growthSpeed;
+		GROWN.incrementAndGet();
 	}
 
 	@Override
@@ -114,16 +121,30 @@ public final class VanillaGrowthTest implements ModInitializer {
 		}
 	}
 
-	/** Wheat at the position, given a random tick: the hook must see the soil checks given, the speed vanilla's and the crop wheat. */
+	/**
+	 * Wheat at the position, given a random tick until it asks the growth speed: the hook must see the soil checks given each
+	 * time it is asked, the speed vanilla's and the crop wheat.
+	 */
 	private static void grow(ServerLevel level, BlockPos pos, int checks, List<String> failures) {
 		level.setBlock(pos.above(), Blocks.AIR.defaultBlockState(), 2);
-		level.setBlock(pos, Blocks.WHEAT.defaultBlockState(), 2);
-		crop = null;
-		speed = Float.NaN;
-		int before = CHECKS.get();
-		level.getBlockState(pos).randomTick(level, pos, level.getRandom());
 		String soil = level.getBlockState(pos.below()).getBlock().toString();
-		if (CHECKS.get() - before != checks) failures.add("vanilla's soil check ran " + (CHECKS.get() - before) + " times on " + soil + ", not " + checks);
+		int before = 0, grown = 0;
+		for (int tick = 0; tick < TICKS && grown == 0; tick++) {
+			level.setBlock(pos, Blocks.WHEAT.defaultBlockState(), 2);
+			crop = null;
+			speed = Float.NaN;
+			before = CHECKS.get();
+			int asked = GROWN.get();
+			level.getBlockState(pos).randomTick(level, pos, level.getRandom());
+			grown = GROWN.get() - asked;
+		}
+		if (grown == 0) {
+			failures.add("the crop's growth speed wasn't asked in " + TICKS + " random ticks on " + soil);
+			return;
+		}
+		if (CHECKS.get() - before != checks * grown) {
+			failures.add("vanilla's soil check ran " + (CHECKS.get() - before) + " times on " + soil + ", not " + checks * grown);
+		}
 		if (crop != Blocks.WHEAT) failures.add("the growth speed's hook was given " + crop + ", not wheat, on " + soil);
 		if (speed != MOIST) failures.add("the growth speed on " + soil + " was " + speed + ", not " + MOIST);
 	}
