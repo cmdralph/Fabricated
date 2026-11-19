@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -220,14 +221,27 @@ public final class InstalledClasses implements ClassBytesSource {
 	/** Packages of the injector annotations: Mixin gives their handlers a name of its own as it merges them. */
 	private static final List<String> INJECTOR_PACKAGES = List.of("Lorg/spongepowered/asm/mixin/injection/", "Lcom/llamalad7/mixinextras/injector/");
 
+	/**
+	 * What {@link #fingerprint} answers for a class no installed jar has in a package one of them holds
+	 * ({@link #holdsPackageOf}): a cached result reading the class absent then holds only while that stays so.
+	 */
+	public static final String ABSENT_FROM_HELD_PACKAGE = "absent from a package an installed jar holds";
+
 	private final List<Jar> jars;
+	/** The packages the installed jars hold, by internal name ({@link #withPackages}): the platform's, the libraries', the mods'. */
+	private final Set<String> packages;
 	private final Map<String, Optional<Jar>> owners = new ConcurrentHashMap<>();
 	private final Map<String, byte[]> read = new ConcurrentHashMap<>();
 	/** By target class, the members the jars' mixins add, keyed {@code name:desc} for fields and {@code name(desc)} for methods, with the mixins adding each. */
 	private Map<String, Map<String, List<AddedMember>>> added;
 
 	public InstalledClasses(List<Jar> jars) {
+		this(jars, Set.of());
+	}
+
+	private InstalledClasses(List<Jar> jars, Set<String> packages) {
 		this.jars = List.copyOf(jars);
+		this.packages = Set.copyOf(packages);
 	}
 
 	public boolean isEmpty() {
@@ -239,7 +253,25 @@ public final class InstalledClasses implements ClassBytesSource {
 		if (more.isEmpty()) return this;
 		List<Jar> all = new ArrayList<>(jars);
 		all.addAll(more);
-		return new InstalledClasses(all);
+		return new InstalledClasses(all, packages);
+	}
+
+	/**
+	 * These jars, also holding the packages {@code held} (internal names): those of the platform, the game, the libraries
+	 * and the installed mods' jars, which a jar's own lookup ({@link Jar#contains}) tells only class by class. Pre-flight
+	 * tells by them whether a class a {@code @Pseudo} mixin targets, absent, belongs to something installed.
+	 */
+	public InstalledClasses withPackages(java.util.Collection<String> held) {
+		if (held.isEmpty() || packages.containsAll(held)) return this;
+		Set<String> all = new java.util.HashSet<>(packages);
+		all.addAll(held);
+		return new InstalledClasses(jars, all);
+	}
+
+	/** Whether an installed jar holds the class's package ({@link #withPackages}), whether or not it has the class. */
+	public boolean holdsPackageOf(String internalName) {
+		int slash = internalName.lastIndexOf('/');
+		return packages.contains(slash < 0 ? "" : internalName.substring(0, slash));
 	}
 
 	/** The name of the mod whose jar has the class, or {@code null} when no installed jar has it. */
@@ -268,10 +300,13 @@ public final class InstalledClasses implements ClassBytesSource {
 		return data;
 	}
 
-	/** SHA-256 of the class file, or an empty string when no jar has it: what a cached pre-flight result depends on. */
+	/**
+	 * SHA-256 of the class file, or where no jar has it, an empty string ({@link #ABSENT_FROM_HELD_PACKAGE} where a jar holds
+	 * its package): what a cached pre-flight result depends on.
+	 */
 	public String fingerprint(String internalName) throws IOException {
 		byte[] data = read(internalName);
-		return data == null ? "" : Hashing.sha256(data);
+		return data != null ? Hashing.sha256(data) : holdsPackageOf(internalName) ? ABSENT_FROM_HELD_PACKAGE : "";
 	}
 
 	/**

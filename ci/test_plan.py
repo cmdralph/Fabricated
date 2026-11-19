@@ -144,6 +144,33 @@ class PlanTest(unittest.TestCase):
         self.assertFalse(result["fast"] or result["core"])
         self.assertEqual(result["targets"], [])
 
+    def test_only_a_pull_request_into_a_base_branch_changing_more_than_documentation_covers_the_push(self):
+        code = {"baseRefName": "main", "files": [{"path": "docs/roadmap.md"}, {"path": "ci/plan.py"}]}
+        self.assertTrue(plan.covers([code]))
+        self.assertTrue(plan.covers([dict(code, baseRefName="forge-legacy")]))
+        # The pull_request trigger ignores documentation, so its run doesn't start and the push's own jobs must run.
+        docs = {"baseRefName": "main", "files": [{"path": "docs/roadmap.md"}, {"path": "README.md"}, {"path": "ci/x/NOTES.md"}]}
+        self.assertFalse(plan.covers([docs]))
+        self.assertFalse(plan.covers([dict(code, baseRefName="claude/dev")]))
+        self.assertFalse(plan.covers([{"baseRefName": "main", "files": []}, {"baseRefName": "main"}]))
+        self.assertFalse(plan.covers([]) or plan.covers(None))
+        self.assertTrue(plan.covers([docs, code]))
+
+    def test_a_documentation_push_with_its_pull_request_open_runs_the_unit_tests(self):
+        docs = [{"baseRefName": "main", "files": [{"path": "docs/MIXINS.md"}]}]
+        result = plan.plan(self.root, "push", "refs/heads/claude/dev", ["docs/MIXINS.md"], covered=plan.covers(docs))
+        self.assertTrue(result["core"])
+        self.assertFalse(result["fast"])
+
+    def test_the_documentation_the_pull_request_trigger_ignores_is_ci_s(self):
+        import yaml  # the runner's Python has it, as test_github_files needs
+        workflow = yaml.safe_load((Path(__file__).resolve().parent.parent / ".github" / "workflows" / "ci.yml").read_text())
+        triggers = workflow.get("on", workflow.get(True))
+        self.assertEqual(tuple(triggers["pull_request"]["paths-ignore"]), plan.PULL_REQUEST_IGNORES)
+        for path, ignored in [("docs/a.txt", True), ("docs/x/y.md", True), ("README.md", True), ("ci/x/NOTES.md", True),
+                              ("core/A.java", False), ("docsx/a.txt", False), (".github/ISSUE_TEMPLATE/a.yml", False)]:
+            self.assertEqual(plan.ignored_by_pull_requests(path), ignored, path)
+
     def test_a_merge_builds_what_it_changed_and_fills_the_caches(self):
         result = plan.plan(self.root, "push", "refs/heads/main", ["mc/neoforge/26.1.2/a"])
         self.assertEqual(built(result), [("neoforge", "26.1.2")])

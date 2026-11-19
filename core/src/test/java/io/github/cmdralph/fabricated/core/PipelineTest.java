@@ -865,7 +865,7 @@ class PipelineTest {
 		assertEquals(Set.of(), kept.restoredSeams(), "the resolver loads as NeoForge has it");
 		assertTrue(report.contains("@Inject sticky hooks isSticky(" + state + ")Z, vanilla's method NeoForge's PistonStructureResolver no longer has, which"
 				+ " Fabricated doesn't put back there, so it finds nothing to hook, as before SEAM-1: NeoForge mod moonlight's mixin NativeSticky hooks the"
-				+ " platform's code that putting vanilla's method back would move (SEAM-1)"), report);
+				+ " platform's code that putting vanilla's method back would move, PistonStructureResolver.resolve (SEAM-1)"), report);
 		assertTrue(report.contains("Vanilla's methods not put back in PistonStructureResolver"), report);
 		assertTrue(kept.mods().getFirst().translated().findings().stream()
 				.anyMatch(f -> f.severity() == PreflightFinding.Severity.LEFT_OUT
