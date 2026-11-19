@@ -3,6 +3,23 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
+## 2026-11-19: The v0.6.0-beta.4 release notes and version
+
+- **Fabricated 0.6.0-beta.4** adds Minecraft 1.19.2 on Forge 43, in beta, with Fabric's renderer API and the Fabric
+  builds of Sodium and Iris for 1.19.2, and fixes Fabric mods that crashed a server or a client, lost a hook or kept a
+  client from exiting; a crash a Fabric mod is involved in names it. Its notes,
+  [`docs/releases/v0.6.0-beta.4.md`](https://github.com/cmdralph/Fabricated/blob/main/docs/releases/v0.6.0-beta.4.md),
+  say what changed since v0.6.0-beta.3 on every platform, on NeoForge, on Forge 52 and 61 to 66 and on Forge 43, what
+  the support matrix gained, upgrading and the known limits that are new.
+- **Version 0.6.0-beta.4** in `gradle.properties`, as the release workflow requires of every branch, with the README's
+  status and build example, ARCHITECTURE's status, the roadmap's plan, the bug report form's version placeholder and the release
+  workflow's example to match; the `forge` and `forge-legacy` READMEs name the release, link its notes and give its
+  jars' names. The jars are `fabricated-neoforge-0.6.0-beta.4+mc<minecraft>.jar` (1.21.1, 1.21.11, 26.1.2, 26.2, 26.3)
+  and `fabricated-forge-0.6.0-beta.4+mc<minecraft>.jar` (1.19.2, 1.20.1, 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3), twelve
+  in all, Forge 1.19.2's the first released.
+- **Verified:** CI's script tests and the mixin inventory; every link in the notes and in the READMEs changed resolves,
+  the notes' links into the repository checked against `main`'s files and anchors.
+
 ## 2026-11-18: a crop's growth speed and the eye-in-water check where the platforms ask their own extensions (SEAM-12, SEAM-9); a `@Pseudo` mixin with nothing to apply to is named (PRE-37)
 
 - **SEAM-12** (P2), fixed: Balm's custom farmland and Farmer's Delight Refabricated's rich soil hook a crop's growth
