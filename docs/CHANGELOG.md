@@ -3,7 +3,7 @@
 What changed, and how it was verified, newest first. What is open and what comes next is in
 [`roadmap.md`](roadmap.md); this file is the history.
 
-## 2026-11-19: OneConfig 1.8.0's UI works again: a service a Fabric jar declares with another jar's classes (PKG-6)
+## 2026-11-19: OneConfig 1.8.0's UI works on NeoForge: a service a Fabric jar declares with another jar's classes (PKG-6)
 
 - **PKG-6** (P0 for clients with OneConfig 1.8.0), fixed: OneConfig 1.8.0's jar declares its UI bridges as services whose
   classes are in a jar it nests. A Java module can only declare the service providers it has, and those declarations were
