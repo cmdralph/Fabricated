@@ -43,7 +43,7 @@ body:
     attributes:
       label: Fabricated version
       description: From the jar's name, `fabricated-<loader>-<version>+mc<minecraft>.jar`, or the first line of `logs/fabric-bridge-report.txt`.
-      placeholder: "0.6.0-beta.3"
+      placeholder: "0.6.0-beta.4"
     validations:
       required: true
   - type: dropdown
