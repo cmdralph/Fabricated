@@ -9,7 +9,7 @@
 
 **Goals**
 * Load as many Fabric mods and libraries as possible on NeoForge **1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3** from one
-  codebase, and on Forge 52, 61 to 66 and 47 from their own branches ([`PORTING.md`](PORTING.md)), every platform held
+  codebase, and on Forge 43, 47, 52 and 61 to 66 from their own branches ([`PORTING.md`](PORTING.md)), every platform held
   to the same stability bar ([`CONTRIBUTING.md`](../CONTRIBUTING.md#releasing), *Releasing*).
 * Run the Fabric builds Sinytra Connector couldn't: renderer replacements and shader pipelines (Sodium, Iris), mods
   that load other mods (Essential), Fabric-only interface stacks (OneConfig, PolyPlus), with generic capabilities, and
