@@ -12,7 +12,7 @@ What changed, and how it was verified, newest first. What is open and what comes
   say what changed since v0.6.0-beta.3 on every platform, on NeoForge, on Forge 52 and 61 to 66 and on Forge 43, what
   the support matrix gained, upgrading and the known limits that are new.
 - **Version 0.6.0-beta.4** in `gradle.properties`, as the release workflow requires of every branch, with the README's
-  status and build example, ARCHITECTURE's status, the bug report form's version placeholder and the release
+  status and build example, ARCHITECTURE's status, the roadmap's plan, the bug report form's version placeholder and the release
   workflow's example to match; the `forge` and `forge-legacy` READMEs name the release, link its notes and give its
   jars' names. The jars are `fabricated-neoforge-0.6.0-beta.4+mc<minecraft>.jar` (1.21.1, 1.21.11, 26.1.2, 26.2, 26.3)
   and `fabricated-forge-0.6.0-beta.4+mc<minecraft>.jar` (1.19.2, 1.20.1, 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3), twelve
