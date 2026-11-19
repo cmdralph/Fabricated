@@ -47,4 +47,4 @@ MPL-2.0); that reading was written from Fabric ASM's README, not its code, and n
 
 Fabricated does not include or redistribute Minecraft, NeoForge, Mojang's official mappings,
 Fabric API release jars, Sinytra Connector, Forgified Fabric API, Launchpad or Adapter.
-Mojang's mappings are read at runtime from the file the NeoForge installer already downloaded.
+Mojang's mappings are read at runtime from the files the NeoForge or Forge installer already downloaded.

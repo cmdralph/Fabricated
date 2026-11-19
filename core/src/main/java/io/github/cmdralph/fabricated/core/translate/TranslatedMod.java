@@ -2,9 +2,11 @@ package io.github.cmdralph.fabricated.core.translate;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
+import io.github.cmdralph.fabricated.core.mixin.InvokerBridge;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
 
@@ -28,6 +30,9 @@ import io.github.cmdralph.fabricated.core.resolve.Candidate;
  *                           class load (FINAL-2)
  * @param restoredSeams      game classes (internal names) in which the mod's mixins hook vanilla methods the
  *                           platform took out put back at class load ({@link io.github.cmdralph.fabricated.core.bytecode.VanillaSeams}, SEAM-1)
+ * @param invokerBridges     methods to declare on game classes at class load, which the mod's invokers of vanilla methods
+ *                           the platform gave a parameter vanilla's never had call ({@link InvokerBridge}, LEAVE-6), each
+ *                           with those invokers ({@code "<mixin> @Invoker <method>"})
  * @param cacheHit           whether the outputs came from the cache
  * @param millis             translation time (0 on cache hit)
  */
@@ -44,6 +49,7 @@ public record TranslatedMod(
 		Set<String> environmentClasses,
 		Set<String> overridableMethods,
 		Set<String> restoredSeams,
+		Map<InvokerBridge, List<String>> invokerBridges,
 		boolean cacheHit,
 		long millis) {
 }

@@ -6,10 +6,15 @@ follows, and step-by-step instructions for adding a new Minecraft version.
 ## Project layout
 
 Each platform is on its own branch, with the same folder structure: `main` holds the shared engine and NeoForge,
-`forge` the shared engine and Minecraft Forge 52 and 61 to 66, `forge-legacy` the shared engine and Forge 47. Shared
-changes go
-to `main` and reach the platform branches by merge (`scripts/sync-platform-branch.sh`); Forge work goes to its branch
-directly. This is `main`'s tree:
+`forge` the shared engine and Minecraft Forge 52 and 61 to 66, `forge-legacy` the shared engine and Forge 43 and 47. A
+pull request goes to the branch that holds what it changes: a Forge platform's own files (`mc/<platform>`,
+`ci/<platform>`, `mc/platform-<platform>.gradle` and the branch's `README.md`) to its branch, from a working branch made
+from it; everything else, NeoForge, the code both Forge platforms share and the documents included, to `main`. Shared
+changes reach the platform branches only from `main`, through `scripts/sync-platform-branch.sh`: it merges `main` into a
+working branch made from the platform branch, keeping the branch's own files and leaving NeoForge's out. That branch's
+pull request is squash-merged, as every pull request is, with a title that starts as the script's commit does
+(`chore: sync <platform> with main`): the next sync finds the last one by it. Code is never copied across branches.
+This is `main`'s tree:
 
 | Path | What it is | Depends on Minecraft? |
 |---|---|---|
@@ -18,19 +23,20 @@ directly. This is `main`'s tree:
 | `core/` | Everything that can be tested without a game: archive safety, `fabric.mod.json`, dependency resolution, remapping, access widener → access transformer, mixin pre-flight, linkage checks, package guard, cache, config, report, Fabric Loader runtime, and the discovery `Pipeline` | No |
 | `loader/common/` | Loader code every platform shares: Fabric's class transforms, the vanilla game jar, proposed jars, resource bundles, the mods a platform mod's mods.toml declares | No |
 | `loader/neoforge/` | NeoForge's discovery services, compiled into each of its versions' jars: candidate and dependency locators, the mod file reader for Fabric Loader's API, language loader, mod container; in `src/main`, with what FML 10 and later do otherwise than NeoForge 21.1's FML 4 in `src/fml` and `src/modlauncher` (the version's `loader_variant`) | The platform's loader only |
-| `loader/forge-shared/` | Both Forge platforms' discovery services, compiled into each Forge version's jar on the Forge branches: mod and dependency locators, transformation service, language provider; in `src/main`, with what Forge 52 and 61 to 66 do otherwise than Forge 47 below the game in `src/modern` and `src/fml47` (the version's `loader_variant`) | The platform's loader only |
+| `loader/forge-shared/` | Both Forge platforms' discovery services, compiled into each Forge version's jar on the Forge branches: mod and dependency locators, transformation service, language provider; in `src/main`, with what Forge 52 and 61 to 66 do otherwise than Forge 43 and 47 below the game in `src/modern` and `src/fml47` (the version's `loader_variant`) | The platform's loader only |
 | `mc/<platform>/<version>/` | One Gradle project per platform and Minecraft version, `:mc:<platform>-<version>`: properties, vendored native Fabric API modules (`src/fabricapi`), the Fabric API plan (`src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`), version-specific code (`src/main/java`) and the platform's half of the version's test mods | Yes |
 | `mc/<platform>/common*/` | Code a platform's versions share, as each version's `shared_sources` lists it: NeoForge's `common` (the in-game mod, the platform's half of the test mods) for every version, `common121` for 1.21.1 and 1.21.11, `common12111` for 1.21.11 and all 26.x versions, `common26` for all 26.x versions, `common26early` for 26.1.2 and 26.2, `common26late` for 26.2 and 26.3 | Yes |
-| `mc/shared/` | Sources every platform uses: in `src`, the in-game mod's shared code (`/fabricated`, Mod Menu's API), the broken test mods, stand-ins for other mods' APIs and the build's Fabric API remapper; in `<group>/src`, the Fabric test mods, by the Minecraft versions each group serves (`1.20.1+`, `1.20.1-1.21.1`, `1.21.1+`, `1.21.x`, `1.21.11+`, `26.x`, `26.1-26.2`, `26.2+`, one version's own), which its name says: every version builds the groups that serve it | Yes |
-| `mc/mc.gradle`, `mc/platform-<platform>.gradle` | The build shared by every version, and each platform's part of it (a Forge platform's on its branch) | - |
+| `mc/shared/` | Sources every platform uses: in `src`, the in-game mod's shared code (`/fabricated`, Mod Menu's API), the broken test mods, stand-ins for other mods' APIs and the build's Fabric API remapper; in `<group>/src`, the Fabric test mods, by the Minecraft versions each group serves (`1.19.2+`, `1.19.2-1.20.1`, `1.19.2-1.21.1`, `1.19.2-1.21.11`, `1.20.1+`, `1.20.1-1.21.1`, `1.21.1+`, `1.21.1-26.2`, `1.21.x`, `1.21.11+`, `26.x`, `26.1-26.2`, `26.2+`, one version's own), which its name says: every version builds the groups that serve it | Yes |
+| `mc/forge-shared/` | Sources both Forge platforms compile as they are (their versions' `shared_sources` name it): in `src`, what every Forge version compiles; in `<group>/src`, by the Minecraft versions each group serves, as in `mc/shared` (`1.19.2-1.21.1`, `1.20.1-1.21.1`, `1.21.1+`, `1.21.x`, ...) | Yes |
+| `mc/mc.gradle`, `mc/platform-<platform>.gradle`, `mc/forge-mixinextras.gradle` | The build shared by every version, each platform's part of it (a Forge platform's on its branch), and the MixinExtras both Forge platforms nest in the in-game mod | - |
 | `ci/` | CI's plan (`plan.py`), harness (`smoke-server.sh`, `smoke-client.sh`, `smoke.sh`), runs and checks (`runs.tsv`, `checks.tsv`, `check-log.py`), the benchmark (`bench.py`, its baselines in `bench.tsv`) and the mod corpus lists, every platform's; `ci/<platform>/` holds the platform's adapter (`platform.sh`: its build tasks, how its loader installs and launches) and its stand-ins | - |
 | `scripts/` | Maintenance scripts (importing Fabric API modules, the native modules' index, syncing a platform branch with `main`) | - |
 | `docs/` | Research, architecture and compatibility notes | - |
 
 ## Building and testing
 
-Requirements: JDK 21 to run Gradle. JDK 25 is also needed for the 26.x targets; Gradle provisions it
-automatically if it is not installed.
+Requirements: JDK 21 to run Gradle. JDK 25 is also needed for the 26.x targets, and JDK 17 for Forge 43 and 47 (on
+`forge-legacy`); Gradle provisions them automatically if they are not installed.
 
 ```bash
 # Minecraft-independent modules and all unit tests (fast, no NeoForge downloads)
@@ -40,14 +46,18 @@ automatically if it is not installed.
 ./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods
 # -> build/libs/fabricated-neoforge-<version>+mc26.2.jar and mc/neoforge/26.2/build/testmods/*.jar
 
-# The Forge platforms build on their branches (forge, forge-legacy), the same way: a build configures the platform
-# folders the branch holds.
+# The same as CI builds it, with the tasks and Gradle options the platform's adapter (ci/<platform>/platform.sh) names.
+# The Forge platforms build on their branches this way: ci/build.sh forge 26.2 on forge, ci/build.sh forge-legacy 1.20.1
+# on forge-legacy. A build configures the platform folders the branch holds (-Pfabricated.platforms picks among them).
+ci/build.sh neoforge 26.2
 
-# Everything on NeoForge
+# Everything the branch holds (on main, NeoForge)
 ./gradlew build
 
-# A real server with the test mods, checked against ci/checks.tsv (downloads NeoForge's installer; needs network)
+# A real server with the test mods, checked against ci/checks.tsv (downloads NeoForge's installer; needs network), and
+# a version's part of CI's runs (ci/runs.tsv: server, client, mods or corpus), both on the game's Java (25 for 26.2)
 ci/smoke-server.sh neoforge 26.2 26.2.0.90 /tmp/fabricated-server
+ci/smoke.sh neoforge 26.2 server
 
 # CI's own scripts and manifests
 python3 -B -m unittest discover -s ci -p 'test_*.py'
@@ -84,8 +94,10 @@ that takes a metric more than 10% over its baseline in `ci/bench.tsv` records th
 - **No placeholders.** Don't merge `TODO` stubs or empty implementations. If something is not supported,
   say so in the report and in `docs/COMPATIBILITY.md`.
 - Java 17 for the main code of `core`, `api` and `fabric-loader-api` (`release = 17`: they run on every version,
-  and on Minecraft 1.20.1's Java 17), Java 21 for `loader` and the tests. Tabs for indentation, as in the existing
-  code.
+  and on Minecraft 1.19.2's and 1.20.1's Java 17), Java 21 for their tests. `loader` and the in-game mod compile for
+  each version's Java (its `java_version`: 17, 21 or 25), so what Forge 43 and 47 compile too (`loader/common`,
+  `loader/forge-shared/src/main`, `mc/shared/src`, `mc/forge-shared/src` and the groups that serve 1.19.2 or 1.20.1)
+  keeps to Java 17. Tabs for indentation, as in the existing code.
 
 ## Adding a new Minecraft version
 
@@ -128,8 +140,10 @@ add tests.
 
 ## Reporting a compatibility result
 
-Run the game with the Fabric mod, then open an issue with:
-- the Minecraft, loader (NeoForge or Forge) and Fabricated versions,
+Run the game with the Fabric mod, then open an issue with the
+[bug report form](https://github.com/cmdralph/Fabricated/issues/new?template=bug_report.yml)
+(`.github/ISSUE_TEMPLATE/bug_report.yml`), giving:
+- the Minecraft, loader (NeoForge or Forge, with its build) and Fabricated versions,
 - the mod name, version and download link (no jar attachments),
 - `logs/fabric-bridge-report.txt` and `logs/latest.log`.
 
@@ -138,8 +152,8 @@ Run the game with the Fabric mod, then open an issue with:
 A release is cut by hand with the Release workflow (`.github/workflows/release.yml`), run from `main`. It pins one
 commit of each branch when it starts (their heads by default) and runs that commit's full matrix, extended, each
 branch's to the end even when another's fails. The jars those runs build, from an empty Gradle cache, are the release:
-eleven, one per platform and Minecraft version, named `fabricated-<neoforge|forge>-<version>+mc<minecraft>.jar`.
-NeoForge's five come from `main`, Forge 52's and Forge 61 to 66's five from `forge`, and Forge 47's from
+one per platform and Minecraft version each branch holds, named `fabricated-<neoforge|forge>-<version>+mc<minecraft>.jar`.
+NeoForge's five come from `main`, Forge 52's and Forge 61 to 66's five from `forge`, and Forge 43's and 47's from
 `forge-legacy`.
 
 A beta release holds this bar, on every branch:
