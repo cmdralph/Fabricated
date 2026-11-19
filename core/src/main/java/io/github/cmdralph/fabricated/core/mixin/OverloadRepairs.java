@@ -209,11 +209,14 @@ final class OverloadRepairs extends PreflightPart {
 						|| !independentOf(mixin).contains(handler.name + handler.desc))) continue;
 				// A handler taking the method's parameters takes the other's as they are, when they are the same.
 				boolean sameParameters = Arrays.equals(Type.getArgumentTypes(chosen.desc), Type.getArgumentTypes(overload.desc));
+				int inserted = replacement != null ? CallRepairs.insertedArgument(chosen.desc, overload.desc) : insertedParameter(chosen, overload);
 				// Where the method's parameters start among a handler's arguments: an @Inject's first, any other's past its own,
-				// which its kind and its point tell exactly (ownArguments, as the overload has the point). A handler whose own
-				// arguments end with the method's parameters' types takes them as its own (a @Redirect of a call passing them on),
-				// which a bridge would hand the overload's in their place, a handler Mixin refuses as it applies the mixin. Where
-				// its own can't be told, a handler whose arguments end with all of the method's parameters isn't moved.
+				// which its kind and its point tell exactly (ownArguments, as the overload has the point). Mixin passes a handler
+				// that isn't an @Inject's as many of the overload's first parameters as it takes after its own: the method's
+				// where the overload inserts its own past them, so it moves as it is; a bridge hands it the method's all where
+				// the overload inserts its own among them. A handler whose own arguments end with the method's parameters' types
+				// takes them as its own (a @Redirect of a call passing them on), which a bridge would hand the overload's in their
+				// place, a handler Mixin refuses as it applies the mixin.
 				int own = sameParameters || inject ? -1 : ownArguments(injector, handler, overload, ctx);
 				List<Type> handlerArgs = PreflightAsm.handlerArgs(handler);
 				List<Type> methodParams = List.of(Type.getArgumentTypes(chosen.desc));
@@ -227,20 +230,18 @@ final class OverloadRepairs extends PreflightPart {
 				} else if (own >= 0 && handlerArgs != null && own <= handlerArgs.size()) {
 					List<Type> after = handlerArgs.subList(own, handlerArgs.size());
 					if (after.size() > methodParams.size() || !after.equals(methodParams.subList(0, after.size()))) continue;
-					captured = !after.isEmpty() && after.size() == methodParams.size() ? own : -1;
+					captured = !after.isEmpty() && after.size() == methodParams.size() && inserted < after.size() ? own : -1;
 					taken = captured >= 0 ? 0 : after.size();
 				} else {
-					if (capturedFrom(handler, chosen) >= 0) continue;
+					// Its own can't be told: capturedPrefix, which may count some of them as the method's parameters too, is a
+					// bound only, never a place a bridge takes them from.
 					captured = -1;
 					taken = capturedPrefix(handler, chosen);
 				}
-				int inserted = replacement != null ? CallRepairs.insertedArgument(chosen.desc, overload.desc) : insertedParameter(chosen, overload);
-				// A handler taking the first of the method's parameters after its own (Mixin passes it as many as it takes) gets
-				// the overload's first: they must be the method's, before the one the overload adds (Fabric API's before-bake
-				// model hook takes the model's id so, which NeoForge 21.1's overload takes first too, MODEL-4). Where its own
-				// can't be told, capturedPrefix may count some of them as the method's too: that only keeps it from moving.
-				int prefix = taken;
-				if (prefix > 0 && inserted < prefix) continue;
+				// A handler taking the first of the method's parameters after its own gets the overload's first: they must be the
+				// method's, before the one the overload adds (Fabric API's before-bake model hook takes the model's id so, which
+				// NeoForge 21.1's overload takes first too, MODEL-4).
+				if (taken > 0 && inserted < taken) continue;
 				// Or, where the method passes its parameters on in order and then defaults, an @Inject handler taking exactly
 				// them gets the overload's first ones: NeoForge 21.1's HumanoidArmorLayer.renderArmorPiece passes six zeros
 				// for the limb animation's values (Figura's armour hooks, PRE-20).
@@ -387,11 +388,16 @@ final class OverloadRepairs extends PreflightPart {
 	 * modifier ({@code @ModifyVariable}, {@code @ModifyExpressionValue}, {@code @ModifyReturnValue}, {@code @ModifyConstant})
 	 * takes the value, a {@code @ModifyConstant} of an {@code instanceof} the object and the class; {@code @ModifyArgs} its
 	 * {@code Args}; {@code @ModifyArg} all it takes, the argument or every argument of the call, which Mixin's
-	 * {@code ModifyArgInjector} passes it (one, or exactly the call's), never the method's parameters; {@code @Redirect},
-	 * {@code @WrapWithCondition} and {@code @WrapOperation} at an {@code INVOKE} or a {@code FIELD} point the call's or the
-	 * field access's operands, the receiver where each of vanilla's instructions the point names takes one (all alike, or it
-	 * can't be told), the call's arguments or the written value, and a {@code @WrapOperation} its {@code Operation} after
-	 * them. Any other injector, or point, can't be told.
+	 * {@code ModifyArgInjector} passes it (one, or exactly the call's), never the method's parameters. {@code @Redirect},
+	 * {@code @WrapWithCondition}, {@code @WrapOperation} and {@code @ModifyReceiver} take the operands of the instruction
+	 * their point names, as each of vanilla's instructions it names has them (all alike, or it can't be told): at an
+	 * {@code INVOKE} the call's receiver, where it has one, and its arguments; at a {@code FIELD} the receiver, where the
+	 * access has one, and the written value, of the accesses of its {@code opcode} where it gives one; at a {@code NEW} the
+	 * constructor's arguments; a {@code @WrapOperation} then its {@code Operation}. MixinExtras'
+	 * {@code ModifyReceiverInjector} passes its handler what a {@code @Redirect}'s is passed, and refuses, as Mixin's
+	 * injectors do, a point its kind can't take (a static call's receiver, a constructor's), wherever it is pointed. An
+	 * array element's {@code @Redirect} ({@code args = "array=..."}) takes the array and its indices, not the field
+	 * access's operands; it, a point of another kind, or several, can't be told, nor can any other injector.
 	 */
 	static int ownArguments(AnnotationNode injector, MethodNode handler, MethodNode before, Context ctx) {
 		List<Type> args = PreflightAsm.handlerArgs(handler);
@@ -405,12 +411,21 @@ final class OverloadRepairs extends PreflightPart {
 		if (MixinNames.VALUE_MODIFIERS.contains(kind) || kind.equals(MixinNames.MODIFY_ARGS)) return 1;
 		if (kind.equals(MODIFY_ARG)) return args.size();
 		boolean wrapper = kind.equals(MixinNames.WRAP_OPERATION);
-		if (!wrapper && !kind.equals(MixinNames.REDIRECT) && !MixinNames.WRAP_WITH_CONDITION.contains(kind)) return -1;
+		if (!wrapper && !kind.equals(MODIFY_RECEIVER) && !MixinNames.WRAP_WITH_CONDITION.contains(kind) && !kind.equals(MixinNames.REDIRECT)) return -1;
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.size() != 1 || !(Annotations.value(ats.get(0), "target") instanceof String raw)) return -1;
-		String point = InjectionPoints.pointOf(ats.get(0));
+		AnnotationNode at = ats.get(0);
+		String point = InjectionPoints.pointOf(at);
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
-		if (ref.fuzzy() || ref.name() == null || ref.desc() == null) return -1;
+		if (ref.fuzzy()) return -1;
+		if (point.equals("NEW")) {
+			int arguments = constructorArguments(ref, before);
+			return arguments < 0 ? -1 : arguments + (wrapper ? 1 : 0);
+		}
+		if (ref.name() == null || ref.desc() == null) return -1;
+		if (point.equals("FIELD") && Annotations.value(at, "args") instanceof List<?> pointArgs
+				&& pointArgs.stream().anyMatch(a -> a instanceof String arg && arg.startsWith("array="))) return -1;
+		int opcode = InjectionPoints.opcodeOf(at);
 		int operands = -1;
 		for (AbstractInsnNode insn : before.instructions) {
 			int n;
@@ -418,7 +433,7 @@ final class OverloadRepairs extends PreflightPart {
 					&& (ref.owner() == null || call.owner.equals(ref.owner()))) {
 				n = Type.getArgumentTypes(call.desc).length + (call.getOpcode() == Opcodes.INVOKESTATIC ? 0 : 1);
 			} else if (point.equals("FIELD") && insn instanceof FieldInsnNode field && field.name.equals(ref.name()) && field.desc.equals(ref.desc())
-					&& (ref.owner() == null || field.owner.equals(ref.owner()))) {
+					&& (ref.owner() == null || field.owner.equals(ref.owner())) && (opcode < 0 || field.getOpcode() == opcode)) {
 				n = switch (field.getOpcode()) {
 					case Opcodes.GETSTATIC -> 0;
 					case Opcodes.GETFIELD, Opcodes.PUTSTATIC -> 1;
@@ -433,7 +448,28 @@ final class OverloadRepairs extends PreflightPart {
 		return operands < 0 ? -1 : operands + (wrapper ? 1 : 0);
 	}
 
+	/**
+	 * The arguments of the constructor a {@code NEW} point names, as each of {@code method}'s calls of it has them (the class
+	 * alone names any of its constructors: all alike, or it can't be told), as {@link InjectionPoints#wrappedArityMismatch}
+	 * counts them; -1 where it can't be told, or the method makes none.
+	 */
+	private static int constructorArguments(MemberRef ref, MethodNode method) {
+		String type = InjectionPoints.newTarget(ref), ctor = ref.methodDescOr(null);
+		if (type == null) return -1;
+		String init = ctor == null ? null : ctor.substring(0, ctor.indexOf(')') + 1) + "V";
+		int arguments = -1;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESPECIAL || !call.name.equals("<init>") || !call.owner.equals(type)
+					|| init != null && !call.desc.equals(init)) continue;
+			int n = Type.getArgumentTypes(call.desc).length;
+			if (arguments >= 0 && arguments != n) return -1;
+			arguments = n;
+		}
+		return arguments;
+	}
+
 	private static final String MODIFY_ARG = "Lorg/spongepowered/asm/mixin/injection/ModifyArg;";
+	private static final String MODIFY_RECEIVER = "Lcom/llamalad7/mixinextras/injector/ModifyReceiver;";
 
 	/**
 	 * Whether the handler takes a local of vanilla's parameter type, {@code vanillas}, by any discriminator: a
@@ -1458,19 +1494,6 @@ final class OverloadRepairs extends PreflightPart {
 
 	private static boolean isLoad(AbstractInsnNode insn, Type type, int slot) {
 		return insn instanceof VarInsnNode load && load.getOpcode() == type.getOpcode(Opcodes.ILOAD) && load.var == slot;
-	}
-
-	/**
-	 * Where a handler of an injector other than {@code @Inject} may take {@code method}'s parameters (all of them, as Mixin
-	 * requires), after its own and before any MixinExtras sugar, told from its arguments' types alone; -1 when it doesn't
-	 * take them. Its own may end with those types (a {@code @Redirect} of a call passing them on): where its own can't be
-	 * told ({@link #ownArguments}), an answer of 0 or more keeps it from moving, and nothing bridges on it.
-	 */
-	private static int capturedFrom(MethodNode handler, MethodNode method) {
-		List<Type> args = PreflightAsm.handlerArgs(handler);
-		List<Type> params = List.of(Type.getArgumentTypes(method.desc));
-		if (args == null || params.isEmpty() || args.size() <= params.size()) return -1;
-		return args.subList(args.size() - params.size(), args.size()).equals(params) ? args.size() - params.size() : -1;
 	}
 
 	/**

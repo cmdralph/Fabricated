@@ -323,6 +323,45 @@ class SeamConflictsTest {
 	}
 
 	/**
+	 * The report's line names the method of the class a native mixin hooks: of an injector's selectors, those picking a
+	 * method holding the calls the put-back changes, never MixinExtras' {@code @Definition} (whose {@code method} names
+	 * the call it matches) or {@code @Expression}; and the class's own method before another class's it hooks too.
+	 */
+	@Test
+	void theConflictsLineNamesTheMethodHoldingTheCallsThatChange(@TempDir Path dir) throws Exception {
+		Map<String, String> sources = new HashMap<>(VanillaCallsTest.neoForgeSources());
+		sources.put("com/llamalad7/mixinextras/expression/Definition.java", "package com.llamalad7.mixinextras.expression; public @interface Definition {"
+				+ " String id(); String[] method() default { }; }");
+		sources.put("com/llamalad7/mixinextras/expression/Expression.java", "package com.llamalad7.mixinextras.expression; public @interface Expression { String[] value(); }");
+		sources.put("com/llamalad7/mixinextras/injector/ModifyExpressionValue.java", "package com.llamalad7.mixinextras.injector; public @interface"
+				+ " ModifyExpressionValue { String[] method(); org.spongepowered.asm.mixin.injection.At[] at(); }");
+		String harvest = "Lnet/minecraft/world/level/block/state/BlockState;canHarvestBlock(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;"
+				+ "Lnet/minecraft/world/entity/player/Player;)Z";
+		String gameMode = "net.minecraft.server.level.ServerPlayerGameMode";
+		String expression = " @com.llamalad7.mixinextras.expression.Definition(id = \"harvest\", method = \"" + harvest + "\")"
+				+ " @com.llamalad7.mixinextras.expression.Expression(\"?.harvest(?, ?, ?)\")"
+				+ " @com.llamalad7.mixinextras.injector.ModifyExpressionValue(method = \"destroyBlock\", at = @At(\"MIXINEXTRAS:EXPRESSION\"))"
+				+ " private boolean harvested(boolean original) { return original; }";
+		assertEquals("ServerPlayerGameMode.destroyBlock", found(dir.resolve("expression"), sources, expression, gameMode, "net/minecraft/server/level/ServerPlayerGameMode",
+				null).hooked());
+		String both = " @Inject(method = {\"<init>\", \"destroyBlock\"}, at = @At(value = \"INVOKE\", target = \"" + harvest + "\"))"
+				+ " private void call(CallbackInfo ci) { }";
+		assertEquals("ServerPlayerGameMode.destroyBlock", found(dir.resolve("two"), sources, both, gameMode, "net/minecraft/server/level/ServerPlayerGameMode",
+				null).hooked());
+		// An injector naming a call that moves in a method holding none of those calls: its selector, as it is.
+		String elsewhere = " @Inject(method = \"<init>\", at = @At(value = \"INVOKE\", target = \"" + harvest + "\")) private void call(CallbackInfo ci) { }";
+		assertEquals("ServerPlayerGameMode.<init>", found(dir.resolve("elsewhere"), sources, elsewhere, gameMode, "net/minecraft/server/level/ServerPlayerGameMode",
+				null).hooked());
+		// A mixin of CropBlock hooking a jump in its growth speed, which the put-back shifts, and the crop's mayPlaceOn,
+		// which it bypasses: the class's own method.
+		String crop = "net/minecraft/world/level/block/CropBlock";
+		String growthAndPlacing = " @Inject(method = \"getGrowthSpeed\", at = @At(\"JUMP\")) private static void jump(CallbackInfo ci) { }"
+				+ " @Inject(method = \"mayPlaceOn\", at = @At(\"HEAD\")) private void head(CallbackInfo ci) { }";
+		assertEquals("CropBlock.getGrowthSpeed", found(dir.resolve("own-first"), CropGrowthTest.sources(CropGrowthTest.Form.FORGE_52), growthAndPlacing,
+				crop.replace('/', '.'), crop, null).hooked());
+	}
+
+	/**
 	 * A native mixin's selectors are read as Mixin reads them: a name with a quantifier, an owner or a descriptor
 	 * annotation selects that name's methods; a quantifier alone, a regex or an unknown name, what can't be told. A Forge
 	 * mod's mixin of another of Player's methods leaves the server's game mode and BlockBehaviour to be put back.

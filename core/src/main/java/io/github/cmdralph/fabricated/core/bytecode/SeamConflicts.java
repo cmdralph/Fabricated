@@ -62,6 +62,8 @@ public final class SeamConflicts {
 	private static final String OVERWRITE = "Lorg/spongepowered/asm/mixin/Overwrite;";
 	private static final String MODIFY_CONSTANT = "Lorg/spongepowered/asm/mixin/injection/ModifyConstant;";
 	private static final List<String> INJECTORS = List.of("Lorg/spongepowered/asm/mixin/injection/", "Lcom/llamalad7/mixinextras/");
+	/** MixinExtras' expression annotations, {@code @Definition} and {@code @Expression}, which select no method of the class. */
+	private static final String EXPRESSIONS = "Lcom/llamalad7/mixinextras/expression/";
 	/** A selector's part given as a regex ({@code name=/.../}), which {@link #selector} doesn't read. */
 	private static final Pattern REGEX_PART = Pattern.compile("(?:owner|name|desc)=/");
 	/** The points a moved call can't shift: they pick by what an instruction is, not by its place. */
@@ -412,8 +414,11 @@ public final class SeamConflicts {
 
 	/**
 	 * The method of {@code target}'s the mixin hooks that the rewrite moves or shifts, as {@code Class.method} (the
-	 * injector's selector where it can't be read, its {@code @Overwrite}'s method), or null where it hooks none;
-	 * {@code mapped}, what its refmap reads its annotations' strings as.
+	 * injector's selectors that pick a method holding the calls the rewrite changes, or one it bypasses, or can't be told,
+	 * each where it can't be read {@code "?"}; all of them where none does, the injector naming a call that moves; its
+	 * {@code @Overwrite}'s method), or null where it hooks none; {@code mapped}, what its refmap reads its annotations'
+	 * strings as. MixinExtras' {@code @Definition} and {@code @Expression} select nothing: the injector they go with does,
+	 * its {@code MIXINEXTRAS:EXPRESSION} point shifting with the calls.
 	 */
 	private static String hooks(ClassNode mixin, ClassNode target, VanillaSeams.Rewrite rewrite, Map<String, String> mapped) {
 		String simple = target.name.substring(target.name.lastIndexOf('/') + 1);
@@ -422,13 +427,18 @@ public final class SeamConflicts {
 				if (ann.desc.equals(OVERWRITE) && (rewrite.holders().contains(method.name + method.desc) || rewrite.bypassed().contains(method.name + method.desc))) {
 					return simple + "." + method.name;
 				}
-				if (INJECTORS.stream().noneMatch(ann.desc::startsWith)) continue;
+				if (INJECTORS.stream().noneMatch(ann.desc::startsWith) || ann.desc.startsWith(EXPRESSIONS)) continue;
 				Selected selected = selected(ann, target, rewrite, mapped);
 				if (names(ann, rewrite.movedCalls(), mapped) || selected == Selected.UNKNOWN || selected == Selected.BYPASSED
 						|| selected == Selected.HOLDER && (shiftable(ann) || names(ann, rewrite.added(), mapped)
 								|| rewrite.constants() && (ann.desc.equals(MODIFY_CONSTANT) || points(ann, "CONSTANT")))) {
-					return simple + "." + selectors(ann, mapped).stream().map(sel -> sel == null ? "?" : sel.name()).distinct()
-							.collect(Collectors.joining("/"));
+					List<String> all = new ArrayList<>(), changed = new ArrayList<>();
+					for (Selector selector : selectors(ann, mapped)) {
+						String name = selector == null ? "?" : selector.name();
+						all.add(name);
+						if (selector == null || selects(selector, target, rewrite) != Selected.OTHER) changed.add(name);
+					}
+					return simple + "." + (changed.isEmpty() ? all : changed).stream().distinct().collect(Collectors.joining("/"));
 				}
 			}
 		}
@@ -447,7 +457,7 @@ public final class SeamConflicts {
 		for (MethodNode method : mixin.methods) {
 			for (AnnotationNode ann : annotations(method)) {
 				if (ann.desc.equals(OVERWRITE) && names.contains(method.name)) return method.name;
-				if (INJECTORS.stream().noneMatch(ann.desc::startsWith) || ann.desc.startsWith("Lcom/llamalad7/mixinextras/expression/")) continue;
+				if (INJECTORS.stream().noneMatch(ann.desc::startsWith) || ann.desc.startsWith(EXPRESSIONS)) continue;
 				for (Selector selector : selectors(ann, mapped)) {
 					if (selector == null) return "?";
 					if (names.contains(selector.name())) return selector.name();
@@ -511,7 +521,7 @@ public final class SeamConflicts {
 	 * selecting none (MixinExtras' {@code @Definition}, whose {@code method} names a member it matches) selects nothing.
 	 */
 	private static Selected selected(AnnotationNode ann, ClassNode target, VanillaSeams.Rewrite rewrite, Map<String, String> mapped) {
-		if (ann.desc.startsWith("Lcom/llamalad7/mixinextras/expression/")) return Selected.OTHER;
+		if (ann.desc.startsWith(EXPRESSIONS)) return Selected.OTHER;
 		Selected selected = Selected.OTHER;
 		for (Selector selector : selectors(ann, mapped)) {
 			Selected one = selector == null ? Selected.UNKNOWN : selects(selector, target, rewrite);

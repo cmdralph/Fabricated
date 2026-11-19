@@ -4243,9 +4243,10 @@ class MixinPreflightTest {
 		assertTrue(notes.getFirst().message().contains("before targets bake" + two), notes.toString());
 		ClassNode node = new ClassNode();
 		new ClassReader(repaired).accept(node, 0);
-		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("before$fabricated")).findFirst().orElseThrow();
-		assertEquals("(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Integer;Ljava/util/function/Function;)Ljava/lang/Object;", bridge.desc,
-				"the bridge takes the overload's parameters, and passes the handler bake's");
+		// Mixin passes the handler as many of the overload's first parameters as it takes, bake's: it moves as it is.
+		assertTrue(node.methods.stream().noneMatch(m -> m.name.contains("$fabricated")), node.methods.stream().map(m -> m.name + m.desc).toList().toString());
+		AnnotationNode moved = node.methods.stream().filter(m -> m.name.equals("before")).findFirst().orElseThrow().visibleAnnotations.getFirst();
+		assertEquals(List.of("bake" + three), Annotations.value(moved, "method"));
 		defineMixin("com.example.mixin.Bake", repaired);
 		mod.put("com/example/mixin/Bake", repaired);
 		List<PreflightFinding> after = preflight(forge, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
@@ -15563,48 +15564,106 @@ class MixinPreflightTest {
 	private static Map<String, String> workerSources() {
 		return Map.of(
 				"net/minecraft/core/BlockPos.java", "package net.minecraft.core; public record BlockPos(int y) { }",
-				"net/minecraft/world/level/Level.java", "package net.minecraft.world.level; public class Level { }",
+				"net/minecraft/world/level/Level.java", "package net.minecraft.world.level; public class Level { public static int count() { return 1; } }",
+				"net/minecraft/world/level/Made.java", "package net.minecraft.world.level; public record Made(int n) { }",
+				"net/minecraft/world/level/Spot.java", "package net.minecraft.world.level; public record Spot(net.minecraft.core.BlockPos pos) {"
+						+ " public Spot(net.minecraft.core.BlockPos pos, int n) { this(pos); } }",
 				"net/minecraft/world/level/Thing.java", "package net.minecraft.world.level; public class Thing {"
 						+ " public boolean check(Level level, net.minecraft.core.BlockPos pos) { return pos.y() > 0; }"
 						+ " public void touch(Level level, net.minecraft.core.BlockPos pos) { } }",
 				WORKER + ".java", """
 						package net.minecraft.world.level;
+						import net.minecraft.core.BlockPos;
 						public class Worker {
 							final Level level = new Level();
 							final Thing thing = new Thing();
-							public boolean work(net.minecraft.core.BlockPos pos) { return this.work(pos, 7); }
-							public boolean work(net.minecraft.core.BlockPos pos, int extra) {
+							final int[] counts = new int[4];
+							BlockPos last;
+							public boolean work(BlockPos pos) { return this.work(pos, 7); }
+							public boolean work(BlockPos pos, int extra) {
 								this.thing.touch(this.level, pos);
-								return this.thing.check(this.level, pos) && extra > 0;
+								this.last = pos;
+								Made made = new Made(extra);
+								return this.thing.check(this.level, pos) && this.last != null && made.n() + Level.count() > 0;
 							}
+							public boolean use(BlockPos pos) { return this.use(7, pos); }
+							public boolean use(int extra, BlockPos pos) {
+								this.last = pos;
+								Spot spot = new Spot(pos), counted = new Spot(pos, extra);
+								return this.thing.check(this.level, pos) && this.last != null && spot.pos() != null && counted.pos() != null && extra > 0;
+							}
+							public boolean pair(BlockPos pos, Level other) { return this.pair(7, pos, other); }
+							public boolean pair(int extra, BlockPos pos, Level other) { return this.thing.check(other, pos) && extra > 0; }
+							public boolean idle() { return this.idle(this.last == null ? 0 : 1); }
+							public boolean idle(int extra) { this.thing.touch(this.level, this.last); return extra > 0; }
+							public int get(int i) { return this.get(i, true); }
+							public int get(int i, boolean all) { return all ? this.counts[i] : 0; }
+							public int fetch(int i) { return this.fetch(true, i); }
+							public int fetch(boolean all, int i) { return all ? this.counts[i] : 0; }
 						}""");
 	}
 
 	/**
 	 * The overload repair (a method NeoForge reduced to a call of an overload taking one more parameter) tells a handler's
-	 * own arguments from the method's parameters it takes after them, as the retyped one does: a {@code @Redirect} and a
-	 * {@code @WrapWithCondition} of a call whose arguments end with the method's parameter's type take them as their own,
-	 * and are pointed at the overload as they are, without a bridge, which would hand them the overload's parameters in
-	 * their own arguments' place and be refused as Mixin applies it, and so is a {@code @ModifyArg} taking all the call's
-	 * arguments, which Mixin passes it, never the method's parameters. A value modifier, a
-	 * {@code @WrapOperation} and a {@code @Redirect} that does take the method's parameter after its own are moved as before,
-	 * the last bridged to get the overload's.
+	 * own arguments from the method's parameters it takes after them, as the retyped one does, and moves it as it is where
+	 * Mixin passes it the method's parameters there (the overload inserting its own after those it takes), bridging only a
+	 * handler taking all of them where the overload inserts its own among them: a {@code @Redirect}, a
+	 * {@code @WrapWithCondition}, a {@code @ModifyReceiver} and a {@code @ModifyArg} of all a call's arguments of a call
+	 * passing the parameter on take it as their own; a {@code @Redirect} of a constructor, of a field written (by its
+	 * {@code opcode}, the field read too), of a static call taking nothing and of an array's element; a value modifier and a
+	 * {@code @WrapOperation}. Not moved: a handler taking another type than the method's parameter after its own, one
+	 * taking the first of two parameters where the overload inserts its own first, or taking it at a point whose own
+	 * arguments can't be told there.
 	 */
 	@Test
 	void overloadRepairsTellTheHandlersOwnArgumentsFromTheMethodsParameters(@TempDir Path dir) throws Exception {
 		Map<String, byte[]> platform = TestSources.compileWithLocals(dir.resolve("platform"), workerSources());
 		String pos = "Lnet/minecraft/core/BlockPos;", level = "Lnet/minecraft/world/level/Level;", thing = "Lnet/minecraft/world/level/Thing;";
+		String made = "Lnet/minecraft/world/level/Made;", spot = "Lnet/minecraft/world/level/Spot;", worker = "L" + WORKER + ";";
 		String check = "Lnet/minecraft/world/level/Thing;check(" + level + pos + ")Z", touch = "Lnet/minecraft/world/level/Thing;touch(" + level + pos + ")V";
-		String work = "work(" + pos + ")Z", overload = "work(" + pos + "I)Z";
-		record Shape(String injector, String desc, String point, Integer index, boolean bridged, boolean moved) {
+		String work = "work(" + pos + ")Z", use = "use(" + pos + ")Z", pair = "pair(" + pos + level + ")Z", idle = "idle()Z", get = "get(I)I", fetch = "fetch(I)I";
+		Map<String, String> overloads = Map.of(work, "work(" + pos + "I)Z", use, "use(I" + pos + ")Z", pair, "pair(I" + pos + level + ")Z", idle, "idle(I)Z",
+				get, "get(IZ)I", fetch, "fetch(ZI)I");
+		String condition = "Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;", receiver = "Lcom/llamalad7/mixinextras/injector/ModifyReceiver;";
+		// The handler's injector, descriptor and selectors, its point and what else its @At or injector says; its bridge's descriptor, where it gets one.
+		record Shape(String injector, String desc, List<String> methods, String value, String point, Map<String, Object> at, Map<String, Object> extra,
+				boolean moved, String bridge) {
+			Shape(String injector, String desc, String method, String value, String point, boolean moved, String bridge) {
+				this(injector, desc, List.of(method), value, point, Map.of(), Map.of(), moved, bridge);
+			}
 		}
 		Map<String, Shape> shapes = new java.util.LinkedHashMap<>();
-		shapes.put("Redirect", new Shape(REDIRECT, "(" + thing + level + pos + ")Z", check, null, false, true));
-		shapes.put("Condition", new Shape("Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;", "(" + thing + level + pos + ")Z", touch, null, false, true));
-		shapes.put("Argument", new Shape(MODIFY_ARG, "(" + level + pos + ")" + pos, check, 1, false, true));
-		shapes.put("Value", new Shape(MODIFY_EXPRESSION_VALUE, "(Z)Z", check, null, false, true));
-		shapes.put("Wrap", new Shape(WRAP_OPERATION, "(" + thing + level + pos + OPERATION + ")Z", check, null, false, true));
-		shapes.put("Captures", new Shape(REDIRECT, "(" + thing + level + pos + pos + ")Z", check, null, true, true));
+		shapes.put("Redirect", new Shape(REDIRECT, "(" + thing + level + pos + ")Z", work, "INVOKE", check, true, null));
+		shapes.put("Condition", new Shape(condition, "(" + thing + level + pos + ")Z", work, "INVOKE", touch, true, null));
+		shapes.put("Argument", new Shape(MODIFY_ARG, "(" + level + pos + ")" + pos, List.of(work), "INVOKE", check, Map.of(), Map.of("index", 1), true, null));
+		shapes.put("Value", new Shape(MODIFY_EXPRESSION_VALUE, "(Z)Z", work, "INVOKE", check, true, null));
+		shapes.put("Wrap", new Shape(WRAP_OPERATION, "(" + thing + level + pos + OPERATION + ")Z", work, "INVOKE", check, true, null));
+		// Taking the method's parameter after its own: Mixin passes it the overload's first, the method's.
+		shapes.put("Captures", new Shape(REDIRECT, "(" + thing + level + pos + pos + ")Z", work, "INVOKE", check, true, null));
+		shapes.put("Constructor", new Shape(REDIRECT, "(I" + pos + ")" + made, work, "NEW", "(I)" + made, true, null));
+		shapes.put("Receiver", new Shape(receiver, "(" + thing + level + pos + pos + ")" + thing, work, "INVOKE", check, true, null));
+		shapes.put("Written", new Shape(REDIRECT, "(" + worker + pos + ")V", List.of(work), "FIELD", worker + "last:" + pos, Map.of("opcode", Opcodes.PUTFIELD),
+				Map.of(), true, null));
+		shapes.put("Count", new Shape(REDIRECT, "(" + pos + ")I", List.of(work, use), "INVOKE", level + "count()I", Map.of(), Map.of(), true, null));
+		shapes.put("Element", new Shape(REDIRECT, "([II)I", List.of(get), "FIELD", worker + "counts:[I", Map.of("args", List.of("array=get")), Map.of(), true, null));
+		// Where the overload inserts its own first: told exactly, a handler taking none of the method's parameters moves as it
+		// is, which one whose own arguments end with the parameter's type couldn't, told by their types alone.
+		shapes.put("WrittenFirst", new Shape(REDIRECT, "(" + worker + pos + ")V", List.of(use), "FIELD", worker + "last:" + pos, Map.of("opcode", Opcodes.PUTFIELD),
+				Map.of(), true, null));
+		shapes.put("ConstructorFirst", new Shape(REDIRECT, "(" + pos + ")" + spot, use, "NEW", "(" + pos + ")" + spot, true, null));
+		shapes.put("ReceiverFirst", new Shape(receiver, "(" + thing + level + pos + ")" + thing, use, "INVOKE", check, true, null));
+		// A bridge hands the handler taking the method's parameter the method's.
+		shapes.put("First", new Shape(REDIRECT, "(" + thing + level + pos + pos + ")Z", use, "INVOKE", check, true, "(" + thing + level + pos + "I" + pos + ")Z"));
+		// A method taking nothing, whose overload takes what it works out: nothing to pass a handler taking nothing of it.
+		shapes.put("Nothing", new Shape(condition, "(" + thing + level + pos + ")Z", idle, "INVOKE", touch, true, null));
+		// Not moved: another type after its own; the first of two parameters where the overload inserts its own first; the
+		// parameter taken at an array element's point, whose own arguments can't be told, where the overload inserts first.
+		shapes.put("Mistyped", new Shape(REDIRECT, "(" + thing + level + pos + level + ")Z", work, "INVOKE", check, false, null));
+		shapes.put("Partial", new Shape(REDIRECT, "(" + thing + level + pos + pos + ")Z", pair, "INVOKE", check, false, null));
+		shapes.put("Uncounted", new Shape(REDIRECT, "([III)I", List.of(fetch), "FIELD", worker + "counts:[I", Map.of("args", List.of("array=get")), Map.of(),
+				false, null));
+		shapes.put("ElementFirst", new Shape(REDIRECT, "([II)I", List.of(fetch), "FIELD", worker + "counts:[I", Map.of("args", List.of("array=get")), Map.of(),
+				false, null));
 		for (Map.Entry<String, Shape> e : shapes.entrySet()) {
 			Shape shape = e.getValue();
 			String name = "com/example/mixin/" + e.getKey();
@@ -15617,13 +15676,36 @@ class MixinPreflightTest {
 			m.visitEnd();
 			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "handler", shape.desc(), null, null);
 			AnnotationVisitor ann = mv.visitAnnotation(shape.injector(), false);
-			if (shape.index() != null) ann.visit("index", shape.index());
-			selectorAndPoint(ann, work, "INVOKE", shape.point(), null);
+			shape.extra().forEach(ann::visit);
+			AnnotationVisitor methods = ann.visitArray("method");
+			shape.methods().forEach(method -> methods.visit(null, method));
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", shape.value());
+			at.visit("target", shape.point());
+			shape.at().forEach((key, value) -> {
+				if (value instanceof List<?> list) {
+					AnnotationVisitor array = at.visitArray(key);
+					list.forEach(v -> array.visit(null, v));
+					array.visitEnd();
+				} else {
+					at.visit(key, value);
+				}
+			});
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
 			mv.visitCode();
 			Type result = Type.getReturnType(shape.desc());
-			if (result.getSort() == Type.BOOLEAN) mv.visitInsn(Opcodes.ICONST_0);
-			else mv.visitInsn(Opcodes.ACONST_NULL);
-			mv.visitInsn(result.getOpcode(Opcodes.IRETURN));
+			if (result.getSort() == Type.VOID) mv.visitInsn(Opcodes.RETURN);
+			else if (result.getSort() == Type.OBJECT) {
+				mv.visitInsn(Opcodes.ACONST_NULL);
+				mv.visitInsn(Opcodes.ARETURN);
+			} else {
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitInsn(Opcodes.IRETURN);
+			}
 			mv.visitMaxs(0, 0);
 			mv.visitEnd();
 			cw.visitEnd();
@@ -15632,11 +15714,13 @@ class MixinPreflightTest {
 			List<PreflightFinding> findings = retypedRun(platform, Map.of(), mixins, config(true, e.getKey()), repaired);
 			ClassNode node = node(repaired.getOrDefault(name + ".class", mixins.get(name)));
 			List<MethodNode> bridges = node.methods.stream().filter(method -> method.name.contains("$fabricated")).toList();
-			boolean moved = findings.stream().anyMatch(f -> f.message().contains(work + ", whose code NeoForge moved into " + overload));
+			String method = shape.methods().getFirst();
+			boolean moved = findings.stream().anyMatch(f -> f.message().contains(method + ", whose code NeoForge moved into " + overloads.get(method)));
 			assertEquals(shape.moved(), moved, e.getKey() + ": " + findings);
-			assertEquals(shape.bridged() ? 1 : 0, bridges.size(), e.getKey() + ": " + node.methods.stream().map(method -> method.name + method.desc).toList());
-			if (shape.bridged()) assertEquals("(" + thing + level + pos + pos + "I)Z", bridges.getFirst().desc, e.getKey());
+			assertEquals(shape.bridge() == null ? List.of() : List.of(shape.bridge()), bridges.stream().map(b -> b.desc).toList(), e.getKey());
 			if (shape.moved()) {
+				MethodNode handler = node.methods.stream().filter(h -> h.name.equals("handler")).findFirst().orElseThrow();
+				assertEquals(shape.desc(), handler.desc, e.getKey());
 				assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.LEFT_OUT || f.severity() == Severity.FAIL), e.getKey() + ": " + findings);
 			}
 		}

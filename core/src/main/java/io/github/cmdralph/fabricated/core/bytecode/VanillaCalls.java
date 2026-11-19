@@ -779,6 +779,7 @@ final class VanillaCalls {
 	static final String VANILLA_EYES = "fabricated$vanillaEyes";
 	private static final String VANILLA_EYES_DESC = "(" + ENTITY + "L" + IN_FLUID_PREDICATE + ";)Z";
 	private static final String OTHER_FLUID = "fabricated$otherFluid";
+	private static final String NOT_WATER = "fabricated$notWater";
 	/** The helper asking whether an entity's class keeps Entity's isEyeInFluid, which vanilla's call put back makes, and its answers' field. */
 	private static final String KEEPS_EYES = "fabricated$keepsEyesDefault";
 	private static final String KNOWN_EYES = "fabricated$overridingEyes";
@@ -1739,27 +1740,28 @@ final class VanillaCalls {
 	 * {@code entity.isEyeInFluid(FluidTags.WATER)} answers what NeoForge's {@code isEyeInFluidMatching(entity, predicate)}
 	 * does (SEAM-9), where the entity's class keeps Entity's {@code isEyeInFluid} (both, the tag's and the fluid type's).
 	 * NeoForge's check answers yes where a fluid type the eyes are in passes the predicate; vanilla's call, as NeoForge's
-	 * fluid interaction answers it ({@code isEyeInFluid(FluidTags.WATER)}), whether they are in water. Each of water's and
-	 * lava's tracker is looked up, as vanilla's call makes, and the predicate asked of the types the eyes are in (without a
-	 * height, which it doesn't read). Where water or lava at the eyes passes it, NeoForge's check answers yes whatever else
-	 * the eyes are in (it answers whether any type they are in passes), so where vanilla's call answers yes too the two
-	 * agree, a mod's fluid at the eyes or not, and vanilla's call goes back without asking more; where vanilla's answers no
-	 * there (26.3: a mod's fluid of water's type, untagged), NeoForge's check stays. Where neither passes, NeoForge's check
-	 * answers no unless another fluid type the eyes are in passes: where vanilla's call answers yes (gills in water),
-	 * NeoForge's check stays at once; where it answers no, the eyes are asked for another fluid type
-	 * ({@code fabricated$otherFluid}: one pass over the fluids at the eyes, as NeoForge's check makes), which keeps
-	 * NeoForge's check, and vanilla's call goes back without one. So no path makes more passes over NeoForge's tracker map
-	 * than NeoForge's check alone, and the eyes in water none, but where neither water nor lava passes and a mod's fluid is
-	 * at the eyes, which makes this one and NeoForge's. Made of constants and the entity's own state: the predicates capture
-	 * nothing, and it makes nothing such a pass doesn't.
+	 * fluid interaction answers it ({@code isEyeInFluid(FluidTags.WATER)}), whether they are in water. The predicate is
+	 * asked of a fluid type the eyes are in, without a height, which it doesn't read; each question of the fluid
+	 * interaction is a pass over its trackers on 26.3 (a list, each through its iterator, as NeoForge's own check makes
+	 * them), a lookup in its map on 26.1.2 and 26.2, where only {@code isEyeInFluidMatching} passes over the map's entries,
+	 * which makes one for each. Water's type at the eyes passing the predicate: NeoForge's check answers yes whatever else
+	 * is at them, and vanilla's call goes back where it answers yes too (26.3: a mod's fluid of water's type, untagged,
+	 * keeps NeoForge's check). Water's type there failing it (gills): where vanilla's call answers yes NeoForge's check
+	 * stays; where it answers no, both answer no unless another type is at the eyes, which keeps NeoForge's check. No water
+	 * at the eyes: where no fluid is there either, both answer no and vanilla's call goes back; a mod's fluid there keeps
+	 * NeoForge's check; lava alone, vanilla's goes back where its answer is the predicate's for lava. So vanilla's call goes
+	 * back with the eyes in no fluid or in water after two questions (two passes on 26.3, a lookup and a pass over the
+	 * map's entries, or two lookups, on 26.1.2 and 26.2), and the call put back is a third: NeoForge's check is one pass.
+	 * Made of constants and the entity's own state: the predicates capture nothing, and it makes nothing those passes and
+	 * lookups don't.
 	 */
 	private static MethodNode vanillaEyes(String owner) {
 		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, VANILLA_EYES, VANILLA_EYES_DESC, null, null);
 		InsnList code = method.instructions;
-		String fi = FLUID_INTERACTION, fluidType = FLUID_TYPE;
-		LabelNode no = new LabelNode(), notInWater = new LabelNode(), noneOfThem = new LabelNode(), oneOfThem = new LabelNode(), platform = new LabelNode();
+		String fi = FLUID_INTERACTION;
+		LabelNode no = new LabelNode(), notInWater = new LabelNode(), waterFails = new LabelNode(), platform = new LabelNode();
 		Object[] two = {ENTITY_CLASS, IN_FLUID_PREDICATE};
-		Object[] all = {ENTITY_CLASS, IN_FLUID_PREDICATE, fi, fluidType, fluidType, Opcodes.INTEGER, Opcodes.INTEGER, Opcodes.INTEGER};
+		Object[] all = {ENTITY_CLASS, IN_FLUID_PREDICATE, fi, FLUID_TYPE};
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, KEEPS_EYES, "(Ljava/lang/Object;)Z", false));
 		code.add(new JumpInsnNode(Opcodes.IFEQ, no));
@@ -1768,50 +1770,49 @@ final class VanillaCalls {
 		code.add(new VarInsnNode(Opcodes.ASTORE, 2));
 		vanillaType(code, "WATER_TYPE");
 		code.add(new VarInsnNode(Opcodes.ASTORE, 3));
-		vanillaType(code, "LAVA_TYPE");
-		code.add(new VarInsnNode(Opcodes.ASTORE, 4));
-		for (int slot : new int[] {3, 4}) {
-			code.add(new VarInsnNode(Opcodes.ALOAD, 2));
-			code.add(new VarInsnNode(Opcodes.ALOAD, slot));
-			code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, fi, "isEyeInFluid", "(L" + fluidType + ";)Z", false));
-			code.add(new VarInsnNode(Opcodes.ISTORE, slot + 2));
-		}
-		// Vanilla's call's answer, as the fluid interaction gives it.
 		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
-		code.add(new FieldInsnNode(Opcodes.GETSTATIC, WATER_TAG.owner(), WATER_TAG.name(), WATER_TAG.desc()));
-		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, fi, "isEyeInFluid", "(" + TAG_KEY + ")Z", false));
-		code.add(new VarInsnNode(Opcodes.ISTORE, 7));
-		// Water or lava at the eyes passing the predicate: NeoForge's check answers yes.
-		code.add(new VarInsnNode(Opcodes.ILOAD, 5));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 3));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, fi, "isEyeInFluid", "(L" + FLUID_TYPE + ";)Z", false));
 		code.add(new JumpInsnNode(Opcodes.IFEQ, notInWater));
+		// Water at the eyes passing the predicate: NeoForge's check answers yes; they agree where vanilla's call answers yes.
 		predicateOf(code, 3);
-		code.add(new JumpInsnNode(Opcodes.IFNE, oneOfThem));
-		code.add(notInWater);
+		code.add(new JumpInsnNode(Opcodes.IFEQ, waterFails));
+		vanillasAnswer(code);
+		code.add(new InsnNode(Opcodes.IRETURN));
+		// Water failing it: where vanilla's call answers no, they agree unless another fluid type is at the eyes.
+		code.add(waterFails);
 		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
-		code.add(new VarInsnNode(Opcodes.ILOAD, 6));
-		code.add(new JumpInsnNode(Opcodes.IFEQ, noneOfThem));
-		predicateOf(code, 4);
-		code.add(new JumpInsnNode(Opcodes.IFNE, oneOfThem));
-		// Neither: they agree where vanilla's call answers no and the eyes are in no other fluid type.
-		code.add(noneOfThem);
-		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
-		code.add(new VarInsnNode(Opcodes.ILOAD, 7));
+		vanillasAnswer(code);
 		code.add(new JumpInsnNode(Opcodes.IFNE, platform));
 		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		code.add(new InvokeDynamicInsnNode("test", "()L" + IN_FLUID_PREDICATE + ";", new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC,
-				"java/lang/invoke/LambdaMetafactory", "metafactory", "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;"
-						+ "Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
-				Type.getMethodType(PREDICATE_DESC), new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC, owner, OTHER_FLUID, PREDICATE_DESC, false),
-				Type.getMethodType(PREDICATE_DESC)));
-		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, fi, EYES_MATCHING.name(), EYES_MATCHING.desc(), false));
+		matching(code, owner, NOT_WATER);
 		code.add(new JumpInsnNode(Opcodes.IFNE, platform));
 		code.add(new InsnNode(Opcodes.ICONST_1));
 		code.add(new InsnNode(Opcodes.IRETURN));
-		// One of them: NeoForge's check answers yes whatever else is at the eyes; they agree where vanilla's call answers yes.
-		code.add(oneOfThem);
+		// No water at the eyes: no fluid there, both answer no; a mod's fluid there, NeoForge's check stays; lava alone, they
+		// agree where vanilla's call answers the predicate's answer for lava.
+		code.add(notInWater);
 		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
-		code.add(new VarInsnNode(Opcodes.ILOAD, 7));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		matching(code, owner, NOT_WATER);
+		LabelNode inSome = new LabelNode();
+		code.add(new JumpInsnNode(Opcodes.IFNE, inSome));
+		code.add(new InsnNode(Opcodes.ICONST_1));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		code.add(inSome);
+		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		matching(code, owner, OTHER_FLUID);
+		code.add(new JumpInsnNode(Opcodes.IFNE, platform));
+		vanillaType(code, "LAVA_TYPE");
+		code.add(new VarInsnNode(Opcodes.ASTORE, 3));
+		predicateOf(code, 3);
+		vanillasAnswer(code);
+		code.add(new JumpInsnNode(Opcodes.IF_ICMPNE, platform));
+		code.add(new InsnNode(Opcodes.ICONST_1));
 		code.add(new InsnNode(Opcodes.IRETURN));
 		code.add(platform);
 		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
@@ -1822,8 +1823,28 @@ final class VanillaCalls {
 		code.add(new InsnNode(Opcodes.ICONST_0));
 		code.add(new InsnNode(Opcodes.IRETURN));
 		method.maxStack = 6;
-		method.maxLocals = 8;
+		method.maxLocals = 4;
 		return method;
+	}
+
+	/** Pushes vanilla's call's answer, as the fluid interaction in local 2 gives it: {@code isEyeInFluid(FluidTags.WATER)}. */
+	private static void vanillasAnswer(InsnList code) {
+		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		code.add(new FieldInsnNode(Opcodes.GETSTATIC, WATER_TAG.owner(), WATER_TAG.name(), WATER_TAG.desc()));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, FLUID_INTERACTION, "isEyeInFluid", "(" + TAG_KEY + ")Z", false));
+	}
+
+	/**
+	 * With the fluid interaction and the entity pushed, pushes {@code isEyeInFluidMatching(entity, predicate)} of the
+	 * class's static predicate {@code name}, which captures nothing.
+	 */
+	private static void matching(InsnList code, String owner, String name) {
+		code.add(new InvokeDynamicInsnNode("test", "()L" + IN_FLUID_PREDICATE + ";", new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC,
+				"java/lang/invoke/LambdaMetafactory", "metafactory", "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
+				Type.getMethodType(PREDICATE_DESC), new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC, owner, name, PREDICATE_DESC, false),
+				Type.getMethodType(PREDICATE_DESC)));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, FLUID_INTERACTION, EYES_MATCHING.name(), EYES_MATCHING.desc(), false));
 	}
 
 	/** Pushes NeoForge's fluid type of the field ({@code NeoForgeMod.WATER_TYPE.value()}). */
@@ -1842,12 +1863,15 @@ final class VanillaCalls {
 		code.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, IN_FLUID_PREDICATE, "test", PREDICATE_DESC, true));
 	}
 
-	/** {@code private static boolean fabricated$otherFluid(Entity entity, FluidType type, double height)}: whether the type is neither vanilla's water's nor lava's. */
-	private static MethodNode otherFluid() {
-		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, OTHER_FLUID, PREDICATE_DESC, null, null);
+	/**
+	 * {@code private static boolean fabricated$otherFluid(Entity entity, FluidType type, double height)}: whether the type is
+	 * neither vanilla's water's nor lava's; {@code fabricated$notWater}, whether it isn't water's ({@code fields}).
+	 */
+	private static MethodNode fluidOtherThan(String name, List<String> fields) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, name, PREDICATE_DESC, null, null);
 		InsnList code = method.instructions;
 		LabelNode vanilla = new LabelNode();
-		for (String field : List.of("WATER_TYPE", "LAVA_TYPE")) {
+		for (String field : fields) {
 			code.add(new VarInsnNode(Opcodes.ALOAD, 1));
 			vanillaType(code, field);
 			code.add(new JumpInsnNode(Opcodes.IF_ACMPEQ, vanilla));
@@ -2244,7 +2268,8 @@ final class VanillaCalls {
 			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KNOWN_EYES, "Ljava/lang/ClassValue;", null, null));
 			node.methods.add(keepsEyes(node.name));
 			node.methods.add(vanillaEyes(node.name));
-			node.methods.add(otherFluid());
+			node.methods.add(fluidOtherThan(OTHER_FLUID, List.of("WATER_TYPE", "LAVA_TYPE")));
+			node.methods.add(fluidOtherThan(NOT_WATER, List.of("WATER_TYPE")));
 		}
 		if (row.form() != null && row.form().action != null && indexOf(node, TOOL_USE, toolUseDesc(row)) < 0) node.methods.add(toolUse(row, srg));
 		if (row.code() == Code.LEVEL && indexOf(node, KEEPS_LEVEL, "(Ljava/lang/Object;)Z") < 0) {

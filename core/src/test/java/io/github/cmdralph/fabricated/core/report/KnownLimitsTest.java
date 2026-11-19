@@ -124,6 +124,11 @@ class KnownLimitsTest {
 				forge.replace("canSustainPlant(level, pos, facing, plantable)", "isFertile(level, pos)"), "", "capture()V")));
 		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.LEFT_OUT, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
 				forge, "", "capture()V")));
+		// The note alone, from its start: not another note whose line or hint quotes it after its own words.
+		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+				"The injector of capture goes with that of other: " + forge, "", "capture()V")));
+		assertNull(KnownLimits.ofFinding("Forge", new PreflightFinding(Severity.INFO, "balm.mixins.json", "net.blay09.mods.balm.mixin.FabricCropBlockMixin",
+				"@ModifyVariable capture targets getGrowthSpeed, where Forge's CropBlock's code moved", forge, "capture()V")));
 	}
 
 	@Test
