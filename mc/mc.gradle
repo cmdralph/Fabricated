@@ -411,21 +411,23 @@ def testmodJar = tasks.register('testmodJar', Jar) {
     from sourceSets.testmod.output
 }
 
-// A Fabric mod the test mod nests, with the provider of a service the test mod's own jar declares, as OneConfig 1.8.0's
-// jar declares the UI bridges its nested jar holds: the nested jar's module declares it (PKG-6, NestedServiceTest).
-sourceSets {
-    testmodservice {
-        java.srcDir rootProject.file('mc/shared/src/testmodservice/java')
-        resources.srcDir rootProject.file('mc/shared/src/testmodservice/resources')
+// Fabric mods the test mod nests, each with the provider of a service the test mod's own jar declares, as OneConfig
+// 1.8.0's jar declares the UI bridges its nested jar holds (PKG-6, NestedServiceTest): testmodservice's in a package of
+// its own, which its module declares; testmodsplit's in a package of the test mod's, whose module serves the class and
+// keeps its file (the nested mod depends on the test mod, so it comes after it).
+['testmodservice', 'testmodsplit'].each { name ->
+    def set = sourceSets.create(name) {
+        java.srcDir rootProject.file("mc/shared/src/${name}/java")
+        resources.srcDir rootProject.file("mc/shared/src/${name}/resources")
         compileClasspath = sourceSets.testmod.output
     }
+    def nested = tasks.register("${name}Jar", Jar) {
+        archiveFileName = "fabricated-${name.replace('testmod', 'testmod-')}.jar"
+        destinationDirectory = layout.buildDirectory.dir(name)
+        from set.output
+    }
+    testmodJar.configure { from(nested) { into 'META-INF/jars' } }
 }
-def serviceTestmodJar = tasks.register('serviceTestmodJar', Jar) {
-    archiveFileName = 'fabricated-testmod-service.jar'
-    destinationDirectory = layout.buildDirectory.dir('testmodservice')
-    from sourceSets.testmodservice.output
-}
-testmodJar.configure { from(serviceTestmodJar) { into 'META-INF/jars' } }
 
 // Forge: a Fabric mod the test mod nests twice over, as a jar built for Fabric and NeoForge at once nests its libraries
 // (LambDynamicLights): in META-INF/jars, listed by fabric.mod.json and by a NeoForge jar-in-jar list. Forge's jar-in-jar

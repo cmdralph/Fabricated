@@ -66,7 +66,7 @@
     "fabricated-test-early": "io.github.cmdralph.fabricated.testmod.EarlyAdapter"
   },
   "accessWidener": "fabricated-testmod.accesswidener",
-  "jars": [{"file": "META-INF/jars/fabricated-testmod-service.jar"}],
+  "jars": [{"file": "META-INF/jars/fabricated-testmod-service.jar"}, {"file": "META-INF/jars/fabricated-testmod-split.jar"}],
   "depends": {
     "fabricloader": ">=0.19.0",
     "minecraft": "${minecraft_version}",
