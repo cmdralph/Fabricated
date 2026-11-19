@@ -16,24 +16,31 @@ What changed, and how it was verified, newest first. What is open and what comes
   the cactus's, mushrooms' and stems' fruit's soil checks stay a known limit the report names (SEAM-12).
 - **SEAM-9** (P2), fixed: on NeoForge 26.x, vanilla's `isEyeInFluid(FluidTags.WATER)` goes back in the mining speed
   and the HUD's air bubbles for an entity whose eyes are in vanilla's water, lava or no fluid: Artifacts' underwater
-  mining speed and FrozenLib's air bubbles apply. With the eyes in no fluid the check allocates nothing; with them in
-  water 24 bytes a call, where NeoForge's own check allocates none. With a mod's fluid at the eyes NeoForge's own check
-  runs. The other fluid checks, the fluid pushing and, on Forge 64 to 66, Fabric
-  API's custom fluids stay a known limit the report names (SEAM-9).
+  mining speed and FrozenLib's air bubbles apply, with water at the eyes whatever else is there too. The check allocates
+  nothing with the eyes in no fluid or in water. With a mod's fluid alone at the eyes NeoForge's own check runs. The
+  other fluid checks, the fluid pushing and, on Forge 64 to 66, Fabric API's custom fluids stay a known limit the report
+  names (SEAM-9).
 - **PRE-37** (P3), fixed: the report names a `@Pseudo` mixin whose target is missing, where what the target belongs to
   is there (Minecraft, Fabric API, a package an installed jar holds), in one INFO line: Mixin skips it. Polymer's
   mixins of Fabric's registry sync on NeoForge are named so; a mixin of a mod that isn't installed stays silent.
+- **OVERLOAD-5** (P0 where it applies, no mod seen), fixed: a hook of a call whose arguments end with the types of its
+  method's parameters (a `@Redirect`, a `@WrapWithCondition`, a `@ModifyArg` of all its arguments), in a method NeoForge
+  or Forge reduced to a call of an overload taking one more parameter, was moved there with a bridge handing it the
+  overload's parameters in its own arguments' place, which Mixin refuses as the mixin applies. Its own arguments are now
+  told from its kind and its point, and it moves as it is.
+- **The report's line for a class kept as the platform has it** names the method the native mod's mixin hooks, beside
+  the mod and the mixin.
 - **Checks:** `vanilla-growth` (wheat on moist farmland grows at vanilla's speed through hooks of the farmland or
   moisture check and of the method by vanilla's descriptor, and the platform's block overriding the soil checks answers
   itself) on every NeoForge and Forge version, and `vanilla-eyes` (a fake player mines slower with its eyes in water,
   through a hook of Artifacts' shape) on NeoForge and, with Fabric API, Forge 47 to 66.
 - Verified: core's tests; NeoForge 1.21.1's and 26.1.2's server and client parts and Forge 47's and 52's server parts,
   `vanilla-growth` and `vanilla-eyes` passing there and in NeoForge 1.21.11's `server` (`vanilla-growth` in Forge 43's
-  `server-fapi` too); on the corpus servers Balm's growth speed hooks apply (their left-out rows from
-  2 to 0 on NeoForge 1.21.1, Forge 47 and 52, 3 to 1 on NeoForge 1.21.11 and 2 to 1 on 26.1.2), Farmer's Delight
-  Refabricated's on NeoForge 1.21.1 and 1.21.11 and Artifacts' mining speed hook on NeoForge 26.1.2, and Polymer's two
-  registry sync mixins are named on NeoForge 1.21.1 and 26.1.2, each run passing. NeoForge 26.2 and 26.3 don't build
-  locally: their classes, from their installers, take the growth speed's and the eye check's rows as 26.1.2's do.
+  `server-fapi` too); on the corpus servers Balm's growth speed hooks apply (their left-out rows from 2 to 0 on NeoForge
+  1.21.1, Forge 47 and 52, 3 to 1 on NeoForge 1.21.11 and 2 to 1 on 26.1.2), Farmer's Delight Refabricated's on NeoForge
+  1.21.1 and 1.21.11 and Artifacts' mining speed hook on NeoForge 26.1.2, and Polymer's two registry sync mixins are
+  named on NeoForge 1.21.1 and 26.1.2, each run passing. NeoForge 26.2 and 26.3 don't build locally: their classes, from
+  their installers, take the growth speed's and the eye check's rows as 26.1.2's do.
 
 ## 2026-11-18: Fabric's renderer API on Forge 43, Minecraft 1.19.2 in beta, Sodium and Iris for 1.19.2 (PLAT-8, PLAIN-2)
 

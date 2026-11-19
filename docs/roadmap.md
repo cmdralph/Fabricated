@@ -120,7 +120,6 @@ Open with no ID of their own, each left by a fixed finding:
   through `ForgeHooks.onLivingBreathe` and its events, which refill no air in lava, where vanilla does. The report names
   them a known limit; Additional Entity Attributes' water speed stays FLUID-5. Next, for Fabric API's custom fluids on
   Forge 64 to 66: a bridge of their drowning and swimming into Forge's breathing event and fluid types.
-
 - **Supplementaries' invoker of vanilla's `FireBlock.checkBurnOut`** on Forge 47 (STRUCT-2's known limit) and on
   NeoForge 21.1 and Forge 52 (LEAVE-5's). Forge 47 replaced the method with `tryCatchFire`, and NeoForge 21.1 and Forge
   52 keep `checkBurnOut`, each taking the side the fire comes from too, which they pass on to the block state's

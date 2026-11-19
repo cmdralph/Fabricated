@@ -1626,8 +1626,9 @@ What this can't match of Fabric, seen in a reference pack (2026-10-28) and in th
   Expandability's swimming and fluid pushing events. Those calls aren't put back: NeoForge's answer for a mod's fluid
   isn't vanilla's, and its pushing isn't vanilla's code. Vanilla's eye check, `isEyeInFluid(FluidTags.WATER)`, goes back
   in the mining speed and the HUD's air bubbles on 26.x for an entity whose eyes are in vanilla's water, lava or no fluid,
-  where it answers what NeoForge's check of its fluid types does (SEAM-9): Artifacts' underwater mining speed and
-  FrozenLib's air bubbles apply; with a mod's fluid at the eyes, NeoForge's check runs, without the hooks.
+  or in water NeoForge's check takes whatever else is there, where it answers what NeoForge's check of its fluid types
+  does (SEAM-9): Artifacts' underwater mining speed and FrozenLib's air bubbles apply; with a mod's fluid alone at the
+  eyes, NeoForge's check runs, without the hooks.
 
 - **A field NeoForge retyped.** NeoForge makes `KeyMapping.MAP` its own `KeyMappingLookup`, not vanilla's `Map`, so an
   accessor to it as a `Map` is left out, and the mod's call to it throws `NoSuchMethodError`. OneConfig's keybind
