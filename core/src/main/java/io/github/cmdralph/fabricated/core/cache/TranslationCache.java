@@ -238,11 +238,16 @@ public final class TranslationCache {
 					}
 				}
 				// Already there: stored by another launch sharing the game directory, whose game may be using it (FC-6),
-				// or left by a launch that didn't reuse it. The same files stay as they are; others are replaced.
+				// or left by a launch that didn't reuse it. The same files stay as they are; others are replaced. A record
+				// of them other than this translation's is written over (an edited entry.json, which reading it rejected:
+				// kept, the mod would be translated again each launch), the files staying.
 				Optional<Entry> same = sameEntry(target, hashes);
 				if (same.isPresent()) {
 					lastUsed.put(name, launch);
-					return same.get();
+					if (record(same.get().metadata()).equals(record(meta))) return same.get();
+					AtomicFiles.writeAtomically(target.resolve(ENTRY_FILE), Json.write(meta, true).getBytes(StandardCharsets.UTF_8), root.resolve("tmp"));
+					notes.add("Cache entry " + name + " held another record of its files than this translation's (an edited entry.json?): rewritten");
+					return new Entry(target, meta);
 				}
 				if (attempt == STORE_ATTEMPTS) throw new IOException("Could not replace the cache entry " + name + ": another launch keeps storing it");
 				setAside(target);
@@ -264,6 +269,17 @@ public final class TranslationCache {
 			return Optional.of(new Entry(dir, meta));
 		} catch (IOException | JsonException | RuntimeException e) {
 			return Optional.empty();
+		}
+	}
+
+	/** An entry's record as JSON reads it back, without how long its translation took, which every translation changes. */
+	private static Map<String, Object> record(Map<String, Object> meta) {
+		Map<String, Object> copy = new LinkedHashMap<>(meta);
+		copy.remove("millis");
+		try {
+			return Json.parseObject(Json.write(copy, false));
+		} catch (JsonException e) {
+			return Map.of();
 		}
 	}
 
