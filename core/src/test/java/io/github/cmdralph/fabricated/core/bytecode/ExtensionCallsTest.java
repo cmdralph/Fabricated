@@ -711,7 +711,8 @@ public class ExtensionCallsTest {
 			InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("moonlight", classes::containsKey, classes::get,
 					() -> List.of("com/moon/NativeMixin"))));
 			SeamConflicts.Conflict found = SeamConflicts.find(node(classes.get(FLYING)), installed);
-			assertEquals(e.getKey().equals("other") ? null : new SeamConflicts.Conflict("moonlight", "com/moon/NativeMixin", true), found, e.getKey());
+			assertEquals(e.getKey().equals("other") ? null : new SeamConflicts.Conflict("moonlight", "com/moon/NativeMixin", true),
+					SeamConflictsTest.stripped(found), e.getKey());
 		}
 	}
 

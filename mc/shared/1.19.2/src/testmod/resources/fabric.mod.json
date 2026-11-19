@@ -26,6 +26,7 @@
       "io.github.cmdralph.fabricated.testmod.VanillaItemCheckTest",
       "io.github.cmdralph.fabricated.testmod.VanillaFrictionTest",
       "io.github.cmdralph.fabricated.testmod.VanillaShovelTest",
+      "io.github.cmdralph.fabricated.testmod.VanillaGrowthTest",
       "io.github.cmdralph.fabricated.testmod.VanillaFireInvokerTest",
       "io.github.cmdralph.fabricated.testmod.ContentRegistriesTest",
       "io.github.cmdralph.fabricated.testmod.HiddenDefaultTest",
@@ -50,7 +51,7 @@
     "voicechat": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}VoiceChat"]
   },
   "mixins": ["fabricated-testmod.mixins.json", "fabricated-testmod-mixinsemantics.mixins.json", "fabricated-testmod-vanilla.mixins.json",
-    "fabricated-testmod-tools.mixins.json"],
+    "fabricated-testmod-tools.mixins.json", "fabricated-testmod-growth.mixins.json"],
   "languageAdapters": {
     "fabricated-test-early": "io.github.cmdralph.fabricated.testmod.EarlyAdapter"
   },

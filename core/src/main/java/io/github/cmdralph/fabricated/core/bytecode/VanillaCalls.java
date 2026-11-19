@@ -28,6 +28,7 @@ import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
@@ -270,7 +271,13 @@ final class VanillaCalls {
 		 * Forge's shovel (SEAM-13): the level's {@code isEmptyBlock(pos)}'s place gets vanilla's {@code
 		 * level.getBlockState(pos).isAir()}, its default's code, for the levels whose class keeps that method.
 		 */
-		LEVEL;
+		LEVEL,
+		/**
+		 * NeoForge 26.x's check of an entity's fluid types at its eyes (SEAM-9): {@code entity.getFluidInteraction()
+		 * .isEyeInFluidMatching(entity, predicate)}'s place gets vanilla's {@code entity.isEyeInFluid(FluidTags.WATER)} where
+		 * the entity's eyes are in vanilla's water, lava or no fluid and the two answer alike ({@link #VANILLA_EYES}).
+		 */
+		EYES;
 
 		boolean forge() {
 			return this == FORGE_SERVER || this == FORGE_CLIENT || this == FORGE_HARVEST || this == FORGE_PROGRESS || this == FORGE_ACTION || this == LEVEL;
@@ -281,7 +288,7 @@ final class VanillaCalls {
 		 * extension's call of its object, SEAM-8, or the shovel's (its row's, {@link PutBack#finding}); Forge's empty block check, SEAM-13.
 		 */
 		String finding() {
-			return this == LEVEL ? "SEAM-13" : receiver() ? "SEAM-8" : item() ? "SEAM-6" : ordinal() < HARVEST.ordinal() ? "SEAM-3" : "SEAM-4";
+			return this == EYES ? "SEAM-9" : this == LEVEL ? "SEAM-13" : receiver() ? "SEAM-8" : item() ? "SEAM-6" : ordinal() < HARVEST.ordinal() ? "SEAM-3" : "SEAM-4";
 		}
 
 		boolean harvest() {
@@ -342,7 +349,31 @@ final class VanillaCalls {
 		 * The shovel's dousing of a campfire (NeoForge): {@code state.getBlock() instanceof CampfireBlock && state.getValue(LIT)}, then
 		 * {@code CampfireBlock.dowse} and {@code state.setValue(LIT, false)}, after the event and the action as for {@link #FLATTEN}.
 		 */
-		DOUSE("blocks", "block", "the block state's getToolModifiedState(context, action, simulate)", "SHOVEL_DOUSE");
+		DOUSE("blocks", "block", "the block state's getToolModifiedState(context, action, simulate)", "SHOVEL_DOUSE"),
+		/**
+		 * A crop's growth speed, NeoForge 21.1 and 21.11 (SEAM-12): vanilla's farmland check of the soil, {@code
+		 * soil.is(Blocks.FARMLAND)}, its answer as the {@code TriState} NeoForge's code reads ({@code TRUE} or {@code FALSE},
+		 * which it reads as is: 21.1's NeoForge's, 21.11's Minecraft's), for the soils that are vanilla's farmland or no farm
+		 * block ({@link VanillaCalls#VANILLA_SOIL}).
+		 */
+		FARMLAND("soils", "soil", "the soil state's canSustainPlant(level, pos, facing, plant)"),
+		/**
+		 * Forge 43 to 61's (SEAM-12): vanilla's {@code soil.is(Blocks.FARMLAND)}, for the crops keeping their checks and, from
+		 * Forge 52, the soils that are vanilla's farmland or no farm block ({@link VanillaCalls#VANILLA_SOIL}).
+		 */
+		FORGE_FARMLAND("soils", "soil", "the soil state's canSustainPlant(level, pos, facing, plantable)"),
+		/**
+		 * Forge 64 to 66's (SEAM-12): vanilla's {@code soil.is(BlockTags.GROWS_CROPS)}, for the crops keeping their checks and
+		 * the soils that are no farmland block or are tagged so ({@link VanillaCalls#VANILLA_SOIL}).
+		 */
+		GROWS_CROPS("soils", "soil", "the soil state's canSustainPlant(level, pos, facing, plantable)"),
+		/**
+		 * Vanilla's moisture check of the soil in a crop's growth speed up to 1.21.11 (SEAM-12), {@code
+		 * soil.getValue(FarmBlock.MOISTURE) > 0}, for vanilla's farmland ({@link VanillaCalls#VANILLA_FARMLAND}).
+		 */
+		MOISTURE("soils", "soil", "the soil state's isFertile(level, pos)"),
+		/** 26.1 on: {@code soil.getValueOrElse(FarmlandBlock.MOISTURE, 0) > 0}, for vanilla's farmland (SEAM-12). */
+		MOISTURE_OR_ELSE("soils", "soil", "the soil state's isFertile(level, pos)");
 
 		final String nouns, noun, call;
 		/** The tool action the platform's call takes, by its field's name (the shovel's, SEAM-13); null for the others. */
@@ -373,9 +404,19 @@ final class VanillaCalls {
 			};
 		}
 
-		/** The finding its put-back answers: the shovel's, SEAM-13; the others', SEAM-8. */
+		/** The finding its put-back answers: the shovel's, SEAM-13; a crop's growth speed, SEAM-12; the others', SEAM-8. */
 		String finding() {
-			return action != null ? "SEAM-13" : "SEAM-8";
+			return action != null ? "SEAM-13" : soil() ? "SEAM-12" : "SEAM-8";
+		}
+
+		/** Whether it is a check of a crop's soil (SEAM-12), which the soil's state, and on Forge the crop, must also pass first. */
+		boolean soil() {
+			return this == FARMLAND || this == FORGE_FARMLAND || this == GROWS_CROPS || this == MOISTURE || this == MOISTURE_OR_ELSE;
+		}
+
+		/** Whether it is Forge's farmland check, whose condition takes the crop, the platform's call's last operand, too. */
+		boolean takesCrop() {
+			return this == FORGE_FARMLAND || this == GROWS_CROPS;
 		}
 	}
 
@@ -404,9 +445,12 @@ final class VanillaCalls {
 			return srg ? srgMethod : method;
 		}
 
-		/** The package of the platform's own classes, which only its game's classes reference (none for the elytra layer's and SEAM-8's, either platform's). */
+		/**
+		 * The package of the platform's own classes, which only its game's classes reference (none for the elytra layer's and
+		 * SEAM-8's, either platform's, nor SEAM-9's, whose call takes NeoForge's predicate: only NeoForge's classes make it).
+		 */
 		String platformPackage() {
-			return code == Code.LAYER || code.receiver() ? null : code.forge() ? FORGE : NEOFORGE;
+			return code == Code.LAYER || code.receiver() || code == Code.EYES ? null : code.forge() ? FORGE : NEOFORGE;
 		}
 
 		String loader() {
@@ -516,6 +560,7 @@ final class VanillaCalls {
 	private static final String BOX = "net/minecraft/world/phys/AABB";
 	private static final String HOLDER = "net/minecraft/core/Holder";
 	private static final String STATE_BASE = "net/minecraft/world/level/block/state/BlockBehaviour$BlockStateBase";
+	private static final String STATE_HOLDER = "net/minecraft/world/level/block/state/StateHolder";
 	private static final String PIGLIN_AI = ENTITIES + "monster/piglin/PiglinAi";
 	private static final String ENCHANTMENT_HELPER = "net/minecraft/world/item/enchantment/EnchantmentHelper";
 	private static final String FRICTION_DESC = "(" + LEVEL_READER + POS + ENTITY + ")F";
@@ -645,9 +690,110 @@ final class VanillaCalls {
 			onReceiver(SHOVEL, "useOn", "m_6225_", null, new Member(STATE, FORGE_TOOL.name(), null, FORGE_TOOL.desc()), FORGE_TOOL, OnReceiver.FLATTEN),
 			new PutBack(SHOVEL, "useOn", "m_6225_", null, IS_EMPTY_BLOCK, null, Code.LEVEL));
 
+	// SEAM-12: a crop's growth speed, CropBlock.getGrowthSpeed. Vanilla checks each of the nine soil blocks below the crop
+	// for farmland (1.19.2 to 1.21.11: soil.is(Blocks.FARMLAND); 26.1 on: soil.is(BlockTags.GROWS_CROPS)) and, on farmland,
+	// its moisture (soil.getValue(FarmBlock.MOISTURE) > 0; 26.1 on: soil.getValueOrElse(FarmlandBlock.MOISTURE, 0) > 0).
+	// Read in the platforms' classes (NeoForge 21.1.265, 21.11.45, 26.1.2.116, 26.2.0.90 and 26.3.0.95; Forge 43.5.2 and
+	// 47.4.28 under SRG's names, 52.1.21, 61.2.4, 64.1.5, 65.1.5 and 66.1.0):
+	// - NeoForge asks the soil state's canSustainPlant(level, pos, UP, plant), a TriState (NeoForge's on 21.1, Minecraft's from
+	//   21.11, which NeoForge gives isDefault and isTrue) whose default (IBlockExtension's)
+	//   is DEFAULT, for which 21.1 and 21.11 then ask soil.getBlock() instanceof FarmBlock and 26.x vanilla's own
+	//   soil.is(BlockTags.GROWS_CROPS), and its isFertile(level, pos), whose default answers
+	//   soil.getValue(MOISTURE) > 0 for a farm block (21.x's FarmBlock, 26.x's FarmlandBlock) and false otherwise.
+	// - Forge asks the soil state's canSustainPlant(level, pos, UP, (IPlantable) crop), Block's own method, which for a crop
+	//   (a CropBlock keeping its mayPlaceOn, VegetationBlock's or BushBlock's getPlant and IPlantable's getPlantType, the
+	//   plant type CROP) answers crop.mayPlaceOn(soil) || soil.is(FARMLAND) (64 to 66: soil.is(GROWS_CROPS)), CropBlock's
+	//   mayPlaceOn being soil.is(FARMLAND) on 43 and 47, soil.getBlock() instanceof FarmBlock on 52 and 61 and instanceof
+	//   FarmlandBlock on 64 to 66; and its isFertile, whose default (IForgeBlock's) answers soil.getValue(MOISTURE) > 0 for
+	//   vanilla's farmland (43 to 52: soil.is(FARMLAND); 61: a FarmBlock; 64 to 66: a FarmlandBlock) and false otherwise.
+	// So for a soil keeping the defaults the platform's answer is vanilla's where VANILLA_SOIL says (NeoForge 21.x and
+	// Forge 52 and 61: vanilla's farmland or no farm block; Forge 64 to 66: no farmland block, or tagged #grows_crops; Forge
+	// 43 and 47 always, for a crop keeping its checks), and vanilla's farmland check goes back there; NeoForge 26.x already
+	// makes it in its default's branch. The moisture check goes back for vanilla's farmland (VANILLA_FARMLAND), for which every
+	// default answers vanilla's getValue(MOISTURE) > 0 (the property is farmland's), and which vanilla's code always checks
+	// for moisture. Every other soil, and on Forge a crop overriding one of its checks or no CropBlock (a stem, the pitcher
+	// crop), is asked as the platform has it, without the hooks.
+	private static final String CROP = BLOCKS + "CropBlock";
+	private static final String FARM_BLOCK = BLOCKS + "FarmBlock";
+	private static final String FARMLAND_BLOCK = BLOCKS + "FarmlandBlock";
+	/** NeoForge 21.1's TriState; 21.11 on, NeoForge's canSustainPlant answers Minecraft's own, which NeoForge gives the same methods. */
+	private static final String TRI_STATE = "net/neoforged/neoforge/common/util/TriState";
+	private static final String MINECRAFT_TRI_STATE = "net/minecraft/util/TriState";
+	private static final String PLANTABLE = "net/minecraftforge/common/IPlantable";
+	private static final String DIRECTION = "Lnet/minecraft/core/Direction;";
+	private static final String SUSTAIN_DESC = "(" + GETTER + POS + DIRECTION + "L" + STATE + ";)L" + TRI_STATE + ";";
+	private static final String SUSTAIN_1211_DESC = "(" + GETTER + POS + DIRECTION + "L" + STATE + ";)L" + MINECRAFT_TRI_STATE + ";";
+	private static final String FORGE_SUSTAIN_DESC = "(" + GETTER + POS + DIRECTION + "L" + PLANTABLE + ";)Z";
+	private static final String FERTILE_DESC = "(" + GETTER + POS + ")Z";
+	private static final String KEEPS_SUSTAIN = "fabricated$keepsSustainDefault";
+	private static final String KNOWN_SUSTAIN = "fabricated$overridingSustain";
+	private static final String KEEPS_FERTILE = "fabricated$keepsFertileDefault";
+	private static final String KNOWN_FERTILE = "fabricated$overridingFertile";
+	private static final Extension SUSTAIN = new Extension(NEOFORGE_EXT + "IBlockStateExtension", NEOFORGE_EXT + "IBlockExtension", "canSustainPlant",
+			SUSTAIN_DESC, KEEPS_SUSTAIN, KNOWN_SUSTAIN);
+	private static final Extension SUSTAIN_1211 = new Extension(NEOFORGE_EXT + "IBlockStateExtension", NEOFORGE_EXT + "IBlockExtension", "canSustainPlant",
+			SUSTAIN_1211_DESC, KEEPS_SUSTAIN, KNOWN_SUSTAIN);
+	/** Forge's: the block's is {@code Block}'s own method, which {@code IForgeBlock} declares without a default. */
+	private static final Extension FORGE_SUSTAIN = new Extension(FORGE_EXT + "IForgeBlockState", BLOCK, "canSustainPlant", FORGE_SUSTAIN_DESC, KEEPS_SUSTAIN,
+			KNOWN_SUSTAIN);
+	private static final Extension FERTILE = new Extension(NEOFORGE_EXT + "IBlockStateExtension", NEOFORGE_EXT + "IBlockExtension", "isFertile",
+			FERTILE_DESC, KEEPS_FERTILE, KNOWN_FERTILE).or(new Extension(FORGE_EXT + "IForgeBlockState", FORGE_EXT + "IForgeBlock", "isFertile", FERTILE_DESC,
+					KEEPS_FERTILE, KNOWN_FERTILE));
+	/** The helper asking whether vanilla's farmland check answers the platform's for the soil (and on Forge the crop). */
+	static final String VANILLA_SOIL = "fabricated$vanillaSoil";
+	/** The helper asking whether the soil is vanilla's farmland, whose moisture every platform's default checks as vanilla does. */
+	static final String VANILLA_FARMLAND = "fabricated$vanillaFarmland";
+	/** The helper asking whether a crop's class keeps its checks Forge's canSustainPlant asks (Forge's farmland checks), and its answers' field. */
+	private static final String KEEPS_CROP = "fabricated$keepsCropDefault";
+	private static final String KNOWN_CROP = "fabricated$overridingCrop";
+	/** The helper making NeoForge's TriState of vanilla's answer: {@code TRUE} or {@code FALSE}. */
+	private static final String TRI_STATE_OF = "fabricated$triState";
+
+	/** The growth speed's rows, read in the platforms' classes: NeoForge's and Forge's farmland checks, either platform's moisture check. */
+	private static final List<PutBack> SOILS = List.of(
+			onReceiver(CROP, "getGrowthSpeed", "m_52272_", null, new Member(STATE, SUSTAIN.name(), null, SUSTAIN_DESC), SUSTAIN, OnReceiver.FARMLAND),
+			onReceiver(CROP, "getGrowthSpeed", "m_52272_", null, new Member(STATE, SUSTAIN.name(), null, SUSTAIN_1211_DESC), SUSTAIN_1211, OnReceiver.FARMLAND),
+			onReceiver(CROP, "getGrowthSpeed", "m_52272_", null, new Member(STATE, FORGE_SUSTAIN.name(), null, FORGE_SUSTAIN_DESC), FORGE_SUSTAIN,
+					OnReceiver.FORGE_FARMLAND),
+			onReceiver(CROP, "getGrowthSpeed", "m_52272_", null, new Member(STATE, FERTILE.name(), null, FERTILE_DESC), FERTILE, OnReceiver.MOISTURE));
+
+	// SEAM-9: an entity's eyes in water. Where vanilla asks entity.isEyeInFluid(FluidTags.WATER) in Player.getDestroySpeed (the
+	// slower mining underwater) and in the HUD's air bubbles (Gui.extractAirBubbles, 26.2's and 26.3's Hud), NeoForge
+	// 26.1.2.116, 26.2.0.90 and 26.3.0.95 ask entity.getFluidInteraction().isEyeInFluidMatching(entity, predicate) of the fluid
+	// types at its eyes (read in their classes: type.getIsWaterLike() for the mining, e.canDrownInFluidType(type) for the
+	// bubbles), which answers true where a tracker of the eyes' fluids has its predicate true. Where water or lava at the eyes
+	// has it true, that answer is true whatever else is there; where the eyes are in no fluid type but vanilla's water's and
+	// lava's, it is the predicate's answer for those. Vanilla's call answers whether they are in water (NeoForge's
+	// Entity.isEyeInFluid(TagKey) asks its fluid interaction, by the water type on 26.1.2 and 26.2 and by the tag on 26.3):
+	// VANILLA_EYES asks both and puts vanilla's call back where they agree. NeoForge 21.1 and 21.11 and Forge keep
+	// vanilla's call in these places.
+	private static final String FLUID_INTERACTION = ENTITIES + "EntityFluidInteraction";
+	private static final String FLUID_TYPE = "net/neoforged/neoforge/fluids/FluidType";
+	private static final String IN_FLUID_PREDICATE = "net/neoforged/neoforge/fluids/InFluidPredicate";
+	private static final String PREDICATE_DESC = "(" + ENTITY + "L" + FLUID_TYPE + ";D)Z";
+	private static final Member EYES_MATCHING = new Member(FLUID_INTERACTION, "isEyeInFluidMatching", null, "(" + ENTITY + "L" + IN_FLUID_PREDICATE + ";)Z");
+	private static final Member FLUID_INTERACTION_OF = new Member(ENTITY_CLASS, "getFluidInteraction", null, "()L" + FLUID_INTERACTION + ";");
+	private static final String TAG_KEY = "Lnet/minecraft/tags/TagKey;";
+	private static final Member WATER_TAG = new Member("net/minecraft/tags/FluidTags", "WATER", null, TAG_KEY);
+	/** The helper asking whether vanilla's call answers the platform's check for the entity ({@link #vanillaEyes}), and the predicate it asks with. */
+	static final String VANILLA_EYES = "fabricated$vanillaEyes";
+	private static final String VANILLA_EYES_DESC = "(" + ENTITY + "L" + IN_FLUID_PREDICATE + ";)Z";
+	private static final String OTHER_FLUID = "fabricated$otherFluid";
+	private static final String NOT_WATER = "fabricated$notWater";
+	/** The helper asking whether an entity's class keeps Entity's isEyeInFluid, which vanilla's call put back makes, and its answers' field. */
+	private static final String KEEPS_EYES = "fabricated$keepsEyesDefault";
+	private static final String KNOWN_EYES = "fabricated$overridingEyes";
+
+	/** The eye checks' rows, read in NeoForge 26.x's classes: the mining speed, the air bubbles (26.3's HUD is Hud). */
+	private static final List<PutBack> EYES = List.of(
+			new PutBack(PLAYER_CLASS, "getDestroySpeed", null, null, EYES_MATCHING, null, Code.EYES),
+			new PutBack("net/minecraft/client/gui/Gui", "extractAirBubbles", null, null, EYES_MATCHING, null, Code.EYES),
+			new PutBack("net/minecraft/client/gui/Hud", "extractAirBubbles", null, null, EYES_MATCHING, null, Code.EYES));
+
 	/**
 	 * The table: the platforms' forms of the server's and the client's {@code destroyBlock} and of {@code getDestroyProgress},
-	 * read in their classes, the item checks, the extensions' calls of their objects and the shovel's tool modifications.
+	 * read in their classes, the item checks, the extensions' calls of their objects, the shovel's tool modifications, a
+	 * crop's growth speed and the eye checks.
 	 */
 	static final List<PutBack> PUT_BACKS = Stream.concat(Stream.of(
 			new PutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, new Member(GAME_MODE, "removeBlock", null, "(" + POS + "L" + STATE + ";Z)Z"),
@@ -666,7 +812,7 @@ final class VanillaCalls {
 			new PutBack(GAME_MODE, "destroyBlock", "m_9280_", DESTROY_BLOCK, CAN_HARVEST, FORGE_HARVEST, Code.FORGE_HARVEST),
 			new PutBack(BEHAVIOUR, "getDestroyProgress", "m_5880_", DESTROY_PROGRESS, HARVEST_HOOK, null, Code.PROGRESS),
 			new PutBack(BEHAVIOUR, "getDestroyProgress", "m_5880_", DESTROY_PROGRESS, FORGE_HARVEST_HOOK, null, Code.FORGE_PROGRESS)),
-			Stream.of(ITEM_CHECKS, ON_RECEIVERS, TOOLS).flatMap(List::stream)).toList();
+			Stream.of(ITEM_CHECKS, ON_RECEIVERS, TOOLS, SOILS, EYES).flatMap(List::stream)).toList();
 
 	static final Set<String> CLASSES = PUT_BACKS.stream().map(PutBack::owner).collect(Collectors.toUnmodifiableSet());
 
@@ -743,6 +889,25 @@ final class VanillaCalls {
 	private static final String KEEPS_LEVEL = "fabricated$keepsLevelDefault";
 	private static final String KNOWN_LEVEL = "fabricated$overridingLevel";
 
+	// SEAM-12's vanilla calls and fields (1.19.2's and 1.20.1's by SRG's names, where Forge 43 and 47 make the farmland and
+	// moisture checks).
+	private static final Member FARMLAND = new Member(BLOCKS + "Blocks", "FARMLAND", "f_50093_", "L" + BLOCK + ";");
+	private static final Member IS_BLOCK = new Member(STATE, "is", "m_60713_", "(L" + BLOCK + ";)Z");
+	private static final Member GROWS_CROPS = new Member("net/minecraft/tags/BlockTags", "GROWS_CROPS", null, "Lnet/minecraft/tags/TagKey;");
+	private static final Member IS_BLOCK_TAG = new Member(STATE, "is", null, "(Lnet/minecraft/tags/TagKey;)Z");
+	private static final String INTEGER_PROPERTY = "Lnet/minecraft/world/level/block/state/properties/IntegerProperty;";
+	private static final Member FARM_MOISTURE = new Member(FARM_BLOCK, "MOISTURE", "f_53243_", INTEGER_PROPERTY);
+	private static final Member FARMLAND_MOISTURE = new Member(FARMLAND_BLOCK, "MOISTURE", null, INTEGER_PROPERTY);
+	private static final Member STATE_VALUE = new Member(STATE, "getValue", "m_61143_", GET_VALUE.desc());
+	private static final Member STATE_VALUE_OR_ELSE = new Member(STATE, "getValueOrElse", null,
+			"(Lnet/minecraft/world/level/block/state/properties/Property;Ljava/lang/Comparable;)Ljava/lang/Comparable;");
+	private static final Member INT_VALUE = new Member("java/lang/Integer", "intValue", null, "()I");
+	private static final Member INTEGER_OF = new Member("java/lang/Integer", "valueOf", null, "(I)Ljava/lang/Integer;");
+	/** The crop's checks Forge's canSustainPlant asks: CropBlock's mayPlaceOn, and IPlantable's getPlantType and getPlant. */
+	private static final Member MAY_PLACE_ON = new Member(CROP, "mayPlaceOn", "m_6266_", "(L" + STATE + ";" + GETTER + POS + ")Z");
+	private static final Member PLANT_TYPE = new Member(PLANTABLE, "getPlantType", null, "(" + GETTER + POS + ")Lnet/minecraftforge/common/PlantType;");
+	private static final Member PLANT = new Member(PLANTABLE, "getPlant", null, "(" + GETTER + POS + ")L" + STATE + ";");
+
 	private VanillaCalls() {
 	}
 
@@ -758,7 +923,9 @@ final class VanillaCalls {
 					&& (row.code() != Code.FORGE_CLIENT || calls(method, WILL_DESTROY.owner(), WILL_DESTROY.name(srg)).isEmpty())
 					&& (row.code() != Code.LAYER || layerBase(node, row) != null)
 					// From 1.21.11 vanilla makes the sweep's box in doSweepAttack: NeoForge's attack makes it for an overload of its own there.
-					&& (row.form() != OnReceiver.SWEEP || !"attack".equals(row.method()) || node.methods.stream().noneMatch(m -> m.name.equals("doSweepAttack")))) {
+					&& (row.form() != OnReceiver.SWEEP || !"attack".equals(row.method()) || node.methods.stream().noneMatch(m -> m.name.equals("doSweepAttack")))
+					// NeoForge 26.x makes vanilla's farmland check in its canSustainPlant default's branch itself (SEAM-12).
+					&& (row.form() != OnReceiver.FARMLAND || !java25(node.version))) {
 				rows.add(variant(row, node, srg));
 			}
 		}
@@ -773,6 +940,9 @@ final class VanillaCalls {
 	 */
 	private static PutBack variant(PutBack row, ClassNode node, boolean srg) {
 		if (row.code() == Code.ACTION && java25(node.version)) return row.with(NEOFORGE_ACTION_26, null);
+		// A crop's growth speed from 26.1 on: Forge 64 to 66's farmland check of #grows_crops, the moisture check's getValueOrElse.
+		if (row.form() == OnReceiver.FORGE_FARMLAND && java25(node.version)) return row.with(row.extension(), OnReceiver.GROWS_CROPS);
+		if (row.form() == OnReceiver.MOISTURE && java25(node.version)) return row.with(row.extension(), OnReceiver.MOISTURE_OR_ELSE);
 		// Only Forge 47 runs with SRG's names: its interfaces are named outright.
 		if (row.code().receiver() && srg) {
 			return row.with(row.form() == OnReceiver.SOUND ? FORGE_47_SOUND : row.extension().forge(), row.form() == OnReceiver.GOLD_HOLDER ? OnReceiver.GOLD : row.form());
@@ -794,15 +964,15 @@ final class VanillaCalls {
 	}
 
 	/**
-	 * Whether a put-back may apply to the class as its bytes are, told without parsing them: for a class of item checks
-	 * and extensions' calls of their objects alone, whether they name a row's platform call and, for an action, the action
-	 * (Player's names no shield action from 1.21.5 on); true for any other class.
+	 * Whether a put-back may apply to the class as its bytes are, told without parsing them: for a class of item checks,
+	 * extensions' calls of their objects and eye checks alone, whether they name a row's platform call and, for an action,
+	 * the action (Player's names no shield action from 1.21.5 on); true for any other class.
 	 */
 	static boolean mayApply(String owner, byte[] data) {
 		boolean named = false;
 		for (PutBack row : PUT_BACKS) {
 			if (!row.owner().equals(owner)) continue;
-			if (!row.code().item() && !row.code().receiver()) return true;
+			if (!row.code().item() && !row.code().receiver() && row.code() != Code.EYES) return true;
 			named = true;
 			// An extension's call by its descriptor too: NeoForge 26.x's Entity names vanilla's getSoundType() alone.
 			if (contains(data, row.platform().name()) && (row.check() == null || row.check().action() == null || contains(data, row.check().action()))
@@ -889,7 +1059,7 @@ final class VanillaCalls {
 		List<String> rewritten = new ArrayList<>();
 		for (PutBack row : rows) {
 			MethodNode method = holder(expanded, row, srg);
-			Rewritten done = rewrite(expanded, method, row, srg);
+			Rewritten done = rewrite(expanded, method, row, srg, node);
 			if (done == null) continue;
 			addHelpers(expanded, row, srg, row.code() == Code.LAYER ? layerBase(node, row) : null, helpers);
 			AnnotationNode marker = new AnnotationNode(VanillaSeams.MARKER);
@@ -918,7 +1088,7 @@ final class VanillaCalls {
 
 	/** Whether the row's put-back asks of an object's class (the block's, the item's, the player's, the layer's) first. */
 	private static boolean checks(PutBack row) {
-		return row.extension() != null || row.code().keepingPlayer() >= 0 || row.code() == Code.LAYER || row.code() == Code.LEVEL;
+		return row.extension() != null || row.code().keepingPlayer() >= 0 || row.code() == Code.LAYER || row.code() == Code.LEVEL || row.code() == Code.EYES;
 	}
 
 	/**
@@ -928,6 +1098,7 @@ final class VanillaCalls {
 	private static String keeps(PutBack row, ClassNode node) {
 		if (row.extension() != null) return row.extension().blockInterface() + "." + row.extension().name();
 		if (row.code() == Code.LEVEL) return LEVEL_READER_CLASS + "." + IS_EMPTY_BLOCK.name();
+		if (row.code() == Code.EYES) return ENTITY_CLASS + ".isEyeInFluid";
 		return (row.code() == Code.LAYER ? layerBase(node, row) : row.platform().owner()) + "." + row.platform().name();
 	}
 
@@ -936,6 +1107,7 @@ final class VanillaCalls {
 		// SEAM-8's call is the same on both platforms, whose extensions a class may not name: the call as it is made.
 		if (row.code().receiver()) return row.form().call;
 		String keeps = keeps(row, node);
+		if (row.code() == Code.EYES) return "the entity's fluid interaction's isEyeInFluidMatching(entity, predicate) of the fluid types at its eyes";
 		String whose = row.extension() != null ? "the " + row.extension().holder().noun() + "'s " : row.code() == Code.LAYER ? "the layer's "
 				: row.code() == Code.LEVEL ? "the level's " : "";
 		return whose + keeps.substring(keeps.lastIndexOf('/') + 1);
@@ -962,6 +1134,9 @@ final class VanillaCalls {
 			case RECEIVER -> onReceiverNote(row);
 			case LEVEL -> "Fabricated puts it back there for the levels keeping that method, so the hook applies to them, and a level overriding it is asked"
 					+ " as Forge has it, without the hook";
+			case EYES -> "Fabricated puts it back there for the entities whose eyes are in vanilla's water, lava or no fluid, where it answers what"
+					+ " NeoForge's check of those fluid types does, so the hook applies to them; an entity whose eyes are in another fluid, or that"
+					+ " overrides Entity.isEyeInFluid, is asked as NeoForge has it, without the hook";
 		};
 	}
 
@@ -973,7 +1148,15 @@ final class VanillaCalls {
 						+ " default makes them" : "";
 		String also = row.extension().stateKeeps() != null ? ", as is one whose state's class declares vanilla's getSoundType again"
 				: row.form() == OnReceiver.GOLD_HOLDER ? ", as is armour whose material the platform's check, by identity, and vanilla's Holder.is answer"
-						+ " differently for (gold's under another holder)" : "";
+						+ " differently for (gold's under another holder)"
+				: row.form() == OnReceiver.FARMLAND ? ", as is a farm block that isn't vanilla's farmland, which NeoForge counts as farmland"
+				: row.form() == OnReceiver.FORGE_FARMLAND ? ", as is every soil of a crop that isn't a CropBlock (a stem, the pitcher crop) or overrides one of"
+						+ " the checks Forge asks it (mayPlaceOn, getPlant, getPlantType), and, where Forge's crops take any farm block, one that isn't"
+						+ " vanilla's farmland"
+				: row.form() == OnReceiver.GROWS_CROPS ? ", as is a farmland block not tagged #minecraft:grows_crops, which Forge counts as farmland, and"
+						+ " every soil of a crop that isn't a CropBlock (a stem, the pitcher crop) or overrides one of the checks Forge asks it (mayPlaceOn,"
+						+ " getPlant, getPlantType)"
+				: row.form() == OnReceiver.MOISTURE || row.form() == OnReceiver.MOISTURE_OR_ELSE ? ", as is every soil but vanilla's farmland" : "";
 		return "Fabricated puts it back there for the " + nouns + " keeping that method's default" + event + ", so the hook applies to them, and "
 				+ (noun.equals("item") ? "an " : "a ") + noun + " overriding it is asked as the platform has it, without the hook" + also;
 	}
@@ -986,13 +1169,14 @@ final class VanillaCalls {
 	 * Rewrites each place of the method that makes the platform's call; the calls put back, or null where a place isn't in
 	 * the shape the row reads (the method is then left as it was).
 	 */
-	private static Rewritten rewrite(ClassNode owner, MethodNode method, PutBack row, boolean srg) {
+	private static Rewritten rewrite(ClassNode owner, MethodNode method, PutBack row, boolean srg, ClassNode whole) {
 		List<MethodInsnNode> places = calls(method, row);
 		Map<AbstractInsnNode, State> frames = frames(owner, method);
 		if (frames == null) return null;
 		if (row.code().action()) return actions(owner, method, row, srg, places, frames);
 		if (row.code().receiver()) return receivers(owner, method, row, srg, places, frames);
 		if (row.code() == Code.LEVEL) return levels(owner, method, srg, places, frames);
+		if (row.code() == Code.EYES) return eyes(owner, whole, method, places, frames);
 		List<Site> sites = new ArrayList<>();
 		for (MethodInsnNode place : places) {
 			Site site = site(method, place, frames);
@@ -1149,6 +1333,8 @@ final class VanillaCalls {
 			}
 			Dousing dousing = null;
 			if (row.form() == OnReceiver.DOUSE && (store != null || (dousing = dousing(method, call, site)) == null)) return null;
+			// Forge's farmland check asks of the crop too: its operand a local's load, cast to IPlantable, which the condition loads again.
+			if (row.form().takesCrop() && cropSlot(site) < 0) return null;
 			found.add(new ObjectPlace(site, split, mid, store, after, join, dousing));
 		}
 		Set<String> putBack = new LinkedHashSet<>();
@@ -1170,6 +1356,13 @@ final class VanillaCalls {
 			if (row.form() == OnReceiver.GOLD_HOLDER) {
 				code.add(new InsnNode(Opcodes.DUP));
 				code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner.name, GOLD_AGREES, "(" + ITEM + ")Z", false));
+				code.add(new JumpInsnNode(Opcodes.IFEQ, platform));
+			}
+			if (row.form().soil()) {
+				// Whether vanilla's check answers the platform's for this soil (and on Forge this crop), SEAM-12.
+				code.add(new InsnNode(Opcodes.DUP));
+				if (row.form().takesCrop()) code.add(new VarInsnNode(Opcodes.ALOAD, cropSlot(site)));
+				code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner.name, soilHelper(row.form()), soilHelperDesc(row.form()), false));
 				code.add(new JumpInsnNode(Opcodes.IFEQ, platform));
 			}
 			vanillaOn(code, owner.name, row, srg, site, place.mid().locals(), site.under(), place.dousing(), putBack);
@@ -1248,6 +1441,41 @@ final class VanillaCalls {
 				}
 				List<Object> answered = new ArrayList<>(under);
 				answered.add(STATE);
+				code.add(done);
+				code.add(frameOf(locals, answered));
+			}
+			case FARMLAND, FORGE_FARMLAND -> {
+				code.add(new FieldInsnNode(Opcodes.GETSTATIC, FARMLAND.owner(), FARMLAND.name(srg), FARMLAND.desc()));
+				invoke(code, IS_BLOCK, srg, false, putBack);
+				// NeoForge reads its TriState's answer as it is where it isn't DEFAULT: TRUE or FALSE, of vanilla's answer.
+				if (row.form() == OnReceiver.FARMLAND) code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, TRI_STATE_OF, triStateDesc(row), false));
+			}
+			case GROWS_CROPS -> {
+				code.add(new FieldInsnNode(Opcodes.GETSTATIC, GROWS_CROPS.owner(), GROWS_CROPS.name(), GROWS_CROPS.desc()));
+				invoke(code, IS_BLOCK_TAG, srg, false, putBack);
+			}
+			case MOISTURE, MOISTURE_OR_ELSE -> {
+				// The moisture as vanilla's code reads it, then its "> 0" as the platform's call's answer.
+				if (row.form() == OnReceiver.MOISTURE) {
+					code.add(new FieldInsnNode(Opcodes.GETSTATIC, FARM_MOISTURE.owner(), FARM_MOISTURE.name(srg), FARM_MOISTURE.desc()));
+					invoke(code, STATE_VALUE, srg, false, putBack);
+				} else {
+					code.add(new FieldInsnNode(Opcodes.GETSTATIC, FARMLAND_MOISTURE.owner(), FARMLAND_MOISTURE.name(), FARMLAND_MOISTURE.desc()));
+					code.add(new InsnNode(Opcodes.ICONST_0));
+					code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, INTEGER_OF.owner(), INTEGER_OF.name(), INTEGER_OF.desc(), false));
+					invoke(code, STATE_VALUE_OR_ELSE, srg, false, putBack);
+				}
+				code.add(new TypeInsnNode(Opcodes.CHECKCAST, "java/lang/Integer"));
+				code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, INT_VALUE.owner(), INT_VALUE.name(), INT_VALUE.desc(), false));
+				LabelNode dry = new LabelNode(), done = new LabelNode();
+				code.add(new JumpInsnNode(Opcodes.IFLE, dry));
+				code.add(new InsnNode(Opcodes.ICONST_1));
+				code.add(new JumpInsnNode(Opcodes.GOTO, done));
+				code.add(dry);
+				code.add(frameOf(locals, under));
+				code.add(new InsnNode(Opcodes.ICONST_0));
+				List<Object> answered = new ArrayList<>(under);
+				answered.add(Opcodes.INTEGER);
 				code.add(done);
 				code.add(frameOf(locals, answered));
 			}
@@ -1428,6 +1656,300 @@ final class VanillaCalls {
 		return new Rewritten(List.copyOf(putBack), places.size());
 	}
 
+	/**
+	 * NeoForge 26.x's checks of an entity's fluid types at its eyes (SEAM-9), each {@code x.getFluidInteraction()
+	 * .isEyeInFluidMatching(x, predicate)} of a local {@code x}, the predicate a lambda of the class capturing nothing whose
+	 * code never reads its height (javac's {@code (e, type, _) -> ...}): first the entity and the predicate go to
+	 * {@link #VANILLA_EYES}, which answers whether vanilla's call answers what that check does for the entity; then the
+	 * entity gets vanilla's {@code x.isEyeInFluid(FluidTags.WATER)}, as vanilla's code makes it, or the platform's check as
+	 * before. The entity is loaded again and the predicate made again (a constant: it captures nothing), the method gets no
+	 * local. The lambda is read in the class as a whole ({@code whole}: {@code owner} holds the rows' methods alone). Null
+	 * where a place isn't so.
+	 */
+	private static Rewritten eyes(ClassNode owner, ClassNode whole, MethodNode method, List<MethodInsnNode> places, Map<AbstractInsnNode, State> frames) {
+		List<Site> sites = new ArrayList<>();
+		List<InvokeDynamicInsnNode> predicates = new ArrayList<>();
+		List<Integer> entities = new ArrayList<>();
+		for (MethodInsnNode call : places) {
+			Site site = site(method, call, frames);
+			if (site == null || site.operands().size() != 3) return null;
+			List<AbstractInsnNode> interaction = real(site.operands().get(0)), entity = real(site.operands().get(1)), predicate = real(site.operands().get(2));
+			if (interaction.size() != 2 || !(interaction.get(0) instanceof VarInsnNode from) || from.getOpcode() != Opcodes.ALOAD
+					|| !(interaction.get(1) instanceof MethodInsnNode getter) || !getter.name.equals(FLUID_INTERACTION_OF.name()) || !getter.desc.equals(FLUID_INTERACTION_OF.desc())
+					|| entity.size() != 1 || !(entity.get(0) instanceof VarInsnNode same) || same.getOpcode() != Opcodes.ALOAD || same.var != from.var
+					|| predicate.size() != 1 || !(predicate.get(0) instanceof InvokeDynamicInsnNode lambda) || !heightBlind(whole, lambda)
+					|| !(site.locals().get(from.var) instanceof String type)) return null;
+			sites.add(site);
+			predicates.add(lambda);
+			entities.add(from.var);
+		}
+		Set<String> putBack = new LinkedHashSet<>();
+		for (int i = 0; i < sites.size(); i++) {
+			Site site = sites.get(i);
+			int entity = entities.get(i);
+			String type = (String) site.locals().get(entity);
+			LabelNode platform = new LabelNode(), end = new LabelNode();
+			InsnList code = new InsnList();
+			code.add(new VarInsnNode(Opcodes.ALOAD, entity));
+			code.add(predicates.get(i).clone(Map.of()));
+			code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner.name, VANILLA_EYES, VANILLA_EYES_DESC, false));
+			code.add(new JumpInsnNode(Opcodes.IFEQ, platform));
+			code.add(new VarInsnNode(Opcodes.ALOAD, entity));
+			code.add(new FieldInsnNode(Opcodes.GETSTATIC, WATER_TAG.owner(), WATER_TAG.name(), WATER_TAG.desc()));
+			// Vanilla's call, of the entity's type as vanilla's code names it (Player's, where Artifacts' and FrozenLib's hooks look).
+			Member isEyeInFluid = new Member(type, "isEyeInFluid", null, "(" + TAG_KEY + ")Z");
+			invoke(code, isEyeInFluid, false, false, putBack);
+			code.add(new JumpInsnNode(Opcodes.GOTO, end));
+			code.add(platform);
+			code.add(frame(site.locals(), -1, site.under(), false));
+			method.instructions.insertBefore(site.start(), code);
+			method.instructions.insert(site.call(), frame(site.locals(), -1, site.under(), true));
+			method.instructions.insert(site.call(), end);
+		}
+		method.maxStack = Math.max(method.maxStack, sites.stream().mapToInt(s -> slots(s.under())).max().orElse(0) + 3);
+		return new Rewritten(List.copyOf(putBack), sites.size());
+	}
+
+	/** The operand's real instructions. */
+	private static List<AbstractInsnNode> real(List<AbstractInsnNode> operand) {
+		return operand.stream().filter(insn -> insn.getOpcode() >= 0).toList();
+	}
+
+	/**
+	 * Whether an {@code invokedynamic} makes an {@code InFluidPredicate} of a static method of the class, capturing nothing,
+	 * whose code never reads its third parameter, the height: what it answers for an entity and a fluid type is the same
+	 * whatever height it is given ({@link #vanillaEyes} asks it with none).
+	 */
+	private static boolean heightBlind(ClassNode owner, InvokeDynamicInsnNode lambda) {
+		if (!lambda.desc.equals("()L" + IN_FLUID_PREDICATE + ";") || !"java/lang/invoke/LambdaMetafactory".equals(lambda.bsm.getOwner())
+				|| !"metafactory".equals(lambda.bsm.getName()) || lambda.bsmArgs.length < 3 || !(lambda.bsmArgs[1] instanceof org.objectweb.asm.Handle impl)
+				|| impl.getTag() != Opcodes.H_INVOKESTATIC || !impl.getOwner().equals(owner.name)) return false;
+		int at = indexOf(owner, impl.getName(), impl.getDesc());
+		Type[] params = Type.getArgumentTypes(impl.getDesc());
+		if (at < 0 || params.length != 3 || params[2].getSort() != Type.DOUBLE || (owner.methods.get(at).access & Opcodes.ACC_STATIC) == 0) return false;
+		int height = params[0].getSize() + params[1].getSize();
+		for (AbstractInsnNode insn : owner.methods.get(at).instructions) {
+			if (insn instanceof VarInsnNode var && (var.var == height || var.var == height + 1)) return false;
+			if (insn instanceof org.objectweb.asm.tree.IincInsnNode inc && (inc.var == height || inc.var == height + 1)) return false;
+		}
+		return true;
+	}
+
+	/**
+	 * {@code private static boolean fabricated$vanillaEyes(Entity entity, InFluidPredicate predicate)}: whether vanilla's
+	 * {@code entity.isEyeInFluid(FluidTags.WATER)} answers what NeoForge's {@code isEyeInFluidMatching(entity, predicate)}
+	 * does (SEAM-9), where the entity's class keeps Entity's {@code isEyeInFluid} (both, the tag's and the fluid type's).
+	 * NeoForge's check answers yes where a fluid type the eyes are in passes the predicate; vanilla's call, as NeoForge's
+	 * fluid interaction answers it ({@code isEyeInFluid(FluidTags.WATER)}), whether they are in water. The predicate is
+	 * asked of a fluid type the eyes are in, without a height, which it doesn't read; each question of the fluid
+	 * interaction is a pass over its trackers on 26.3 (a list, each through its iterator, as NeoForge's own check makes
+	 * them), a lookup in its map on 26.1.2 and 26.2, where only {@code isEyeInFluidMatching} passes over the map's entries,
+	 * which makes one for each. Water's type at the eyes passing the predicate: NeoForge's check answers yes whatever else
+	 * is at them, and vanilla's call goes back where it answers yes too (26.3: a mod's fluid of water's type, untagged,
+	 * keeps NeoForge's check). Water's type there failing it (gills): where vanilla's call answers yes NeoForge's check
+	 * stays; where it answers no, both answer no unless another type is at the eyes, which keeps NeoForge's check. No water
+	 * at the eyes: where no fluid is there either, both answer no and vanilla's call goes back; a mod's fluid there keeps
+	 * NeoForge's check; lava alone, vanilla's goes back where its answer is the predicate's for lava. So vanilla's call goes
+	 * back with the eyes in no fluid or in water after two questions (two passes on 26.3, a lookup and a pass over the
+	 * map's entries, or two lookups, on 26.1.2 and 26.2), and the call put back is a third: NeoForge's check is one pass.
+	 * Made of constants and the entity's own state: the predicates capture nothing, and it makes nothing those passes and
+	 * lookups don't.
+	 */
+	private static MethodNode vanillaEyes(String owner) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, VANILLA_EYES, VANILLA_EYES_DESC, null, null);
+		InsnList code = method.instructions;
+		String fi = FLUID_INTERACTION;
+		LabelNode no = new LabelNode(), notInWater = new LabelNode(), waterFails = new LabelNode(), platform = new LabelNode();
+		Object[] two = {ENTITY_CLASS, IN_FLUID_PREDICATE};
+		Object[] all = {ENTITY_CLASS, IN_FLUID_PREDICATE, fi, FLUID_TYPE};
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, KEEPS_EYES, "(Ljava/lang/Object;)Z", false));
+		code.add(new JumpInsnNode(Opcodes.IFEQ, no));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, ENTITY_CLASS, FLUID_INTERACTION_OF.name(), FLUID_INTERACTION_OF.desc(), false));
+		code.add(new VarInsnNode(Opcodes.ASTORE, 2));
+		vanillaType(code, "WATER_TYPE");
+		code.add(new VarInsnNode(Opcodes.ASTORE, 3));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 3));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, fi, "isEyeInFluid", "(L" + FLUID_TYPE + ";)Z", false));
+		code.add(new JumpInsnNode(Opcodes.IFEQ, notInWater));
+		// Water at the eyes passing the predicate: NeoForge's check answers yes; they agree where vanilla's call answers yes.
+		predicateOf(code, 3);
+		code.add(new JumpInsnNode(Opcodes.IFEQ, waterFails));
+		vanillasAnswer(code);
+		code.add(new InsnNode(Opcodes.IRETURN));
+		// Water failing it: where vanilla's call answers no, they agree unless another fluid type is at the eyes.
+		code.add(waterFails);
+		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
+		vanillasAnswer(code);
+		code.add(new JumpInsnNode(Opcodes.IFNE, platform));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		matching(code, owner, NOT_WATER);
+		code.add(new JumpInsnNode(Opcodes.IFNE, platform));
+		code.add(new InsnNode(Opcodes.ICONST_1));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		// No water at the eyes: no fluid there, both answer no; a mod's fluid there, NeoForge's check stays; lava alone, they
+		// agree where vanilla's call answers the predicate's answer for lava.
+		code.add(notInWater);
+		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		matching(code, owner, NOT_WATER);
+		LabelNode inSome = new LabelNode();
+		code.add(new JumpInsnNode(Opcodes.IFNE, inSome));
+		code.add(new InsnNode(Opcodes.ICONST_1));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		code.add(inSome);
+		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		matching(code, owner, OTHER_FLUID);
+		code.add(new JumpInsnNode(Opcodes.IFNE, platform));
+		vanillaType(code, "LAVA_TYPE");
+		code.add(new VarInsnNode(Opcodes.ASTORE, 3));
+		predicateOf(code, 3);
+		vanillasAnswer(code);
+		code.add(new JumpInsnNode(Opcodes.IF_ICMPNE, platform));
+		code.add(new InsnNode(Opcodes.ICONST_1));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		code.add(platform);
+		code.add(new FrameNode(Opcodes.F_NEW, all.length, all, 0, new Object[0]));
+		code.add(new InsnNode(Opcodes.ICONST_0));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		code.add(no);
+		code.add(new FrameNode(Opcodes.F_NEW, two.length, two, 0, new Object[0]));
+		code.add(new InsnNode(Opcodes.ICONST_0));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		method.maxStack = 6;
+		method.maxLocals = 4;
+		return method;
+	}
+
+	/** Pushes vanilla's call's answer, as the fluid interaction in local 2 gives it: {@code isEyeInFluid(FluidTags.WATER)}. */
+	private static void vanillasAnswer(InsnList code) {
+		code.add(new VarInsnNode(Opcodes.ALOAD, 2));
+		code.add(new FieldInsnNode(Opcodes.GETSTATIC, WATER_TAG.owner(), WATER_TAG.name(), WATER_TAG.desc()));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, FLUID_INTERACTION, "isEyeInFluid", "(" + TAG_KEY + ")Z", false));
+	}
+
+	/**
+	 * With the fluid interaction and the entity pushed, pushes {@code isEyeInFluidMatching(entity, predicate)} of the
+	 * class's static predicate {@code name}, which captures nothing.
+	 */
+	private static void matching(InsnList code, String owner, String name) {
+		code.add(new InvokeDynamicInsnNode("test", "()L" + IN_FLUID_PREDICATE + ";", new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC,
+				"java/lang/invoke/LambdaMetafactory", "metafactory", "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
+				Type.getMethodType(PREDICATE_DESC), new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC, owner, name, PREDICATE_DESC, false),
+				Type.getMethodType(PREDICATE_DESC)));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, FLUID_INTERACTION, EYES_MATCHING.name(), EYES_MATCHING.desc(), false));
+	}
+
+	/** Pushes NeoForge's fluid type of the field ({@code NeoForgeMod.WATER_TYPE.value()}). */
+	private static void vanillaType(InsnList code, String field) {
+		code.add(new FieldInsnNode(Opcodes.GETSTATIC, "net/neoforged/neoforge/common/NeoForgeMod", field, "L" + HOLDER + ";"));
+		code.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, HOLDER, "value", "()Ljava/lang/Object;", true));
+		code.add(new TypeInsnNode(Opcodes.CHECKCAST, FLUID_TYPE));
+	}
+
+	/** Pushes the predicate's answer for the entity and the fluid type in {@code slot}, with no height. */
+	private static void predicateOf(InsnList code, int slot) {
+		code.add(new VarInsnNode(Opcodes.ALOAD, 1));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new VarInsnNode(Opcodes.ALOAD, slot));
+		code.add(new InsnNode(Opcodes.DCONST_0));
+		code.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, IN_FLUID_PREDICATE, "test", PREDICATE_DESC, true));
+	}
+
+	/**
+	 * {@code private static boolean fabricated$otherFluid(Entity entity, FluidType type, double height)}: whether the type is
+	 * neither vanilla's water's nor lava's; {@code fabricated$notWater}, whether it isn't water's ({@code fields}).
+	 */
+	private static MethodNode fluidOtherThan(String name, List<String> fields) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, name, PREDICATE_DESC, null, null);
+		InsnList code = method.instructions;
+		LabelNode vanilla = new LabelNode();
+		for (String field : fields) {
+			code.add(new VarInsnNode(Opcodes.ALOAD, 1));
+			vanillaType(code, field);
+			code.add(new JumpInsnNode(Opcodes.IF_ACMPEQ, vanilla));
+		}
+		code.add(new InsnNode(Opcodes.ICONST_1));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		code.add(vanilla);
+		code.add(new FrameNode(Opcodes.F_NEW, 3, new Object[] {ENTITY_CLASS, FLUID_TYPE, Opcodes.DOUBLE}, 0, new Object[0]));
+		code.add(new InsnNode(Opcodes.ICONST_0));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		method.maxStack = 2;
+		method.maxLocals = 4;
+		return method;
+	}
+
+	/**
+	 * {@code private static boolean fabricated$keepsEyesDefault(Object entity)}: {@link KeepsDefault#keepsMethods} of the
+	 * entity for Entity's {@code isEyeInFluid} of a tag and of a fluid type, which vanilla's call put back makes; one answer
+	 * for the class, kept as {@link #keepsDefault}'s are.
+	 */
+	private static MethodNode keepsEyes(String owner) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KEEPS_EYES, "(Ljava/lang/Object;)Z", null, null);
+		InsnList code = method.instructions;
+		known(code, owner, KNOWN_EYES, "java/lang/Object");
+		askedFirst(code, owner, "java/lang/Object", parameter(), ASKED_ONE);
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		List<String> params = List.of(TAG_KEY, "L" + FLUID_TYPE + ";");
+		code.add(new IntInsnNode(Opcodes.BIPUSH, params.size()));
+		code.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Class"));
+		for (int i = 0; i < params.size(); i++) {
+			code.add(new InsnNode(Opcodes.DUP));
+			code.add(new IntInsnNode(Opcodes.BIPUSH, i));
+			code.add(new LdcInsnNode(Type.getObjectType(ENTITY_CLASS)));
+			code.add(new InsnNode(Opcodes.AASTORE));
+		}
+		code.add(new IntInsnNode(Opcodes.BIPUSH, params.size()));
+		code.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/String"));
+		for (int i = 0; i < params.size(); i++) {
+			code.add(new InsnNode(Opcodes.DUP));
+			code.add(new IntInsnNode(Opcodes.BIPUSH, i));
+			code.add(new LdcInsnNode("isEyeInFluid"));
+			code.add(new InsnNode(Opcodes.AASTORE));
+		}
+		code.add(new IntInsnNode(Opcodes.BIPUSH, params.size()));
+		code.add(new TypeInsnNode(Opcodes.ANEWARRAY, "[Ljava/lang/Class;"));
+		for (int i = 0; i < params.size(); i++) {
+			code.add(new InsnNode(Opcodes.DUP));
+			code.add(new IntInsnNode(Opcodes.BIPUSH, i));
+			classes(code, new Type[] {Type.getType(params.get(i))});
+			code.add(new InsnNode(Opcodes.AASTORE));
+		}
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$keepsMethods", KEEPS_METHODS, false));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		method.maxStack = 12;
+		method.maxLocals = 2;
+		return method;
+	}
+
+	/**
+	 * The slot of the local Forge's farmland check's last operand, the crop, is loaded from ({@code (IPlantable) type}, the
+	 * method's parameter, on every Forge version): its one instruction, or that and the cast. -1 where it isn't so.
+	 */
+	private static int cropSlot(Site site) {
+		List<AbstractInsnNode> real = site.operands().get(site.operands().size() - 1).stream().filter(i -> i.getOpcode() >= 0).toList();
+		if (real.isEmpty() || real.size() > 2 || !(real.get(0) instanceof VarInsnNode load) || load.getOpcode() != Opcodes.ALOAD) return -1;
+		if (real.size() == 2 && !(real.get(1) instanceof TypeInsnNode cast && cast.getOpcode() == Opcodes.CHECKCAST && cast.desc.equals(PLANTABLE))) return -1;
+		return load.var;
+	}
+
+	/** The helper asking whether a soil check goes back for the soil (SEAM-12): the moisture's {@link #VANILLA_FARMLAND}, the farmland's {@link #VANILLA_SOIL}. */
+	private static String soilHelper(OnReceiver form) {
+		return form == OnReceiver.MOISTURE || form == OnReceiver.MOISTURE_OR_ELSE ? VANILLA_FARMLAND : VANILLA_SOIL;
+	}
+
+	private static String soilHelperDesc(OnReceiver form) {
+		return "(L" + STATE + ";" + (form.takesCrop() ? "Ljava/lang/Object;" : "") + ")Z";
+	}
+
 	private static AbstractInsnNode nextReal(AbstractInsnNode insn) {
 		do insn = insn.getNext(); while (insn != null && insn.getOpcode() < 0);
 		return insn;
@@ -1517,8 +2039,8 @@ final class VanillaCalls {
 			case LAYER -> new int[] {0, 1};
 			case ACTION, FORGE_ACTION -> new int[0];
 			case RECEIVER -> row.form().reloads();
-			// The level and the position are kept, not loaded again (levels).
-			case LEVEL -> new int[0];
+			// The level and the position are kept, not loaded again (levels); the entity is loaded again (eyes).
+			case LEVEL, EYES -> new int[0];
 		};
 	}
 
@@ -1741,6 +2263,14 @@ final class VanillaCalls {
 			node.methods.add(keepsDefault(extension, node.name, srg));
 		}
 		if (row.form() == OnReceiver.GOLD_HOLDER && indexOf(node, GOLD_AGREES, "(" + ITEM + ")Z") < 0) node.methods.add(goldAgrees());
+		if (row.form() != null && row.form().soil()) addSoilHelpers(node, row, srg);
+		if (row.code() == Code.EYES && indexOf(node, VANILLA_EYES, VANILLA_EYES_DESC) < 0) {
+			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KNOWN_EYES, "Ljava/lang/ClassValue;", null, null));
+			node.methods.add(keepsEyes(node.name));
+			node.methods.add(vanillaEyes(node.name));
+			node.methods.add(fluidOtherThan(OTHER_FLUID, List.of("WATER_TYPE", "LAVA_TYPE")));
+			node.methods.add(fluidOtherThan(NOT_WATER, List.of("WATER_TYPE")));
+		}
 		if (row.form() != null && row.form().action != null && indexOf(node, TOOL_USE, toolUseDesc(row)) < 0) node.methods.add(toolUse(row, srg));
 		if (row.code() == Code.LEVEL && indexOf(node, KEEPS_LEVEL, "(Ljava/lang/Object;)Z") < 0) {
 			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KNOWN_LEVEL, "Ljava/lang/ClassValue;", null, null));
@@ -1774,6 +2304,173 @@ final class VanillaCalls {
 		if (!WILL_DESTROY.desc(srg).endsWith(")V")) willDestroy.add(new InsnNode(Opcodes.POP));
 		node.methods.add(helper("fabricated$playerWillDestroy", "(" + gameMode + POS + "L" + STATE + ";)V", Opcodes.RETURN,
 				willDestroy.toArray(AbstractInsnNode[]::new)));
+	}
+
+	/** A crop's growth speed's helpers (SEAM-12): its check's condition, NeoForge's TriState of vanilla's answer, the crop's checks. */
+	private static void addSoilHelpers(ClassNode node, PutBack row, boolean srg) {
+		OnReceiver form = row.form();
+		if (indexOf(node, soilHelper(form), soilHelperDesc(form)) < 0) {
+			node.methods.add(soilHelper(form).equals(VANILLA_FARMLAND) ? vanillaFarmland(srg) : vanillaSoil(node.name, form, srg));
+		}
+		if (form == OnReceiver.FARMLAND && indexOf(node, TRI_STATE_OF, triStateDesc(row)) < 0) {
+			node.methods.add(triStateOf(Type.getReturnType(row.platform().desc()).getInternalName()));
+		}
+		if (form.takesCrop() && indexOf(node, KEEPS_CROP, "(Ljava/lang/Object;)Z") < 0) {
+			node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KNOWN_CROP, "Ljava/lang/ClassValue;", null, null));
+			node.methods.add(keepsCrop(node.name, srg));
+		}
+	}
+
+	/** {@code private static boolean fabricated$vanillaFarmland(BlockState soil)}: {@code soil.getBlock() == Blocks.FARMLAND}. */
+	private static MethodNode vanillaFarmland(boolean srg) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, VANILLA_FARMLAND, "(L" + STATE + ";)Z", null, null);
+		InsnList code = method.instructions;
+		LabelNode no = new LabelNode();
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(invoke(GET_BLOCK, srg));
+		code.add(new FieldInsnNode(Opcodes.GETSTATIC, FARMLAND.owner(), FARMLAND.name(srg), FARMLAND.desc()));
+		code.add(new JumpInsnNode(Opcodes.IF_ACMPNE, no));
+		code.add(new InsnNode(Opcodes.ICONST_1));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		code.add(no);
+		code.add(new FrameNode(Opcodes.F_NEW, 1, new Object[] {STATE}, 0, new Object[0]));
+		code.add(new InsnNode(Opcodes.ICONST_0));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		method.maxStack = 2;
+		method.maxLocals = 1;
+		return method;
+	}
+
+	/**
+	 * {@code private static boolean fabricated$vanillaSoil(BlockState soil[, Object crop])}: whether vanilla's farmland check
+	 * answers what the platform's canSustainPlant default does for the soil, and on Forge the crop (SEAM-12). NeoForge 21.1
+	 * and 21.11, whose default's DEFAULT then asks {@code instanceof FarmBlock}, and Forge 52 and 61, whose CropBlock's
+	 * {@code mayPlaceOn} asks the same: {@code soil.getBlock() == Blocks.FARMLAND || !(soil.getBlock() instanceof FarmBlock)}.
+	 * Forge first asks that the crop is a {@code CropBlock} keeping {@code mayPlaceOn}, {@code getPlant} and
+	 * {@code getPlantType} ({@link #keepsCrop}), the plant type then CROP, whose check is vanilla's: on Forge 43 and 47, whose
+	 * {@code mayPlaceOn} is vanilla's {@code is(FARMLAND)}, nothing more; on Forge 64 to 66, whose {@code mayPlaceOn} asks
+	 * {@code instanceof FarmlandBlock} and whose CROP check is vanilla's {@code is(GROWS_CROPS)}:
+	 * {@code !(soil.getBlock() instanceof FarmlandBlock) || soil.is(BlockTags.GROWS_CROPS)}.
+	 */
+	private static MethodNode vanillaSoil(String owner, OnReceiver form, boolean srg) {
+		boolean forge = form.takesCrop();
+		Object[] params = forge ? new Object[] {STATE, "java/lang/Object"} : new Object[] {STATE};
+		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, VANILLA_SOIL, soilHelperDesc(form), null, null);
+		InsnList code = method.instructions;
+		LabelNode yes = new LabelNode(), no = new LabelNode();
+		if (forge) {
+			code.add(new VarInsnNode(Opcodes.ALOAD, 1));
+			code.add(new TypeInsnNode(Opcodes.INSTANCEOF, CROP));
+			code.add(new JumpInsnNode(Opcodes.IFEQ, no));
+			code.add(new VarInsnNode(Opcodes.ALOAD, 1));
+			code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, KEEPS_CROP, "(Ljava/lang/Object;)Z", false));
+			code.add(new JumpInsnNode(Opcodes.IFEQ, no));
+		}
+		if (form == OnReceiver.GROWS_CROPS) {
+			code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			code.add(invoke(GET_BLOCK, srg));
+			code.add(new TypeInsnNode(Opcodes.INSTANCEOF, FARMLAND_BLOCK));
+			code.add(new JumpInsnNode(Opcodes.IFEQ, yes));
+			code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			code.add(new FieldInsnNode(Opcodes.GETSTATIC, GROWS_CROPS.owner(), GROWS_CROPS.name(), GROWS_CROPS.desc()));
+			code.add(invoke(IS_BLOCK_TAG, srg));
+			code.add(new JumpInsnNode(Opcodes.IFEQ, no));
+		} else if (!forge || !srg) {
+			LabelNode farmland = new LabelNode();
+			code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			code.add(invoke(GET_BLOCK, srg));
+			code.add(new InsnNode(Opcodes.DUP));
+			code.add(new FieldInsnNode(Opcodes.GETSTATIC, FARMLAND.owner(), FARMLAND.name(srg), FARMLAND.desc()));
+			code.add(new JumpInsnNode(Opcodes.IF_ACMPEQ, farmland));
+			code.add(new TypeInsnNode(Opcodes.INSTANCEOF, FARM_BLOCK));
+			code.add(new JumpInsnNode(Opcodes.IFNE, no));
+			code.add(new JumpInsnNode(Opcodes.GOTO, yes));
+			code.add(farmland);
+			code.add(new FrameNode(Opcodes.F_NEW, params.length, params, 1, new Object[] {BLOCK}));
+			code.add(new InsnNode(Opcodes.POP));
+		}
+		code.add(yes);
+		code.add(new FrameNode(Opcodes.F_NEW, params.length, params, 0, new Object[0]));
+		code.add(new InsnNode(Opcodes.ICONST_1));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		code.add(no);
+		code.add(new FrameNode(Opcodes.F_NEW, params.length, params, 0, new Object[0]));
+		code.add(new InsnNode(Opcodes.ICONST_0));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		method.maxStack = 3;
+		method.maxLocals = params.length;
+		return method;
+	}
+
+	/** The descriptor of the row's {@code fabricated$triState}: of the TriState its platform's call answers (NeoForge's on 21.1, Minecraft's on 21.11). */
+	private static String triStateDesc(PutBack row) {
+		return "(Z)" + Type.getReturnType(row.platform().desc()).getDescriptor();
+	}
+
+	/**
+	 * {@code private static TriState fabricated$triState(boolean answer)}: {@code answer ? TriState.TRUE : TriState.FALSE}, as
+	 * NeoForge reads it, of {@code type} (NeoForge 21.1's TriState, 21.11's Minecraft's, which both have).
+	 */
+	private static MethodNode triStateOf(String type) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, TRI_STATE_OF, "(Z)L" + type + ";", null, null);
+		InsnList code = method.instructions;
+		LabelNode no = new LabelNode();
+		code.add(new VarInsnNode(Opcodes.ILOAD, 0));
+		code.add(new JumpInsnNode(Opcodes.IFEQ, no));
+		code.add(new FieldInsnNode(Opcodes.GETSTATIC, type, "TRUE", "L" + type + ";"));
+		code.add(new InsnNode(Opcodes.ARETURN));
+		code.add(no);
+		code.add(new FrameNode(Opcodes.F_NEW, 1, new Object[] {Opcodes.INTEGER}, 0, new Object[0]));
+		code.add(new FieldInsnNode(Opcodes.GETSTATIC, type, "FALSE", "L" + type + ";"));
+		code.add(new InsnNode(Opcodes.ARETURN));
+		method.maxStack = 1;
+		method.maxLocals = 1;
+		return method;
+	}
+
+	/**
+	 * {@code private static boolean fabricated$keepsCropDefault(Object crop)}: {@link KeepsDefault#keepsMethods} of the crop
+	 * for the checks Forge's canSustainPlant asks of it, CropBlock's {@code mayPlaceOn}, {@code getPlant} (VegetationBlock's
+	 * or BushBlock's, which CropBlock keeps) and IPlantable's {@code getPlantType}: one answer for the class, kept as
+	 * {@link #keepsDefault}'s are.
+	 */
+	private static MethodNode keepsCrop(String owner, boolean srg) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, KEEPS_CROP, "(Ljava/lang/Object;)Z", null, null);
+		InsnList code = method.instructions;
+		known(code, owner, KNOWN_CROP, "java/lang/Object");
+		askedFirst(code, owner, "java/lang/Object", parameter(), ASKED_ONE);
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		List<Member> checks = List.of(MAY_PLACE_ON, PLANT, PLANT_TYPE);
+		List<String> bases = List.of(CROP, CROP, PLANTABLE);
+		code.add(new IntInsnNode(Opcodes.BIPUSH, checks.size()));
+		code.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Class"));
+		for (int i = 0; i < checks.size(); i++) {
+			code.add(new InsnNode(Opcodes.DUP));
+			code.add(new IntInsnNode(Opcodes.BIPUSH, i));
+			code.add(new LdcInsnNode(Type.getObjectType(bases.get(i))));
+			code.add(new InsnNode(Opcodes.AASTORE));
+		}
+		code.add(new IntInsnNode(Opcodes.BIPUSH, checks.size()));
+		code.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/String"));
+		for (int i = 0; i < checks.size(); i++) {
+			code.add(new InsnNode(Opcodes.DUP));
+			code.add(new IntInsnNode(Opcodes.BIPUSH, i));
+			code.add(new LdcInsnNode(checks.get(i).name(srg)));
+			code.add(new InsnNode(Opcodes.AASTORE));
+		}
+		code.add(new IntInsnNode(Opcodes.BIPUSH, checks.size()));
+		code.add(new TypeInsnNode(Opcodes.ANEWARRAY, "[Ljava/lang/Class;"));
+		for (int i = 0; i < checks.size(); i++) {
+			code.add(new InsnNode(Opcodes.DUP));
+			code.add(new IntInsnNode(Opcodes.BIPUSH, i));
+			classes(code, Type.getArgumentTypes(checks.get(i).desc(srg)));
+			code.add(new InsnNode(Opcodes.AASTORE));
+		}
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, owner, "fabricated$keepsMethods", KEEPS_METHODS, false));
+		code.add(new InsnNode(Opcodes.IRETURN));
+		method.maxStack = 12;
+		method.maxLocals = 2;
+		return method;
 	}
 
 	/**
@@ -2123,6 +2820,7 @@ final class VanillaCalls {
 	private static final String KEEPS = "(Ljava/lang/ClassValue;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/String;"
 			+ "[Ljava/lang/Class;[Ljava/lang/Class;)Z";
 	private static final String KEEPS_METHOD = "(Ljava/lang/ClassValue;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/Class;)Z";
+	private static final String KEEPS_METHODS = "(Ljava/lang/ClassValue;Ljava/lang/Object;[Ljava/lang/Class;[Ljava/lang/String;[[Ljava/lang/Class;)Z";
 	private static final String KEEPS_AND_METHOD = "(Ljava/lang/ClassValue;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/String;"
 			+ "[Ljava/lang/Class;[Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/Class;)Z";
 	private static final String KEEPS_OWNER = Type.getInternalName(KeepsDefault.class);
@@ -2541,7 +3239,9 @@ final class VanillaCalls {
 	 * stand in for; Forge's {@code ForgeHooks.isCorrectToolForDrops}, no longer called, and {@code
 	 * Player.hasCorrectToolForDrops}, called where Forge's default only fires the event (a block needing no tool). For the
 	 * item checks, vanilla's {@code ItemStack.is}, called where the platform's code didn't (on NeoForge either era's stack
-	 * extension), and the elytra layer's {@code shouldRender}, no longer called for the layers keeping it.
+	 * extension), and the elytra layer's {@code shouldRender}, no longer called for the layers keeping it. For a crop's growth
+	 * speed, vanilla's checks the defaults don't make and Forge's crop checks; for the eyes' check, Entity's and the fluid
+	 * interaction's checks.
 	 */
 	static Map<String, Set<String>> others(PutBack row) {
 		Map<String, Set<String>> others = new TreeMap<>();
@@ -2567,6 +3267,26 @@ final class VanillaCalls {
 				case GOLD, GOLD_HOLDER -> others.computeIfAbsent(HOLDER, k -> new TreeSet<>()).add(HOLDER_IS.name());
 				// The platforms' lookup of the shovel's path, which their block extension's default makes.
 				case FLATTEN -> others.computeIfAbsent(SHOVEL, k -> new TreeSet<>()).add("getShovelPathingState");
+				// A crop's growth speed (SEAM-12). Vanilla's farmland check, BlockStateBase.is, which the defaults don't make for
+				// a farm block (NeoForge 21.x's and Forge 52's and 61's ask instanceof, Forge 64 to 66's mayPlaceOn too); and on
+				// Forge the crop's checks Block's canSustainPlant asks, which the crops keeping them no longer reach: its
+				// mayPlaceOn, its plant (BushBlock's, from 1.21.5 VegetationBlock's, IPlantable's) and its plant type.
+				case FARMLAND -> others.computeIfAbsent(STATE_BASE, k -> new TreeSet<>()).addAll(List.of(IS_BLOCK.name(), IS_BLOCK.srgName()));
+				case FORGE_FARMLAND, GROWS_CROPS -> {
+					others.computeIfAbsent(STATE_BASE, k -> new TreeSet<>()).addAll(List.of(IS_BLOCK.name(), IS_BLOCK.srgName()));
+					// 26.x's tag check, TypedInstance.is(TagKey) (BlockStateBase declares only is(TagKey, Predicate) there).
+					if (row.form() == OnReceiver.GROWS_CROPS) others.computeIfAbsent(TYPED_INSTANCE, k -> new TreeSet<>()).add(IS_BLOCK_TAG.name());
+					others.computeIfAbsent(CROP, k -> new TreeSet<>()).addAll(List.of(MAY_PLACE_ON.name(), MAY_PLACE_ON.srgName()));
+					for (String plant : List.of(BLOCKS + "BushBlock", BLOCKS + "VegetationBlock", PLANTABLE)) {
+						others.computeIfAbsent(plant, k -> new TreeSet<>()).add(PLANT.name());
+					}
+					others.computeIfAbsent(PLANTABLE, k -> new TreeSet<>()).add(PLANT_TYPE.name());
+				}
+				// Vanilla's farmland's moisture: the defaults of Forge 43 to 52 ask state.is(Blocks.FARMLAND) for it, which the
+				// put-back's helper tells by its block; 26.x's vanilla reads StateHolder.getValueOrElse, where the defaults read
+				// getValue, which it no longer reaches.
+				case MOISTURE -> others.computeIfAbsent(STATE_BASE, k -> new TreeSet<>()).addAll(List.of(IS_BLOCK.name(), IS_BLOCK.srgName()));
+				case MOISTURE_OR_ELSE -> others.computeIfAbsent(STATE_HOLDER, k -> new TreeSet<>()).addAll(List.of(STATE_VALUE_OR_ELSE.name(), STATE_VALUE.name()));
 				// The stack's getTagEnchantments, no longer called, either era's stack extension.
 				case ENCHANTMENT -> {
 					others.computeIfAbsent(STACK_CLASS, k -> new TreeSet<>()).addAll(List.of("getTagEnchantments", "getEnchantments"));
@@ -2579,6 +3299,13 @@ final class VanillaCalls {
 		}
 		switch (row.code()) {
 			case ACTION -> others.computeIfAbsent(NEOFORGE_ACTION_26.stateInterface(), k -> new TreeSet<>()).add(NEOFORGE_ACTION_26.name());
+			// The eyes' check (SEAM-9): Entity's isEyeInFluid, the tag's and the fluid type's it may call, which vanilla's call
+			// makes; the fluid interaction's checks of a fluid type, of a tag, and of the fluid types at the eyes, which the
+			// entities whose call goes back no longer reach with NeoForge's predicate, and its lookup of a tag's fluid type.
+			case EYES -> {
+				others.computeIfAbsent(ENTITY_CLASS, k -> new TreeSet<>()).add("isEyeInFluid");
+				others.computeIfAbsent(FLUID_INTERACTION, k -> new TreeSet<>()).addAll(List.of("isEyeInFluid", EYES_MATCHING.name(), "getFluidTypeByTag"));
+			}
 			case LAYER -> {
 				others.computeIfAbsent(row.platform().owner(), k -> new TreeSet<>()).add(row.platform().name());
 				others.computeIfAbsent(FORGE_ELYTRA_LAYER, k -> new TreeSet<>()).add(row.platform().name());
@@ -2607,7 +3334,12 @@ final class VanillaCalls {
 	static Map<String, Set<String>> otherMethods(String owner) {
 		Map<String, Set<String>> methods = new TreeMap<>();
 		for (PutBack row : PUT_BACKS) {
-			if (row.owner().equals(owner)) others(row).forEach((c, names) -> methods.computeIfAbsent(c, k -> new TreeSet<>()).addAll(names));
+			if (!row.owner().equals(owner)) continue;
+			// With the forms another era's class gives the row (variant): 26.x's moisture check, Forge 64 to 66's farmland check.
+			List<PutBack> forms = new ArrayList<>(List.of(row));
+			if (row.form() == OnReceiver.MOISTURE) forms.add(row.with(row.extension(), OnReceiver.MOISTURE_OR_ELSE));
+			if (row.form() == OnReceiver.FORGE_FARMLAND) forms.add(row.with(row.extension(), OnReceiver.GROWS_CROPS));
+			for (PutBack form : forms) others(form).forEach((c, names) -> methods.computeIfAbsent(c, k -> new TreeSet<>()).addAll(names));
 		}
 		return methods;
 	}
