@@ -1,12 +1,12 @@
 # Fabricated for legacy Forge (Minecraft 1.19.2 and 1.20.1)
 
 > **This is the `forge-legacy` branch:** Fabricated for **Minecraft Forge 43 and 47** (Minecraft 1.19.2 and 1.20.1),
-> on dedicated servers and clients. **Status: beta (v0.6.0-beta.3)**, held to the same bar as NeoForge in CI; the open
+> on dedicated servers and clients. **Status: beta (v0.6.0-beta.4)**, held to the same bar as NeoForge in CI; the open
 > findings are in the [roadmap](/docs/roadmap.md#open-findings). What works on it is in the
 > [support matrix](/docs/COMPATIBILITY.md#support-matrix) and under [*Forge*](/docs/COMPATIBILITY.md#forge) in
 > `docs/COMPATIBILITY.md`, what Forge doesn't support yet under
 > [*Unsupported on Forge*](/docs/COMPATIBILITY.md#unsupported-on-forge), and what this release changed in its
-> [release notes](https://github.com/cmdralph/Fabricated/blob/main/docs/releases/v0.6.0-beta.3.md). For NeoForge, see
+> [release notes](https://github.com/cmdralph/Fabricated/blob/main/docs/releases/v0.6.0-beta.4.md). For NeoForge, see
 > [`main`](https://github.com/cmdralph/Fabricated/tree/main); for Forge on Minecraft 1.21.1, 1.21.11 and 26.x, see
 > [`forge`](https://github.com/cmdralph/Fabricated/tree/forge).
 
@@ -24,8 +24,8 @@ from `main` through a sync pull request (`scripts/sync-platform-branch.sh`). It 
 
 1. Install Forge for your Minecraft version with the official installer: Forge 43 for 1.19.2, Forge 47 for 1.20.1.
 2. Download `fabricated-forge-<version>+mc<minecraft>.jar` for that version (for this release on 1.20.1,
-   `fabricated-forge-0.6.0-beta.3+mc1.20.1.jar`) from the [releases](https://github.com/cmdralph/Fabricated/releases)
-   or CurseForge.
+   `fabricated-forge-0.6.0-beta.4+mc1.20.1.jar`, and on 1.19.2, `fabricated-forge-0.6.0-beta.4+mc1.19.2.jar`) from
+   the [releases](https://github.com/cmdralph/Fabricated/releases) or CurseForge.
 3. Check the jar against the release's `SHA256SUMS.txt`.
 4. Put the jar in the `mods` folder with your Fabric mods for that Minecraft version. If they need Fabric API, add the
    official Fabric API jar for it (0.77.0 is the last for 1.19.2).
