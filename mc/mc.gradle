@@ -414,7 +414,9 @@ def testmodJar = tasks.register('testmodJar', Jar) {
 // Fabric mods the test mod nests, each with the provider of a service the test mod's own jar declares, as OneConfig
 // 1.8.0's jar declares the UI bridges its nested jar holds (PKG-6, NestedServiceTest): testmodservice's in a package of
 // its own, which its module declares; testmodsplit's in a package of the test mod's, whose module serves the class and
-// keeps its file (the nested mod depends on the test mod, so it comes after it).
+// keeps its file (the nested mod depends on the test mod, so it comes after it). testmodservice also has a service file
+// of its own with a comment after its provider's name, which Forge's own discovery doesn't read, as it reads only the
+// jars of the mods folder (PKG-8, CommentedServiceTest).
 ['testmodservice', 'testmodsplit'].each { name ->
     def set = sourceSets.create(name) {
         java.srcDir rootProject.file("mc/shared/src/${name}/java")

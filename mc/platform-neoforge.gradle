@@ -24,10 +24,6 @@ if (([projectDir] + sharedSources.collect { rootProject.file(it) }).any { new Fi
     testmodDescriptor.testmod << [mixins: ['fabricated-testmod-neoforge.mixins.json']]
 }
 
-// The check of a service file of the test mod's own with a comment after its provider's name (PKG-8), in NeoForge's half:
-// Forge's own discovery reads every jar of the mods folder before Fabricated does, and Forge 43 and 47 stop on such a file.
-testmodDescriptor.testmod << [entrypoints: [main: ['io.github.cmdralph.fabricated.testmod.CommentedServiceTest']]]
-
 // Mixin configs only this version ships (from its own src/main/resources), declared in the in-game mod's mods.toml.
 def versionMixins = (project.findProperty('version_mixin_configs') ?: '').split(',')*.trim().findAll { it }
         .collect { "[[mixins]]\nconfig=\"${it}\"\n" }.join('\n')

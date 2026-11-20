@@ -1,1 +1,1 @@
-io.github.cmdralph.fabricated.testmod.CommentedProvider # the test mod's own, a comment after its name
+io.github.cmdralph.fabricated.testmodservice.CommentedProvider # the nested jar's own, a comment after its name
