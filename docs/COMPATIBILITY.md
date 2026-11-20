@@ -1292,15 +1292,19 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   Other internal classes are not provided. A mod's code that reaches for another one, or for a member of Fabric
   Loader's API that Fabricated lacks, is listed among the report's linkage warnings before the game starts.
 - A service file in a Fabric jar naming providers the jar doesn't have, which Fabric's class path finds in any jar, is
-  declared by the Fabric mod's module that has them all (PKG-6): OneConfig 1.8.0 declares UI bridges whose classes its
-  nested jar holds. A module declares only providers it has, so where no Fabric mod's module has one (a shaded
-  library's file naming a class it dropped, or a class of the platform's or of a NeoForge mod), where they are in
-  several modules, where the module that has them declares that service with other providers, where another jar's
-  file of the service naming other providers would go to that module too, where none of the mod's own jars (it, its
-  parent and the jars nested in them) has the classes, or where the file has more than class names, blanks and
-  whole-line comments or isn't UTF-8 (the platforms' module readers refuse it), the file is left out, the report saying
-  so under *Package guard*, and the service has fewer providers than on Fabric. A service file never disables its mod
-  (PKG-7).
+  declared by the module of one of the mod's own jars (the nest tree of its top-level jar, at any depth) that has them
+  all (PKG-6): OneConfig 1.8.0 declares UI bridges whose classes its nested jar holds. A module declares only providers
+  it has, so where no Fabric mod's module has one (a shaded library's file naming a class it dropped, or a class of the
+  platform's or of a NeoForge mod), where they are in several modules, where the module that has them is another mod's
+  or declares that service with other providers, where another jar's file of the service naming other providers would
+  go to that module too, where only another mod's jar has the classes, or where the file isn't named as a class or has
+  more than class names, blanks and whole-line comments (some platforms' module readers refuse it), the file is left
+  out, the report saying so under *Package guard*, and the service has fewer providers than on Fabric. A service file
+  never disables its mod (PKG-7). A jar's own service file is read as ServiceLoader reads it, a comment from any `#`
+  cut (PKG-8): on Forge its module declares it so, a line or a file not naming a class left out; NeoForge 21.1 reads it
+  as it is, so an own file with a comment after a class name is left out there, the report saying so. On Forge 43 and
+  47, Forge's own discovery reads every jar of the mods folder with SecureJarHandler before Fabricated does, and stops
+  the game on a jar whose service file has a comment after a class name, as on a Forge mod's: a known limit.
 - A registry a mod creates through vanilla's own code (`BuiltInRegistries`) before NeoForge's registration has ended
   joins the root registry, which NeoForge froze after its new-registry event, as Fabric API's `FabricRegistryBuilder`
   registries do; an entry a mod registers in a vanilla registry before NeoForge's registration events is accepted, as

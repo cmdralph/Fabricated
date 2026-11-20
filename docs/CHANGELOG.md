@@ -5,27 +5,40 @@ What changed, and how it was verified, newest first. What is open and what comes
 
 ## 2026-11-19: OneConfig 1.8.0's UI works on NeoForge: a service a Fabric jar declares with another jar's classes (PKG-6)
 
-- **PKG-6** (P0 for clients with OneConfig 1.8.0), fixed: OneConfig 1.8.0's jar declares its UI bridges as services whose
-  classes are in a jar it nests. A Java module can only declare the service providers it has, and those declarations were
-  left out, so OneConfig found none of its bridges, and its screens, PolyPlus's main menu and world creation screen among
-  them, failed every frame. The module holding a service's classes now declares it, whichever of the jars comes first. A
-  service file naming a class no Fabric mod has, or classes of several mods, is still left out, and the report says why;
-  so is one the platforms would read otherwise than Fabric does (a class name with a comment after it, bytes that aren't
-  UTF-8), one naming an unrelated mod's classes, and two jars' files of one service naming other providers.
+- **PKG-6** (P0 for clients with OneConfig 1.8.0), fixed: OneConfig 1.8.0's jar declares its UI bridges as services
+  whose classes are in a jar it nests. A Java module can only declare the service providers it has, and those
+  declarations were left out, so OneConfig found none of its bridges, and its screens, PolyPlus's main menu and world
+  creation screen among them, failed every frame. The module holding a service's classes now declares it, whichever of
+  the jars comes first, where that module is one of the mod's own jars (any of those nested with it). A service file
+  naming a class no Fabric mod has, or classes of several mods, is still left out, and the report says why; so is one
+  some platforms would read otherwise than Fabric does (not named as a class, a class name with a comment after it,
+  bytes that aren't UTF-8), one naming an unrelated mod's classes or whose package an unrelated mod serves, and two
+  jars' files of one service naming other providers.
 - **PKG-7** (P3, no case seen), fixed: a service file going with a package its jar gave up to another jar's module is
   placed the same way, by where its classes are, so one naming a class no jar has is left out. No service file disables
   its mod any more: where its providers can't be declared together, it is left out and the mod loads.
+- **PKG-8** (P0 where it applies, no mod seen), fixed: a Fabric jar's own service file with a comment after a class
+  name, which ServiceLoader on Fabric reads as the class name, stopped the game on NeoForge 21.1, whose module reader
+  takes the whole line as the name. NeoForge 21.1 now leaves out such an own file, so that the mod loads without that
+  service, and on Forge the module declares each file as ServiceLoader reads it, a line or a file not naming a class
+  left out; the report says so for each. On Forge 43 and 47, Forge's own discovery still stops the game on such a jar
+  before Fabricated runs, as on a Forge mod's: a known limit.
 - **The test mod** nests two jars with the providers of services its own jar declares, one of them in a package of the
   test mod's own, which ServiceLoader must find in the game (`nested-service`, `split-package-service`, on every
-  platform).
+  platform), and on NeoForge a service file of its own with a comment after its provider's name (`commented-service`,
+  and on 1.21.1 `commented-service-left-out`).
 - **CI's `client-polyfrost` run** gives PolyPlus vanilla's world and connecting screens (its `customWorlds` and
-  `customConnecting` off), as mc-runtime-test creates its world through vanilla's and PolyPlus 2.1.6 shows world creation
-  in a screen of its own. A run of `ci/runs.tsv` can put a config file the repository holds in the client's config folder
-  (`config:<file>`, a path from the repository's root; one leading out of it stops the run).
-- **Verified:** core's tests, CI's script tests and the mixin inventory; NeoForge 1.21.1's and Forge 47's server parts
-  pass, `nested-service` and `split-package-service` among their checks, which failed on NeoForge 1.21.1 without the fix,
-  and NeoForge 1.21.1's corpus server run passes, its left-out mixins as before; OneConfig 1.8.0 on NeoForge 1.21.1 and
-  1.21.11 finds every bridge and no screen of its fails, and `client-polyfrost` passes on both (46 and 43 checks).
+  `customConnecting` off), as mc-runtime-test creates its world through vanilla's and PolyPlus 2.1.6 and 2.2.0 show
+  world creation in a screen of its own. A run of `ci/runs.tsv` can put a config file the repository holds in
+  `ci/config` in the client's config folder (`config:<file>`, a path from the repository's root; one leading out of
+  `ci/config` stops the run).
+- **Verified:** core's tests (852), CI's script tests and the mixin inventory; each of 21 mutants of the service
+  placement fails a test. NeoForge 1.21.1's and Forge 47's server parts pass, `nested-service` and
+  `split-package-service` among their checks, which failed on NeoForge 1.21.1 without the fix, and NeoForge 1.21.1's
+  corpus server run passes, its left-out mixins as before. NeoForge 1.21.1's server part, which the test mod's own file
+  with a comment stopped before the game started, passes with that file left out (`commented-service-left-out`), and
+  NeoForge 1.21.11's server run finds its provider (`commented-service`). OneConfig 1.8.0 on NeoForge 1.21.1 and 1.21.11
+  finds every bridge and no screen of its fails, and `client-polyfrost` passes on both (46 and 43 checks).
 
 ## 2026-11-19: The v0.6.0-beta.4 release notes and version
 
