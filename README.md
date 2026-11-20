@@ -1,8 +1,22 @@
-# <img width="35" alt="D · Zipper Block@1x" src="https://github.com/user-attachments/assets/a3720634-2930-4bb3-a060-ec85fe1ddac5" /> Fabricated
-[![Builds](https://github.com/cmdralph/Fabricated/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cmdralph/Fabricated/actions/workflows/ci.yml)
-[![GitHub Release](https://img.shields.io/github/v/tag/cmdralph/Fabricated?logo=github)](https://github.com/cmdralph/Fabricated/tags)
-[![CurseForge Latest](https://img.shields.io/badge/CurseForge-Latest-orange?logo=curseforge)](https://www.curseforge.com/minecraft/mc-mods/fabricated-neoforge)
+<p align="center">
+  <img width="835" height="260" alt="fabricated-banner-1280x400" src="https://github.com/user-attachments/assets/0c57fc67-fe07-4fb8-942b-10f4a5080d96" />
+</p>
 
+---
+
+<div align="center">
+
+[![Builds](https://img.shields.io/github/actions/workflow/status/cmdralph/Fabricated/ci.yml?label=Builds&branch=main&style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/cmdralph/Fabricated/actions/workflows/ci.yml?query=branch%3Amain)
+[![Nightly Builds - NeoForge](https://img.shields.io/badge/Nightly-NeoForge-blue?style=for-the-badge&logo=githubactions&logoColor=FFFFFF)](https://nightly.link/cmdralph/Fabricated/workflows/ci/main)
+[![Nightly Builds - Forge](https://img.shields.io/badge/Nightly-Forge-blue?style=for-the-badge&logo=githubactions&logoColor=FFFFFF)](https://nightly.link/cmdralph/Fabricated/workflows/ci/forge)
+[![GitHub Release](https://img.shields.io/github/v/tag/cmdralph/Fabricated?label=Release&style=for-the-badge&logo=github)](https://github.com/cmdralph/Fabricated/tags)
+[![CurseForge](https://img.shields.io/curseforge/dt/1775427?label=CurseForge&style=for-the-badge&logo=curseforge&logoColor=white&color=orange)](https://www.curseforge.com/minecraft/mc-mods/fabricated-neoforge)
+![Minecraft Versions](https://img.shields.io/badge/Minecraft-1.19.2%20%7C%2026.3-62B47A?style=for-the-badge&logo=minecraft&logoColor=white)
+[![License](https://img.shields.io/github/license/cmdralph/Fabricated?style=for-the-badge&color=lightgrey)](https://github.com/cmdralph/Fabricated/blob/main/LICENSE)
+
+</div>
+
+---
 
 Fabricated is a NeoForge mod that loads **Fabric mods and libraries on NeoForge**, for Minecraft
 **1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3**. Put Fabricated and your Fabric mods in the `mods` folder, and they load
