@@ -12,9 +12,11 @@ import cpw.mods.jarhandling.SecureJar;
  * The module of a translated Fabric mod on Forge (docs/PORTING.md §4.1): an automatic module named after the mod's
  * Forge id, as Forge's own metadata for a mods.toml jar names it (whose constructor isn't public), with the jar's
  * packages and the services the package guard decided it declares ({@code PackageGuard.Decision#provides}), read as
- * ServiceLoader reads them on Fabric's class path. SecureJarHandler's own reading of the files, which Forge 43 and 47 have
- * and which takes a comment after a class name as part of it, is never asked for (PKG-6). A provider outside the jar's
- * packages is left out too, as the descriptor would refuse the module.
+ * ServiceLoader reads them on Fabric's class path, in each file's order. SecureJarHandler's own reading of the files,
+ * which on Forge 43 and 47 takes a comment after a class name as part of it, is never asked for (PKG-6, PKG-8);
+ * securemodules, Forge's since 52, still reads every service file of the jar as it opens it, strictly as UTF-8, so the
+ * guard leaves out of the jar a file it would refuse, whose providers this declares all the same. A provider outside the
+ * jar's packages is left out too, as the descriptor would refuse the module.
  */
 final class FabricJarMetadata implements JarMetadata {
 	private final String name;

@@ -204,11 +204,16 @@ public interface PlatformDescriptor {
 		 * being built: a mod's own file it would refuse is left out. NeoForge 21.1's.
 		 */
 		AS_THEY_ARE,
-		/** The platform reads them itself as ServiceLoader does, skipping a file not named as a class: NeoForge on FML 10 and later. */
+		/**
+		 * The platform reads them itself as ServiceLoader does (UTF-8 with replacement, a comment cut), each file named as a
+		 * class, a qualified name or not, handed to the module: NeoForge on FML 10 and later.
+		 */
 		AS_SERVICE_LOADER_DOES,
 		/**
 		 * The module declares what the package guard decided ({@code PackageGuard.Decision#provides}), read as ServiceLoader
-		 * reads it, a line or a file not naming a class left out: Forge's, whose module metadata Fabricated writes.
+		 * reads it, a line or a file not naming a class left out: Forge's, whose module metadata Fabricated writes. Its
+		 * reader still reads every service file of a module's jars as it opens them, strictly as UTF-8 (securemodules, since
+		 * Forge 52), so a file whose bytes aren't is left out of the module, its providers declared all the same.
 		 */
 		FROM_THE_GUARD
 	}

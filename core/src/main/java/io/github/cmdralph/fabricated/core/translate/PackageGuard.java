@@ -12,6 +12,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,9 +66,10 @@ public final class PackageGuard {
 	 * @param borrowed         files of other mods its module serves too, by the jar they are read from: their part of a
 	 *                         package split with this mod, other mods' service files whose providers it has, and the root
 	 *                         files of a jar without classes nested beside it
-	 * @param provides         the services its module declares, each with its providers, as ServiceLoader reads the files
-	 *                         it keeps or serves (lines not naming a class left out): what Forge's module metadata declares
-	 *                         ({@link PlatformDescriptor.ServiceFiles#FROM_THE_GUARD})
+	 * @param provides         the services its module declares, each with its providers in the file's order, as
+	 *                         ServiceLoader reads the files it keeps or serves (lines not naming a class left out, a file
+	 *                         whose bytes Forge's reader refuses declared though not in the module): what Forge's module
+	 *                         metadata declares ({@link PlatformDescriptor.ServiceFiles#FROM_THE_GUARD})
 	 */
 	public record Decision(Set<String> excludedPackages, Set<String> hiddenFiles, Map<Path, Set<String>> borrowed, List<String> notes,
 			Map<String, List<String>> provides) {
@@ -89,10 +91,11 @@ public final class PackageGuard {
 
 	/**
 	 * A service file as ServiceLoader reads it ({@link #serviceLines}): the class names it lists, in its order, and as a
-	 * set; its lines that name no class; the jar it is read from; and whether every platform reads it as Fabric's class
-	 * path does ({@link #readable}).
+	 * set; its lines that name no class; the jar it is read from; whether it is named as Java's modules take a service
+	 * ({@link #validServiceName}); whether its bytes are UTF-8 throughout; and whether a platform reading it as it is takes
+	 * it as Fabric's class path does ({@link #readable}).
 	 */
-	private record Service(List<String> names, Set<String> providers, List<String> invalid, Path jar, boolean readable) {
+	private record Service(List<String> names, Set<String> providers, List<String> invalid, Path jar, boolean named, boolean utf8, boolean readable) {
 	}
 
 	/**
@@ -106,8 +109,8 @@ public final class PackageGuard {
 		}
 	}
 
-	/** The service file {@code file} of {@code mod}, which would go to another module. */
-	private record Offer(TranslatedMod mod, String file, Service service) {
+	/** The service file {@code file} of {@code mod}, which would go to another module, its providers being {@code where}. */
+	private record Offer(TranslatedMod mod, String file, Service service, Holders where) {
 	}
 
 	/**
@@ -128,10 +131,14 @@ public final class PackageGuard {
 	/** Root files that describe a jar rather than belong to its code. */
 	private static final Set<String> METADATA = Set.of("fabric.mod.json", "quilt.mod.json", "pack.mcmeta", "pack.png");
 	private static final String LEFT_OUT = "; the service file is left out, as a module can only declare its own providers";
-	private static final String UNREADABLE = ", but the platforms read a service file more strictly than Fabric's class path (UTF-8, and a"
+	private static final String UNREADABLE = ", but the platform reads a service file more strictly than Fabric's class path (UTF-8, and a"
 			+ " class name, a blank or a whole-line comment on each line), and the module declaring it would not be built; the service file is left out";
-	private static final String AS_THEY_ARE = "the platform reads as it is and would refuse (a class name with a comment after it, a name that isn't"
-			+ " a class's, or bytes that aren't UTF-8); the service file is left out, so that its module is built, without the service";
+	private static final String AS_THEY_ARE = "the platform reads as it is and would refuse (a class name with a comment after it, a line or a file"
+			+ " name that isn't a class's, or bytes that aren't UTF-8); the service file is left out, so that its module is built, without the service";
+	private static final String NOT_NAMED = "whose name isn't a class's in a package, directly in " + SERVICES + ", which is what Java's modules take for a"
+			+ " service";
+	private static final String NOT_UTF8 = "whose bytes aren't all UTF-8, which Forge's module reader takes strictly where ServiceLoader on Fabric's class"
+			+ " path reads them as UTF-8 with replacement";
 	private static final String SUGGESTION = "Java modules cannot share packages. Remove one of the two mods, or ask the authors to relocate (shade) the shared library.";
 
 	private final ArchiveLimits limits;
@@ -290,18 +297,17 @@ public final class PackageGuard {
 	 * serving its package, where that module serves the class: its jar's, or another jar's part of a package split with
 	 * it (PKG-1). A service file
 	 * <ul>
-	 *   <li>stays where its module has every provider: from its own jar, as ever, unless the platform reads it as it is
-	 *       and would refuse it ({@link PlatformDescriptor.ServiceFiles#AS_THEY_ARE}); from another jar's part of a
-	 *       package split with it (OneConfig 1.8.0's bridges), where every platform reads the file as Fabric does
-	 *       ({@link #readable});</li>
+	 *   <li>stays where its module has every provider from its own jar, as ever, unless the platform reads it as it is
+	 *       and would refuse it ({@link #refusedAsItIs}); where its module has them from another jar's part of a package
+	 *       split with it (OneConfig 1.8.0's bridges), where the platform reads it as Fabric does ({@link #unplaceable});</li>
 	 *   <li>goes to the one other module that has every provider, as a file whose providers went with packages given up
-	 *       (PKG-2) or a jar's file naming classes its nested jar holds: where that module is a jar of the mod's own
-	 *       (the nest tree of each top-level jar it is in, {@link #families}) and those jars have the classes, so a mod's
-	 *       file is declared only by its own jars' modules and only for its own classes; where every platform reads it
-	 *       as Fabric does; and where that module doesn't keep a file of the path naming providers itself (one naming
-	 *       none makes way, as the platforms skip it). Where other jars' files of the service would go there too, they go
-	 *       as one only if they name the same providers (the file of the least mod id is the one served); otherwise none
-	 *       goes, as which one Fabric's class path finds first is a matter of order;</li>
+	 *       (PKG-2) or a jar's file naming classes its nested jar holds: where each of those classes is served from a jar
+	 *       of the mod's own (the nest tree of each top-level jar it is in, {@link #families}), so a mod's file is
+	 *       declared only for its own classes, whichever module serves them; where the platform reads it as Fabric does;
+	 *       and where that module doesn't keep a file of the path naming providers itself (one naming none makes way, as
+	 *       the platforms skip it). Where other jars' files of the service would go there too, they go as one only if they
+	 *       name the same providers (the file of the least mod id is the one served); otherwise none goes, as which one
+	 *       Fabric's class path finds first is a matter of order;</li>
 	 *   <li>is left out otherwise, the note saying why: a provider no Fabric mod's module has (none does, or the platform's
 	 *       or a NeoForge mod's: nothing is put in a module Fabricated doesn't build), providers in several modules, the
 	 *       mod's own among them or not (each module could declare only its own, which takes a file no jar has, and
@@ -310,14 +316,21 @@ public final class PackageGuard {
 	 * A service file never disables its mod: leaving it out takes a {@code provides} out of a module, which can't make the
 	 * module invalid, where declaring a provider the module lacks stops the game, and the mod's other features stay. The
 	 * placement depends on the mods' order only as PKG-1 does: which module serves a package split between jars, the
-	 * first jar's, which the note of a file it leaves out says.
+	 * first jar's, which the note of a file it leaves out says. Where Fabricated writes the module's metadata
+	 * ({@link PlatformDescriptor.ServiceFiles#FROM_THE_GUARD}), a file whose bytes the platform's reader would refuse
+	 * isn't in the module, which declares its providers all the same ({@link #keep}).
 	 */
 	private void placeServices(Map<String, TranslatedMod> loading, Map<String, Contents> contentsById, Map<String, String> owner,
 			Map<String, Map<String, Path>> served, Map<String, Set<String>> hiddenById, Map<String, Map<Path, Set<String>>> borrowedById,
 			Map<String, List<String>> notesById, Map<String, Map<String, List<String>>> providesById) {
-		Map<String, String> fabricIds = new HashMap<>();
-		loading.values().forEach(mod -> fabricIds.put(mod.neoForgeId(), mod.candidate().id()));
+		boolean guard = serviceFiles == PlatformDescriptor.ServiceFiles.FROM_THE_GUARD;
 		Map<String, Set<String>> families = families(loading);
+		// The jar or overlay each class file is read from, by mod: whose jar a held class is served from.
+		Map<Path, String> modOfJar = new HashMap<>();
+		loading.values().forEach(mod -> {
+			modOfJar.put(mod.jar(), mod.neoForgeId());
+			if (mod.overlay() != null) modOfJar.put(mod.overlay(), mod.neoForgeId());
+		});
 		// NeoForge id → service file → providers: the files naming providers each module keeps, its own, placed before any
 		// other's; and those naming none, which make way for another jar's file of their path.
 		Map<String, Map<String, Set<String>>> declared = new HashMap<>();
@@ -333,29 +346,38 @@ public final class PackageGuard {
 				Holders where = holders(service, owner, served);
 				String module = where.only();
 				boolean ownJar = where.jars().values().stream().allMatch(jar -> jar.equals(mod.jar()) || jar.equals(mod.overlay()));
-				boolean asItIs = service.providers().isEmpty() && service.invalid().isEmpty() || id.equals(module) && ownJar;
+				// Its own: a file naming no provider (where Fabricated writes the metadata, one with lines naming no class too),
+				// or one whose providers its module has from its own jar.
+				boolean own = service.providers().isEmpty() && (service.invalid().isEmpty() || guard) || id.equals(module) && ownJar;
 				List<String> notes = notesById.get(id);
-				if (asItIs && serviceFiles == PlatformDescriptor.ServiceFiles.AS_THEY_ARE && !service.readable()) {
+				String refused = own ? refusedAsItIs(service) : null;
+				if (refused != null) {
 					hiddenById.get(id).add(file);
-					notes.add("has the service file " + file + ", which " + AS_THEY_ARE);
-				} else if (!service.invalid().isEmpty() && serviceFiles != PlatformDescriptor.ServiceFiles.FROM_THE_GUARD) {
+					notes.add("has the service file " + file + ", " + refused);
+				} else if (!service.invalid().isEmpty() && !guard) {
 					// The platform reads the file itself, and a line naming no class names no provider its module has.
 					hiddenById.get(id).add(file);
 					notes.add("declares the service " + file.substring(SERVICES.length()) + " with the line " + service.invalid().get(0)
 							+ ", which isn't a class name" + LEFT_OUT);
-				} else if (asItIs || id.equals(module) && service.readable()) {
-					keep(id, file, service, declared, empty, notes, providesById);
+				} else if (own) {
+					keep(id, file, service, declared, empty, notes, hiddenById.get(id), providesById);
+				} else if (id.equals(module)) {
+					String why = unplaceable(service);
+					if (why == null) {
+						keep(id, file, service, declared, empty, notes, hiddenById.get(id), providesById);
+					} else {
+						hiddenById.get(id).add(file);
+						notes.add(declares(file, service.providers()) + ", which its module serves from another jar's part of a package split with it" + why);
+					}
 				} else {
 					hiddenById.get(id).add(file);
-					if (id.equals(module)) {
-						notes.add(declares(file, service.providers()) + ", which its module serves from another jar's part of a package split with it" + UNREADABLE);
-					} else if (!where.nowhere().isEmpty()) {
+					if (!where.nowhere().isEmpty()) {
 						notes.add(declares(file, where.nowhere()) + ", which no Fabric mod's module has" + LEFT_OUT);
 					} else if (module == null) {
 						notes.add("declares the service " + file.substring(SERVICES.length()) + " with providers in the modules of "
 								+ String.join(" and ", where.modules().keySet()) + LEFT_OUT + splitDecided(id, contents, where));
 					} else {
-						offers.computeIfAbsent(module, k -> new TreeMap<>()).computeIfAbsent(file, k -> new ArrayList<>()).add(new Offer(mod, file, service));
+						offers.computeIfAbsent(module, k -> new TreeMap<>()).computeIfAbsent(file, k -> new ArrayList<>()).add(new Offer(mod, file, service, where));
 					}
 				}
 			}
@@ -365,20 +387,18 @@ public final class PackageGuard {
 			List<Offer> going = new ArrayList<>();
 			for (Offer offer : all) {
 				Set<String> providers = offer.service().providers();
-				Set<String> family = families.get(offer.mod().candidate().id());
 				List<String> notes = notesById.get(offer.mod().neoForgeId());
 				String has = declares(file, providers) + ", which " + module + "'s module has";
+				String foreign = foreignJar(offer, families.get(offer.mod().candidate().id()), loading, modOfJar);
+				String why = unplaceable(offer.service());
 				if (theirs != null) {
 					notes.add(has + (theirs.equals(providers) ? " and declares already; the service file is left out, as that module serves it"
 							: " but declares with other providers in its own file" + LEFT_OUT));
-				} else if (!family.contains(fabricIds.get(module))) {
-					notes.add(has + ": the package " + packageOf(providers.iterator().next()).replace('/', '.') + " is served by another mod; the"
-							+ " service file is left out, as a mod's file is declared only by its own jars' modules");
-				} else if (!providers.stream().allMatch(p -> familyHas(family, classFile(p), contentsById))) {
-					notes.add(has + " from another mod's jar, none of this mod's own (the jars nested with it) having the class; the service file is"
-							+ " left out, as a mod's file is declared only for its own classes");
-				} else if (!offer.service().readable()) {
-					notes.add(has + UNREADABLE);
+				} else if (foreign != null) {
+					notes.add(has + " from " + foreign + "'s jar, not one of this mod's own (the jars nested with it); the service file is left out, as a"
+							+ " mod's file is declared only for its own classes");
+				} else if (why != null) {
+					notes.add(has + why);
 				} else {
 					going.add(offer);
 				}
@@ -413,31 +433,92 @@ public final class PackageGuard {
 	}
 
 	/**
-	 * The module {@code id} keeps its own service file: a file naming no provider may make way for another jar's, one
-	 * naming providers is declared, as ServiceLoader reads it. Where Fabricated writes the module's metadata
-	 * ({@link PlatformDescriptor.ServiceFiles#FROM_THE_GUARD}) a file or a line naming no class is left out of what it
-	 * declares, which the notes say.
+	 * Why the platform, reading a mod's own service file itself, would refuse it, or null where it takes the file:
+	 * SecureJarHandler 3 on NeoForge 21.1 reads it as it is ({@link #readable}); NeoForge's FML 10 to 12 cut a comment and
+	 * read the bytes as UTF-8 with replacement, as ServiceLoader does, but hand a file named as a class to the module,
+	 * which takes only a class's in a package; Forge's module declares what the guard decided ({@link #keep}).
+	 */
+	private String refusedAsItIs(Service service) {
+		return switch (serviceFiles) {
+			case AS_THEY_ARE -> service.readable() ? null : "which " + AS_THEY_ARE;
+			case AS_SERVICE_LOADER_DOES -> service.named() ? null : NOT_NAMED + "; the service file is left out, so that its module is built, without"
+					+ " the service";
+			case FROM_THE_GUARD -> null;
+		};
+	}
+
+	/**
+	 * Why the platform wouldn't read a service file Fabricated places by another jar's classes as Fabric's class path
+	 * does, as a note's end, or null where it would: NeoForge 21.1 as it is ({@link #readable}); NeoForge's FML 10 to 12
+	 * and Forge, a comment cut, where the file is named as a class in a package and each line names a class (Forge's
+	 * module declaring what the guard reads, a file its reader would refuse the bytes of not put in the module,
+	 * {@link #keep}).
+	 */
+	private String unplaceable(Service service) {
+		if (serviceFiles == PlatformDescriptor.ServiceFiles.AS_THEY_ARE) return service.readable() ? null : UNREADABLE;
+		if (!service.named()) return ", but the service file is named otherwise than as a class in a package, directly in " + SERVICES
+				+ ", which is what Java's modules take for a service; the service file is left out";
+		if (!service.invalid().isEmpty()) return ", but its line " + service.invalid().get(0) + " isn't a class name, which is what Java's modules take for a"
+				+ " provider; the service file is left out";
+		return null;
+	}
+
+	/**
+	 * The mod whose jar a class an offered file names is served from, where it isn't a jar of the offering mod's own
+	 * (its family's jars and overlays); null where every one is.
+	 */
+	private static String foreignJar(Offer offer, Set<String> family, Map<String, TranslatedMod> loading, Map<Path, String> modOfJar) {
+		Set<Path> ours = new HashSet<>();
+		for (String member : family) {
+			TranslatedMod mod = loading.get(member);
+			if (mod == null) continue;
+			ours.add(mod.jar());
+			if (mod.overlay() != null) ours.add(mod.overlay());
+		}
+		for (Path jar : offer.where().jars().values()) {
+			if (!ours.contains(jar)) return modOfJar.getOrDefault(jar, jar.getFileName().toString());
+		}
+		return null;
+	}
+
+	/**
+	 * The module {@code id} keeps its own service file, or one whose providers it serves from another jar's part of a
+	 * package split with it: a file naming no provider may make way for another jar's, one naming providers is declared,
+	 * as ServiceLoader reads it, in the file's order. Where Fabricated writes the module's metadata
+	 * ({@link PlatformDescriptor.ServiceFiles#FROM_THE_GUARD}), a file not named as a class in a package, or a line naming
+	 * no class, is left out of what it declares, and a file whose bytes aren't all UTF-8 is left out of the module, which
+	 * declares its providers all the same: securemodules, Forge's reader since Forge 52, reads every service file of a jar
+	 * strictly as it opens it, and a module's ServiceLoader reads the module's descriptor, not its files. The notes say so.
 	 */
 	private void keep(String id, String file, Service service, Map<String, Map<String, Set<String>>> declared, Map<String, Set<String>> empty,
-			List<String> notes, Map<String, Map<String, List<String>>> providesById) {
+			List<String> notes, Set<String> hidden, Map<String, Map<String, List<String>>> providesById) {
 		boolean guard = serviceFiles == PlatformDescriptor.ServiceFiles.FROM_THE_GUARD;
-		if (guard && !validServiceName(file)) {
-			notes.add("has the service file " + file + ", whose name isn't a class's directly in " + SERVICES + "; its module doesn't declare it, as Java's"
-					+ " modules take only class names");
+		if (guard && !service.utf8()) {
+			hidden.add(file);
+			notes.add("has the service file " + file + ", " + NOT_UTF8 + ": the service file is left out of its module, which declares "
+					+ (service.named() && !service.providers().isEmpty() ? "the service as ServiceLoader reads the file" : "nothing of it"));
+		}
+		if (guard && !service.named()) {
+			notes.add("has the service file " + file + ", " + NOT_NAMED + "; its module doesn't declare it");
 			return;
 		}
 		if (guard && !service.invalid().isEmpty()) {
 			int more = service.invalid().size() - 1;
-			notes.add("declares the service " + file.substring(SERVICES.length()) + " with the line " + service.invalid().get(0) + (more > 0 ? " and " + more
-					+ " more line(s), which aren't class names" : ", which isn't a class name") + "; its module declares the service without "
-					+ (more > 0 ? "them" : "it") + ", as Java's modules take only class names");
+			if (service.providers().isEmpty()) {
+				notes.add("has the service file " + file + ", none of whose lines names a class (" + service.invalid().get(0) + (more > 0 ? " and " + more
+						+ " more" : "") + "); its module declares no provider of the service, as Java's modules take only class names");
+			} else {
+				notes.add("declares the service " + file.substring(SERVICES.length()) + " with the line " + service.invalid().get(0) + (more > 0 ? " and " + more
+						+ " more line(s), which aren't class names" : ", which isn't a class name") + "; its module declares the service without "
+						+ (more > 0 ? "them" : "it") + ", as Java's modules take only class names");
+			}
 		}
 		if (service.providers().isEmpty()) {
 			empty.computeIfAbsent(id, k -> new TreeSet<>()).add(file);
 			return;
 		}
 		declared.computeIfAbsent(id, k -> new HashMap<>()).put(file, service.providers());
-		if (validServiceName(file)) providesById.computeIfAbsent(id, k -> new TreeMap<>()).put(file.substring(SERVICES.length()), service.names());
+		if (service.named()) providesById.computeIfAbsent(id, k -> new TreeMap<>()).put(file.substring(SERVICES.length()), service.names());
 	}
 
 	/**
@@ -525,23 +606,17 @@ public final class PackageGuard {
 		return reached;
 	}
 
-	/** Whether one of the jars of {@code family} has the class. */
-	private static boolean familyHas(Set<String> family, String classFile, Map<String, Contents> contentsById) {
-		String pkg = classFile.substring(0, Math.max(classFile.lastIndexOf('/'), 0));
-		for (String id : family) {
-			Contents contents = contentsById.get(id);
-			Map<String, Path> files = contents == null ? null : contents.packages().get(pkg);
-			if (files != null && files.containsKey(classFile)) return true;
-		}
-		return false;
-	}
-
-	/** {@code module} declares the mod {@code id}'s service file too, served from the jar it is read from. */
-	private static void declareFor(String module, String id, String file, Service service, Map<String, Map<Path, Set<String>>> borrowedById,
+	/**
+	 * {@code module} declares the mod {@code id}'s service file too, served from the jar it is read from: where Forge's
+	 * reader would refuse its bytes ({@link #keep}), the module declares its providers without the file.
+	 */
+	private void declareFor(String module, String id, String file, Service service, Map<String, Map<Path, Set<String>>> borrowedById,
 			Map<String, List<String>> notesById, Map<String, Map<String, List<String>>> providesById) {
-		borrowedById.computeIfAbsent(module, k -> new LinkedHashMap<>()).computeIfAbsent(service.jar(), k -> new TreeSet<>()).add(file);
+		boolean withFile = serviceFiles != PlatformDescriptor.ServiceFiles.FROM_THE_GUARD || service.utf8();
+		if (withFile) borrowedById.computeIfAbsent(module, k -> new LinkedHashMap<>()).computeIfAbsent(service.jar(), k -> new TreeSet<>()).add(file);
 		providesById.computeIfAbsent(module, k -> new TreeMap<>()).put(file.substring(SERVICES.length()), service.names());
-		notesById.get(module).add("also declares " + id + "'s service " + file.substring(SERVICES.length()) + ", whose providers it has");
+		notesById.get(module).add("also declares " + id + "'s service " + file.substring(SERVICES.length()) + ", whose providers it has"
+				+ (withFile ? "" : ", without the file, " + NOT_UTF8));
 	}
 
 	/**
@@ -609,7 +684,12 @@ public final class PackageGuard {
 		return new Contents(packages, services, rootFiles, hasClasses, descriptors);
 	}
 
-	/** A service file as ServiceLoader reads it ({@link #serviceLines}), and whether every platform reads it so ({@link #readable}). */
+	/**
+	 * A service file as ServiceLoader reads it on Fabric's class path ({@link #serviceLines}), its bytes decoded as
+	 * ServiceLoader decodes them: as UTF-8 with replacement, as its {@code new InputStreamReader(in, UTF_8)} does, so a byte
+	 * that isn't UTF-8 in a comment is harmless and one in a name makes that line name no class. With how the platforms
+	 * read it ({@link #validServiceName}, {@link #strictUtf8}, {@link #readable}).
+	 */
 	private static Service service(String file, byte[] data, Path jar) {
 		List<String> names = new ArrayList<>();
 		List<String> invalid = new ArrayList<>();
@@ -617,7 +697,8 @@ public final class PackageGuard {
 			if (!isBinaryName(line)) invalid.add(line);
 			else if (!names.contains(line)) names.add(line);
 		}
-		return new Service(List.copyOf(names), new TreeSet<>(names), List.copyOf(invalid), jar, readable(file, data));
+		return new Service(List.copyOf(names), new TreeSet<>(names), List.copyOf(invalid), jar, validServiceName(file), strictUtf8(data) != null,
+				readable(file, data));
 	}
 
 	/**
@@ -644,24 +725,19 @@ public final class PackageGuard {
 	}
 
 	/**
-	 * Whether every platform reads a service file as Fabric's class path does, which a file placed by another jar's classes
-	 * must be. SecureJarHandler's {@code Provider.fromPath}, with which NeoForge 21.1 (SecureJarHandler 3) and Forge 43 and
-	 * 47 (SecureJarHandler 2.1) read a module's service files, takes them as strict UTF-8 and every line, trimmed, that is
-	 * neither blank nor begun by {@code #} as a provider's binary name, a comment after a name and all; Forge on
-	 * securemodules and NeoForge's FML 10 to 12 cut such a comment, as ServiceLoader does. Java's modules take only a
-	 * binary class name, the service's (the file's name, directly in {@code META-INF/services}) and each provider's. So
-	 * this takes a file so named, in UTF-8, with a binary name, a blank or a whole-line comment on each line, its lines
-	 * split as {@code BufferedReader} splits them (as {@code Files.readAllLines} reads them).
+	 * Whether a platform reading a service file as it is takes it as Fabric's class path does: SecureJarHandler 3's
+	 * {@code Provider.fromPath}, with which NeoForge 21.1 reads a module's service files, takes them as strict UTF-8 and
+	 * every line, trimmed, that is neither blank nor begun by {@code #} as a provider's binary name, a comment after a
+	 * name and all, and hands each file's name to the module as its service; Java's modules take only a binary class
+	 * name in a package for a service and for a provider. So this takes a file so named ({@link #validServiceName}), in
+	 * UTF-8, with a binary name, a blank or a whole-line comment on each line, its lines split as {@code BufferedReader}
+	 * splits them (as {@code Files.readAllLines} reads them). NeoForge's FML 10 to 12 cut such a comment, as ServiceLoader
+	 * does, and so does the guard, whose reading Forge's modules declare ({@link #unplaceable}).
 	 */
 	static boolean readable(String file, byte[] data) {
 		if (!validServiceName(file)) return false;
-		String text;
-		try {
-			text = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
-					.decode(ByteBuffer.wrap(data)).toString();
-		} catch (CharacterCodingException e) {
-			return false;
-		}
+		String text = strictUtf8(data);
+		if (text == null) return false;
 		for (String line : text.split(LINE_END, -1)) {
 			String name = line.trim();
 			if (!name.isEmpty() && !name.startsWith("#") && !isBinaryName(name)) return false;
@@ -669,10 +745,24 @@ public final class PackageGuard {
 		return true;
 	}
 
-	/** Whether a service file's name is one Java's modules take: a binary class name, the file directly in {@code META-INF/services}. */
+	/** The bytes as UTF-8, read strictly; null where they aren't all UTF-8. */
+	private static String strictUtf8(byte[] data) {
+		try {
+			return StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
+					.decode(ByteBuffer.wrap(data)).toString();
+		} catch (CharacterCodingException e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Whether a service file's name is one Java's modules take for a service: the binary name of a class in a package (so
+	 * with a dot; every platform refuses {@code META-INF/services/Foo}, "not a qualified name of a Java class in a named
+	 * package"), the file directly in {@code META-INF/services}.
+	 */
 	static boolean validServiceName(String file) {
 		String name = file.substring(SERVICES.length());
-		return name.indexOf('/') < 0 && isBinaryName(name);
+		return name.indexOf('/') < 0 && name.indexOf('.') > 0 && isBinaryName(name);
 	}
 
 	/** The line ends {@code BufferedReader.readLine} knows; no other character, U+2028 included, ends a line. */
