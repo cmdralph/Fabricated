@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "fabricated-testmod-split",
+  "version": "1.0.0",
+  "name": "Fabricated Test Mod Split",
+  "description": "Nested in the test mod, with the provider of a service the test mod's own jar declares, in a package of the test mod's own. Not meant for players.",
+  "license": "GPL-3.0",
+  "environment": "*",
+  "depends": {
+    "fabricated-testmod": "*"
+  }
+}

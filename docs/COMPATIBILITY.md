@@ -1291,6 +1291,33 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   entrypoints, among them the listeners of its events). `ModContainerImpl`'s own internal methods are not provided.
   Other internal classes are not provided. A mod's code that reaches for another one, or for a member of Fabric
   Loader's API that Fabricated lacks, is listed among the report's linkage warnings before the game starts.
+- A service file in a Fabric jar naming providers the jar doesn't have, which Fabric's class path finds in any jar, is
+  declared by the module that has them all, where each class it names is served from one of the mod's own jars (the nest
+  tree of its top-level jar, at any depth), whichever mod's module serves it (PKG-6): OneConfig 1.8.0 declares UI
+  bridges whose classes its nested jar holds, and a jar's file goes with the package it gives up to another mod's
+  module, as on Fabric's class path. A module declares only providers it has, so where no Fabric mod's module has one (a
+  shaded library's file naming a class it dropped, or a class of the platform's or of a NeoForge mod), where they are in
+  several modules, where the module that has them declares that service with other providers, where another jar's file
+  of the service naming other providers would go to that module too, where the class served is another mod's jar's copy,
+  or where the platform reads the file otherwise than Fabric does (one not named as a class in a package, a line naming
+  no class, and on NeoForge 21.1, which reads a file as it is, a comment after a class name or bytes that aren't UTF-8),
+  the file is left out, the report saying so under *Package guard*, and the service has fewer providers than on Fabric.
+  A service file never disables its mod (PKG-7). A jar's own service file is read as ServiceLoader reads it, a comment
+  from any `#` cut and its bytes read as UTF-8 with replacement (PKG-8): on Forge its module declares it so, in the
+  file's order, a line naming no class or a file not named as a class in a package left out, and a file whose bytes
+  aren't UTF-8 left out of the module, its providers declared all the same; NeoForge 21.1 reads it as it is, so an own
+  file with a comment after a class name, such bytes or such a name is left out there; NeoForge 21.11 and later leave
+  out one not named as a class in a package; the report says so for each. A nested jar's files are Fabricated's to read,
+  as above; a jar of the mods folder is read by the platform's own discovery first, a known limit. On Forge 43 and 47,
+  Forge's `ModDirTransformerDiscoverer` stops the game on a comment after a class name, bytes that aren't UTF-8, a file
+  not named as a class in a package or a line naming no class. On Forge 52 and 61 to 66, a file not named as a class in
+  a package or a line naming no class stops the game, and bytes that aren't UTF-8 end Forge's early discovery for the
+  jars after it ("Error during early discovery"). On Forge the game exits during launch, before any window, with the
+  exception in `latest.log` and the jar named only in its stack trace: there is no Minecraft crash report and no
+  Fabricated report. On NeoForge 21.1, bytes that aren't UTF-8 stop the game in NeoForge's own early discovery: before
+  the game's window, NeoForge's early loading window shows its error dialog, "Failed to initialize the mod loading
+  system and display", its details an unexpected IO error setting up the game directory ("Input length = 1"); neither
+  the dialog nor the logs name the jar, and there is no Minecraft crash report and no Fabricated report.
 - A registry a mod creates through vanilla's own code (`BuiltInRegistries`) before NeoForge's registration has ended
   joins the root registry, which NeoForge froze after its new-registry event, as Fabric API's `FabricRegistryBuilder`
   registries do; an entry a mod registers in a vanilla registry before NeoForge's registration events is accepted, as
@@ -2630,6 +2657,10 @@ Modrinth in CI (never redistributed):
   plugins declared the Fabric way: gated. Each creates and calls its plugin on every version (WTHIT has no 26.3 build).
 - **OneConfig and PolyPlus** (Fabric only), gated where Modrinth has builds for the version (every version since
   v0.6.0-beta): the client reaches its world with no Fabric mod disabled. Their nested
-  Kotlin, Compose and MixinSquared jars split packages between jars, which Fabricated now serves from one module.
+  Kotlin, Compose and MixinSquared jars split packages between jars, which Fabricated now serves from one module, and
+  the UI bridges OneConfig 1.8.0's jar declares, whose classes its nested jar holds, are declared by the module that
+  has them (PKG-6).
+  CI uses vanilla's world screens with PolyPlus (its config's `customWorlds` and `customConnecting` off), because
+  mc-runtime-test drives vanilla's world creation: PolyPlus's own world and connecting screens aren't exercised.
 
 To report a result for another mod, see [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-a-compatibility-result).

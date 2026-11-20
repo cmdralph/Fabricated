@@ -100,5 +100,52 @@ class RetryTest(unittest.TestCase):
         self.assertEqual((self.bin / "calls").read_text().strip(), "1")
 
 
+class ConfigFileTest(unittest.TestCase):
+    """config_file, which smoke.sh's config: token names a file by: ci/config's files only, named from the repository's root."""
+
+    def setUp(self):
+        # A repository of its own: smoke-lib.sh finds its root from where it is, and the links below stay out of the real one.
+        self.dir = Path(tempfile.mkdtemp())
+        self.repo = self.dir / "repo"
+        config = self.repo / "ci" / "config"
+        (self.repo / "ci" / "neoforge").mkdir(parents=True)
+        (self.repo / "ci" / "smoke-lib.sh").write_text((HERE / "smoke-lib.sh").read_text())
+        (self.repo / "ci" / "neoforge" / "platform.sh").write_text("")
+        (self.repo / "ci" / "runs.tsv").write_text("run\n")
+        (self.repo / ".git").mkdir()
+        (self.repo / ".git" / "config").write_text("[core]\n")
+        (config / "sub").mkdir(parents=True)
+        (config / "a.json").write_text("{}\n")
+        (config / "sub" / "b.json").write_text("{}\n")
+        (self.dir / "outside.json").write_text("{}\n")
+        (config / "out.json").symlink_to(self.dir / "outside.json")
+        (config / "runs.json").symlink_to(self.repo / "ci" / "runs.tsv")
+        (config / "in.json").symlink_to(config / "a.json")
+        self.cwd = self.dir / "elsewhere"
+        self.cwd.mkdir()
+
+    def config_file(self, path):
+        script = f"platform=neoforge mc=1.21.1 loader=21.1.265 work=. side=\nsource {self.repo / 'ci' / 'smoke-lib.sh'}\nconfig_file \"$1\""
+        result = subprocess.run(["bash", "-uc", script, "bash", path], capture_output=True, text=True, cwd=self.cwd)
+        return result.returncode, result.stdout.strip(), result.stderr
+
+    def test_a_file_of_ci_config_named_from_the_root(self):
+        real = str((self.repo / "ci" / "config" / "a.json").resolve())
+        self.assertEqual(self.config_file("ci/config/a.json")[:2], (0, real), "wherever the harness runs")
+        self.assertEqual(self.config_file("ci/config/../config/a.json")[:2], (0, real))
+        self.assertEqual(self.config_file("ci/config/in.json")[:2], (0, real), "a link within ci/config")
+        self.assertEqual(self.config_file("ci/config/sub/b.json")[:2], (0, str((self.repo / "ci" / "config" / "sub" / "b.json").resolve())))
+
+    def test_nothing_else(self):
+        for path, why in [(str(self.dir / "outside.json"), "not a path relative"), ("/etc/hostname", "not a path relative"), ("", "not a path relative"),
+                          (".git/config", "not in ci/config"), ("ci/runs.tsv", "not in ci/config"), ("ci/config/../runs.tsv", "not in ci/config"),
+                          ("ci/config/runs.json", "not in ci/config"), ("ci/config/out.json", "not in ci/config"),
+                          ("../outside.json", "not in ci/config"), ("ci/config", "not in ci/config"), ("ci/config/sub", "not a file"),
+                          ("ci/config/none.json", "no such file")]:
+            status, out, err = self.config_file(path)
+            self.assertNotEqual(status, 0, path)
+            self.assertEqual(out, "", path)
+            self.assertIn(why, err, path)
+
 if __name__ == "__main__":
     unittest.main()

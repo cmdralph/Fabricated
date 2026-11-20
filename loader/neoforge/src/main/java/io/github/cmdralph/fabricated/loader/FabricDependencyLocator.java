@@ -50,7 +50,6 @@ import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
 import io.github.cmdralph.fabricated.core.runtime.PlatformProperties;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
-import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
 import io.github.cmdralph.fabricated.fabricloader.version.VersionParser;
 import net.fabricmc.loader.api.VersionParsingException;
@@ -270,7 +269,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), info.build(), !Fml.production(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, neoMods, neoForgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
-					Fml.programArgs(), PlatformDescriptor.NEOFORGE);
+					Fml.programArgs(), Fml.descriptor());
 
 			result = Pipeline.run(input).alsoProvidedElsewhere(providedModules);
 			diagnostics = Pipeline.diagnostics(input);

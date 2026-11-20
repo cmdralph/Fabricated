@@ -298,10 +298,11 @@ class PipelineTest {
 				.bytes("com/conflict/Provider.class", TestJars.emptyClass("com/conflict/Provider", "java/lang/Object"))
 				.text("META-INF/services/java.lang.Runnable", "# a comment\ncom.conflict.Provider\n")
 				.write(mods.resolve("dup-e.jar"));
-		// The same service with another provider, which that module would also have to declare: refused.
+		// The same service with another provider, in a package of its own: its module declares it, beside dup-a's declaring
+		// dup-e's (PKG-6).
 		TestJars.create().fabricModJson(TestJars.modJson("dup-f", "1.0", ""))
-				.bytes("com/conflict/OtherProvider.class", TestJars.emptyClass("com/conflict/OtherProvider", "java/lang/Object"))
-				.text("META-INF/services/java.lang.Runnable", "com.conflict.OtherProvider\n")
+				.bytes("com/dupf/OtherProvider.class", TestJars.emptyClass("com/dupf/OtherProvider", "java/lang/Object"))
+				.text("META-INF/services/java.lang.Runnable", "com.dupf.OtherProvider\n")
 				.write(mods.resolve("dup-f.jar"));
 		// A copy of dup-e's provider and service (as a library's Fabric jar repeats its common jar's): hidden.
 		TestJars.create().fabricModJson(TestJars.modJson("dup-g", "1.0", ""))
@@ -598,12 +599,12 @@ class PipelineTest {
 		for (Report.ModRow row : result.report().mods()) status.putIfAbsent(row.id(), row.status());
 
 		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
-		assertEquals(Set.of("good-mod", "holder", "inner-lib", "dup-a", "dup-b", "dup-c", "dup-d", "dup-e", "dup-g", "res-a", "res-b", "svc-missing"), loaded,
+		assertEquals(Set.of("good-mod", "holder", "inner-lib", "dup-a", "dup-b", "dup-c", "dup-d", "dup-e", "dup-f", "dup-g", "res-a", "res-b", "svc-missing"), loaded,
 				result.report().render());
 		Pipeline.LoadedMod svc = result.mods().stream().filter(m -> m.translated().candidate().id().equals("svc-missing")).findFirst().orElseThrow();
 		assertTrue(svc.packages().hides("META-INF/services/java.lang.Runnable"), "a provider the module lacks: the service file is left out");
 		assertFalse(svc.packages().hides("META-INF/services/java.lang.AutoCloseable"), "one whose provider it has stays");
-		assertTrue(result.report().render().contains("with com.svc.Dropped, which its module doesn't have"), result.report().render());
+		assertTrue(result.report().render().contains("with com.svc.Dropped, which no Fabric mod's module has"), result.report().render());
 		Pipeline.LoadedMod resB = result.mods().stream().filter(m -> m.translated().candidate().id().equals("res-b")).findFirst().orElseThrow();
 		assertEquals(Set.of("licenses"), resB.packages().excludedPackages(), "clashing resource-only directory is hidden, not fatal");
 		assertEquals(Report.Status.DISABLED, status.get("needs-missing"));
@@ -625,14 +626,13 @@ class PipelineTest {
 		Pipeline.LoadedMod dupD = result.mods().stream().filter(m -> m.translated().candidate().id().equals("dup-d")).findFirst().orElseThrow();
 		assertEquals(Set.of("com/conflict"), dupD.packages().excludedPackages());
 		Pipeline.LoadedMod dupE = result.mods().stream().filter(m -> m.translated().candidate().id().equals("dup-e")).findFirst().orElseThrow();
+		Pipeline.LoadedMod dupF = result.mods().stream().filter(m -> m.translated().candidate().id().equals("dup-f")).findFirst().orElseThrow();
 		Pipeline.LoadedMod dupG = result.mods().stream().filter(m -> m.translated().candidate().id().equals("dup-g")).findFirst().orElseThrow();
 		String service = "META-INF/services/java.lang.Runnable";
 		assertEquals(Map.of(dupD.translated().jar(), Set.of("com/conflict/Other.class"), dupE.translated().jar(), Set.of("com/conflict/Provider.class", service)),
 				dupA.packages().borrowed(), "a split package is served by one module, with the service its provider is for");
 		assertTrue(dupE.packages().hides(service) && dupG.packages().hides(service), "the service is the providing module's");
-		assertEquals(Report.Status.DISABLED, status.get("dup-f"));
-		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("dup-f") && r.detail().contains("with other providers than dup_a")),
-				result.report().render());
+		assertFalse(dupF.packages().hides(service), "dup-f's module declares its own provider");
 
 		try (SafeArchive overlay = SafeArchive.open(good.translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			String toml = overlay.readText("META-INF/neoforge.mods.toml");

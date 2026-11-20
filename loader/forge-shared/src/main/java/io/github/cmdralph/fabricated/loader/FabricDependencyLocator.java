@@ -425,7 +425,7 @@ public final class FabricDependencyLocator extends ForgeModProvider implements I
 		};
 		String id = translated.neoForgeId();
 		String version = translated.candidate().metadata().getVersion().getFriendlyString();
-		SecureJar jar = SecureJar.from(secureJar -> new FabricJarMetadata(id, version, secureJar), filter, paths.toArray(Path[]::new));
+		SecureJar jar = SecureJar.from(secureJar -> new FabricJarMetadata(id, version, secureJar, packages.provides()), filter, paths.toArray(Path[]::new));
 		IModFile file = ModFileFactory.FACTORY.build(jar, this, ModFileParser::modsTomlParser);
 		if (ForgeMods.modInfos(file).isEmpty()) throw new IllegalStateException("its generated mods.toml declares no mod");
 		return file;

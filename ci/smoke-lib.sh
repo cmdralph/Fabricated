@@ -91,6 +91,29 @@ fabricated_jar() {
 	return 1
 }
 
+# config_file <path>: the real path of a config file the repository holds for the runs, in ci/config, named relative to
+# the repository's root. An absolute path, or one that leads out of ci/config (through .. or a symbolic link), fails.
+config_file() {
+	local dir real
+	case "$1" in
+		'' | /*) echo "$1: not a path relative to the repository" >&2; return 1 ;;
+	esac
+	dir=$(realpath -e -- "$root/ci/config") || return 1
+	if ! real=$(realpath -e -- "$root/$1" 2>/dev/null); then
+		echo "$1: no such file in the repository" >&2
+		return 1
+	fi
+	case "$real" in
+		"$dir"/*) ;;
+		*) echo "$1: not in ci/config" >&2; return 1 ;;
+	esac
+	if [ ! -f "$real" ]; then
+		echo "$1: not a file" >&2
+		return 1
+	fi
+	echo "$real"
+}
+
 # add_mods <mods dir>: Fabricated, the side's test mods (SMOKE_TESTMODS=none leaves them out) and the extra mods; the
 # folder's listing goes to mods.txt, and what the run had to flags.txt, which a run in the same folder reads again.
 add_mods() {

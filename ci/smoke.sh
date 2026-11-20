@@ -110,6 +110,13 @@ while IFS=$'\x1f' read -r run run_side gates needs mods env skip_reason; do
 				cp -r "$work/${token#seed:}" "$work/$run.seed/" 2>/dev/null || true
 				settings+=("SMOKE_SEED=$work/$run.seed")
 				;;
+			config:*)
+				# A config file the repository holds for the runs (ci/config), in the client's game directory's config folder.
+				seeded=$(config_file "${token#config:}") || exit 1
+				mkdir -p "$work/$run.seed/config"
+				cp "$seeded" "$work/$run.seed/config/"
+				settings+=("SMOKE_SEED=$work/$run.seed")
+				;;
 			reuse:*) dir="$work/${token#reuse:}" && settings+=(SMOKE_REUSE=1) ;;
 			*) echo "ci/runs.tsv: $run: unknown mods token $token" >&2; exit 1 ;;
 		esac

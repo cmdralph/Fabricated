@@ -17,8 +17,18 @@ import io.github.cmdralph.fabricated.core.mixin.PlatformCoremods;
  * pipeline its own.
  */
 public interface PlatformDescriptor {
-	/** NeoForge's: {@code META-INF/neoforge.mods.toml} as {@link ModsTomlWriter} writes it. */
-	PlatformDescriptor NEOFORGE = new PlatformDescriptor() {
+	/** NeoForge's ({@link NeoForge}). */
+	PlatformDescriptor NEOFORGE = new NeoForge();
+
+	/**
+	 * NeoForge's: {@code META-INF/neoforge.mods.toml} as {@link ModsTomlWriter} writes it. A NeoForge version's own
+	 * descriptor extends it (NeoForge 21.1's reads service files otherwise, {@link #serviceFiles}).
+	 */
+	class NeoForge implements PlatformDescriptor {
+		/** For a NeoForge version's own descriptor; {@link #NEOFORGE} otherwise. */
+		protected NeoForge() {
+		}
+
 		@Override
 		public String path() {
 			return ModsTomlWriter.PATH;
@@ -28,7 +38,7 @@ public interface PlatformDescriptor {
 		public String write(ModsTomlWriter.Spec spec) {
 			return ModsTomlWriter.write(spec);
 		}
-	};
+	}
 
 	/** Forge's, 47 to 66 ({@link Forge}). */
 	PlatformDescriptor FORGE = new Forge();
@@ -48,6 +58,11 @@ public interface PlatformDescriptor {
 		@Override
 		public String loaderName() {
 			return "Forge";
+		}
+
+		@Override
+		public ServiceFiles serviceFiles() {
+			return ServiceFiles.FROM_THE_GUARD;
 		}
 
 		@Override
@@ -175,6 +190,37 @@ public interface PlatformDescriptor {
 	 */
 	default List<String> absentLibraryPackages() {
 		return List.of();
+	}
+
+	/**
+	 * Who reads a translated Fabric mod's service files ({@code META-INF/services}) to make its module declare them.
+	 * Java's modules take only binary class names, of the service and of each provider, where Fabric's class path reads
+	 * a file as ServiceLoader does: a comment from any {@code #}, the rest of the line trimmed.
+	 */
+	enum ServiceFiles {
+		/**
+		 * The platform reads each file itself as it is (SecureJarHandler 3's {@code Provider.fromPath}: strict UTF-8, every
+		 * line trimmed a provider's name unless blank or begun by {@code #}), and a file it can't take stops the module
+		 * being built: a mod's own file it would refuse is left out. NeoForge 21.1's.
+		 */
+		AS_THEY_ARE,
+		/**
+		 * The platform reads them itself as ServiceLoader does (UTF-8 with replacement, a comment cut), each file named as a
+		 * class, a qualified name or not, handed to the module: NeoForge on FML 10 and later.
+		 */
+		AS_SERVICE_LOADER_DOES,
+		/**
+		 * The module declares what the package guard decided ({@code PackageGuard.Decision#provides}), read as ServiceLoader
+		 * reads it, a line or a file not naming a class left out: Forge's, whose module metadata Fabricated writes. Its
+		 * reader still reads every service file of a module's jars as it opens them, strictly as UTF-8 (securemodules, since
+		 * Forge 52), so a file whose bytes aren't is left out of the module, its providers declared all the same.
+		 */
+		FROM_THE_GUARD
+	}
+
+	/** Who reads a translated mod's service files ({@link ServiceFiles}): NeoForge's on FML 10 and later by default. */
+	default ServiceFiles serviceFiles() {
+		return ServiceFiles.AS_SERVICE_LOADER_DOES;
 	}
 
 	/** The loader's name as players know it, for Fabricated's report: {@code NeoForge} by default. */
