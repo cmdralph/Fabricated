@@ -91,21 +91,21 @@ fabricated_jar() {
 	return 1
 }
 
-# repo_file <path>: the real path of a file the repository holds, named relative to its root. An absolute path, or one
-# that leads out of the repository (through .. or a symbolic link), fails.
-repo_file() {
-	local top real
+# config_file <path>: the real path of a config file the repository holds for the runs, in ci/config, named relative to
+# the repository's root. An absolute path, or one that leads out of ci/config (through .. or a symbolic link), fails.
+config_file() {
+	local dir real
 	case "$1" in
 		'' | /*) echo "$1: not a path relative to the repository" >&2; return 1 ;;
 	esac
-	top=$(realpath -e -- "$root") || return 1
-	if ! real=$(realpath -e -- "$top/$1" 2>/dev/null); then
+	dir=$(realpath -e -- "$root/ci/config") || return 1
+	if ! real=$(realpath -e -- "$root/$1" 2>/dev/null); then
 		echo "$1: no such file in the repository" >&2
 		return 1
 	fi
 	case "$real" in
-		"$top"/*) ;;
-		*) echo "$1: outside the repository" >&2; return 1 ;;
+		"$dir"/*) ;;
+		*) echo "$1: not in ci/config" >&2; return 1 ;;
 	esac
 	if [ ! -f "$real" ]; then
 		echo "$1: not a file" >&2

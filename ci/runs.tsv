@@ -10,7 +10,7 @@
 #   projects was fetched for it, or (a path) unless that file exists in a run directory before it.
 # mods: what joins the test mods (ci/smoke.sh): fabric-api, testmod:<name>, modrinth:<loader>:<project>[@<version
 #   id>],..., corpus[:advanced], drop:<jar glob>, standins[:own-loader], connector, fabricated-copy, energy,
-#   unreadable-pack, seed:<run>/<path>, config:<file> (a file the repository holds, named from its root, put in a
+#   unreadable-pack, seed:<run>/<path>, config:<file> (a file of ci/config, named from the repository's root, put in a
 #   client's config folder), reuse:<run>; -testmods leaves the test mods out. {plugin_hosts}, {renderers} and
 #   {fabric_renderers} are the version's pins ({renderers.sodium} the Sodium one). env: the harness's settings.
 run	side	part	extended	gates	neoforge	forge	forge-legacy	needs	mods	env	description	why_not

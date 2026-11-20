@@ -196,10 +196,11 @@ class PackageGuardTest {
 	}
 
 	/**
-	 * M1: a file placed by another jar's classes must read as the platforms read it (NeoForge 21.1's and Forge's module
-	 * readers: strict UTF-8, each line trimmed a class name unless blank or a whole-line comment). A class name with a
-	 * comment after it, bytes that aren't UTF-8 or a keyword in a name would stop the module being built, so such a file
-	 * stays out; one of comments, blank lines, CRLF ends and nested classes' names goes.
+	 * A file placed by another jar's classes must read as every platform reads it (SecureJarHandler on NeoForge 21.1 and
+	 * Forge 43 and 47: strict UTF-8, each line trimmed a class name unless blank or a whole-line comment). A class name
+	 * with a comment after it, bytes that aren't UTF-8, a keyword in a name or two names joined by a line separator
+	 * BufferedReader doesn't split at (U+2028) would stop the module being built, so such a file stays out; one of
+	 * comments, blank lines, CRLF ends and nested classes' names goes.
 	 */
 	@Test
 	void aFileThePlatformsReadOtherwiseIsNotMoved(@TempDir Path dir) throws Exception {
@@ -208,23 +209,28 @@ class PackageGuardTest {
 				.text("META-INF/services/com.api.Inline", "com.inner.BridgeImpl # the bridge\n")
 				.bytes("META-INF/services/com.api.Bytes", latin1)
 				.text("META-INF/services/com.api.Keyword", "com.inner.int\n")
+				.text("META-INF/services/com.api.Separator", "com.inner.BridgeImpl\ncom.inner.BridgeImpl\u2028com.inner.Bridge$Impl\n")
 				.text("META-INF/services/com.api.Good", "# the bridges\r\n\r\n  com.inner.BridgeImpl  \r\ncom.inner.Bridge$Impl\n"));
 		TranslatedMod inner = mod(dir, "inner", "outer", TestJars.create()
 				.bytes("com/inner/BridgeImpl.class", cls("com/inner/BridgeImpl"))
 				.bytes("com/inner/Bridge$Impl.class", cls("com/inner/Bridge$Impl"))
 				.bytes("com/inner/int.class", cls("com/inner/int")));
 		inEveryOrder(List.of(outer, inner), Set.of(), decisions -> {
-			for (String bad : List.of("Inline", "Bytes", "Keyword")) {
+			for (String bad : List.of("Inline", "Bytes", "Keyword", "Separator")) {
 				assertEquals(List.of(), declaring(decisions, outer, "META-INF/services/com.api." + bad), bad);
-				assertNote(decisions, "outer", "declares the service com.api." + bad + " with ");
 			}
-			assertTrue(decisions.get("outer").notes().stream().filter(n -> n.contains("the platforms read a service file more strictly")).count() == 3,
-					decisions.get("outer").notes().toString());
+			assertNote(decisions, "outer", "declares the service com.api.Inline with com.inner.BridgeImpl, which inner's module has, but the platforms read a"
+					+ " service file more strictly");
+			assertNote(decisions, "outer", "declares the service com.api.Bytes with com.inner.BridgeImpl, which inner's module has, but the platforms read a"
+					+ " service file more strictly");
+			assertNote(decisions, "outer", "declares the service com.api.Keyword with the line com.inner.int, which isn't a class name; the service file is left out");
+			assertNote(decisions, "outer", "declares the service com.api.Separator with the line com.inner.BridgeImpl\u2028com.inner.Bridge$Impl, which isn't a"
+					+ " class name");
 			assertEquals(List.of("inner"), declaring(decisions, outer, "META-INF/services/com.api.Good"));
 		});
 	}
 
-	/** M1, kept: a file whose providers its module serves from a jar it shares a package with reads as the platforms do too. */
+	/** A file whose providers its module serves from a jar it shares a package with reads as every platform reads it too, to be kept. */
 	@Test
 	void aFileItsModuleServesFromASplitIsKeptOnlyWhereThePlatformsReadIt(@TempDir Path dir) throws Exception {
 		TranslatedMod outer = mod(dir, "outer", null, TestJars.create()
@@ -243,7 +249,7 @@ class PackageGuardTest {
 	}
 
 	/**
-	 * M2: two other jars' files of one service whose providers one module has, naming other providers: which one Fabric's
+	 * Two other jars' files of one service whose providers one module has, naming other providers: which one Fabric's
 	 * class path finds first is a matter of order, so neither goes there, in any order.
 	 */
 	@Test
@@ -258,7 +264,7 @@ class PackageGuardTest {
 		});
 	}
 
-	/** M2: two other jars' files naming the same providers serve the service once, from the least mod id's jar, in every order. */
+	/** Two other jars' files naming the same providers serve the service once, from the least mod id's jar, in every order. */
 	@Test
 	void twoJarsFilesNamingTheSameProvidersServeItOnce(@TempDir Path dir) throws Exception {
 		List<TranslatedMod> mods = family(dir, "com.h.A1", "com.h.A1");
@@ -271,9 +277,9 @@ class PackageGuardTest {
 	}
 
 	/**
-	 * L3: a file with a provider of its own and one of a package it shares with its nested jar. Where its jar serves that
-	 * package the file stays; where the nested jar does, the providers are in two modules and the file stays out. Either
-	 * way the mod loads, where a package it gave up used to disable it.
+	 * A file with a provider of its own and one of a package it shares with its nested jar. Where its jar serves that
+	 * package the file stays; where the nested jar does, the providers are in two modules and the file stays out, the note
+	 * saying the package split decided it. Either way the mod loads, where a package it gave up used to disable it.
 	 */
 	@Test
 	void ownAndSplitProvidersNeverDisableTheMod(@TempDir Path dir) throws Exception {
@@ -286,10 +292,12 @@ class PackageGuardTest {
 		assertFalse(check(List.of(a, n), Set.of()).decisions().get("alpha").hides(SERVICE), "a's module serves both");
 		Map<String, PackageGuard.Decision> nestedFirst = check(List.of(n, a), Set.of()).decisions();
 		assertTrue(nestedFirst.get("alpha").hides(SERVICE));
-		assertNote(nestedFirst, "alpha", "declares the service com.api.Bridge with providers in the modules of alpha and nested");
+		assertNote(nestedFirst, "alpha", "declares the service com.api.Bridge with providers in the modules of alpha and nested; the service file is left out,"
+				+ " as a module can only declare its own providers. The package split decided it: com.p, which this mod's jar has classes in too, is served by"
+				+ " the module of the jar that came first");
 	}
 
-	/** L3: a file of a package given up naming a class no jar has goes nowhere, where it went with the package. */
+	/** A file of a package given up naming a class no jar has goes nowhere, where it went with the package. */
 	@Test
 	void aFileOfAPackageGivenUpNamingAClassNoJarHasGoesNowhere(@TempDir Path dir) throws Exception {
 		TranslatedMod a = mod(dir, "alpha", null, TestJars.create().bytes("com/p/AThing.class", cls("com/p/AThing")));
@@ -304,7 +312,7 @@ class PackageGuardTest {
 	}
 
 	/**
-	 * L3: a file going with a package given up, where the module serving that package keeps its own file of the service,
+	 * A file going with a package given up, where the module serving that package keeps its own file of the service,
 	 * whose provider it serves from its nested jar: its own stays, the other goes nowhere, and no mod is disabled.
 	 */
 	@Test
@@ -324,7 +332,7 @@ class PackageGuardTest {
 		assertNote(decisions, "beta", "declares the service com.api.Bridge with com.p.Y, which alpha's module has but declares with other providers in its own file");
 	}
 
-	/** L3: a file going with a package given up to a module declaring other providers leaves the mod loading. */
+	/** A file going with a package given up to a module declaring other providers leaves the mod loading. */
 	@Test
 	void aFileOfAPackageGivenUpToAModuleWithOtherProvidersLeavesTheModLoading(@TempDir Path dir) throws Exception {
 		TranslatedMod a = mod(dir, "alpha", null, TestJars.create()
@@ -343,7 +351,7 @@ class PackageGuardTest {
 		});
 	}
 
-	/** L4: a mod's file naming another, unrelated mod's classes isn't declared by that mod's module. */
+	/** A mod's file naming another, unrelated mod's classes isn't declared by that mod's module. */
 	@Test
 	void anUnrelatedModsFileIsNotDeclaredForAnotherModsClasses(@TempDir Path dir) throws Exception {
 		TranslatedMod outer = mod(dir, "outer", null, TestJars.create().bytes("com/shared/OuterPart.class", cls("com/shared/OuterPart")));
@@ -355,9 +363,128 @@ class PackageGuardTest {
 				.text(SERVICE, "com.inner.BridgeImpl\n"));
 		inEveryOrder(List.of(outer, inner, unrelated), Set.of(), decisions -> {
 			assertEquals(List.of(), declaring(decisions, unrelated, SERVICE));
-			assertNote(decisions, "unrelated", "declares the service com.api.Bridge with com.inner.BridgeImpl, which inner's module has from another mod's jar,"
-					+ " none of this mod's own (it, its parent and the jars nested in them) having the class");
+			assertNote(decisions, "unrelated", "declares the service com.api.Bridge with com.inner.BridgeImpl, which inner's module has: the package com.inner"
+					+ " is served by another mod");
 		});
+	}
+
+	/**
+	 * A file whose name isn't a class's directly in META-INF/services (a hyphen, a keyword, a subfolder): Java's modules
+	 * take only a class name for a service, and SecureJarHandler on NeoForge 21.1 and Forge hands every file's name to the
+	 * module, so moving it would stop the module being built. It stays out.
+	 */
+	@Test
+	void aFileNotNamedAsAClassIsNotMoved(@TempDir Path dir) throws Exception {
+		List<String> bad = List.of("META-INF/services/com.api.Bridge-v2", "META-INF/services/com.api.int", "META-INF/services/sub/com.api.Bridge");
+		TestJars outerJar = TestJars.create().bytes("com/shared/OuterPart.class", cls("com/shared/OuterPart"));
+		for (String file : bad) outerJar.text(file, "com.inner.BridgeImpl\n");
+		TranslatedMod outer = mod(dir, "outer", null, outerJar);
+		TranslatedMod inner = mod(dir, "inner", "outer", TestJars.create()
+				.bytes("com/inner/BridgeImpl.class", cls("com/inner/BridgeImpl"))
+				.bytes("com/shared/InnerPart.class", cls("com/shared/InnerPart")));
+		inEveryOrder(List.of(outer, inner), Set.of(), decisions -> {
+			for (String file : bad) assertEquals(List.of(), declaring(decisions, outer, file), file);
+			assertEquals(3, decisions.get("outer").notes().stream().filter(n -> n.contains("the platforms read a service file more strictly")).count(),
+					decisions.get("outer").notes().toString());
+		});
+	}
+
+	/**
+	 * A file naming a class its nested jar has, where an unrelated mod's jar has the package too: where that jar comes
+	 * first its module serves the package, the class with it, and doesn't declare the other mod's file, which stays out.
+	 */
+	@Test
+	void aFileIsNotDeclaredByAnUnrelatedModServingItsPackage(@TempDir Path dir) throws Exception {
+		TranslatedMod outer = mod(dir, "outer", null, TestJars.create()
+				.bytes("com/outer/Main.class", cls("com/outer/Main"))
+				.text(SERVICE, "com.x.Impl\n"));
+		TranslatedMod inner = mod(dir, "inner", "outer", TestJars.create().bytes("com/x/Impl.class", cls("com/x/Impl")));
+		TranslatedMod unrelated = mod(dir, "aaunrel", null, TestJars.create().bytes("com/x/UPart.class", cls("com/x/UPart")));
+		inEveryOrder(List.of(outer, inner, unrelated), Set.of(), decisions -> {
+			List<String> declaring = declaring(decisions, outer, SERVICE);
+			assertFalse(declaring.contains("aaunrel"), declaring.toString());
+			if (declaring.isEmpty()) {
+				assertNote(decisions, "outer", "declares the service com.api.Bridge with com.x.Impl, which aaunrel's module has: the package com.x is served by"
+						+ " another mod; the service file is left out");
+			} else {
+				assertEquals(List.of("inner"), declaring);
+			}
+		});
+	}
+
+	/**
+	 * A file naming a class only an unrelated mod has, in a package that mod shares with the file's nested jar: where the
+	 * nested jar's module serves the package, the class lent to it, the file still stays out, as the class isn't its
+	 * mod's; where the unrelated jar's does, it is another mod's module. Either way the service has no provider, as the
+	 * mod's own jars have none.
+	 */
+	@Test
+	void aFileNamingAClassOnlyAnUnrelatedModHasStaysOut(@TempDir Path dir) throws Exception {
+		TranslatedMod outer = mod(dir, "outer", null, TestJars.create()
+				.bytes("com/outer/Main.class", cls("com/outer/Main"))
+				.text(SERVICE, "com.x.Impl\n"));
+		TranslatedMod inner = mod(dir, "inner", "outer", TestJars.create().bytes("com/x/InnerPart.class", cls("com/x/InnerPart")));
+		TranslatedMod unrelated = mod(dir, "zzunrel", null, TestJars.create().bytes("com/x/Impl.class", cls("com/x/Impl")));
+		inEveryOrder(List.of(outer, inner, unrelated), Set.of(), decisions -> {
+			assertEquals(List.of(), declaring(decisions, outer, SERVICE));
+			assertTrue(decisions.get("outer").notes().stream().anyMatch(n -> n.startsWith("declares the service com.api.Bridge with com.x.Impl, which inner's"
+					+ " module has from another mod's jar") || n.startsWith("declares the service com.api.Bridge with com.x.Impl, which zzunrel's module has:")),
+					decisions.get("outer").notes().toString());
+		});
+	}
+
+	/** The family of a mod's jars is its top-level jar's whole nest tree: a jar nested two deep holds a provider its top's file names. */
+	@Test
+	void aGrandchildsProviderIsTheFamilys(@TempDir Path dir) throws Exception {
+		TranslatedMod outer = mod(dir, "outer", null, List.of("middle"), TestJars.create()
+				.bytes("com/outer/Main.class", cls("com/outer/Main"))
+				.text(SERVICE, "com.leaf.Impl\n"));
+		TranslatedMod middle = mod(dir, "middle", "outer", List.of("leaf"), TestJars.create().bytes("com/middle/Part.class", cls("com/middle/Part")));
+		TranslatedMod leaf = mod(dir, "leaf", "middle", List.of(), TestJars.create().bytes("com/leaf/Impl.class", cls("com/leaf/Impl")));
+		inEveryOrder(List.of(outer, middle, leaf), Set.of(), decisions -> assertEquals(List.of("leaf"), declaring(decisions, outer, SERVICE)));
+	}
+
+	/**
+	 * A library two mods nest is kept once, under one of them: it is in each one's family, so the other's file naming its
+	 * class goes to its module.
+	 */
+	@Test
+	void aLibraryTwoModsNestIsInEachOnesFamily(@TempDir Path dir) throws Exception {
+		TranslatedMod first = mod(dir, "first", null, List.of("library"), TestJars.create().bytes("com/first/Main.class", cls("com/first/Main")));
+		TranslatedMod second = mod(dir, "second", null, List.of("library"), TestJars.create()
+				.bytes("com/second/Main.class", cls("com/second/Main"))
+				.text(SERVICE, "com.library.Impl\n"));
+		TranslatedMod library = mod(dir, "library", "first", List.of(), TestJars.create().bytes("com/library/Impl.class", cls("com/library/Impl")));
+		inEveryOrder(List.of(first, second, library), Set.of(), decisions -> assertEquals(List.of("library"), declaring(decisions, second, SERVICE)));
+	}
+
+	/** A holder's own file of the path naming no provider makes way for the file naming its classes: the platforms skip it. */
+	@Test
+	void aHoldersFileNamingNoProviderMakesWay(@TempDir Path dir) throws Exception {
+		TranslatedMod outer = mod(dir, "outer", null, TestJars.create()
+				.bytes("com/shared/OuterPart.class", cls("com/shared/OuterPart"))
+				.text(SERVICE, "com.inner.BridgeImpl\n"));
+		TranslatedMod inner = mod(dir, "inner", "outer", TestJars.create()
+				.bytes("com/inner/BridgeImpl.class", cls("com/inner/BridgeImpl"))
+				.bytes("com/shared/InnerPart.class", cls("com/shared/InnerPart"))
+				.text(SERVICE, "# none yet\n"));
+		inEveryOrder(List.of(outer, inner), Set.of(), decisions -> {
+			assertEquals(List.of("inner"), declaring(decisions, outer, SERVICE));
+			assertTrue(decisions.get("inner").hides(SERVICE));
+			assertNote(decisions, "inner", "has the service file " + SERVICE + ", which names no provider and makes way for outer's");
+		});
+	}
+
+	/** A nested jar's file naming a class its parent has goes to the parent's module: the family reaches up as well as down. */
+	@Test
+	void aNestedJarsFileNamingItsParentsClassGoesToTheParent(@TempDir Path dir) throws Exception {
+		TranslatedMod outer = mod(dir, "outer", null, TestJars.create()
+				.bytes("com/outer/Impl.class", cls("com/outer/Impl"))
+				.bytes("com/shared/OuterPart.class", cls("com/shared/OuterPart")));
+		TranslatedMod inner = mod(dir, "inner", "outer", TestJars.create()
+				.bytes("com/shared/InnerPart.class", cls("com/shared/InnerPart"))
+				.text(SERVICE, "com.outer.Impl\n"));
+		inEveryOrder(List.of(outer, inner), Set.of(), decisions -> assertEquals(List.of("outer"), declaring(decisions, inner, SERVICE)));
 	}
 
 	/** A parent, its nested holder of com.h.A1 and com.h.A2, and two nested jars declaring the service with these providers. */
@@ -413,6 +540,9 @@ class PackageGuardTest {
 			}));
 			files.forEach((path, data) -> {
 				if (!path.startsWith("META-INF/services/")) return;
+				String service = path.substring("META-INF/services/".length());
+				assertTrue(service.matches("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*") && !List.of(service.split("\\.")).contains("int"),
+						mod.neoForgeId() + "'s module declares " + path + ", whose name Java's modules don't take for a service");
 				String text;
 				try {
 					text = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(data)).toString();
@@ -483,10 +613,15 @@ class PackageGuardTest {
 
 	/** A translated mod of {@code jar}'s files, nested in {@code parent} (null for a jar of the mods folder). */
 	private static TranslatedMod mod(Path dir, String id, String parent, TestJars jar) throws Exception {
+		return mod(dir, id, parent, List.of(), jar);
+	}
+
+	/** The same, nesting the mods {@code nested} (as the scanner lists them: a library several mods nest is listed by each). */
+	private static TranslatedMod mod(Path dir, String id, String parent, List<String> nested, TestJars jar) throws Exception {
 		String json = TestJars.modJson(id, "1.0", "");
 		Path file = jar.fabricModJson(json).write(dir.resolve(id + ".jar"));
 		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(json), parent == null ? id + ".jar" : parent + ".jar!/" + id + ".jar", parent,
-				parent == null ? 0 : 1, List.of(), new HashSet<>());
+				parent == null ? 0 : 1, nested, new HashSet<>());
 		return new TranslatedMod(c, id, file, dir.resolve(id + "-overlay.jar"), List.of(), 0, List.of(), List.of(), List.of(), Set.of(), Set.of(), Set.of(),
 				Map.of(), false, 0);
 	}

@@ -22,13 +22,28 @@ import net.neoforged.neoforgespi.locating.IModFile;
 import net.neoforged.neoforgespi.locating.IncompatibleFileReporting;
 import net.neoforged.neoforgespi.locating.ModFileDiscoveryAttributes;
 
+import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
+
 /**
  * What Fabricated reads of NeoForge's FML and its mod files, on NeoForge 21.1's FML 4, which runs on ModLauncher: its mod
  * files are secure jars, and it has no program arguments for a locator (ModLauncher hands them to the game's launch
  * handler only, as on Forge). FML 10 and later have their own ({@code loader/neoforge/src/fml}).
  */
 final class Fml {
+	/** NeoForge's, its SecureJarHandler reading a mod's service files as they are (PKG-6). */
+	private static final PlatformDescriptor DESCRIPTOR = new PlatformDescriptor.NeoForge() {
+		@Override
+		public ServiceFiles serviceFiles() {
+			return ServiceFiles.AS_THEY_ARE;
+		}
+	};
+
 	private Fml() {
+	}
+
+	/** How FML 4 learns of a translated mod: NeoForge's way, its mod files' service files read as they are. */
+	static PlatformDescriptor descriptor() {
+		return DESCRIPTOR;
 	}
 
 	static String minecraftVersion() {

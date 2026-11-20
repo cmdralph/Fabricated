@@ -15,12 +15,19 @@ import net.neoforged.neoforgespi.locating.IModFile;
 import net.neoforged.neoforgespi.locating.IncompatibleFileReporting;
 import net.neoforged.neoforgespi.locating.ModFileDiscoveryAttributes;
 
+import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
+
 /**
  * What Fabricated reads of NeoForge's FML and its mod files, on FML 10 and later (NeoForge 21.11 and 26.x), whose mod
  * files have FML's own jar contents. NeoForge 21.1's FML 4 has its own ({@code loader/neoforge/src/modlauncher}).
  */
 final class Fml {
 	private Fml() {
+	}
+
+	/** How FML 10 and later learn of a translated mod: NeoForge's way ({@link PlatformDescriptor#NEOFORGE}). */
+	static PlatformDescriptor descriptor() {
+		return PlatformDescriptor.NEOFORGE;
 	}
 
 	static String minecraftVersion() {

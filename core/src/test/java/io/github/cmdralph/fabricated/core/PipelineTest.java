@@ -298,8 +298,8 @@ class PipelineTest {
 				.bytes("com/conflict/Provider.class", TestJars.emptyClass("com/conflict/Provider", "java/lang/Object"))
 				.text("META-INF/services/java.lang.Runnable", "# a comment\ncom.conflict.Provider\n")
 				.write(mods.resolve("dup-e.jar"));
-		// The same service with another provider, which that module would also have to declare in that file's place: as dup-e's
-		// and dup-g's name another, none goes there, and dup-f loads (PKG-6).
+		// The same service with another provider, which that module would also have to declare in that file's place: dup-a is
+		// another mod, whose module declares no file of dup-e's, dup-f's or dup-g's, and dup-f loads (PKG-6, PKG-7).
 		TestJars.create().fabricModJson(TestJars.modJson("dup-f", "1.0", ""))
 				.bytes("com/conflict/OtherProvider.class", TestJars.emptyClass("com/conflict/OtherProvider", "java/lang/Object"))
 				.text("META-INF/services/java.lang.Runnable", "com.conflict.OtherProvider\n")
@@ -631,10 +631,10 @@ class PipelineTest {
 		String service = "META-INF/services/java.lang.Runnable";
 		assertEquals(Map.of(dupD.translated().jar(), Set.of("com/conflict/Other.class"), dupE.translated().jar(), Set.of("com/conflict/Provider.class"),
 				dupF.translated().jar(), Set.of("com/conflict/OtherProvider.class")), dupA.packages().borrowed(),
-				"a split package is served by one module; the service files that would go with it name other providers, so none does");
+				"a split package is served by one module; another mod's, which declares none of the service files that would go with it");
 		assertTrue(dupE.packages().hides(service) && dupF.packages().hides(service) && dupG.packages().hides(service), "each is left out");
-		assertTrue(result.report().render().contains("dup-f declares the service java.lang.Runnable with com.conflict.OtherProvider, which dup_a's module has,"
-				+ " as the files of that service of dup_e and dup_g would go there with other providers"), result.report().render());
+		assertTrue(result.report().render().contains("dup-f declares the service java.lang.Runnable with com.conflict.OtherProvider, which dup_a's module has:"
+				+ " the package com.conflict is served by another mod"), result.report().render());
 
 		try (SafeArchive overlay = SafeArchive.open(good.translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			String toml = overlay.readText("META-INF/neoforge.mods.toml");

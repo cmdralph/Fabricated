@@ -111,8 +111,8 @@ while IFS=$'\x1f' read -r run run_side gates needs mods env skip_reason; do
 				settings+=("SMOKE_SEED=$work/$run.seed")
 				;;
 			config:*)
-				# A config file the repository holds, in the client's game directory's config folder.
-				seeded=$(repo_file "${token#config:}") || exit 1
+				# A config file the repository holds for the runs (ci/config), in the client's game directory's config folder.
+				seeded=$(config_file "${token#config:}") || exit 1
 				mkdir -p "$work/$run.seed/config"
 				cp "$seeded" "$work/$run.seed/config/"
 				settings+=("SMOKE_SEED=$work/$run.seed")
