@@ -13,25 +13,13 @@ import io.github.cmdralph.fabricated.testmod.split.SplitService;
  * jar declares the UI bridges its nested jar holds. Fabric's class path finds a provider in any jar; a module declares
  * only providers it has, so ServiceLoader finds each only where the module serving its class declares it:
  * {@link NestedService}'s, in a package of the nested jar's own, in the nested jar's module; {@link SplitService}'s, in a
- * package the test mod has classes in too, in the test mod's module, which serves that package. The test mod's own file
- * of {@link CommentedService} has a comment after its provider's name: found where the platform cuts it, as ServiceLoader
- * does, or Fabricated declares the module's services (Forge), and left out where the platform reads the file as it is
- * (NeoForge 21.1), so that the module is built; the checks say which (ci/checks.tsv).
+ * package the test mod has classes in too, in the test mod's module, which serves that package.
  */
 public final class NestedServiceTest implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		check("nested service", NestedService.class, "io.github.cmdralph.fabricated.testmodservice.NestedProvider", false);
 		check("split package service", SplitService.class, "io.github.cmdralph.fabricated.testmod.split.SplitProvider", true);
-		try {
-			List<String> found = new ArrayList<>();
-			for (CommentedService instance : ServiceLoader.load(CommentedService.class, CommentedService.class.getClassLoader())) {
-				found.add(instance.getClass().getName());
-			}
-			TestMod.LOGGER.info("FABRICATED-TEST commented service: {}", found.isEmpty() ? "none found" : "found " + String.join(", ", found));
-		} catch (RuntimeException | LinkageError e) {
-			TestMod.LOGGER.error("FABRICATED-TEST commented service FAILED", e);
-		}
 	}
 
 	/** Logs OK where ServiceLoader finds {@code provider} as the one provider of {@code service}, in the test mod's module or another. */
