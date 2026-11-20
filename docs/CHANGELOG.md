@@ -9,36 +9,47 @@ What changed, and how it was verified, newest first. What is open and what comes
   whose classes are in a jar it nests. A Java module can only declare the service providers it has, and those
   declarations were left out, so OneConfig found none of its bridges, and its screens, PolyPlus's main menu and world
   creation screen among them, failed every frame. The module holding a service's classes now declares it, whichever of
-  the jars comes first, where that module is one of the mod's own jars (any of those nested with it). A service file
-  naming a class no Fabric mod has, or classes of several mods, is still left out, and the report says why; so is one
-  some platforms would read otherwise than Fabric does (not named as a class, a class name with a comment after it,
-  bytes that aren't UTF-8), one naming an unrelated mod's classes or whose package an unrelated mod serves, and two
-  jars' files of one service naming other providers.
+  the jars comes first, where each class is served from one of the mod's own jars (any of those nested with it),
+  whichever mod's module serves it: a jar's file goes with the package it gives up to another mod's module, as on
+  Fabric's class path. A service file naming a class no Fabric mod has, or classes of several mods, is still left out,
+  and the report says why; so is one the platform would read otherwise than Fabric does (not named as a class in a
+  package, a line naming no class, and on NeoForge 21.1 a class name with a comment after it or bytes that aren't
+  UTF-8), one naming a class served from another mod's jar, and two jars' files of one service naming other providers.
 - **PKG-7** (P3, no case seen), fixed: a service file going with a package its jar gave up to another jar's module is
   placed the same way, by where its classes are, so one naming a class no jar has is left out. No service file disables
   its mod any more: where its providers can't be declared together, it is left out and the mod loads.
 - **PKG-8** (P0 where it applies, no mod seen), fixed: a Fabric jar's own service file with a comment after a class
   name, which ServiceLoader on Fabric reads as the class name, stopped the game on NeoForge 21.1, whose module reader
-  takes the whole line as the name. NeoForge 21.1 now leaves out such an own file, so that the mod loads without that
-  service, and on Forge the module declares each file as ServiceLoader reads it, a line or a file not naming a class
-  left out; the report says so for each. On Forge 43 and 47, Forge's own discovery still stops the game on such a jar
-  before Fabricated runs, as on a Forge mod's: a known limit.
+  takes the whole line as the name; one whose bytes aren't all UTF-8, which ServiceLoader reads with replacement, made
+  Forge 52 and later refuse the mod; and one named without a package stopped every platform. NeoForge 21.1 now leaves
+  out such an own file, so that the mod loads without that service; NeoForge 21.11 and later leave out one not named as
+  a class in a package; on Forge the module declares each file as ServiceLoader reads it, in its order, a line or a file
+  not naming a class left out, and a file of other bytes left out of the module with its providers declared all the
+  same. The report says so for each. A jar of the mods folder is read by the platform's own discovery first, a known
+  limit: on Forge 43 and 47 it stops on a comment after a class name, bytes that aren't UTF-8, a name not a class's or a
+  line naming no class; on Forge 52 and 61 to 66 on a name not a class's or a line naming no class, and bytes that
+  aren't UTF-8 end its early discovery; on NeoForge 21.1 bytes that aren't UTF-8 stop it, its early window showing
+  "Failed to initialize the mod loading system and display". None of these name the jar outside a stack trace, and there
+  is no crash report or Fabricated report.
 - **The test mod** nests two jars with the providers of services its own jar declares, one of them in a package of the
   test mod's own, which ServiceLoader must find in the game (`nested-service`, `split-package-service`, on every
-  platform), and on NeoForge a service file of its own with a comment after its provider's name (`commented-service`,
-  and on 1.21.1 `commented-service-left-out`).
+  platform), and the first has a service file of its own with a comment after its provider's name, which Forge's own
+  discovery doesn't read (`commented-service` on Forge and NeoForge 21.11 and later, `commented-service-left-out` on
+  NeoForge 21.1).
 - **CI's `client-polyfrost` run** gives PolyPlus vanilla's world and connecting screens (its `customWorlds` and
   `customConnecting` off), as mc-runtime-test creates its world through vanilla's and PolyPlus 2.1.6 and 2.2.0 show
   world creation in a screen of its own. A run of `ci/runs.tsv` can put a config file the repository holds in
   `ci/config` in the client's config folder (`config:<file>`, a path from the repository's root; one leading out of
   `ci/config` stops the run).
-- **Verified:** core's tests (852), CI's script tests and the mixin inventory; each of 21 mutants of the service
-  placement fails a test. NeoForge 1.21.1's and Forge 47's server parts pass, `nested-service` and
-  `split-package-service` among their checks, which failed on NeoForge 1.21.1 without the fix, and NeoForge 1.21.1's
-  corpus server run passes, its left-out mixins as before. NeoForge 1.21.1's server part, which the test mod's own file
-  with a comment stopped before the game started, passes with that file left out (`commented-service-left-out`), and
-  NeoForge 1.21.11's server run finds its provider (`commented-service`). OneConfig 1.8.0 on NeoForge 1.21.1 and 1.21.11
-  finds every bridge and no screen of its fails, and `client-polyfrost` passes on both (46 and 43 checks).
+- **Verified:** core's tests (856), CI's script tests and the mixin inventory; each of 33 mutants of the service
+  placement fails a test, and a 34th can't be reached. NeoForge 1.21.1's, Forge 47's and Forge 52's server parts pass,
+  `nested-service` and `split-package-service` among their checks, which failed on NeoForge 1.21.1 without the fix, and
+  NeoForge 1.21.1's corpus server run passes, its left-out mixins as before. NeoForge 1.21.1's server part, which the
+  test mod's own file with a comment stopped before the game started, passes with the nested jar's such file left out
+  (`commented-service-left-out`); NeoForge 1.21.11's server run, Forge 47's server part and Forge 52's find its provider
+  (`commented-service`). OneConfig 1.8.0 on NeoForge 1.21.1 and 1.21.11 finds every bridge and no screen of its fails,
+  and `client-polyfrost` passes on both (46 and 43 checks). On NeoForge 1.21.1's client, a mods-folder jar with a
+  Latin-1 byte in a service file stops the game in NeoForge's early discovery, as the known limit says.
 
 ## 2026-11-19: The v0.6.0-beta.4 release notes and version
 
